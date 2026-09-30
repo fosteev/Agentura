@@ -1,13 +1,23 @@
 import { signal, useSignalEffect } from '@preact/signals';
-import { agents, compose, hud, log, turns } from '../fixtures/chat';
+import { useEffect, useLayoutEffect, useRef } from 'preact/hooks';
+import { hud } from '../fixtures/chat';
+import { chat, interrupt, newSession, recent, showThinking, tick } from '../store';
+import { ui } from '../strings';
+import { send } from '../vscode';
+import { Composer } from './Composer';
+import { Empty } from './Empty';
 import { Hud, type Tab } from './Hud';
 import { Log } from './Log';
 import { AgentsPane, TurnPane } from './SidePanes';
-import { ui } from '../strings';
+import type { AgentRow } from '../fixtures/chat';
+import type { FeedRow } from '../chatState';
+import { formatDuration, shortModel, toolView } from '../toolView';
 
 const tab = signal<Tab>('chat');
 /** Широкая вёрстка (ход и агенты панелью справа) включается с этой ширины вкладки. */
 const WIDE_PX = 700;
+/** Насколько близко к низу лента считается «прилипшей». */
+const STICK_PX = 32;
 
 export function Chat() {
   // hud.css переключает вёрстку по html[data-width="900"]; в реальном webview ширину меряем сами
@@ -24,74 +34,106 @@ export function Chat() {
     return () => window.removeEventListener('resize', apply);
   });
 
-  const t = tab.value;
+  const s = chat.value;
+  const working = s.status === 'working' || s.status === 'waiting';
+
+  // секундный тик для таймеров ленты — только пока идёт ход
+  useEffect(() => {
+    if (!working) return;
+    tick.value = Date.now();
+    const id = setInterval(() => (tick.value = Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [working]);
+
+  // Esc останавливает ход (поле ввода гасит Esc сама, когда закрывает меню/историю)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !e.defaultPrevented && chat.value.status === 'working') interrupt();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  // автопрокрутка с «прилипанием»: если пользователь ушёл вверх — не дёргаем
+  const paneRef = useRef<HTMLElement>(null);
+  const stick = useRef(true);
+  const onScroll = () => {
+    const el = paneRef.current;
+    if (el) stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < STICK_PX;
+  };
+  useLayoutEffect(() => {
+    const el = paneRef.current;
+    if (el && stick.current) el.scrollTop = el.scrollHeight;
+  }, [s.rows, tab.value]);
+
+  const empty = s.rows.length === 0;
+  // в пустой сессии вкладки «ход»/«агенты» отключены — после «new» возвращаемся в чат
+  const t = empty ? 'chat' : tab.value;
+  const now = tick.value;
+  const last = s.rows[s.rows.length - 1];
+  const live = working ? liveLabel(last, s.turnStartedAt, now) : undefined;
+
+  const mainRow: AgentRow = {
+    kind: 'main',
+    mark: working ? '●' : '○',
+    name: ui.agents.main,
+    meta: `${s.model ? shortModel(s.model) : '—'} · ${working ? ui.agents.answering : ui.agents.waitingTask}`,
+    tokens: '0',
+  };
+
   return (
     <div class="webview">
-      <Hud d={hud} tab={t} onTab={(k) => (tab.value = k)} />
+      <Hud
+        project={s.project}
+        title={s.title}
+        tab={t}
+        onTab={(k) => (tab.value = k)}
+        sidePanesEnabled={!empty}
+        onSessions={() => send({ type: 'sessions.show' })}
+        onNew={newSession}
+      />
       <div class="body">
-        <main class="pane" id="pane-chat" hidden={t !== 'chat'}>
-          <Log items={log} />
+        <main class="pane" id="pane-chat" hidden={t !== 'chat'} ref={paneRef} onScroll={onScroll}>
+          {empty ? (
+            <Empty
+              project={s.project}
+              recent={recent.value}
+              onResume={(id) => send({ type: 'session.resume', sessionId: id })}
+            />
+          ) : (
+            <Log
+              rows={s.rows}
+              cwd={s.cwd}
+              now={now}
+              showThinking={showThinking.value}
+              onDiff={(toolUseId) => send({ type: 'diff.open', sessionId: s.sessionId, toolUseId })}
+            >
+              {live && (
+                <div class="live">
+                  <span class="spin" /> {live}{' '}
+                  <button class="stop" onClick={interrupt}>
+                    {ui.log.stop}
+                  </button>
+                </div>
+              )}
+            </Log>
+          )}
         </main>
         <aside class="pane side" style={{ display: t === 'chat' ? 'none' : 'block' }}>
-          <TurnPane turns={turns} hidden={t !== 'turn'} />
-          <AgentsPane rows={agents.rows} totals={agents.totals} hidden={t !== 'agents'} />
+          <TurnPane turns={[]} hidden={t !== 'turn'} />
+          <AgentsPane rows={[mainRow]} totals={[]} hidden={t !== 'agents'} />
         </aside>
       </div>
-      <footer class="compose">
-        <div class="blocks" aria-hidden="true">
-          {hud.blocks.map((c) => (
-            <i class={c} />
-          ))}
-        </div>
-        <div class="ctx">
-          {compose.context.map((c) => (
-            <span>
-              <code>{c.name}</code>
-              {c.range}
-              <span class="x">✕</span>
-            </span>
-          ))}
-          <span class="cn" title={ui.compose.ctxTitle}>
-            {ui.compose.context} <b class="warn">{hud.ctxNow}</b> / {hud.ctxMax} ·{' '}
-            <button>{ui.compose.compact}</button>
-          </span>
-        </div>
-        <div class="prompt">
-          <span class="p">$</span>
-          <span class="text">{compose.placeholder}</span>
-        </div>
-        <div class="opts">
-          <button class="mode">
-            {ui.compose.mode} <b>{compose.mode}</b>
-          </button>
-          <button class="agent" title={ui.compose.agentTitle}>
-            {ui.compose.agent} <b>{hud.agent}</b>
-          </button>
-          <button>
-            {ui.compose.model} <b>{compose.model}</b>
-          </button>
-          <button>
-            {ui.compose.effort} <b>{compose.effort}</b>
-          </button>
-          <span class="meters">
-            <span class="m">
-              <span class="clock" />
-              {ui.compose.cache} <b>{hud.cache.time}</b> · <b>{hud.cache.hit}</b>
-            </span>
-            <span class="m" title={ui.compose.fiveHourTitle(hud.h5.reset)}>
-              <span class="cells">
-                {Array.from({ length: 10 }, (_, i) => (
-                  <i class={i < hud.h5.cells ? 'on' : ''} />
-                ))}
-              </span>
-              {ui.compose.fiveHour} <b>{hud.h5.percent}%</b>
-            </span>
-          </span>
-          <button class="send" title={ui.compose.sendTitle}>
-            {ui.compose.send}
-          </button>
-        </div>
-      </footer>
+      <Composer hud={hud} />
     </div>
   );
+}
+
+function liveLabel(last: FeedRow | undefined, startedAt: number | undefined, now: number): string {
+  let what: string = ui.log.answering;
+  if (last?.kind === 'think' && last.endedAt === undefined) what = ui.log.thinking;
+  else if (last?.kind === 'tool' && last.state === 'run')
+    what = ui.log.running(toolView(last.name, last.input).op);
+  const elapsed = startedAt ? ` · ${formatDuration(now - startedAt)}` : '';
+  return `${what}${elapsed}`;
 }

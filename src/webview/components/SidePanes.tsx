@@ -4,6 +4,19 @@ import { ui } from '../strings';
 export function TurnPane({ turns, hidden }: { turns: Timeline[]; hidden?: boolean }) {
   return (
     <section class="tabpane" id="pane-turn" hidden={hidden}>
+      {turns.length === 0 && (
+        <>
+          <h4>{ui.tabs.turn}</h4>
+          <div class="tl">
+            <div class="row">
+              <span class="at" />
+              <span class="ev" style={{ color: 'var(--fg-faint)' }}>
+                {ui.agents.empty}
+              </span>
+            </div>
+          </div>
+        </>
+      )}
       {turns.map((t) => (
         <>
           <h4>{t.heading}</h4>
@@ -55,14 +68,16 @@ export function AgentsPane({
             </span>
           </div>
         ))}
-        <div class="tot">
-          {totals.map((t) => (
-            <>
-              <span>{t.label}</span>
-              <b>{t.value}</b>
-            </>
-          ))}
-        </div>
+        {totals.length > 0 && (
+          <div class="tot">
+            {totals.map((t) => (
+              <>
+                <span>{t.label}</span>
+                <b>{t.value}</b>
+              </>
+            ))}
+          </div>
+        )}
       </div>
     </section>
   );

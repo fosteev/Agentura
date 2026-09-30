@@ -38,3 +38,44 @@ body {
   color: var(--fg-mute);
   border-bottom: 1px solid var(--line);
 }
+
+/* ───── чат (этап 3): то, чего нет в hud.css ───── */
+/* поле ввода: contenteditable вместо статичного .text */
+.prompt .typed {
+  color: var(--fg);
+  min-width: 0;
+  max-height: 40vh;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  outline: none;
+  caret-color: var(--fg);
+}
+.prompt .typed:empty::before {
+  content: attr(data-placeholder);
+  color: var(--fg-mute);
+  pointer-events: none;
+}
+.opts .plus::after { content: ""; }
+.opts .plus { font-size: 13px; line-height: 1; color: var(--fg); }
+.ctx span .x { cursor: pointer; }
+.compose .menu { max-height: 45vh; overflow-y: auto; }
+.opts button[disabled], .tabs button[disabled] { cursor: default; }
+.opts .send[disabled] { color: var(--fg-faint); }
+
+/* лента */
+.log .u > span:nth-child(2) { white-space: pre-wrap; overflow-wrap: anywhere; }
+.log .e.think[role="button"] { cursor: pointer; }
+.log .txt.think-full { color: var(--fg-mute); font-style: italic; white-space: pre-wrap; padding-top: 2px; }
+.log .txt ul, .log .txt ol { margin: 6px 0; padding-left: 20px; }
+.log .txt li + li { margin-top: 2px; }
+.log .txt h1, .log .txt h2, .log .txt h3, .log .txt h4 { margin: 10px 0 4px; font-size: 13px; font-weight: 600; }
+.log .txt a { color: var(--link); }
+.log .txt blockquote { margin: 6px 0; padding-left: 10px; border-left: 2px solid var(--line-strong); color: var(--fg-mute); }
+.log .txt table { border-collapse: collapse; margin: 6px 0; font-size: 12px; }
+.log .txt th, .log .txt td { border: 1px solid var(--line); padding: 2px 8px; text-align: left; }
+.log .txt .codeblock { position: relative; margin: 6px 0; }
+.log .txt .codeblock pre { margin: 0; padding: 8px 10px; background: var(--bg-code); border-radius: 3px; overflow-x: auto; font-size: 11.5px; line-height: 1.5; }
+.log .txt .codeblock pre code { background: none; padding: 0; font-size: inherit; }
+.log .txt .codeblock .copy { position: absolute; top: 4px; right: 6px; font-size: 10.5px; color: var(--fg-mute); opacity: 0; }
+.log .txt .codeblock:hover .copy, .log .txt .codeblock .copy:focus { opacity: 1; }

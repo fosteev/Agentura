@@ -1,8 +1,9 @@
 import * as vscode from 'vscode';
-import { ChatPanel } from './chatPanel';
+import { ChatPanel, createAdapter, type ChatServices } from './chatPanel';
 import { Logger } from './logger';
 import { SIDEBAR_VIEW_ID, SidebarProvider } from './sidebarView';
 import { LimitsSource, startLimitsPolling } from '../data/limits';
+import { LiveSessions, TranscriptCache } from '../data/sessions';
 import { UsageService } from './usage';
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -26,11 +27,21 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.workspace.getConfiguration('agentura').get<number>('usagePollMinutes', 15);
   context.subscriptions.push(startLimitsPolling(() => sidebar.refreshUsage(), pollMinutes));
 
+  const services: ChatServices = {
+    adapter: createAdapter(log),
+    live: new LiveSessions(),
+    transcripts: new TranscriptCache(),
+  };
+
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(SIDEBAR_VIEW_ID, sidebar),
-    vscode.commands.registerCommand('agentura.open', () => ChatPanel.show(context, log)),
-    vscode.commands.registerCommand('agentura.newSession', () => ChatPanel.show(context, log)),
-    vscode.commands.registerCommand('agentura.openLast', () => ChatPanel.show(context, log)),
+    vscode.commands.registerCommand('agentura.open', () => ChatPanel.show(context, log, services)),
+    vscode.commands.registerCommand('agentura.newSession', () =>
+      ChatPanel.startNew(context, log, services),
+    ),
+    vscode.commands.registerCommand('agentura.openLast', () =>
+      ChatPanel.show(context, log, services),
+    ),
     vscode.commands.registerCommand('agentura.resumeSession', stub('Возобновить сессию')),
     vscode.commands.registerCommand('agentura.showLogs', () => log.show()),
     vscode.commands.registerCommand('agentura.refreshUsage', () => sidebar.refreshUsage()),

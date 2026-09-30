@@ -77,6 +77,10 @@ describe('привязка промпта к ходу', () => {
       'первое\n\nвторое',
       'третье',
     ]);
+    expect(ofType(events, 'turn.start').map((t) => t.prompts)).toEqual([
+      ['первое', 'второе'],
+      undefined,
+    ]);
   });
 
   it('эхо посреди хода (сообщение влито в ход) снимает промпт с очереди', () => {
@@ -99,6 +103,7 @@ describe('привязка промпта к ходу', () => {
       result(0.02),
     ]);
     expect(ofType(events, 'turn.start').map((t) => t.prompt)).toEqual(['первое', 'следующее']);
+    expect(ofType(events, 'turn.input').map((t) => t.prompt)).toEqual(['влитое']);
   });
 
   it('без эха ход после фоновой задачи — пробуждение: промпт из очереди ему не приписывается', () => {

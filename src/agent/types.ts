@@ -76,8 +76,18 @@ export type AgentEvent =
       type: 'turn.start';
       /** Текст, с которого начался ход; нет — ход начал движок (пробуждение после фоновой задачи). */
       prompt?: string;
+      /**
+       * Отдельные сообщения, если движок склеил несколько в один ход (`prompt` — они через
+       * пустую строку). Добавлено на приёмке этапа 3: лента сопоставляет каждое со своей строкой.
+       */
+      prompts?: string[];
       at: number;
     })
+  /**
+   * Сообщение пользователя, которое движок влил в уже идущий ход (эхо uuid посреди хода).
+   * Своего `turn.start` у него не будет. Добавлено на приёмке этапа 3.
+   */
+  | (Base & { type: 'turn.input'; prompt: string; at: number })
   | (Base & { type: 'text.delta'; messageId: string; text: string })
   | (Base & { type: 'thinking.start'; messageId: string; at: number })
   | (Base & { type: 'thinking.delta'; messageId: string; text: string; estimatedTokens?: number })
@@ -270,6 +280,28 @@ export interface ResumeOptions extends SessionOptions {
 export type PlanDecision =
   { approve: true; mode?: 'acceptEdits' | 'default' } | { approve: false; feedback: string };
 
+/** Модель из `supportedModels()` движка (этап 3: переключатель модели и effort). */
+export interface ModelOption {
+  value: string;
+  displayName: string;
+  description?: string;
+  supportsEffort?: boolean;
+  effortLevels?: EffortLevel[];
+}
+
+/** Команда или скилл из `supportedCommands()` (этап 3: меню «/»). */
+export interface CommandOption {
+  name: string;
+  description: string;
+  argumentHint?: string;
+}
+
+/** Что движок умеет в этой сессии; доступно до первого сообщения. */
+export interface SessionCapabilities {
+  models: ModelOption[];
+  commands: CommandOption[];
+}
+
 export interface AgentSession {
   /** Id сессии движка; до первого `session.init` — пусто для новой, id для возобновлённой. */
   readonly id: string;
@@ -286,6 +318,8 @@ export interface AgentSession {
   /** Сжать контекст: `/compact` промптом. */
   compact(): boolean;
   stopTask(taskId: string): Promise<void>;
+  /** Модели и команды движка (`supportedModels()`, `supportedCommands()`); ошибка движка — пустые списки. */
+  capabilities(): Promise<SessionCapabilities>;
   /** Точный контекст от движка; то же уходит событием `context.usage` после каждого хода. */
   contextUsage(): Promise<AgentEventOf<'context.usage'> | undefined>;
   dispose(): void;

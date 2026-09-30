@@ -267,4 +267,36 @@ describe('ClaudeAdapter', () => {
     vi.useRealTimers();
     expect(hang.control).toEqual(['close']);
   });
+
+  it('capabilities: модели и команды движка; сбой одного запроса не роняет второй', async () => {
+    const f = fakeSdk({
+      supportedModels: async () => [
+        {
+          value: 'opus',
+          displayName: 'Opus',
+          description: 'сложные задачи',
+          supportsEffort: true,
+          supportedEffortLevels: ['low', 'high'],
+        },
+      ],
+      supportedCommands: async () => {
+        throw new Error('нет ответа');
+      },
+    });
+    const adapter = new ClaudeAdapter({ loadSdk: async () => f.sdk });
+    const session = await adapter.createSession({ cwd: '/w' });
+    await expect(session.capabilities()).resolves.toEqual({
+      models: [
+        {
+          value: 'opus',
+          displayName: 'Opus',
+          description: 'сложные задачи',
+          supportsEffort: true,
+          effortLevels: ['low', 'high'],
+        },
+      ],
+      commands: [],
+    });
+    session.dispose();
+  });
 });

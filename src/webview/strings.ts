@@ -6,10 +6,71 @@ export const ui = {
     sessionsTitle: 'Сессии',
     newChat: 'new',
     newChatTitle: 'Новый диалог',
+    untitled: 'новая сессия',
   },
   tabs: { chat: 'чат', turn: 'ход', agents: 'агенты' },
-  log: { diff: 'diff', stop: 'stop · esc' },
-  agents: { heading: 'агенты', stopTitle: 'Остановить' },
+  log: {
+    diff: 'diff',
+    stop: 'stop · esc',
+    copy: 'copy',
+    copied: 'скопировано',
+    queued: 'в очереди',
+    thinking: 'думает',
+    answering: 'отвечает',
+    compacting: 'сжимаю контекст',
+    running: (op: string) => `выполняю ${op}`,
+    toolError: 'ошибка',
+    toolStopped: 'остановлено',
+    thinkToggle: 'Показать рассуждение целиком',
+  },
+  sys: {
+    compacting: 'сжимаю контекст…',
+    compactedAuto: 'контекст сжат автоматически',
+    compactedManual: 'контекст сжат',
+    compactFailed: (error?: string) => `не удалось сжать контекст${error ? `: ${error}` : ''}`,
+    interrupted: 'ход остановлен',
+    limit: (message: string) => `лимит: ${message}`,
+    closed: (reason: 'exit' | 'error' | 'disposed', message?: string) =>
+      reason === 'error'
+        ? `сессия оборвалась${message ? `: ${message}` : ''}`
+        : reason === 'exit'
+          ? 'движок завершился, сессия закрыта'
+          : 'сессия закрыта',
+    status: (model: string, mode: string, cwd: string) =>
+      `/status · модель ${model} · режим ${mode} · ${cwd}`,
+    planOn: 'режим plan включён',
+    sendFailed: 'сообщение не отправлено: сессия завершена',
+  },
+  // этап 3: карточек разрешений нет (этап 5) — хост отклоняет запрос, лента говорит об этом
+  stubs: {
+    permission: (tool: string) =>
+      `запрос разрешения на ${tool} отклонён: карточки разрешений появятся на этапе 5`,
+    question: 'вопрос агента отклонён: карточки вопросов появятся на этапе 5',
+    plan: 'план отклонён: карточка плана появится на этапе 5',
+  },
+  empty: {
+    title: (project: string) => `Новая сессия в ${project}`,
+    lead: 'Опишите задачу или задайте вопрос. Агент видит открытый файл и выделение — снять можно крестиком у поля ввода.',
+    tips: [
+      ['@', 'файлы и папки проекта'],
+      ['/', 'команды и скиллы: /plan, /compact, /status'],
+      ['shift+enter', 'перенос строки'],
+      ['esc', 'остановить ход'],
+      ['↑', 'прошлые сообщения'],
+    ] as const,
+    recent: 'недавние сессии',
+    newSession: 'новая сессия',
+    turns: (n: number) => `${n} ${plural(n, 'ход', 'хода', 'ходов')}`,
+    waiting: 'ждёт ответа',
+  },
+  agents: {
+    heading: 'агенты',
+    stopTitle: 'Остановить',
+    empty: 'пока пусто',
+    main: 'основной',
+    waitingTask: 'ждёт задачу',
+    answering: 'отвечает',
+  },
   compose: {
     mode: 'режим',
     model: 'модель',
@@ -24,7 +85,65 @@ export const ui = {
     fiveHourTitle: (reset: string) => `5-часовое окно · сброс ${reset}`,
     send: 'enter ↵',
     sendTitle: 'Отправить (Enter)',
+    placeholder: 'задача, @файл, /команда',
+    closedPlaceholder: 'сессия завершена — начните новую (new)',
+    plus: '+',
+    plusTitle: 'Добавить контекст',
+    removeChip: 'Убрать из контекста',
+    autoFile: 'открыт',
+    autoSelection: 'выделение',
+    historyPos: (i: number, n: number) => `${i} из ${n}`,
+    historyNote: '· ↑ старше · ↓ новее · esc — очистить',
+    historyLabel: 'история',
+    agentMenu: 'агент',
+    agentReady: 'готов',
+    claudeVia: (version?: string) =>
+      `через Claude Agent SDK${version ? ` · claude ${version}` : ''}`,
+    acpAdapter: 'адаптер по форме ACP',
+    agentSoon: 'скоро',
   },
+  menus: {
+    commands: 'команды',
+    skills: 'скиллы проекта',
+    files: 'файлы и папки',
+    noFiles: 'ничего не найдено',
+    fileHint: 'файл',
+    folderHint: 'папка',
+    skillHint: 'skill',
+    addContext: 'добавить контекст',
+    pickFile: 'Файл или папка…',
+    pickFileHint: '@',
+    openFile: 'Открытый файл',
+    selection: 'Выделение в редакторе',
+    autoOn: 'добавляется автоматически',
+    autoOff: 'не добавляется',
+    imageSoon: 'Изображение или файл',
+    soon: 'скоро',
+    mode: 'режим',
+    model: 'модель',
+    effort: 'effort',
+    thinking: 'extended thinking',
+    thinkingHint: 'показывать блоки think в ленте',
+    byDefault: 'по умолчанию',
+    bypassOff: 'включается настройкой agentura.allowBypassPermissions',
+  },
+  commands: {
+    plan: ['перейти в режим плана', 'режим'],
+    compact: ['сжать контекст сейчас', 'контекст'],
+    clear: ['новый диалог', '⌘N'],
+    status: ['аккаунт, вход, модель', ''],
+  } as Record<string, readonly [string, string]>,
+  modes: {
+    default: ['manual', 'спрашивать перед правками и командами', ''],
+    acceptEdits: [
+      'принимать правки',
+      'правки файлов без вопросов, команды — с вопросом',
+      'acceptEdits',
+    ],
+    plan: ['plan', 'только читать и планировать', '/plan'],
+    bypassPermissions: ['без разрешений', 'без вопросов вообще', 'bypass'],
+  } as Record<string, readonly [string, string, string]>,
+  efforts: ['low', 'medium', 'high', 'xhigh', 'max'] as const,
   sidebar: {
     aria: 'Боковая панель Agentura',
     head: 'Agentura',
@@ -42,3 +161,11 @@ export const ui = {
     filterTitle: 'Фильтр',
   },
 } as const;
+
+function plural(n: number, one: string, few: string, many: string): string {
+  const m10 = n % 10;
+  const m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return one;
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
+  return many;
+}

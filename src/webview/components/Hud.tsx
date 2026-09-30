@@ -1,43 +1,54 @@
-import type { Hud as HudData } from '../fixtures/chat';
 import { ui } from '../strings';
 
 export type Tab = 'chat' | 'turn' | 'agents';
 
-const TABS: readonly (readonly [Tab, string, preact.ComponentChildren])[] = [
-  ['chat', ui.tabs.chat, null],
-  ['turn', ui.tabs.turn, <span class="b live">2</span>],
-  ['agents', ui.tabs.agents, <span class="b">3</span>],
-];
-
 export function Hud({
-  d,
+  project,
+  title,
   tab,
   onTab,
-  menu,
+  sidePanesEnabled,
+  onSessions,
+  onNew,
 }: {
-  d: HudData;
+  project: string;
+  title?: string;
   tab: Tab;
   onTab: (t: Tab) => void;
-  menu?: preact.ComponentChildren;
+  /** Панели «ход» и «агенты» недоступны в пустой сессии (экран empty). */
+  sidePanesEnabled: boolean;
+  onSessions: () => void;
+  onNew: () => void;
 }) {
+  const tabs: readonly (readonly [Tab, string])[] = [
+    ['chat', ui.tabs.chat],
+    ['turn', ui.tabs.turn],
+    ['agents', ui.tabs.agents],
+  ];
   return (
     <header class="hud" aria-label={ui.hud.aria}>
       <nav class="tabs" role="tablist">
-        {TABS.map(([k, label, badge]) => (
-          <button role="tab" aria-selected={tab === k} onClick={() => onTab(k)}>
+        {tabs.map(([k, label]) => (
+          <button
+            role="tab"
+            aria-selected={tab === k}
+            disabled={k !== 'chat' && !sidePanesEnabled}
+            onClick={() => onTab(k)}
+          >
             {label}
-            {badge && ' '}
-            {badge}
           </button>
         ))}
       </nav>
       <span class="sess">
-        {d.project} · <b>{d.title}</b>
+        {project} · <b>{title || ui.hud.untitled}</b>
       </span>
-      <span class={menu ? 'acts pop' : 'acts'}>
-        <button title={ui.hud.sessionsTitle}>{ui.hud.sessions}</button>
-        <button title={ui.hud.newChatTitle}>{ui.hud.newChat}</button>
-        {menu}
+      <span class="acts">
+        <button title={ui.hud.sessionsTitle} onClick={onSessions}>
+          {ui.hud.sessions}
+        </button>
+        <button title={ui.hud.newChatTitle} onClick={onNew}>
+          {ui.hud.newChat}
+        </button>
       </span>
     </header>
   );
