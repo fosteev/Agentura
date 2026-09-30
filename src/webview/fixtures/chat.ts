@@ -137,12 +137,10 @@ export interface Hud {
   title: string;
   ctxNow: string;
   ctxMax: string;
-  thresholds: string;
   /** Классы 20 блоков шкалы контекста; '' — пустой. */
   blocks: string[];
-  cache: { time: string; hit: string; percent: number };
+  cache: { time: string; hit: string };
   h5: { percent: number; reset: string; cells: number };
-  wk: { percent: number; reset: string; cells: number };
 }
 
 export const hud: Hud = {
@@ -151,11 +149,9 @@ export const hud: Hud = {
   title: 'мигание счётчика талонов',
   ctxNow: '131 250',
   ctxMax: '200 000',
-  thresholds: '120k 150k',
   blocks: [...Array<string>(11).fill('on'), 'on t', 'on w', 'part', 't', '', '', '', '', ''],
-  cache: { time: '04:12', hit: '91%', percent: 84 },
+  cache: { time: '04:12', hit: '91%' },
   h5: { percent: 62, reset: '17:00', cells: 6 },
-  wk: { percent: 34, reset: 'чт', cells: 3 },
 };
 
 export interface TimelineRow {
