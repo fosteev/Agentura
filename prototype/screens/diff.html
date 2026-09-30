@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="ru" data-theme="dark" data-width="380">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agentura · правка и дифф · ждёт ответа</title>
+<link rel="stylesheet" href="../shared/tokens.css">
+<link rel="stylesheet" href="../shared/preview.css">
+<link rel="stylesheet" href="../shared/hud.css">
+</head>
+<body>
+<div class="preview-bar">
+  <b>Правка и дифф · ждёт ответа</b>
+  <span class="grp"><button data-set-theme="dark">Тёмная</button><button data-set-theme="light">Светлая</button></span>
+  <span class="grp"><button data-set-width="380">380</button><button data-set-width="900">900</button><button data-set-width="full">во всю ширину</button></span>
+  <a href="../index.html">← оглавление</a>
+</div>
+<div class="preview-stage">
+<div class="webview">
+
+  <header class="hud" aria-label="Приборы">
+    <div class="line1">
+      <span class="agent" title="Агент: Claude · Codex, Gemini — скоро">claude</span>
+      <span class="sess">queue-board · <b>мигание счётчика талонов</b></span>
+      <span class="acts"><button title="Сессии">sessions</button><button title="Новый диалог">new</button></span>
+    </div>
+    <div class="ctx">
+      <div class="big"><span>129 940</span><small>/ 200 000</small></div>
+      <div class="cap"><span>контекст · пороги 120k 150k</span><button>сжать</button></div>
+      <div class="blocks" aria-hidden="true">
+        <i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on t"></i>
+        <i class="part"></i><i></i><i class="t"></i>
+        <i></i><i></i><i></i><i></i><i></i>
+      </div>
+    </div>
+    <div class="meters">
+      <span class="m"><span class="clock"></span>кэш <b>04:52</b> · <b>91%</b></span>
+      <span class="m"><span class="cells h5"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i></span>5ч <b>61%</b> →17:00</span>
+      <span class="m"><span class="cells wk"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>нед <b>34%</b> →чт</span>
+    </div>
+  </header>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" data-tab="chat">чат</button>
+    <button role="tab" aria-selected="false" data-tab="turn">ход <span class="b live">?</span></button>
+    <button role="tab" aria-selected="false" data-tab="agents">агенты <span class="b">2</span></button>
+  </nav>
+
+  <div class="body">
+    <main class="pane" id="pane-chat">
+      <div class="log">
+        <div class="u"><span class="p">&gt;</span><span>Почини мигание счётчика талонов на табло при переподключении сокета. Табло — <code>apps/board</code>, сокет — <code>packages/ws-client</code>.</span><span class="at">14:41</span></div>
+        <div class="e think"><span class="p">▸</span><span class="op">think</span><span class="what">табло сбрасывает состояние при новом соединении, а не при новых данных</span><span class="r">12s</span></div>
+        <div class="e"><span class="p">▸</span><span class="op">read</span><span class="what"><span class="dim">packages/ws-client/src/</span>reconnect.ts</span><span class="r">0.4s</span></div>
+        <div class="e"><span class="p">▸</span><span class="op">grep</span><span class="what">ticketCount <span class="dim">в apps/board</span></span><span class="r">3 · 0.2s</span></div>
+        <div class="e"><span class="p">▸</span><span class="op">read</span><span class="what"><span class="dim">apps/board/src/</span>Counter.tsx</span><span class="r">0.3s</span></div>
+
+        <div class="ask warn">
+          <div class="h">Разрешить правку файла?<span class="tag">режим manual</span></div>
+          <div class="bd">
+            <div class="diffbox"><span class="f">apps/board/src/Counter.tsx</span><span class="st"><span class="add">+6</span> <span class="del">−2</span> · <a href="#">открыть дифф</a></span></div>
+            <div class="hunk"><div class="c">@@ -18,7 +18,11 @@ export function Counter({ socket }: Props) {</div><div>   useEffect(() =&gt; {</div><div class="d">-    socket.on('open', () =&gt; setCount(0));</div><div class="a">+    // при переподключении держим последнее значение до нового снимка</div><div class="a">+    socket.on('open', () =&gt; { /* ничего: ждём snapshot */ });</div><div>     socket.on('snapshot', (s) =&gt; setCount(s.ticketCount));</div></div>
+            <p class="dim" style="margin-top:6px">Полный дифф открывается в редакторе VS Code, там же можно принять или отклонить.</p>
+          </div>
+          <div class="acts">
+            <button class="btn pri">Принять правку<kbd>enter</kbd></button>
+            <button class="btn">Принимать правки до конца сессии</button>
+            <button class="btn bad">Отклонить<kbd>esc</kbd></button>
+            <span class="hint">«принимать правки» = режим acceptEdits</span>
+          </div>
+        </div>
+
+        <div class="live"><span class="spin" style="border-top-color:var(--warn)"></span> ждёт ответа · 21s <button class="stop">stop · esc</button></div>
+      </div>
+    </main>
+
+    <aside class="pane side">
+      <section class="tabpane" id="pane-turn">
+        <h4>ход · 14:41 · ждёт 21s</h4>
+        <div class="tl">
+          <div class="strip" aria-hidden="true"><i class="th" style="flex:120"></i><i style="flex:4"></i><i style="flex:2"></i><i style="flex:3"></i><i style="flex:80;background:var(--warn)"></i></div>
+          <div class="row"><span class="at">0.0</span><span class="ev" style="color:var(--fg-mute)">think<span class="d">12s</span></span></div>
+          <div class="row"><span class="at">12.1</span><span class="ev">read reconnect.ts<span class="d">0.4s</span></span></div>
+          <div class="row"><span class="at">12.6</span><span class="ev">grep ticketCount<span class="d">3 · 0.2s</span></span></div>
+          <div class="row"><span class="at">13.0</span><span class="ev">read Counter.tsx<span class="d">0.3s</span></span></div>
+          <div class="row now"><span class="at">13.4</span><span class="ev" style="color:var(--warn)">edit Counter.tsx<span class="d">ждёт разрешения</span></span></div>
+        </div>
+      </section>
+      <section class="tabpane" id="pane-agents">
+        <h4>агенты</h4>
+        <div class="ag">
+          <div class="a main"><span class="st">●</span><span class="nm">основной<small>opus-5.5 · ждёт разрешения</small></span><span class="tk">130k</span></div>
+          <div class="a sub busy"><span class="st">◐</span><span class="nm">Explore: где обрабатывается reconnect<small>sonnet-5.5 · работает · 1m 40s</small></span><span class="tk">6.3k<button title="Остановить">■</button></span></div>
+          <div class="tot"><span>за сессию</span><b>$1.63</b><span>ходов</span><b>13</b><span>время</span><b>1h 59m</b><span>кэш-попадания</span><b>91%</b></div>
+        </div>
+      </section>
+    </aside>
+  </div>
+
+  <footer class="compose">
+    <div class="ctx"><span><code>Counter.tsx</code> 12–40<span class="x">✕</span></span><span><code>reconnect.ts</code><span class="x">✕</span></span></div>
+    <div class="prompt"><span class="p">$</span><span class="text">ответ агенту или новая задача — уйдёт после решения по правке</span></div>
+    <div class="opts">
+      <button class="mode">режим <b>manual</b></button>
+      <button>модель <b>opus-5.5</b></button>
+      <button>effort <b>high</b></button>
+      <button class="send" title="Отправить (Enter)">enter ↵</button>
+    </div>
+  </footer>
+
+</div>
+</div>
+<script src="../shared/preview.js"></script>
+<script src="../shared/hud.js"></script>
+</body>
+</html>

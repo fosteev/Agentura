@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="ru" data-theme="dark" data-width="380">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agentura · новая сессия · пусто</title>
+<link rel="stylesheet" href="../shared/tokens.css">
+<link rel="stylesheet" href="../shared/preview.css">
+<link rel="stylesheet" href="../shared/hud.css">
+<style>
+  .hud .line1 .agent { position: relative; }
+  .hud .line1 .agent .menu { font-weight: 400; top: calc(100% + 8px); }
+  .hud .big span.zero { color: var(--fg-mute); }
+  .tabs button[disabled] { color: var(--fg-faint); }
+</style>
+</head>
+<body>
+<div class="preview-bar">
+  <b>Новая сессия · пусто</b>
+  <span class="grp"><button data-set-theme="dark">Тёмная</button><button data-set-theme="light">Светлая</button></span>
+  <span class="grp"><button data-set-width="380">380</button><button data-set-width="900">900</button><button data-set-width="full">во всю ширину</button></span>
+  <a href="../index.html">← оглавление</a>
+</div>
+<div class="preview-stage">
+<div class="webview">
+
+  <header class="hud" aria-label="Приборы">
+    <div class="line1">
+      <span class="agent pop" style="color:var(--fg)">claude
+        <div class="menu down">
+          <div class="hd">агент</div>
+          <button class="it sel"><span>Claude<small>через Claude Agent SDK · claude 2.1.284</small></span><span class="hint">готов</span></button>
+          <button class="it dis"><span>Codex<small>адаптер по форме ACP</small></span><span class="hint">скоро</span></button>
+          <button class="it dis"><span>Gemini<small>адаптер по форме ACP</small></span><span class="hint">скоро</span></button>
+        </div>
+      </span>
+      <span class="sess">queue-board · <b>новая сессия</b></span>
+      <span class="acts"><button title="Сессии">sessions</button><button title="Новый диалог">new</button></span>
+    </div>
+    <div class="ctx">
+      <div class="big"><span class="zero">0</span><small>/ 200 000</small></div>
+      <div class="cap"><span>контекст · пороги 120k 150k</span><span></span></div>
+      <div class="blocks" aria-hidden="true">
+        <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="t"></i>
+        <i></i><i></i><i class="t"></i>
+        <i></i><i></i><i></i><i></i><i></i>
+      </div>
+    </div>
+    <div class="meters">
+      <span class="m"><span class="clock" style="background:var(--bg-input)"></span>кэш <b>—</b></span>
+      <span class="m"><span class="cells h5"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i></span>5ч <b>62%</b> →17:00</span>
+      <span class="m"><span class="cells wk"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>нед <b>34%</b> →чт</span>
+    </div>
+  </header>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" data-tab="chat">чат</button>
+    <button role="tab" aria-selected="false" disabled>ход</button>
+    <button role="tab" aria-selected="false" disabled>агенты</button>
+  </nav>
+
+  <div class="body">
+    <main class="pane" id="pane-chat">
+      <div class="empty">
+        <div>
+          <h2>Новая сессия в queue-board</h2>
+          <p>Опишите задачу или задайте вопрос. Агент видит открытый файл и выделение — снять можно крестиком у поля ввода.</p>
+        </div>
+        <div class="tips">
+          <div><kbd>@</kbd><span>файлы и папки проекта</span></div>
+          <div><kbd>/</kbd><span>команды и скиллы: /plan, /compact, /status</span></div>
+          <div><kbd>shift+enter</kbd><span>перенос строки</span></div>
+          <div><kbd>esc</kbd><span>остановить ход</span></div>
+          <div><kbd>↑</kbd><span>прошлые сообщения</span></div>
+        </div>
+        <div>
+          <p style="color:var(--fg-mute);font-size:12px;margin-bottom:4px">недавние сессии</p>
+          <div class="recent">
+            <a href="#">мигание счётчика талонов<span>14 ходов · 14:52</span></a>
+            <a href="#">плашка «нет связи» на табло<span>ждёт ответа · 13:05</span></a>
+            <a href="#">миграция табло на новый ws-client<span>вчера</span></a>
+          </div>
+        </div>
+      </div>
+    </main>
+    <aside class="pane side"><section class="tabpane" id="pane-turn"><h4>ход</h4><div class="tl"><div class="row"><span class="at"></span><span class="ev" style="color:var(--fg-faint)">пока пусто</span></div></div></section><section class="tabpane" id="pane-agents"><h4>агенты</h4><div class="ag"><div class="a main"><span class="st">○</span><span class="nm">основной<small>opus-5.5 · ждёт задачу</small></span><span class="tk">0</span></div></div></section></aside>
+  </div>
+
+  <footer class="compose">
+    <div class="ctx"><span class="auto">открыт <b>Counter.tsx</b><span class="x">✕</span></span><span class="auto">выделение <b>12–40</b><span class="x">✕</span></span></div>
+    <div class="prompt"><span class="p">$</span><span class="text">задача, @файл, /команда</span></div>
+    <div class="opts">
+      <button class="mode">режим <b>manual</b></button>
+      <button>модель <b>opus-5.5</b></button>
+      <button>effort <b>high</b></button>
+      <button class="send" title="Отправить (Enter)">enter ↵</button>
+    </div>
+  </footer>
+
+</div>
+</div>
+<script src="../shared/preview.js"></script>
+<script src="../shared/hud.js"></script>
+</body>
+</html>

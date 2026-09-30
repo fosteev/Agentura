@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="ru" data-theme="dark" data-width="380">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agentura · план · ждёт решения</title>
+<link rel="stylesheet" href="../shared/tokens.css">
+<link rel="stylesheet" href="../shared/preview.css">
+<link rel="stylesheet" href="../shared/hud.css">
+<style>.opts .mode b { color: var(--agent); }</style>
+</head>
+<body>
+<div class="preview-bar">
+  <b>План · ждёт решения</b>
+  <span class="grp"><button data-set-theme="dark">Тёмная</button><button data-set-theme="light">Светлая</button></span>
+  <span class="grp"><button data-set-width="380">380</button><button data-set-width="900">900</button><button data-set-width="full">во всю ширину</button></span>
+  <a href="../index.html">← оглавление</a>
+</div>
+<div class="preview-stage">
+<div class="webview">
+
+  <header class="hud" aria-label="Приборы">
+    <div class="line1">
+      <span class="agent" title="Агент: Claude · Codex, Gemini — скоро">claude</span>
+      <span class="sess">queue-board · <b>мигание счётчика талонов</b></span>
+      <span class="acts"><button title="Сессии">sessions</button><button title="Новый диалог">new</button></span>
+    </div>
+    <div class="ctx">
+      <div class="big"><span>141 060</span><small>/ 200 000</small></div>
+      <div class="cap"><span>контекст · пороги 120k 150k</span><button>сжать</button></div>
+      <div class="blocks" aria-hidden="true">
+        <i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on t"></i>
+        <i class="on w"></i><i class="on w"></i><i class="part t"></i>
+        <i></i><i></i><i></i><i></i><i></i>
+      </div>
+    </div>
+    <div class="meters">
+      <span class="m"><span class="clock"></span>кэш <b>04:31</b> · <b>90%</b></span>
+      <span class="m"><span class="cells h5"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i></span>5ч <b>64%</b> →17:00</span>
+      <span class="m"><span class="cells wk"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>нед <b>35%</b> →чт</span>
+    </div>
+  </header>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" data-tab="chat">чат</button>
+    <button role="tab" aria-selected="false" data-tab="turn">ход <span class="b live">?</span></button>
+    <button role="tab" aria-selected="false" data-tab="agents">агенты <span class="b">1</span></button>
+  </nav>
+
+  <div class="body">
+    <main class="pane" id="pane-chat">
+      <div class="log">
+        <div class="sys ok"><span class="p">▸</span><span>14:54 · коммит <b>a41c9e0</b> fix(board): keep ticket count across socket reconnect</span><span class="at">$0.19 · 58s</span></div>
+        <div class="sys"><span class="p">▸</span><span>14:55 · режим <b>plan</b>: агент читает и планирует, файлы не трогает</span><span class="at"></span></div>
+
+        <div class="u"><span class="p">&gt;</span><span>Хочу, чтобы табло переживало обрыв сети до минуты без мигания и показывало плашку «нет связи». Спланируй.</span><span class="at">14:55</span></div>
+        <div class="e think"><span class="p">▸</span><span class="op">think</span><span class="what">нужно понять, где живёт статус соединения и есть ли уже компонент плашки</span><span class="r">9s</span></div>
+        <div class="e"><span class="p">▸</span><span class="op">read</span><span class="what"><span class="dim">packages/ws-client/src/</span>client.ts</span><span class="r">0.5s</span></div>
+        <div class="e"><span class="p">▸</span><span class="op">grep</span><span class="what">offline|Offline <span class="dim">в apps/board</span></span><span class="r">0 · 0.2s</span></div>
+        <div class="e"><span class="p">▸</span><span class="op">read</span><span class="what"><span class="dim">apps/board/src/</span>Board.tsx</span><span class="r">0.4s</span></div>
+
+        <div class="ask plan">
+          <div class="h">План: устойчивость табло к обрыву связи<span class="tag">4 шага · 3 файла</span></div>
+          <div class="bd plan-body">
+            <p>Табло не знает о состоянии соединения: <code>ws-client</code> переподключается молча. Предлагаю вынести статус наружу и показывать плашку, не трогая данные счётчика.</p>
+            <ol>
+              <li>В <code>ws-client</code> добавить событие <code>status</code> (<code>online | reconnecting | offline</code>) с таймером: 60 с без соединения — <code>offline</code>.</li>
+              <li>В <code>Board.tsx</code> подписаться на статус, держать последний снимок данных при <code>reconnecting</code>.</li>
+              <li>Новый компонент <code>OfflineBanner</code>: плашка «нет связи» и время последнего обновления, появляется только в <code>offline</code>.</li>
+              <li>Тесты: разрыв 10 с — плашки нет, данные на месте; разрыв 70 с — плашка есть.</li>
+            </ol>
+            <div class="files">
+              <span><b>packages/ws-client/src/client.ts</b> · правка</span>
+              <span><b>apps/board/src/Board.tsx</b> · правка</span>
+              <span><b>apps/board/src/OfflineBanner.tsx</b> · новый</span>
+            </div>
+          </div>
+          <div class="acts">
+            <button class="btn pri">Выполнять</button>
+            <button class="btn">Выполнять, принимая правки</button>
+            <button class="btn ghost">Доработать план</button>
+            <button class="btn bad">Отклонить</button>
+          </div>
+        </div>
+
+        <div class="live"><span class="spin" style="border-top-color:var(--agent)"></span> ждёт решения по плану · 22s</div>
+      </div>
+    </main>
+
+    <aside class="pane side">
+      <section class="tabpane" id="pane-turn">
+        <h4>ход · 14:55 · план · 22s</h4>
+        <div class="tl">
+          <div class="strip" aria-hidden="true"><i class="th" style="flex:90"></i><i style="flex:5"></i><i style="flex:2"></i><i style="flex:4"></i><i class="tx" style="flex:60"></i><i style="flex:70;background:var(--agent)"></i></div>
+          <div class="row"><span class="at">0.0</span><span class="ev" style="color:var(--fg-mute)">think<span class="d">9s</span></span></div>
+          <div class="row"><span class="at">9.2</span><span class="ev">read client.ts<span class="d">0.5s</span></span></div>
+          <div class="row"><span class="at">9.8</span><span class="ev">grep offline<span class="d">0 · 0.2s</span></span></div>
+          <div class="row"><span class="at">10.1</span><span class="ev">read Board.tsx<span class="d">0.4s</span></span></div>
+          <div class="row"><span class="at">10.6</span><span class="ev" style="color:var(--fg-mute)">текст плана<span class="d">6s</span></span></div>
+          <div class="row now"><span class="at">16.4</span><span class="ev" style="color:var(--agent)">решение по плану<span class="d">ждёт</span></span></div>
+        </div>
+        <h4>предыдущий · 14:53 · 58s</h4>
+        <div class="tl">
+          <div class="row"><span class="at">0.0</span><span class="ev" style="color:var(--fg-mute)">think<span class="d">4s</span></span></div>
+          <div class="row"><span class="at">4.1</span><span class="ev">вопрос: сообщение коммита<span class="d">2s</span></span></div>
+          <div class="row"><span class="at">6.3</span><span class="ev">bash pnpm -r test<span class="d">разрешено · 41 ✓ · 38s</span></span></div>
+          <div class="row"><span class="at">44.9</span><span class="ev">bash git commit<span class="d">a41c9e0 · 0.6s</span></span></div>
+        </div>
+      </section>
+      <section class="tabpane" id="pane-agents">
+        <h4>агенты</h4>
+        <div class="ag">
+          <div class="a main"><span class="st">●</span><span class="nm">основной<small>opus-5.5 · план · ждёт решения</small></span><span class="tk">141k</span></div>
+          <div class="a sub"><span class="st">○</span><span class="nm">Explore: где обрабатывается reconnect<small>sonnet-5.5 · готово 14:43</small></span><span class="tk">8.1k</span></div>
+          <div class="tot"><span>за сессию</span><b>$2.29</b><span>ходов</span><b>17</b><span>время</span><b>2h 14m</b><span>кэш-попадания</span><b>90%</b></div>
+        </div>
+      </section>
+    </aside>
+  </div>
+
+  <footer class="compose">
+    <div class="ctx"><span class="auto">открыт <b>Board.tsx</b><span class="x">✕</span></span></div>
+    <div class="prompt"><span class="p">$</span><span class="text">замечания к плану — агент доработает, не выходя из plan</span></div>
+    <div class="opts">
+      <button class="mode">режим <b>plan</b></button>
+      <button>модель <b>opus-5.5</b></button>
+      <button>effort <b>high</b></button>
+      <button class="send" title="Отправить (Enter)">enter ↵</button>
+    </div>
+  </footer>
+
+</div>
+</div>
+<script src="../shared/preview.js"></script>
+<script src="../shared/hud.js"></script>
+</body>
+</html>

@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="ru" data-theme="dark" data-width="380">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agentura · поле ввода · состояния</title>
+<link rel="stylesheet" href="../shared/tokens.css">
+<link rel="stylesheet" href="../shared/preview.css">
+<link rel="stylesheet" href="../shared/hud.css">
+<style>
+  /* лист состояний: поле ввода повторяется, меню раскрыты статично под полем */
+  .webview { grid-template-rows: auto 1fr; }
+  .sheet { overflow: auto; padding: 4px 0 20px; }
+  .sheet h3 { margin: 0; padding: 14px 14px 4px; font-size: 11px; font-weight: 600; color: var(--fg-mute); }
+  .sheet h3 small { font-weight: 400; color: var(--fg-faint); margin-left: 8px; }
+  .sheet .compose { border-top: 0; border-bottom: 1px solid var(--line); padding-bottom: 12px; }
+  .sheet .menu { position: static; margin-top: 6px; box-shadow: none; max-width: 420px; }
+  .hud.min { padding: 8px 14px; border-bottom: 1px solid var(--line); }
+  .hud.min .line1 b { color: var(--fg); }
+</style>
+</head>
+<body>
+<div class="preview-bar">
+  <b>Поле ввода · состояния</b>
+  <span class="grp"><button data-set-theme="dark">Тёмная</button><button data-set-theme="light">Светлая</button></span>
+  <span class="grp"><button data-set-width="380">380</button><button data-set-width="900">900</button><button data-set-width="full">во всю ширину</button></span>
+  <a href="../index.html">← оглавление</a>
+</div>
+<div class="preview-stage">
+<div class="webview">
+  <header class="hud min"><div class="line1"><span class="sess">лист состояний поля ввода · <b>меню и переключатели</b></span></div></header>
+  <div class="sheet">
+
+    <h3>Меню «/»<small>команды и скиллы, фильтр по набранному</small></h3>
+    <footer class="compose">
+      <div class="prompt"><span class="p">$</span><span class="typed">/pl</span></div>
+      <div class="menu">
+        <div class="hd">команды</div>
+        <button class="it sel"><span>/plan<small>перейти в режим плана</small></span><span class="hint">режим</span></button>
+        <button class="it"><span>/compact<small>сжать контекст сейчас</small></span><span class="hint">контекст</span></button>
+        <button class="it"><span>/clear<small>новый диалог</small></span><span class="hint">⌘N</span></button>
+        <button class="it"><span>/status<small>аккаунт, вход, модель</small></span><span class="hint"></span></button>
+        <div class="sep"></div>
+        <div class="hd">скиллы проекта</div>
+        <button class="it"><span>/release-notes<small>собрать «что нового» между версиями</small></span><span class="hint">skill</span></button>
+        <button class="it"><span>/plan-review<small>приёмка работы по плану</small></span><span class="hint">skill</span></button>
+      </div>
+      <div class="opts"><button class="mode">режим <b>manual</b></button><button>модель <b>opus-5.5</b></button><button>effort <b>high</b></button><button class="send">enter ↵</button></div>
+    </footer>
+
+    <h3>Упоминание «@»<small>файлы и папки проекта</small></h3>
+    <footer class="compose">
+      <div class="prompt"><span class="p">$</span><span class="typed">посмотри тесты в <span class="tok">@Coun</span></span></div>
+      <div class="menu">
+        <button class="it sel"><span>Counter.tsx<small>apps/board/src</small></span><span class="hint">файл</span></button>
+        <button class="it"><span>Counter.test.tsx<small>apps/board/src/__tests__</small></span><span class="hint">файл</span></button>
+        <button class="it"><span>counter/<small>packages/ws-client/src</small></span><span class="hint">папка</span></button>
+      </div>
+      <div class="opts"><button class="mode">режим <b>manual</b></button><button>модель <b>opus-5.5</b></button><button>effort <b>high</b></button><button class="send">enter ↵</button></div>
+    </footer>
+
+    <h3>Автоконтекст и «+»<small>что уйдёт вместе с сообщением</small></h3>
+    <footer class="compose">
+      <div class="ctx"><span class="auto">открыт <b>Counter.tsx</b><span class="x">✕</span></span><span class="auto">выделение <b>12–40</b><span class="x">✕</span></span><span><code>reconnect.ts</code><span class="x">✕</span></span></div>
+      <div class="prompt"><span class="p">$</span><span class="text">задача, @файл, /команда</span></div>
+      <div class="menu">
+        <div class="hd">добавить контекст</div>
+        <button class="it"><span>Файл или папка…</span><span class="hint">@</span></button>
+        <button class="it"><span>Открытый файл<small>Counter.tsx · уже добавлен автоматически</small></span><span class="sw on"></span></button>
+        <button class="it"><span>Выделение в редакторе<small>строки 12–40 · уже добавлено</small></span><span class="sw on"></span></button>
+        <div class="sep"></div>
+        <button class="it dis"><span>Изображение или файл<small>скоро</small></span><span class="hint"></span></button>
+      </div>
+      <div class="opts"><button class="mode">режим <b>manual</b></button><button>модель <b>opus-5.5</b></button><button>effort <b>high</b></button><button class="send">enter ↵</button></div>
+    </footer>
+
+    <h3>Режим разрешений<small>переключается в любой момент, действует на следующие запросы</small></h3>
+    <footer class="compose">
+      <div class="prompt"><span class="p">$</span><span class="text">задача, @файл, /команда</span></div>
+      <div class="menu">
+        <button class="it sel"><span>manual<small>спрашивать перед правками и командами</small></span><span class="hint">⇧⇥</span></button>
+        <button class="it"><span>принимать правки<small>правки файлов без вопросов, команды — с вопросом</small></span><span class="hint">acceptEdits</span></button>
+        <button class="it"><span>plan<small>только читать и планировать</small></span><span class="hint">/plan</span></button>
+        <button class="it dis"><span>без разрешений<small>включается настройкой agentura.allowBypass</small></span><span class="hint">bypass</span></button>
+      </div>
+      <div class="opts"><button class="mode">режим <b>manual</b></button><button>модель <b>opus-5.5</b></button><button>effort <b>high</b></button><button class="send">enter ↵</button></div>
+    </footer>
+
+    <h3>Модель, effort, thinking</h3>
+    <footer class="compose">
+      <div class="prompt"><span class="p">$</span><span class="text">задача, @файл, /команда</span></div>
+      <div class="menu">
+        <div class="hd">модель</div>
+        <button class="it sel"><span>opus-5.5<small>сложные задачи, планирование</small></span><span class="hint">по умолчанию</span></button>
+        <button class="it"><span>sonnet-5.5<small>быстрее и дешевле</small></span><span class="hint"></span></button>
+        <button class="it"><span>haiku-4.5<small>мелкие правки</small></span><span class="hint"></span></button>
+        <div class="sep"></div>
+        <div class="hd">effort</div>
+        <button class="it"><span>low</span><span class="hint"></span></button>
+        <button class="it"><span>medium</span><span class="hint"></span></button>
+        <button class="it sel"><span>high</span><span class="hint"></span></button>
+        <div class="sep"></div>
+        <button class="it"><span>extended thinking<small>показывать блоки think в ленте</small></span><span class="sw on"></span></button>
+      </div>
+      <div class="opts"><button class="mode">режим <b>manual</b></button><button>модель <b>opus-5.5</b></button><button>effort <b>high</b></button><button class="send">enter ↵</button></div>
+    </footer>
+
+    <h3>История сообщений<small>↑ и ↓ в пустом поле листают отправленное</small></h3>
+    <footer class="compose">
+      <div class="prompt"><span class="p">$</span><span class="typed">Добавь тест на переподключение, чтобы это не вернулось.</span></div>
+      <div class="note">история <b>2 из 15</b> · ↑ старше · ↓ новее · esc — очистить</div>
+      <div class="opts"><button class="mode">режим <b>manual</b></button><button>модель <b>opus-5.5</b></button><button>effort <b>high</b></button><button class="send">enter ↵</button></div>
+    </footer>
+
+  </div>
+</div>
+</div>
+<script src="../shared/preview.js"></script>
+</body>
+</html>

@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="ru" data-theme="dark" data-width="380">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agentura · лимит исчерпан</title>
+<link rel="stylesheet" href="../shared/tokens.css">
+<link rel="stylesheet" href="../shared/preview.css">
+<link rel="stylesheet" href="../shared/hud.css">
+<style>.webview { grid-template-rows: auto auto auto 1fr auto; }</style>
+</head>
+<body>
+<div class="preview-bar">
+  <b>Лимит исчерпан · контекст в оранжевой зоне</b>
+  <span class="grp"><button data-set-theme="dark">Тёмная</button><button data-set-theme="light">Светлая</button></span>
+  <span class="grp"><button data-set-width="380">380</button><button data-set-width="900">900</button><button data-set-width="full">во всю ширину</button></span>
+  <a href="../index.html">← оглавление</a>
+</div>
+<div class="preview-stage">
+<div class="webview">
+
+  <header class="hud" aria-label="Приборы">
+    <div class="line1">
+      <span class="agent" title="Агент: Claude · Codex, Gemini — скоро">claude</span>
+      <span class="sess">queue-board · <b>мигание счётчика талонов</b></span>
+      <span class="acts"><button title="Сессии">sessions</button><button title="Новый диалог">new</button></span>
+    </div>
+    <div class="ctx">
+      <div class="big"><span class="hot">168 420</span><small>/ 200 000</small></div>
+      <div class="cap"><span>контекст · порог 150k пройден · автосжатие при 200k</span><button>сжать сейчас</button></div>
+      <div class="blocks" aria-hidden="true">
+        <i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on t"></i>
+        <i class="on w"></i><i class="on w"></i><i class="on w t"></i>
+        <i class="on h"></i><i class="part" style="--c:var(--hot)"></i><i></i><i></i><i></i>
+      </div>
+    </div>
+    <div class="meters">
+      <span class="m"><span class="clock" style="background:var(--bg-input)"></span>кэш <b>истёк</b> · <b>89%</b></span>
+      <span class="m"><span class="cells h5"><i class="on f"></i><i class="on f"></i><i class="on f"></i><i class="on f"></i><i class="on f"></i><i class="on f"></i><i class="on f"></i><i class="on f"></i><i class="on f"></i><i class="on f"></i></span>5ч <b class="full">100%</b> →17:00</span>
+      <span class="m"><span class="cells wk"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i></span>нед <b>36%</b> →чт</span>
+    </div>
+  </header>
+
+  <div class="banner">
+    <span class="p">■</span>
+    <span><b>Лимит 5-часового окна исчерпан.</b> <span class="d">Сброс в 17:00, через 2 ч 04 мин. Недельное окно свободно на 64 %.</span></span>
+    <span class="acts"><button class="btn ghost">Лимиты</button></span>
+  </div>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" data-tab="chat">чат</button>
+    <button role="tab" aria-selected="false" data-tab="turn">ход</button>
+    <button role="tab" aria-selected="false" data-tab="agents">агенты <span class="b">1</span></button>
+  </nav>
+
+  <div class="body">
+    <main class="pane" id="pane-chat">
+      <div class="log">
+        <div class="sys ok"><span class="p">▸</span><span>14:54 · коммит <b>a41c9e0</b> fix(board): keep ticket count across socket reconnect</span><span class="at">$0.19 · 58s</span></div>
+        <div class="sys"><span class="p">▸</span><span>14:55 · контекст <b>168k</b>: порог 150k пройден, автосжатие при 200k</span><span class="at"><button style="color:var(--link)">сжать</button></span></div>
+
+        <div class="u"><span class="p">&gt;</span><span>Теперь сделай плашку «нет связи» на табло — как в плане из сессии 13:05.</span><span class="at">14:56</span></div>
+        <div class="sys bad"><span class="p">■</span><span>ход не начат: <b>лимит 5-часового окна исчерпан</b> · сообщение сохранено, уйдёт по кнопке после 17:00</span><span class="at">14:56</span></div>
+
+        <div class="ask danger">
+          <div class="h">Что можно сделать сейчас<span class="tag">до сброса 2 ч 04 мин</span></div>
+          <div class="bd">
+            <p>Читать ленту, открывать диффы и журнал хода можно без лимита. Новые ходы начнутся после 17:00 — сообщение в поле не потеряется.</p>
+          </div>
+          <div class="acts">
+            <button class="btn">Отправить в 17:00 автоматически</button>
+            <button class="btn ghost">Сжать контекст заранее</button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <aside class="pane side">
+      <section class="tabpane" id="pane-turn">
+        <h4>ход · не начат</h4>
+        <div class="tl"><div class="row"><span class="at">—</span><span class="ev" style="color:var(--full)">лимит исчерпан<span class="d">сброс 17:00</span></span></div></div>
+        <h4>предыдущий · 14:53 · 58s</h4>
+        <div class="tl">
+          <div class="row"><span class="at">0.0</span><span class="ev" style="color:var(--fg-mute)">think<span class="d">4s</span></span></div>
+          <div class="row"><span class="at">4.1</span><span class="ev">вопрос: сообщение коммита<span class="d">2s</span></span></div>
+          <div class="row"><span class="at">6.3</span><span class="ev">bash pnpm -r test<span class="d">41 ✓ · 38s</span></span></div>
+          <div class="row"><span class="at">44.9</span><span class="ev">bash git commit<span class="d">a41c9e0 · 0.6s</span></span></div>
+        </div>
+      </section>
+      <section class="tabpane" id="pane-agents">
+        <h4>агенты</h4>
+        <div class="ag">
+          <div class="a main"><span class="st" style="color:var(--full)">○</span><span class="nm">основной<small>opus-5.5 · остановлен · лимит</small></span><span class="tk">168k</span></div>
+          <div class="a sub"><span class="st">○</span><span class="nm">Explore: где обрабатывается reconnect<small>sonnet-5.5 · готово 14:43</small></span><span class="tk">8.1k</span></div>
+          <div class="tot"><span>за сессию</span><b>$2.29</b><span>ходов</span><b>17</b><span>время</span><b>2h 14m</b><span>кэш-попадания</span><b>89%</b></div>
+        </div>
+      </section>
+    </aside>
+  </div>
+
+  <footer class="compose off">
+    <div class="ctx"><span class="auto">открыт <b>Board.tsx</b><span class="x">✕</span></span></div>
+    <div class="prompt"><span class="p">$</span><span class="typed">Теперь сделай плашку «нет связи» на табло — как в плане из сессии 13:05.</span></div>
+    <div class="note">отправка отложена до <b>17:00</b> · режим manual · opus-5.5 · high</div>
+  </footer>
+
+</div>
+</div>
+<script src="../shared/preview.js"></script>
+<script src="../shared/hud.js"></script>
+</body>
+</html>

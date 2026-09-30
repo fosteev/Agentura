@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="ru" data-theme="dark" data-width="380">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agentura · боковая панель · аккаунт, лимиты, сессии</title>
+<link rel="stylesheet" href="../shared/tokens.css">
+<link rel="stylesheet" href="../shared/preview.css">
+<link rel="stylesheet" href="../shared/hud.css">
+<style>
+  /* 380: вид боковой панели. 900: та же панель слева + чат с раскрытым списком сессий по кнопке sessions */
+  .webview { grid-template-rows: 1fr; grid-template-columns: 1fr; }
+  .chatside { display: none; }
+  html[data-width="900"] .webview, html[data-width="full"] .webview { grid-template-columns: 380px 1fr; }
+  html[data-width="900"] .chatside, html[data-width="full"] .chatside { display: grid; grid-template-rows: auto 1fr; border-left: 1px solid var(--line); font-family: var(--mono); font-size: 12px; min-width: 0; }
+  .chatside .hud .acts { position: relative; }
+  .chatside .menu.down { left: auto; right: 0; min-width: 300px; }
+  .chatside .fill { color: var(--fg-faint); padding: 40px 14px; text-align: center; font-family: var(--font); font-size: 12px; }
+  .sidebar .head { padding: 10px 14px 6px; font-family: var(--font); font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--fg-mute); border-bottom: 1px solid var(--line); }
+</style>
+</head>
+<body>
+<div class="preview-bar">
+  <b>Боковая панель · аккаунт, лимиты, сессии</b>
+  <span class="grp"><button data-set-theme="dark">Тёмная</button><button data-set-theme="light">Светлая</button></span>
+  <span class="grp"><button data-set-width="380">380</button><button data-set-width="900">900</button><button data-set-width="full">во всю ширину</button></span>
+  <a href="../index.html">← оглавление</a>
+</div>
+<div class="preview-stage">
+<div class="webview">
+
+  <div class="sidebar" aria-label="Боковая панель Agentura">
+    <div class="head">Agentura</div>
+    <section class="sec">
+      <h3><span class="tri"></span>Аккаунт и лимиты<button class="r">/status</button></h3>
+      <div class="kv"><span>Аккаунт</span><b>andrey@example.com</b><span>План</span><b>Max 5×</b><span>Вход</span><b>через CLI · ок</b><span>Агент</span><b>Claude · claude 2.1.284</b></div>
+      <div class="lim">
+        <div class="row"><span>Окно 5 часов</span><span class="n">62 %</span><span class="bar"><i style="width:62%"></i></span><small>сброс в 17:00 · через 2 ч 08 мин</small></div>
+        <div class="row"><span>Неделя</span><span class="n">34 %</span><span class="bar"><i style="width:34%"></i></span><small>сброс в четверг, 09:00</small></div>
+      </div>
+    </section>
+    <section class="sec">
+      <h3><span class="tri"></span>Сессии<span class="r" style="color:var(--fg-mute)">queue-board</span></h3>
+      <button class="new"><span class="plus">＋</span>Новая сессия<span style="margin-left:auto;color:var(--fg-faint);font-size:11px">⌘⇧N</span></button>
+    </section>
+    <div class="tools"><input type="search" id="s-search" placeholder="Поиск по названию — скоро" disabled><button title="Фильтр">⚲</button></div>
+    <div class="list">
+      <div class="day">Сегодня</div>
+      <button class="s cur live"><span class="dot"></span><span class="t">мигание счётчика талонов<small>14 ходов · $1.84 · 131k</small></span><span class="when">сейчас</span></button>
+      <button class="s wait"><span class="dot"></span><span class="t">плашка «нет связи» на табло<small>3 хода · $0.42 · ждёт ответа</small></span><span class="when">13:05</span></button>
+      <button class="s"><span class="dot"></span><span class="t">почему падает lint в ws-client<small>2 хода · $0.11</small></span><span class="when">11:48</span></button>
+      <div class="day">Вчера</div>
+      <button class="s"><span class="dot"></span><span class="t">миграция табло на новый ws-client<small>31 ход · $6.20</small></span><span class="when">18:02</span></button>
+      <button class="s"><span class="dot"></span><span class="t">тесты очереди талонов<small>9 ходов · $1.05</small></span><span class="when">11:30</span></button>
+      <div class="day">23 сентября</div>
+      <button class="s"><span class="dot"></span><span class="t">разбор падения board в проде<small>18 ходов · $3.70</small></span><span class="when">вт</span></button>
+      <button class="s"><span class="dot"></span><span class="t">обновить зависимости монорепо<small>5 ходов · $0.58</small></span><span class="when">вт</span></button>
+    </div>
+  </div>
+
+  <div class="chatside">
+    <header class="hud" aria-label="Приборы">
+      <div class="line1">
+        <span class="agent">claude</span>
+        <span class="sess">queue-board · <b>мигание счётчика талонов</b></span>
+        <span class="acts pop"><button title="Сессии" style="color:var(--fg)">sessions</button><button title="Новый диалог">new</button>
+          <div class="menu down">
+            <div class="hd">сессии queue-board · возобновить</div>
+            <button class="it sel"><span>мигание счётчика талонов<small>сейчас · 14 ходов · $1.84</small></span><span class="hint">131k</span></button>
+            <button class="it"><span>плашка «нет связи» на табло<small>13:05 · ждёт ответа</small></span><span class="hint">44k</span></button>
+            <button class="it"><span>почему падает lint в ws-client<small>11:48</small></span><span class="hint">12k</span></button>
+            <button class="it"><span>миграция табло на новый ws-client<small>вчера 18:02</small></span><span class="hint">168k</span></button>
+            <div class="sep"></div>
+            <button class="it"><span>Все сессии в боковой панели</span><span class="hint">☰</span></button>
+            <button class="it"><span>Новая сессия</span><span class="hint">⌘⇧N</span></button>
+          </div>
+        </span>
+      </div>
+      <div class="ctx">
+        <div class="big"><span>131 250</span><small>/ 200 000</small></div>
+        <div class="cap"><span>контекст · пороги 120k 150k</span><button>сжать</button></div>
+        <div class="blocks" aria-hidden="true">
+          <i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on t"></i>
+          <i class="on w"></i><i class="part"></i><i class="t"></i>
+          <i></i><i></i><i></i><i></i><i></i>
+        </div>
+      </div>
+      <div class="meters">
+        <span class="m"><span class="clock"></span>кэш <b>04:12</b> · <b>91%</b></span>
+        <span class="m"><span class="cells h5"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i></span>5ч <b>62%</b> →17:00</span>
+        <span class="m"><span class="cells wk"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>нед <b>34%</b> →чт</span>
+      </div>
+    </header>
+    <div class="fill">лента чата — как на главном экране; здесь показан только раскрытый список сессий по кнопке «sessions»</div>
+  </div>
+
+</div>
+</div>
+<script src="../shared/preview.js"></script>
+</body>
+</html>

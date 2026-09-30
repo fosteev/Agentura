@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="ru" data-theme="dark" data-width="380">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agentura · разрешение · ждёт ответа</title>
+<link rel="stylesheet" href="../shared/tokens.css">
+<link rel="stylesheet" href="../shared/preview.css">
+<link rel="stylesheet" href="../shared/hud.css">
+</head>
+<body>
+<div class="preview-bar">
+  <b>Разрешение · ждёт ответа</b>
+  <span class="grp"><button data-set-theme="dark">Тёмная</button><button data-set-theme="light">Светлая</button></span>
+  <span class="grp"><button data-set-width="380">380</button><button data-set-width="900">900</button><button data-set-width="full">во всю ширину</button></span>
+  <a href="../index.html">← оглавление</a>
+</div>
+<div class="preview-stage">
+<div class="webview">
+
+  <header class="hud" aria-label="Приборы">
+    <div class="line1">
+      <span class="agent" title="Агент: Claude · Codex, Gemini — скоро">claude</span>
+      <span class="sess">queue-board · <b>мигание счётчика талонов</b></span>
+      <span class="acts"><button title="Сессии">sessions</button><button title="Новый диалог">new</button></span>
+    </div>
+    <div class="ctx">
+      <div class="big"><span>134 810</span><small>/ 200 000</small></div>
+      <div class="cap"><span>контекст · пороги 120k 150k</span><button>сжать</button></div>
+      <div class="blocks" aria-hidden="true">
+        <i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on t"></i>
+        <i class="on w"></i><i class="part"></i><i class="t"></i>
+        <i></i><i></i><i></i><i></i><i></i>
+      </div>
+    </div>
+    <div class="meters">
+      <span class="m"><span class="clock"></span>кэш <b>04:48</b> · <b>91%</b></span>
+      <span class="m"><span class="cells h5"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i></span>5ч <b>63%</b> →17:00</span>
+      <span class="m"><span class="cells wk"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>нед <b>34%</b> →чт</span>
+    </div>
+  </header>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" data-tab="chat">чат</button>
+    <button role="tab" aria-selected="false" data-tab="turn">ход <span class="b live">?</span></button>
+    <button role="tab" aria-selected="false" data-tab="agents">агенты <span class="b">1</span></button>
+  </nav>
+
+  <div class="body">
+    <main class="pane" id="pane-chat">
+      <div class="log">
+        <div class="sys ok"><span class="p">▸</span><span>14:52 · ход завершён · тест на переподключение добавлен, <b>13 ✓</b></span><span class="at">$0.14 · 31s</span></div>
+
+        <div class="u"><span class="p">&gt;</span><span>Прогони тесты всего монорепо и, если зелёные, закоммить правку.</span><span class="at">14:53</span></div>
+        <div class="e think"><span class="p">▸</span><span class="op">think</span><span class="what">коммит — необратимое действие, сообщение лучше согласовать до запуска</span><span class="r">4s</span></div>
+
+        <div class="ask">
+          <div class="h">Каким сообщением коммитить?<span class="tag">вопрос агента · отвечен</span></div>
+          <div class="bd"><p>В истории репозитория коммиты в стиле conventional commits, на английском.</p></div>
+          <div class="opts-list">
+            <button class="opt sel"><span class="n">1</span><span>fix(board): keep ticket count across socket reconnect<small>как в истории репозитория</small></span></button>
+            <button class="opt"><span class="n">2</span><span>fix: мигание счётчика талонов при переподключении<small>по-русски, как в задаче</small></span></button>
+            <button class="opt"><span class="n">3</span><span>Свой вариант<small>напишу в поле ввода</small></span></button>
+          </div>
+        </div>
+        <div class="sys"><span class="p">▸</span><span>выбран вариант 1</span><span class="at">14:53</span></div>
+
+        <div class="ask warn">
+          <div class="h">Разрешить запуск команды?<span class="tag">режим manual</span></div>
+          <div class="bd">
+            <pre>pnpm -r test</pre>
+            <p class="dim">2 пакета: apps/board, packages/ws-client · рабочая папка queue-board</p>
+          </div>
+          <div class="acts">
+            <button class="btn pri">Разрешить<kbd>enter</kbd></button>
+            <button class="btn">Всегда для <code>pnpm test</code></button>
+            <button class="btn bad">Отклонить<kbd>esc</kbd></button>
+            <span class="hint">«всегда» пишется в настройки проекта</span>
+          </div>
+        </div>
+
+        <div class="live"><span class="spin" style="border-top-color:var(--warn)"></span> ждёт ответа · 14s <button class="stop">stop · esc</button></div>
+      </div>
+    </main>
+
+    <aside class="pane side">
+      <section class="tabpane" id="pane-turn">
+        <h4>ход · 14:53 · ждёт 14s</h4>
+        <div class="tl">
+          <div class="strip" aria-hidden="true"><i class="th" style="flex:40"></i><i class="tx" style="flex:20"></i><i style="flex:80;background:var(--warn)"></i></div>
+          <div class="row"><span class="at">0.0</span><span class="ev" style="color:var(--fg-mute)">think<span class="d">4s</span></span></div>
+          <div class="row"><span class="at">4.1</span><span class="ev">вопрос: сообщение коммита<span class="d">отвечен · 2s</span></span></div>
+          <div class="row now"><span class="at">6.3</span><span class="ev" style="color:var(--warn)">bash pnpm -r test<span class="d">ждёт разрешения</span></span></div>
+        </div>
+        <h4>предыдущий · 14:51 · 31s</h4>
+        <div class="tl">
+          <div class="row"><span class="at">0.0</span><span class="ev">edit Counter.test.tsx<span class="d">+31 · 1.4s</span></span></div>
+          <div class="row"><span class="at">1.6</span><span class="ev">bash pnpm test --filter board<span class="d">13 ✓ · 9.9s</span></span></div>
+          <div class="row"><span class="at">11.5</span><span class="ev" style="color:var(--fg-mute)">текст ответа<span class="d">19s</span></span></div>
+        </div>
+      </section>
+      <section class="tabpane" id="pane-agents">
+        <h4>агенты</h4>
+        <div class="ag">
+          <div class="a main"><span class="st">●</span><span class="nm">основной<small>opus-5.5 · ждёт разрешения</small></span><span class="tk">135k</span></div>
+          <div class="a sub"><span class="st">○</span><span class="nm">Explore: где обрабатывается reconnect<small>sonnet-5.5 · готово 14:43</small></span><span class="tk">8.1k</span></div>
+          <div class="tot"><span>за сессию</span><b>$1.98</b><span>ходов</span><b>15</b><span>время</span><b>2h 12m</b><span>кэш-попадания</span><b>91%</b></div>
+        </div>
+      </section>
+    </aside>
+  </div>
+
+  <footer class="compose">
+    <div class="ctx"><span><code>Counter.tsx</code> 12–40<span class="x">✕</span></span><span><code>reconnect.ts</code><span class="x">✕</span></span></div>
+    <div class="prompt"><span class="p">$</span><span class="text">ответ агенту или новая задача — уйдёт после решения по запросу</span></div>
+    <div class="opts">
+      <button class="mode">режим <b>manual</b></button>
+      <button>модель <b>opus-5.5</b></button>
+      <button>effort <b>high</b></button>
+      <button class="send" title="Отправить (Enter)">enter ↵</button>
+    </div>
+  </footer>
+
+</div>
+</div>
+<script src="../shared/preview.js"></script>
+<script src="../shared/hud.js"></script>
+</body>
+</html>
