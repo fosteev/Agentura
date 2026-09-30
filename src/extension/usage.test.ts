@@ -38,4 +38,22 @@ describe('UsageService', () => {
     expect((await svc.refresh()).error).toBeUndefined();
     expect(fetch).toHaveBeenCalledTimes(3);
   });
+
+  it('время данных — от источника (окна движка), и старые данные не затирают новые', async () => {
+    let now = 100_000;
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(windows) // OAuth: время = момент ответа
+      .mockResolvedValueOnce({ windows: [{ kind: 'weekly', percent: 1 }], updatedAt: 50_000 })
+      .mockResolvedValueOnce({ windows: [{ kind: 'weekly', percent: 2 }], updatedAt: 190_000 });
+    const svc = new UsageService(fetch, () => now, 60_000);
+    expect(await svc.refresh()).toEqual({ windows, updatedAt: 100_000 });
+    now = 170_000;
+    expect(await svc.refresh()).toEqual({ windows, updatedAt: 100_000 }); // 50 000 старее — остаются прежние
+    now = 200_000;
+    expect(await svc.refresh()).toEqual({
+      windows: [{ kind: 'weekly', percent: 2 }],
+      updatedAt: 190_000,
+    });
+  });
 });

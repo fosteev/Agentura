@@ -1,0 +1,187 @@
+{
+  "log": "08-sessions-resume.jsonl",
+  "counts": {
+    "session.title": 1,
+    "context.usage": 2,
+    "session.init": 1,
+    "turn.start": 1,
+    "text.delta": 1,
+    "usage.message": 1,
+    "limit.update": 1,
+    "turn.result": 1
+  },
+  "events": [
+    {
+      "type": "session.title",
+      "title": "sdk-probe 01-basic-control"
+    },
+    {
+      "type": "context.usage",
+      "usedTokens": 21464,
+      "source": "engine",
+      "maxTokens": 1000000,
+      "percentage": 2,
+      "autoCompactThreshold": 967000,
+      "categories": [
+        {
+          "name": "System prompt",
+          "tokens": 2240,
+          "kind": "used"
+        },
+        {
+          "name": "System tools",
+          "tokens": 9187,
+          "kind": "used"
+        },
+        {
+          "name": "System tools (deferred)",
+          "tokens": 15177,
+          "kind": "deferred"
+        },
+        {
+          "name": "Memory files",
+          "tokens": 3140,
+          "kind": "used"
+        },
+        {
+          "name": "Skills",
+          "tokens": 2074,
+          "kind": "used"
+        },
+        {
+          "name": "Messages",
+          "tokens": 4823,
+          "kind": "used"
+        },
+        {
+          "name": "Autocompact buffer",
+          "tokens": 33000,
+          "kind": "buffer"
+        },
+        {
+          "name": "Free space",
+          "tokens": 945536,
+          "kind": "free"
+        }
+      ]
+    },
+    {
+      "type": "session.init",
+      "sessionId": "348155b6-7889-4c2e-8413-7063b90c4ae0",
+      "model": "claude-sonnet-5-5",
+      "cwd": "/Users/fost/Projects/Agentura",
+      "permissionMode": "default",
+      "tools": [
+        "Task",
+        "AskUserQuestion",
+        "Bash",
+        "CronCreate",
+        "CronDelete",
+        "…+23"
+      ],
+      "slashCommands": [
+        "deep-research",
+        "design",
+        "design-sync",
+        "dataviz",
+        "update-config",
+        "…+49"
+      ],
+      "skills": [
+        "deep-research",
+        "design",
+        "design-sync",
+        "dataviz",
+        "update-config",
+        "…+13"
+      ],
+      "agents": [
+        "claude",
+        "Explore",
+        "general-purpose",
+        "Plan",
+        "statusline-setup"
+      ],
+      "apiKeySource": "none",
+      "engineVersion": "2.1.285"
+    },
+    {
+      "type": "turn.start",
+      "prompt": "Сколько будет 2+2? Только число.",
+      "at": 0
+    },
+    {
+      "type": "text.delta",
+      "messageId": "msg_011CfZhQFqX5jSkrkxgfCF4W",
+      "text": "4",
+      "length": 1
+    },
+    {
+      "type": "usage.message",
+      "messageId": "msg_011CfZhQFqX5jSkrkxgfCF4W",
+      "model": "claude-sonnet-5-5",
+      "usage": {
+        "input": 2,
+        "output": 3,
+        "cacheRead": 13472,
+        "cacheWrite": 8336,
+        "thinking": 0,
+        "cacheWrite5m": 0,
+        "cacheWrite1h": 8336
+      },
+      "final": true,
+      "at": 1790774656764
+    },
+    {
+      "type": "context.usage",
+      "usedTokens": 21810,
+      "source": "usage",
+      "maxTokens": 1000000
+    },
+    {
+      "type": "limit.update",
+      "source": "engine",
+      "windows": [
+        {
+          "kind": "five-hour",
+          "percent": 81,
+          "resetsAt": 1790787000000
+        },
+        {
+          "kind": "weekly",
+          "percent": 36,
+          "resetsAt": 1790856000000
+        }
+      ],
+      "status": "allowed",
+      "resetsAt": 1790787000000
+    },
+    {
+      "type": "turn.result",
+      "ok": true,
+      "subtype": "success",
+      "interrupted": false,
+      "durationMs": 1460,
+      "apiDurationMs": 5249,
+      "numTurns": 1,
+      "usage": {
+        "input": 2,
+        "output": 3,
+        "cacheRead": 13472,
+        "cacheWrite": 8336,
+        "cacheWrite5m": 0,
+        "cacheWrite1h": 8336,
+        "thinking": 0
+      },
+      "totalCostUsd": 0.1085642,
+      "permissionDenials": [],
+      "costUsd": 0.036072,
+      "model": "claude-sonnet-5-5",
+      "contextWindow": 1000000,
+      "stopReason": "end_turn",
+      "terminalReason": "completed",
+      "text": "4"
+    }
+  ],
+  "permissionResults": []
+}

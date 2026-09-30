@@ -11,7 +11,8 @@ const extension = {
   outdir: 'dist',
   format: 'cjs',
   platform: 'node',
-  external: ['vscode'],
+  // SDK — ESM с нативным бинарником CLI, ищет его через import.meta.url: не бандлить (этап 2).
+  external: ['vscode', '@anthropic-ai/claude-agent-sdk'],
 };
 
 const webview = {

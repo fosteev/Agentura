@@ -121,11 +121,17 @@
           "default": 15,
           "minimum": 5,
           "description": "Как часто опрашивать лимиты подписки, минут."
+        },
+        "agentura.limits.readKeychain": {
+          "type": "boolean",
+          "default": true,
+          "description": "Читать токен Claude Code из Keychain macOS для запроса лимитов подписки (/api/oauth/usage). Токен нужен только для этого запроса и никуда больше не отправляется. Без этого на macOS проценты 5-часового и недельного окна недоступны до первого хода (потом — из ответа движка), если нет файла ~/.claude/.credentials.json."
         }
       }
     }
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.285",
     "@preact/signals": "^2.11.3",
     "preact": "^11.0.0"
   },

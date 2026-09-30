@@ -1,0 +1,397 @@
+{
+  "log": "09-context-sonnet.jsonl",
+  "counts": {
+    "session.title": 1,
+    "context.usage": 6,
+    "session.init": 1,
+    "turn.start": 2,
+    "text.delta": 4,
+    "usage.message": 2,
+    "limit.update": 1,
+    "turn.result": 2
+  },
+  "events": [
+    {
+      "type": "session.title",
+      "title": "sdk-probe 09-context-sonnet"
+    },
+    {
+      "type": "context.usage",
+      "usedTokens": 16603,
+      "source": "engine",
+      "maxTokens": 1000000,
+      "percentage": 2,
+      "autoCompactThreshold": 967000,
+      "categories": [
+        {
+          "name": "System prompt",
+          "tokens": 2240,
+          "kind": "used"
+        },
+        {
+          "name": "System tools",
+          "tokens": 9139,
+          "kind": "used"
+        },
+        {
+          "name": "System tools (deferred)",
+          "tokens": 15177,
+          "kind": "deferred"
+        },
+        {
+          "name": "Memory files",
+          "tokens": 3140,
+          "kind": "used"
+        },
+        {
+          "name": "Skills",
+          "tokens": 2074,
+          "kind": "used"
+        },
+        {
+          "name": "Messages",
+          "tokens": 10,
+          "kind": "used"
+        },
+        {
+          "name": "Autocompact buffer",
+          "tokens": 33000,
+          "kind": "buffer"
+        },
+        {
+          "name": "Free space",
+          "tokens": 950397,
+          "kind": "free"
+        }
+      ]
+    },
+    {
+      "type": "session.init",
+      "sessionId": "3058a357-2776-47ac-9725-567348923abf",
+      "model": "claude-sonnet-5-5",
+      "cwd": "/Users/fost/Projects/Agentura",
+      "permissionMode": "default",
+      "tools": [
+        "Task",
+        "AskUserQuestion",
+        "Bash",
+        "CronCreate",
+        "CronDelete",
+        "…+23"
+      ],
+      "slashCommands": [
+        "deep-research",
+        "design",
+        "design-sync",
+        "dataviz",
+        "update-config",
+        "…+49"
+      ],
+      "skills": [
+        "deep-research",
+        "design",
+        "design-sync",
+        "dataviz",
+        "update-config",
+        "…+13"
+      ],
+      "agents": [
+        "claude",
+        "Explore",
+        "general-purpose",
+        "Plan",
+        "statusline-setup"
+      ],
+      "apiKeySource": "none",
+      "engineVersion": "2.1.285"
+    },
+    {
+      "type": "turn.start",
+      "prompt": "Ответь одним словом: ок.",
+      "at": 0
+    },
+    {
+      "type": "text.delta",
+      "messageId": "msg_011CfZhQXw9LQcJL4yVddq1b",
+      "text": "ок.",
+      "length": 3
+    },
+    {
+      "type": "usage.message",
+      "messageId": "msg_011CfZhQXw9LQcJL4yVddq1b",
+      "model": "claude-sonnet-5-5",
+      "usage": {
+        "input": 2,
+        "output": 5,
+        "cacheRead": 13472,
+        "cacheWrite": 7324,
+        "thinking": 0,
+        "cacheWrite5m": 0,
+        "cacheWrite1h": 7324
+      },
+      "final": true,
+      "at": 1790774660341
+    },
+    {
+      "type": "context.usage",
+      "usedTokens": 20798,
+      "source": "usage",
+      "maxTokens": 1000000
+    },
+    {
+      "type": "limit.update",
+      "source": "engine",
+      "windows": [
+        {
+          "kind": "five-hour",
+          "percent": 81,
+          "resetsAt": 1790787000000
+        },
+        {
+          "kind": "weekly",
+          "percent": 36,
+          "resetsAt": 1790856000000
+        }
+      ],
+      "status": "allowed",
+      "resetsAt": 1790787000000
+    },
+    {
+      "type": "turn.result",
+      "ok": true,
+      "subtype": "success",
+      "interrupted": false,
+      "durationMs": 1263,
+      "apiDurationMs": 1219,
+      "numTurns": 1,
+      "usage": {
+        "input": 2,
+        "output": 5,
+        "cacheRead": 13472,
+        "cacheWrite": 7324,
+        "cacheWrite5m": 0,
+        "cacheWrite1h": 7324,
+        "thinking": 0
+      },
+      "totalCostUsd": 0.0320444,
+      "permissionDenials": [],
+      "costUsd": 0.032044,
+      "model": "claude-sonnet-5-5",
+      "contextWindow": 1000000,
+      "stopReason": "end_turn",
+      "terminalReason": "completed",
+      "text": "ок."
+    },
+    {
+      "type": "context.usage",
+      "usedTokens": 20798,
+      "source": "engine",
+      "maxTokens": 1000000,
+      "percentage": 2,
+      "autoCompactThreshold": 967000,
+      "categories": [
+        {
+          "name": "System prompt",
+          "tokens": 2240,
+          "kind": "used"
+        },
+        {
+          "name": "System tools",
+          "tokens": 9187,
+          "kind": "used"
+        },
+        {
+          "name": "System tools (deferred)",
+          "tokens": 15177,
+          "kind": "deferred"
+        },
+        {
+          "name": "Memory files",
+          "tokens": 3140,
+          "kind": "used"
+        },
+        {
+          "name": "Skills",
+          "tokens": 2074,
+          "kind": "used"
+        },
+        {
+          "name": "Messages",
+          "tokens": 4157,
+          "kind": "used"
+        },
+        {
+          "name": "Autocompact buffer",
+          "tokens": 33000,
+          "kind": "buffer"
+        },
+        {
+          "name": "Free space",
+          "tokens": 946202,
+          "kind": "free"
+        }
+      ]
+    },
+    {
+      "type": "context.usage",
+      "usedTokens": 20798,
+      "source": "engine",
+      "maxTokens": 1000000,
+      "percentage": 2,
+      "autoCompactThreshold": 967000,
+      "categories": [
+        {
+          "name": "System prompt",
+          "tokens": 2240,
+          "kind": "used"
+        },
+        {
+          "name": "System tools",
+          "tokens": 9187,
+          "kind": "used"
+        },
+        {
+          "name": "System tools (deferred)",
+          "tokens": 15177,
+          "kind": "deferred"
+        },
+        {
+          "name": "Memory files",
+          "tokens": 3140,
+          "kind": "used"
+        },
+        {
+          "name": "Skills",
+          "tokens": 2074,
+          "kind": "used"
+        },
+        {
+          "name": "Messages",
+          "tokens": 4157,
+          "kind": "used"
+        },
+        {
+          "name": "Autocompact buffer",
+          "tokens": 33000,
+          "kind": "buffer"
+        },
+        {
+          "name": "Free space",
+          "tokens": 946202,
+          "kind": "free"
+        }
+      ]
+    },
+    {
+      "type": "turn.start",
+      "prompt": "Назови три цвета радуги через запятую.",
+      "at": 1790774660341
+    },
+    {
+      "type": "text.delta",
+      "messageId": "msg_011CfZhQeiRg9jRBJWfmdcp9",
+      "text": "Красный, жёлтый, синий.",
+      "chunks": 3,
+      "length": 23
+    },
+    {
+      "type": "usage.message",
+      "messageId": "msg_011CfZhQeiRg9jRBJWfmdcp9",
+      "model": "claude-sonnet-5-5",
+      "usage": {
+        "input": 2,
+        "output": 15,
+        "cacheRead": 20796,
+        "cacheWrite": 78,
+        "thinking": 0,
+        "cacheWrite5m": 0,
+        "cacheWrite1h": 78
+      },
+      "final": true,
+      "at": 1790774661868
+    },
+    {
+      "type": "context.usage",
+      "usedTokens": 20876,
+      "source": "usage",
+      "maxTokens": 1000000
+    },
+    {
+      "type": "turn.result",
+      "ok": true,
+      "subtype": "success",
+      "interrupted": false,
+      "durationMs": 1182,
+      "apiDurationMs": 2390,
+      "numTurns": 1,
+      "usage": {
+        "input": 2,
+        "output": 15,
+        "cacheRead": 20796,
+        "cacheWrite": 78,
+        "cacheWrite5m": 0,
+        "cacheWrite1h": 78,
+        "thinking": 0
+      },
+      "totalCostUsd": 0.0366696,
+      "permissionDenials": [],
+      "costUsd": 0.004625,
+      "model": "claude-sonnet-5-5",
+      "contextWindow": 1000000,
+      "stopReason": "end_turn",
+      "terminalReason": "completed",
+      "text": "Красный, жёлтый, синий."
+    },
+    {
+      "type": "context.usage",
+      "usedTokens": 20876,
+      "source": "engine",
+      "maxTokens": 1000000,
+      "percentage": 2,
+      "autoCompactThreshold": 967000,
+      "categories": [
+        {
+          "name": "System prompt",
+          "tokens": 2240,
+          "kind": "used"
+        },
+        {
+          "name": "System tools",
+          "tokens": 9187,
+          "kind": "used"
+        },
+        {
+          "name": "System tools (deferred)",
+          "tokens": 15177,
+          "kind": "deferred"
+        },
+        {
+          "name": "Memory files",
+          "tokens": 3140,
+          "kind": "used"
+        },
+        {
+          "name": "Skills",
+          "tokens": 2074,
+          "kind": "used"
+        },
+        {
+          "name": "Messages",
+          "tokens": 4235,
+          "kind": "used"
+        },
+        {
+          "name": "Autocompact buffer",
+          "tokens": 33000,
+          "kind": "buffer"
+        },
+        {
+          "name": "Free space",
+          "tokens": 946124,
+          "kind": "free"
+        }
+      ]
+    }
+  ],
+  "permissionResults": []
+}

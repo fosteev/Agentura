@@ -2,7 +2,8 @@ import * as vscode from 'vscode';
 import { ChatPanel } from './chatPanel';
 import { Logger } from './logger';
 import { SIDEBAR_VIEW_ID, SidebarProvider } from './sidebarView';
-import { stubUsageFetcher, UsageService } from './usage';
+import { LimitsSource, startLimitsPolling } from '../data/limits';
+import { UsageService } from './usage';
 
 export function activate(context: vscode.ExtensionContext): void {
   const log = new Logger('Agentura');
@@ -14,7 +15,16 @@ export function activate(context: vscode.ExtensionContext): void {
     void vscode.window.showInformationMessage(`Agentura: «${name}» пока не реализована.`);
   };
 
-  const sidebar = new SidebarProvider(context, log, new UsageService(stubUsageFetcher));
+  // Лимиты: /api/oauth/usage (токен Claude Code), запас — rate_limit_event движка (этап 2).
+  const limits = new LimitsSource({
+    readKeychain: () =>
+      vscode.workspace.getConfiguration('agentura').get<boolean>('limits.readKeychain', true),
+    userAgent: `Agentura/${String(context.extension.packageJSON.version)}`,
+  });
+  const sidebar = new SidebarProvider(context, log, new UsageService(limits.fetch));
+  const pollMinutes = () =>
+    vscode.workspace.getConfiguration('agentura').get<number>('usagePollMinutes', 15);
+  context.subscriptions.push(startLimitsPolling(() => sidebar.refreshUsage(), pollMinutes));
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(SIDEBAR_VIEW_ID, sidebar),

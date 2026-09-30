@@ -6,14 +6,21 @@ export interface UsageSnapshot {
   error?: string;
 }
 
-export type UsageFetcher = () => Promise<LimitWindowSummary[]>;
+/**
+ * Источник окон. Может вернуть и время данных (`updatedAt`) — у запасных окон движка оно своё,
+ * а не момент запроса; без него время данных = момент ответа.
+ */
+export type UsageFetcher = () => Promise<
+  LimitWindowSummary[] | { windows: LimitWindowSummary[]; updatedAt: number }
+>;
 
 /** Ручное обновление не чаще раза в минуту: `/api/oauth/usage` ограничен по частоте. */
 export const MANUAL_REFRESH_COOLDOWN_MS = 60_000;
 
 /**
  * Лимиты подписки: кэш последнего ответа, кулдаун ручного обновления, склейка параллельных запросов.
- * Этап 1 — источник-заглушка; на этапе 2 сюда подставляется опрос `/api/oauth/usage` (`src/data/limits.ts`).
+ * Источник — `LimitsSource.fetch` из `src/data/limits.ts` (`/api/oauth/usage`, запас — окна движка);
+ * автоматический опрос — `startLimitsPolling` по настройке `agentura.usagePollMinutes`.
  */
 export class UsageService {
   private last: UsageSnapshot | undefined;
@@ -31,22 +38,28 @@ export class UsageService {
       return Promise.resolve(this.last);
     }
     this.inflight = this.fetchWindows()
-      .then((windows): UsageSnapshot => ({ windows, updatedAt: this.now() }))
+      .then((r): UsageSnapshot =>
+        Array.isArray(r)
+          ? { windows: r, updatedAt: this.now() }
+          : { windows: r.windows, updatedAt: r.updatedAt },
+      )
       .catch((e: unknown): UsageSnapshot => ({
         windows: this.last?.windows ?? [],
         updatedAt: this.last?.updatedAt ?? 0,
         error: e instanceof Error ? e.message : String(e),
       }))
       .then((snap) => {
-        if (!snap.error) this.last = snap;
         this.inflight = undefined;
+        // Данные старше уже показанных не затирают их.
+        if (!snap.error && this.last && snap.updatedAt < this.last.updatedAt) return this.last;
+        if (!snap.error) this.last = snap;
         return snap;
       });
     return this.inflight;
   }
 }
 
-/** Этап 1: те же цифры, что в прототипе. */
+/** Цифры прототипа — для отладки webview без сети. В расширении не подключена с этапа 2. */
 export const stubUsageFetcher: UsageFetcher = async () => {
   const at = (h: number, dayShift = 0) => {
     const d = new Date();
