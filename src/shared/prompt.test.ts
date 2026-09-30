@@ -20,6 +20,12 @@ describe('контекст сообщения', () => {
     expect(context).toContain('src/a.ts');
   });
 
+  it('выделение с ``` внутри ограждается длиннее', () => {
+    const a = { kind: 'selection' as const, path: 'r.md', startLine: 1, endLine: 3 };
+    const p = buildPrompt('x', [a], { [attachmentKey(a)]: '```ts\ncode\n```' });
+    expect(p).toContain('````\n```ts\ncode\n```\n````');
+  });
+
   it('текст без маркера — как есть', () =>
     expect(splitPrompt('просто')).toEqual({ text: 'просто' }));
 

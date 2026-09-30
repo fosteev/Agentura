@@ -120,6 +120,23 @@ function closeOpenRows(s: ChatState, interrupted: boolean, at: number): ChatStat
   return { ...s, rows };
 }
 
+/**
+ * Сообщение дошло до движка: строка «в очереди» с тем же текстом становится обычной, иначе
+ * добавляется новая. Блок контекста отделяется от текста.
+ */
+function deliverUser(s: ChatState, prompt: string, atMs: number): ChatState {
+  const { text, context } = splitPrompt(prompt);
+  const at = clock(atMs);
+  const idx = s.rows.findIndex(
+    (r) => r.kind === 'user' && r.queued && r.text.trim() === text.trim(),
+  );
+  if (idx < 0) return push(s, { kind: 'user', text, at, ...(context ? { context } : {}) });
+  const row = s.rows[idx] as Extract<FeedRow, { kind: 'user' }>;
+  const updated: Extract<FeedRow, { kind: 'user' }> = { ...row, queued: false, at };
+  if (context) updated.context = context;
+  return replaceAt(s, idx, updated);
+}
+
 export function applyEvent(s: ChatState, event: AgentEvent, now = Date.now()): ChatState {
   const status = nextStatus(s.status, event);
   const next = reduce({ ...s, status }, event, now);
@@ -154,24 +171,13 @@ function reduce(s: ChatState, e: AgentEvent, now: number): ChatState {
     case 'mode.changed':
       return { ...s, mode: e.mode };
     case 'turn.start': {
-      let out: ChatState = { ...s, turnStartedAt: e.at };
-      if (e.prompt !== undefined) {
-        const { text, context } = splitPrompt(e.prompt);
-        const at = clock(e.at);
-        const idx = s.rows.findIndex(
-          (r) => r.kind === 'user' && r.queued && r.text.trim() === text.trim(),
-        );
-        if (idx >= 0) {
-          const row = s.rows[idx] as Extract<FeedRow, { kind: 'user' }>;
-          const updated: Extract<FeedRow, { kind: 'user' }> = { ...row, queued: false, at };
-          if (context) updated.context = context;
-          out = replaceAt(out, idx, updated);
-        } else {
-          out = push(out, { kind: 'user', text, at, ...(context ? { context } : {}) });
-        }
-      }
-      return out;
+      const out: ChatState = { ...s, turnStartedAt: e.at };
+      // склеенные движком сообщения — каждое своей строкой
+      const prompts = e.prompts ?? (e.prompt !== undefined ? [e.prompt] : []);
+      return prompts.reduce((acc, p) => deliverUser(acc, p, e.at), out);
     }
+    case 'turn.input':
+      return deliverUser(s, e.prompt, e.at);
     case 'thinking.start':
       return push(s, { kind: 'think', messageId: e.messageId, text: '', startedAt: e.at });
     case 'thinking.delta': {

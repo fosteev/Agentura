@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks';
+import { useMemo, useState } from 'preact/hooks';
 import type { Seg } from '../fixtures/chat';
 import type { FeedRow } from '../chatState';
 import { onCodeCopyClick, renderMarkdown, withCursor } from '../markdown';
@@ -142,7 +142,8 @@ function Think({ t, now }: { t: Row<'think'>; now: number }) {
 }
 
 function Text({ r, last }: { r: Row<'text'>; last: boolean }) {
-  const html = renderMarkdown(r.text);
+  // лента перерисовывается каждую секунду (таймеры) — markdown разбираем только при смене текста
+  const html = useMemo(() => renderMarkdown(r.text), [r.text]);
   return (
     <div
       class="txt"

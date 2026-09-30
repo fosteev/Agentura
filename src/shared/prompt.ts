@@ -61,10 +61,17 @@ export function buildPrompt(
       const range = a.startLine !== undefined ? `:${a.startLine}-${a.endLine ?? a.startLine}` : '';
       lines.push(`- выделение: ${a.path}${range}`);
       const body = selectionText[attachmentKey(a)];
-      if (body) fences.push('```\n' + body + '\n```');
+      if (body) fences.push(fenced(body));
     }
   }
   return `${text}${SEPARATOR}${lines.join('\n')}${fences.length ? '\n\n' + fences.join('\n\n') : ''}`;
+}
+
+/** Блок кода с ограждением длиннее любой серии обратных кавычек внутри текста. */
+function fenced(body: string): string {
+  const longest = Math.max(0, ...(body.match(/`+/g) ?? []).map((r) => r.length));
+  const fence = '`'.repeat(Math.max(3, longest + 1));
+  return `${fence}\n${body}\n${fence}`;
 }
 
 /** Обратное к `buildPrompt`: текст пользователя и блок контекста (если есть). */

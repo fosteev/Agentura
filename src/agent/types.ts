@@ -76,8 +76,18 @@ export type AgentEvent =
       type: 'turn.start';
       /** Текст, с которого начался ход; нет — ход начал движок (пробуждение после фоновой задачи). */
       prompt?: string;
+      /**
+       * Отдельные сообщения, если движок склеил несколько в один ход (`prompt` — они через
+       * пустую строку). Добавлено на приёмке этапа 3: лента сопоставляет каждое со своей строкой.
+       */
+      prompts?: string[];
       at: number;
     })
+  /**
+   * Сообщение пользователя, которое движок влил в уже идущий ход (эхо uuid посреди хода).
+   * Своего `turn.start` у него не будет. Добавлено на приёмке этапа 3.
+   */
+  | (Base & { type: 'turn.input'; prompt: string; at: number })
   | (Base & { type: 'text.delta'; messageId: string; text: string })
   | (Base & { type: 'thinking.start'; messageId: string; at: number })
   | (Base & { type: 'thinking.delta'; messageId: string; text: string; estimatedTokens?: number })

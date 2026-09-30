@@ -142,7 +142,11 @@ export class ChatController {
           const texts: Record<string, string> = {};
           for (const a of m.attachments ?? []) {
             if (a.kind !== 'selection') continue;
-            const t = await deps.readSelection(a);
+            // файл закрыт/удалён — сообщение всё равно уходит, просто без текста выделения
+            const t = await deps.readSelection(a).catch((e: unknown) => {
+              deps.log.warn(`выделение ${a.path}: ${String(e)}`);
+              return undefined;
+            });
             if (t) texts[attachmentKey(a)] = t;
           }
           if (!session.send(buildPrompt(m.text, m.attachments ?? [], texts))) {

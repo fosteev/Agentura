@@ -66,8 +66,9 @@ export function Chat() {
     if (el && stick.current) el.scrollTop = el.scrollHeight;
   }, [s.rows, tab.value]);
 
-  const t = tab.value;
   const empty = s.rows.length === 0;
+  // в пустой сессии вкладки «ход»/«агенты» отключены — после «new» возвращаемся в чат
+  const t = empty ? 'chat' : tab.value;
   const now = tick.value;
   const last = s.rows[s.rows.length - 1];
   const live = working ? liveLabel(last, s.turnStartedAt, now) : undefined;

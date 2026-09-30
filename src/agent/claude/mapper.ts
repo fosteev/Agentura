@@ -652,24 +652,34 @@ export class ClaudeEventMapper {
   private ensureTurn(out: AgentEvent[], m: Json): void {
     const uuids = uuidsOf(m);
     if (this.turnActive && !this.turnStartPending) {
-      for (const uuid of uuids) this.takePrompt(uuid);
+      for (const uuid of uuids) {
+        const text = this.takePrompt(uuid);
+        if (text !== undefined) out.push({ type: 'turn.input', prompt: text, at: this.now() });
+      }
       return;
     }
     if (!this.turnActive) this.turnUsage = emptyUsage();
     this.turnActive = true;
     this.turnStartPending = false;
     let prompt: string | undefined;
+    let prompts: string[] | undefined;
     if (uuids.length > 0) {
       const texts = uuids
         .map((u) => this.takePrompt(u))
         .filter((t): t is string => t !== undefined);
       if (texts.length > 0) prompt = texts.join('\n\n');
+      if (texts.length > 1) prompts = texts;
     } else if (!this.wakeExpected) {
       this.fifoPrompt = this.prompts.shift();
       prompt = this.fifoPrompt?.text;
     }
     this.wakeExpected = false;
-    out.push({ type: 'turn.start', ...(prompt !== undefined ? { prompt } : {}), at: this.now() });
+    out.push({
+      type: 'turn.start',
+      ...(prompt !== undefined ? { prompt } : {}),
+      ...(prompts ? { prompts } : {}),
+      at: this.now(),
+    });
   }
 
   private takePrompt(uuid: string): string | undefined {

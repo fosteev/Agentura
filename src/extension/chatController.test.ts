@@ -131,6 +131,22 @@ describe('ChatController', () => {
     expect(sent).toContain('выделенный текст');
   });
 
+  it('send: выделение не прочиталось (файл закрыт) — сообщение всё равно уходит', async () => {
+    const { controller, sessions, deps } = setup();
+    deps.readSelection = async () => {
+      throw new Error('нет файла');
+    };
+    controller.start();
+    await controller.handle({
+      type: 'send',
+      sessionId: '',
+      text: 'глянь',
+      attachments: [{ kind: 'selection', path: 'gone.ts', startLine: 1, endLine: 1 }],
+    });
+    expect(sessions[0]!.sent[0]).toContain('- выделение: gone.ts:1-1');
+    expect(deps.log.warn).toHaveBeenCalled();
+  });
+
   it('события сессии идут в webview с id сессии, маркер вкладки следует за состоянием', async () => {
     const { controller, sessions, posted, titles } = setup();
     controller.start();

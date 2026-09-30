@@ -36,6 +36,7 @@ export const AGENT_EVENT_TYPES = [
   'session.init',
   'session.title', // этап 2: system/session_title_changed — название для заголовка и списка сессий
   'turn.start',
+  'turn.input', // приёмка этапа 3: сообщение влито движком в идущий ход — снять «в очереди»
   'text.delta',
   'thinking.start',
   'thinking.delta',

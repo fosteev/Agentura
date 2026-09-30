@@ -146,6 +146,26 @@ describe('редьюсер: очередь и границы хода', () => {
     expect(s.rows.map((r) => (r.kind === 'user' ? r.queued : null))).toEqual([false, true]);
   });
 
+  it('склеенные движком сообщения (prompts) закрывают каждое свою строку, с контекстом', () => {
+    const a = buildPrompt('раз', [{ kind: 'file', path: 'src/a.ts' }]);
+    let s = queueUser(queueUser(initialState(), 'раз'), 'два');
+    s = applyEvent(s, { type: 'turn.start', at: 1, prompt: `${a}\n\nдва`, prompts: [a, 'два'] });
+    expect(s.rows).toHaveLength(2);
+    expect(s.rows.map((r) => (r.kind === 'user' ? [r.text, r.queued] : null))).toEqual([
+      ['раз', false],
+      ['два', false],
+    ]);
+    expect((s.rows[0] as Extract<FeedRow, { kind: 'user' }>).context).toContain('src/a.ts');
+  });
+
+  it('сообщение, влитое в идущий ход (turn.input), перестаёт быть «в очереди»', () => {
+    let s = applyEvent(queueUser(initialState(), 'первое'), start('первое'));
+    s = queueUser(s, 'добавка');
+    s = applyEvent(s, { type: 'turn.input', prompt: 'добавка', at: 2 });
+    expect(s.rows.map((r) => (r.kind === 'user' ? r.queued : null))).toEqual([false, false]);
+    expect(s.status).toBe('working');
+  });
+
   it('прерванный ход закрывает бегущие инструменты как stopped', () => {
     let s = applyEvent(initialState(), start('x'));
     s = applyEvent(s, {

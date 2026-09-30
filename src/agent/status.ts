@@ -25,6 +25,8 @@ export function nextStatus(prev: ChatStatus, event: AgentEvent): ChatStatus {
       return event.status === 'rejected' ? 'limited' : prev;
     case 'error':
       if (event.code === 'limit') return 'limited';
+      // повтор запроса движком — ход продолжается, «!» во вкладке был бы ложной тревогой
+      if (event.code === 'api_retry') return prev;
       return 'error';
     case 'session.closed':
       return event.reason === 'error' ? 'error' : prev === 'working' ? 'idle' : prev;

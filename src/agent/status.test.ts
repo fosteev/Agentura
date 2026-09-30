@@ -43,6 +43,9 @@ describe('состояние чата', () => {
     expect(
       nextStatus('working', ev({ type: 'error', message: 'x', fatal: false, code: 'limit' })),
     ).toBe('limited');
+    expect(
+      nextStatus('working', ev({ type: 'error', message: 'x', fatal: false, code: 'api_retry' })),
+    ).toBe('working');
   });
   it('маркер и заголовок вкладки', () => {
     expect(statusMarker('working')).toBe('●');

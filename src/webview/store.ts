@@ -53,7 +53,10 @@ export function handleHostMessage(m: ToWebview): void {
       };
       break;
     case 'files.result':
-      fileHits.value = { requestId: m.requestId, items: m.items };
+      // ответы на поиск могут прийти не по порядку — устаревший не затирает свежий
+      if (m.requestId >= fileHits.value.requestId) {
+        fileHits.value = { requestId: m.requestId, items: m.items };
+      }
       break;
     case 'attach.picked':
       for (const hit of m.items) addExtra({ kind: hit.isDir ? 'folder' : 'file', path: hit.path });
