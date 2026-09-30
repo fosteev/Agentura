@@ -78,22 +78,28 @@
 архитектура на них опёрлась. Скрипт-проба пишет все сообщения SDK в jsonl — эти логи потом
 станут фикстурами для тестов адаптера.
 
-- [ ] `spikes/sdk-probe/` — Node ESM скрипт на `@anthropic-ai/claude-agent-sdk`, streaming input mode, все сообщения в `spikes/sdk-probe/logs/*.jsonl`
-- [ ] Проверено: `interrupt()`, `setPermissionMode()`, `setModel()`, `applyFlagSettings({effortLevel})` в streaming input mode
-- [ ] Записаны формы `system/init`, `accountInfo()`, `apiKeySource` при входе CLI без `ANTHROPIC_API_KEY`
-- [ ] Записаны формы `getContextUsage()`, `assistant.context_usage`, `result.modelUsage` (есть ли `contextWindow`, `costUSD`) на Opus 5.5 и Sonnet 5.5
-- [ ] Проверен дедуп usage по `message.id` и что `output_tokens` в `assistant` — плейсхолдер
-- [ ] Записана форма `rate_limit_event` (единицы `resetsAt`, `utilization`); опрошен `GET /api/oauth/usage` кодом из Agentmeter — записан ответ (окна, проценты, сброс)
-- [ ] Проверено `canUseTool` для Bash и Edit: `suggestions`, запись «всегда» в `.claude/settings.local.json` через `updatedPermissions`
-- [ ] Проверен круг `AskUserQuestion` через `canUseTool` (вопрос → `updatedInput.answers`)
-- [ ] Проверен plan mode: приходит ли `ExitPlanMode` в `canUseTool`, где текст плана, как выйти в `acceptEdits` и как «доработать» (deny с сообщением)
-- [ ] Проверены субагенты: промпт с `Agent`-инструментом, события `task_*`, `parent_tool_use_id`, `forwardSubagentText`, `stopTask()` для фоновой задачи
-- [ ] Проверена компакция: `/compact` промптом → `status:"compacting"`, `compact_boundary.pre_tokens`
-- [ ] Проверен thinking: `display:'summarized'` даёт текст; какие stream_event приходят (`thinking_delta`?); `thinking_tokens`
-- [ ] Проверены `listSessions()`, `getSessionMessages()` (есть ли `message.usage`), `resume` (накопительные `total_cost_usd`)
-- [ ] Проверен `tool_use_result` для Edit и Write (`structuredPatch`, `originalFile`)
-- [ ] Записан `docs/spikes/sdk-probe.md`: таблица «вопрос → ответ → поле → лог», раздел «что остаётся допущением»
-- [ ] В `docs/features.md` колонка «Источник данных» A1–A6, A10 переписана по фактам; в `prototype/README.md` закрыт открытый пункт про окно контекста
+- [x] `spikes/sdk-probe/` — Node ESM скрипт на `@anthropic-ai/claude-agent-sdk`, streaming input mode, все сообщения в `spikes/sdk-probe/logs/*.jsonl`
+- [x] Проверено: `interrupt()`, `setPermissionMode()`, `setModel()`, `applyFlagSettings({effortLevel})` в streaming input mode
+- [x] Записаны формы `system/init`, `accountInfo()`, `apiKeySource` при входе CLI без `ANTHROPIC_API_KEY`
+- [x] Записаны формы `getContextUsage()`, `assistant.context_usage`, `result.modelUsage` (есть ли `contextWindow`, `costUSD`) на Opus 5.5 и Sonnet 5.5
+- [x] Проверен дедуп usage по `message.id` и что `output_tokens` в `assistant` — плейсхолдер
+- [x] Записана форма `rate_limit_event` (единицы `resetsAt`, `utilization`); опрошен `GET /api/oauth/usage` кодом из Agentmeter — записан ответ (окна, проценты, сброс)
+- [x] Проверено `canUseTool` для Bash и Edit: `suggestions`, запись «всегда» в `.claude/settings.local.json` через `updatedPermissions`
+- [x] Проверен круг `AskUserQuestion` через `canUseTool` (вопрос → `updatedInput.answers`)
+- [x] Проверен plan mode: приходит ли `ExitPlanMode` в `canUseTool`, где текст плана, как выйти в `acceptEdits` и как «доработать» (deny с сообщением)
+- [x] Проверены субагенты: промпт с `Agent`-инструментом, события `task_*`, `parent_tool_use_id`, `forwardSubagentText`, `stopTask()` для фоновой задачи
+- [x] Проверена компакция: `/compact` промптом → `status:"compacting"`, `compact_boundary.pre_tokens`
+- [x] Проверен thinking: `display:'summarized'` даёт текст; какие stream_event приходят (`thinking_delta`?); `thinking_tokens`
+- [x] Проверены `listSessions()`, `getSessionMessages()` (есть ли `message.usage`), `resume` (накопительные `total_cost_usd`)
+- [x] Проверен `tool_use_result` для Edit и Write (`structuredPatch`, `originalFile`)
+- [x] Записан `docs/spikes/sdk-probe.md`: таблица «вопрос → ответ → поле → лог», раздел «что остаётся допущением»
+- [x] В `docs/features.md` колонка «Источник данных» A1–A6, A10 переписана по фактам; в `prototype/README.md` закрыт открытый пункт про окно контекста
+
+**Итог (30.09):** `docs/spikes/sdk-probe.md`. Против раздела «Контекст» выше: окно 1M, а не 200k;
+оба окна лимитов есть в `rate_limit_event.unifiedWindows`; `assistant.context_usage` не приходит;
+`ExitPlanMode` приходит в `canUseTool`, план — в `input.plan`; субагент без `run_in_background` стартует
+фоновым; `fetch` из Node к `/api/oauth/usage` отвечает 200. Не подтверждено живьём: эффект
+`applyFlagSettings({effortLevel})`, `stopTask` для субагента переднего плана, автокомпакция — в таблице допущений.
 
 **Готово, когда:** `node spikes/sdk-probe/run.mjs` отрабатывает без ошибок, в `docs/spikes/sdk-probe.md` на каждый из 14 вопросов есть ответ со ссылкой на строку лога; нет строки «не проверено» без причины.
 
