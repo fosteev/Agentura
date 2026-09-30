@@ -1,9 +1,9 @@
 // Цвет лимитов (5 часов, неделя): до 70 % — оранжевый, больше 70 % — жёлтый, больше 85 % — красный.
-// Класс уровня ставится на счётчик в HUD (.m с .cells) и на строку лимита в боковой панели.
+// Класс уровня ставится на счётчик у поля ввода (.m с .cells) и на строку лимита в боковой панели.
 (function () {
   function level(p) { return p > 85 ? 'lim-full' : p > 70 ? 'lim-warn' : 'lim-hot'; }
   function pct(el) { var m = el && el.textContent.match(/(\d+)\s*%/); return m ? +m[1] : null; }
-  document.querySelectorAll('.hud .m').forEach(function (m) {
+  document.querySelectorAll('.meters .m').forEach(function (m) {
     if (!m.querySelector('.cells')) return;
     var b = [].filter.call(m.querySelectorAll('b'), function (x) { return pct(x) !== null; })[0];
     var p = pct(b); if (p === null) return;

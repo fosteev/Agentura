@@ -18,33 +18,16 @@
 <div class="preview-stage">
 <div class="webview" data-sidebar="error">
 
-  <header class="hud" aria-label="Приборы">
-    <div class="line1">
-      <span class="agent" title="Агент: Claude · Codex, Gemini — скоро">claude</span>
-      <span class="sess">queue-board · <b>мигание счётчика талонов</b></span>
-      <span class="acts"><button title="Сессии">sessions</button><button title="Новый диалог">new</button></span>
-    </div>
-    <div class="ctx">
-      <div class="big"><span>133 470</span><small>/ 200 000</small></div>
-      <div class="cap"><span>контекст · пороги 120k 150k</span><button>сжать</button></div>
-      <div class="blocks" aria-hidden="true">
-        <i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on t"></i>
-        <i class="on w"></i><i class="part"></i><i class="t"></i>
-        <i></i><i></i><i></i><i></i><i></i>
-      </div>
-    </div>
-    <div class="meters">
-      <span class="m"><span class="clock" style="background:conic-gradient(var(--info) 10%, var(--bg-input) 0)"></span>кэш <b>00:31</b> · <b>91%</b></span>
-      <span class="m"><span class="cells h5"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i></span>5ч <b>63%</b> →17:00</span>
-      <span class="m"><span class="cells wk"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>нед <b>34%</b> →чт</span>
-    </div>
+  <header class="hud" aria-label="Сессия">
+    <nav class="tabs" role="tablist">
+      <button role="tab" aria-selected="true" data-tab="chat">чат</button>
+      <button role="tab" aria-selected="false" data-tab="turn">ход <span class="b" style="background:var(--full);color:#fff">!</span></button>
+      <button role="tab" aria-selected="false" data-tab="agents">агенты <span class="b">1</span></button>
+    </nav>
+    <span class="sess">queue-board · <b>мигание счётчика талонов</b></span>
+    <span class="acts"><button title="Сессии">sessions</button><button title="Новый диалог">new</button></span>
   </header>
 
-  <nav class="tabs" role="tablist">
-    <button role="tab" aria-selected="true" data-tab="chat">чат</button>
-    <button role="tab" aria-selected="false" data-tab="turn">ход <span class="b" style="background:var(--full);color:#fff">!</span></button>
-    <button role="tab" aria-selected="false" data-tab="agents">агенты <span class="b">1</span></button>
-  </nav>
 
   <div class="body">
     <main class="pane" id="pane-chat">
@@ -107,12 +90,15 @@
   </div>
 
   <footer class="compose">
-    <div class="ctx"><span><code>Counter.tsx</code> 12–40<span class="x">✕</span></span><span><code>reconnect.ts</code><span class="x">✕</span></span></div>
+    <div class="blocks" aria-hidden="true"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on t"></i><i class="on w"></i><i class="part"></i><i class="t"></i><i></i><i></i><i></i><i></i><i></i></div>
+    <div class="ctx"><span><code>Counter.tsx</code> 12–40<span class="x">✕</span></span><span><code>reconnect.ts</code><span class="x">✕</span></span><span class="cn" title="Контекст: пороги 120k 150k, автосжатие при 200k">контекст <b class="warn">133 470</b> / 200 000 · <button>сжать</button></span></div>
     <div class="prompt"><span class="p">$</span><span class="text">новое сообщение начнёт следующий ход; прерванный можно повторить кнопкой выше</span></div>
     <div class="opts">
       <button class="mode">режим <b>manual</b></button>
+      <button class="agent" title="Агент: Claude · Codex, Gemini — скоро">агент <b>claude</b></button>
       <button>модель <b>opus-5.5</b></button>
       <button>effort <b>high</b></button>
+      <span class="meters"><span class="m"><span class="clock" style="background:conic-gradient(var(--info) 10%, var(--bg-input) 0)"></span>кэш <b>00:31</b> · <b>91%</b></span><span class="m" title="5-часовое окно · сброс 17:00"><span class="cells"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i></span>5ч <b>63%</b></span></span>
       <button class="send" title="Отправить (Enter)">enter ↵</button>
     </div>
   </footer>

@@ -15,8 +15,8 @@
   .sheet h3 small { font-weight: 400; color: var(--fg-faint); margin-left: 8px; }
   .sheet .compose { border-top: 0; border-bottom: 1px solid var(--line); padding-bottom: 12px; }
   .sheet .menu { position: static; margin-top: 6px; box-shadow: none; max-width: 420px; }
-  .hud.min { padding: 8px 14px; border-bottom: 1px solid var(--line); }
-  .hud.min .line1 b { color: var(--fg); }
+  .hud.min { padding: 8px 14px; }
+  .hud.min .sess { display: block; padding: 0; }
 </style>
 </head>
 <body>
@@ -28,7 +28,7 @@
 </div>
 <div class="preview-stage">
 <div class="webview" data-sidebar="live">
-  <header class="hud min"><div class="line1"><span class="sess">лист состояний поля ввода · <b>меню и переключатели</b></span></div></header>
+  <header class="hud min"><span class="sess">лист состояний поля ввода · <b>меню и переключатели</b></span></header>
   <div class="sheet">
 
     <h3>Меню «/»<small>команды и скиллы, фильтр по набранному</small></h3>
@@ -45,7 +45,7 @@
         <button class="it"><span>/release-notes<small>собрать «что нового» между версиями</small></span><span class="hint">skill</span></button>
         <button class="it"><span>/plan-review<small>приёмка работы по плану</small></span><span class="hint">skill</span></button>
       </div>
-      <div class="opts"><button class="mode">режим <b>manual</b></button><button>модель <b>opus-5.5</b></button><button>effort <b>high</b></button><button class="send">enter ↵</button></div>
+      <div class="opts"><button class="mode">режим <b>manual</b></button><button class="agent">агент <b>claude</b></button><button>модель <b>opus-5.5</b></button><button>effort <b>high</b></button><button class="send">enter ↵</button></div>
     </footer>
 
     <h3>Упоминание «@»<small>файлы и папки проекта</small></h3>
@@ -56,7 +56,7 @@
         <button class="it"><span>Counter.test.tsx<small>apps/board/src/__tests__</small></span><span class="hint">файл</span></button>
         <button class="it"><span>counter/<small>packages/ws-client/src</small></span><span class="hint">папка</span></button>
       </div>
-      <div class="opts"><button class="mode">режим <b>manual</b></button><button>модель <b>opus-5.5</b></button><button>effort <b>high</b></button><button class="send">enter ↵</button></div>
+      <div class="opts"><button class="mode">режим <b>manual</b></button><button class="agent">агент <b>claude</b></button><button>модель <b>opus-5.5</b></button><button>effort <b>high</b></button><button class="send">enter ↵</button></div>
     </footer>
 
     <h3>Автоконтекст и «+»<small>что уйдёт вместе с сообщением</small></h3>
@@ -71,7 +71,7 @@
         <div class="sep"></div>
         <button class="it dis"><span>Изображение или файл<small>скоро</small></span><span class="hint"></span></button>
       </div>
-      <div class="opts"><button class="mode">режим <b>manual</b></button><button>модель <b>opus-5.5</b></button><button>effort <b>high</b></button><button class="send">enter ↵</button></div>
+      <div class="opts"><button class="mode">режим <b>manual</b></button><button class="agent">агент <b>claude</b></button><button>модель <b>opus-5.5</b></button><button>effort <b>high</b></button><button class="send">enter ↵</button></div>
     </footer>
 
     <h3>Режим разрешений<small>переключается в любой момент, действует на следующие запросы</small></h3>
@@ -83,7 +83,7 @@
         <button class="it"><span>plan<small>только читать и планировать</small></span><span class="hint">/plan</span></button>
         <button class="it dis"><span>без разрешений<small>включается настройкой agentura.allowBypass</small></span><span class="hint">bypass</span></button>
       </div>
-      <div class="opts"><button class="mode">режим <b>manual</b></button><button>модель <b>opus-5.5</b></button><button>effort <b>high</b></button><button class="send">enter ↵</button></div>
+      <div class="opts"><button class="mode">режим <b>manual</b></button><button class="agent">агент <b>claude</b></button><button>модель <b>opus-5.5</b></button><button>effort <b>high</b></button><button class="send">enter ↵</button></div>
     </footer>
 
     <h3>Модель, effort, thinking</h3>
@@ -102,14 +102,14 @@
         <div class="sep"></div>
         <button class="it"><span>extended thinking<small>показывать блоки think в ленте</small></span><span class="sw on"></span></button>
       </div>
-      <div class="opts"><button class="mode">режим <b>manual</b></button><button>модель <b>opus-5.5</b></button><button>effort <b>high</b></button><button class="send">enter ↵</button></div>
+      <div class="opts"><button class="mode">режим <b>manual</b></button><button class="agent">агент <b>claude</b></button><button>модель <b>opus-5.5</b></button><button>effort <b>high</b></button><button class="send">enter ↵</button></div>
     </footer>
 
     <h3>История сообщений<small>↑ и ↓ в пустом поле листают отправленное</small></h3>
     <footer class="compose">
       <div class="prompt"><span class="p">$</span><span class="typed">Добавь тест на переподключение, чтобы это не вернулось.</span></div>
       <div class="note">история <b>2 из 15</b> · ↑ старше · ↓ новее · esc — очистить</div>
-      <div class="opts"><button class="mode">режим <b>manual</b></button><button>модель <b>opus-5.5</b></button><button>effort <b>high</b></button><button class="send">enter ↵</button></div>
+      <div class="opts"><button class="mode">режим <b>manual</b></button><button class="agent">агент <b>claude</b></button><button>модель <b>opus-5.5</b></button><button>effort <b>high</b></button><button class="send">enter ↵</button></div>
     </footer>
 
   </div>

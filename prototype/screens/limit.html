@@ -19,26 +19,14 @@
 <div class="preview-stage">
 <div class="webview" data-sidebar="limit">
 
-  <header class="hud" aria-label="Приборы">
-    <div class="line1">
-      <span class="agent" title="Агент: Claude · Codex, Gemini — скоро">claude</span>
-      <span class="sess">queue-board · <b>мигание счётчика талонов</b></span>
-      <span class="acts"><button title="Сессии">sessions</button><button title="Новый диалог">new</button></span>
-    </div>
-    <div class="ctx">
-      <div class="big"><span class="hot">168 420</span><small>/ 200 000</small></div>
-      <div class="cap"><span>контекст · порог 150k пройден · автосжатие при 200k</span><button>сжать сейчас</button></div>
-      <div class="blocks" aria-hidden="true">
-        <i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on t"></i>
-        <i class="on w"></i><i class="on w"></i><i class="on w t"></i>
-        <i class="on h"></i><i class="part" style="--c:var(--hot)"></i><i></i><i></i><i></i>
-      </div>
-    </div>
-    <div class="meters">
-      <span class="m"><span class="clock" style="background:var(--bg-input)"></span>кэш <b>истёк</b> · <b>89%</b></span>
-      <span class="m"><span class="cells h5"><i class="on f"></i><i class="on f"></i><i class="on f"></i><i class="on f"></i><i class="on f"></i><i class="on f"></i><i class="on f"></i><i class="on f"></i><i class="on f"></i><i class="on f"></i></span>5ч <b class="full">100%</b> →17:00</span>
-      <span class="m"><span class="cells wk"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i></span>нед <b>36%</b> →чт</span>
-    </div>
+  <header class="hud" aria-label="Сессия">
+    <nav class="tabs" role="tablist">
+      <button role="tab" aria-selected="true" data-tab="chat">чат</button>
+      <button role="tab" aria-selected="false" data-tab="turn">ход</button>
+      <button role="tab" aria-selected="false" data-tab="agents">агенты <span class="b">1</span></button>
+    </nav>
+    <span class="sess">queue-board · <b>мигание счётчика талонов</b></span>
+    <span class="acts"><button title="Сессии">sessions</button><button title="Новый диалог">new</button></span>
   </header>
 
   <div class="banner">
@@ -47,11 +35,6 @@
     <span class="acts"><button class="btn ghost">Лимиты</button></span>
   </div>
 
-  <nav class="tabs" role="tablist">
-    <button role="tab" aria-selected="true" data-tab="chat">чат</button>
-    <button role="tab" aria-selected="false" data-tab="turn">ход</button>
-    <button role="tab" aria-selected="false" data-tab="agents">агенты <span class="b">1</span></button>
-  </nav>
 
   <div class="body">
     <main class="pane" id="pane-chat">
@@ -99,9 +82,10 @@
   </div>
 
   <footer class="compose off">
-    <div class="ctx"><span class="auto">открыт <b>Board.tsx</b><span class="x">✕</span></span></div>
+    <div class="blocks" aria-hidden="true"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on t"></i><i class="on w"></i><i class="on w"></i><i class="on w t"></i><i class="on h"></i><i class="part" style="--c:var(--hot)"></i><i></i><i></i><i></i></div>
+    <div class="ctx"><span class="auto">открыт <b>Board.tsx</b><span class="x">✕</span></span><span class="cn" title="Контекст: пороги 120k 150k, автосжатие при 200k">контекст <b class="hot">168 420</b> / 200 000 · порог 150k пройден · автосжатие при 200k · <button>сжать сейчас</button></span></div>
     <div class="prompt"><span class="p">$</span><span class="typed">Теперь сделай плашку «нет связи» на табло — как в плане из сессии 13:05.</span></div>
-    <div class="note">отправка отложена до <b>17:00</b> · режим manual · opus-5.5 · high</div>
+    <div class="opts"><span class="note">отправка отложена до <b>17:00</b> · режим manual · claude · opus-5.5 · high</span><span class="meters"><span class="m"><span class="clock" style="background:var(--bg-input)"></span>кэш <b>истёк</b> · <b>89%</b></span><span class="m" title="5-часовое окно · сброс 17:00"><span class="cells"><i class="on f"></i><i class="on f"></i><i class="on f"></i><i class="on f"></i><i class="on f"></i><i class="on f"></i><i class="on f"></i><i class="on f"></i><i class="on f"></i><i class="on f"></i></span>5ч <b class="full">100%</b></span></span></div>
   </footer>
 
 </div>
