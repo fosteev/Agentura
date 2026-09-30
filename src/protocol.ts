@@ -22,6 +22,29 @@ export type {
   PermissionMode,
 };
 
+/**
+ * Превью правки для карточки разрешения (этап 5): хост читает файл, строит дифф «до → после»
+ * (`src/extension/editDiff.ts`) и присылает ханки с номерами строк.
+ */
+export interface EditPreview {
+  filePath: string;
+  add: number;
+  del: number;
+  hunks: { header: string; lines: string[] }[];
+  /** Сколько строк ханков не поместилось в превью (полный дифф — «открыть дифф»). */
+  hidden: number;
+  /** Новый файл (Write без файла на диске). */
+  isNew: boolean;
+  /**
+   * `fragment` — `old_string` в файле не найден (или файл не прочитан): превью по фрагментам
+   * правки без номеров строк; `too-large` — дифф не посчитан, только счётчики.
+   */
+  note?: 'fragment' | 'too-large';
+}
+
+/** Решение по карточке плана (этап 5): кнопки «Выполнять», «…принимая правки», «Доработать», «Отклонить». */
+export type PlanChoice = 'run' | 'run-edits' | 'refine' | 'reject';
+
 /** Открытый файл и выделение активного редактора (автоконтекст, B3). */
 export interface EditorContext {
   file?: { path: string; name: string };
@@ -73,7 +96,7 @@ void _allEventTypesListed;
  * Extension → webview.
  *
  * Этап 3 добавил: `chat.info`, `capabilities`, `editor.context`, `files.result`, `attach.picked`,
- * `session.reset` (записаны в roadmap, «Решения по итогам сессии 3»). Одна вкладка чата = одна
+ * `session.reset` (записаны в roadmap, «Решения по итогам сессии 3»), этап 5 — `diff.preview`. Одна вкладка чата = одна
  * сессия: `sessionId` в сообщениях webview → хост информативен, хост направляет сообщение в
  * текущую сессию вкладки (до первого `session.init` id ещё пуст).
  */
@@ -95,6 +118,8 @@ export type ToWebview =
   | { type: 'attach.picked'; items: FileHit[] }
   /** Начата новая сессия (команда, `/clear`, `new`): очистить ленту. */
   | { type: 'session.reset' }
+  /** Этап 5: превью правки к `permission.request` с `diff` — приходит вдогонку, по `toolUseId`. */
+  | { type: 'diff.preview'; sessionId: string; toolUseId: string; preview: EditPreview }
   | { type: 'sessions.update'; sessions: SessionSummary[] }
   | {
       type: 'limits.update';
@@ -106,8 +131,8 @@ export type ToWebview =
 
 /**
  * Webview → extension. Этап 3 добавил `files.find`, `attach.pick`, `sessions.show`, `diff.open` и
- * поле `attachments` у `send` (roadmap, «Решения по итогам сессии 3»). `diff.open` пока только
- * пишется в журнал — открытие диффа на этапе 5.
+ * поле `attachments` у `send` (roadmap, «Решения по итогам сессии 3»). Этап 5: `diff.open`
+ * открывает нативный дифф, `plan.decide` несёт выбор кнопки и текст доработки.
  */
 export type FromWebview =
   | { type: 'ready' }
@@ -129,7 +154,14 @@ export type FromWebview =
       toolUseId: string;
       answers: Record<string, string>;
     }
-  | { type: 'plan.decide'; sessionId: string; toolUseId: string; approve: boolean }
+  /** Этап 5: вместо `approve: boolean` — выбор кнопки и текст доработки. */
+  | {
+      type: 'plan.decide';
+      sessionId: string;
+      toolUseId: string;
+      decision: PlanChoice;
+      feedback?: string;
+    }
   | { type: 'mode.set'; sessionId: string; mode: PermissionMode }
   | { type: 'model.set'; sessionId: string; model: string }
   | { type: 'effort.set'; sessionId: string; effort: string }

@@ -12,11 +12,14 @@ export const ui = {
   log: {
     diff: 'diff',
     stop: 'stop · esc',
+    stopOnly: 'stop',
     copy: 'copy',
     copied: 'скопировано',
     queued: 'в очереди',
     thinking: 'думает',
     answering: 'отвечает',
+    waiting: 'ждёт ответа',
+    waitingPlan: 'ждёт решения по плану',
     compacting: 'сжимаю контекст',
     running: (op: string) => `выполняю ${op}`,
     toolError: 'ошибка',
@@ -42,13 +45,100 @@ export const ui = {
     modeChanged: (mode: string) => `режим: ${mode}`,
     turnNotStarted: (message: string) => `ход не начат: ${message}`,
     resetAt: (time: string) => `сброс в ${time}`,
+    denied: 'отклонено: ',
+    alwaysRule: 'всегда: ',
+    questionDeclined: 'вопрос отклонён',
+    picked: (nums: number[]) =>
+      nums.length === 1
+        ? `выбран вариант ${nums[0]}`
+        : nums.length > 1
+          ? `выбраны варианты ${nums.join(', ')}`
+          : 'ответ отправлен',
+    customAnswer: (text: string) => `свой ответ: ${text}`,
+    plan: {
+      run: 'план принят · выполняю',
+      'run-edits': 'план принят · выполняю, принимая правки',
+      refine: 'план на доработку',
+      reject: 'план отклонён',
+    } as Record<string, string>,
   },
-  // этап 3: карточек разрешений нет (этап 5) — хост отклоняет запрос, лента говорит об этом
-  stubs: {
-    permission: (tool: string) =>
-      `запрос разрешения на ${tool} отклонён: карточки разрешений появятся на этапе 5`,
-    question: 'вопрос агента отклонён: карточки вопросов появятся на этапе 5',
-    plan: 'план отклонён: карточка плана появится на этапе 5',
+  cards: {
+    permTitle: (tool: string) =>
+      tool === 'Bash'
+        ? 'Разрешить запуск команды?'
+        : tool === 'Edit' || tool === 'MultiEdit'
+          ? 'Разрешить правку файла?'
+          : tool === 'Write'
+            ? 'Разрешить запись файла?'
+            : `Разрешить ${tool}?`,
+    modeTag: (mode: string) => `режим ${mode}`,
+    subagent: 'субагент',
+    allow: 'Разрешить',
+    acceptEdit: 'Принять правку',
+    alwaysFor: 'Всегда для',
+    alwaysDirs: 'Всегда для папки',
+    acceptEditsSession: 'Принимать правки до конца сессии',
+    deny: 'Отклонить',
+    sent: 'ответ отправлен…',
+    enter: 'enter',
+    esc: 'esc',
+    destination: (d?: string) =>
+      d === 'localSettings'
+        ? '.claude/settings.local.json'
+        : d === 'projectSettings'
+          ? '.claude/settings.json'
+          : d === 'userSettings'
+            ? '~/.claude/settings.json'
+            : 'эта сессия',
+    alwaysHint: (where: string) => `«всегда» пишется в ${where}`,
+    sessionHint: '«всегда» — до конца сессии',
+    plusDirs: (dir: string, more: number) =>
+      ` · и папка ${dir}${more > 0 ? ` +${more}` : ''} до конца сессии`,
+    editsHint: '«принимать правки» = режим acceptEdits',
+    workdir: (dir: string) => `рабочая папка ${dir}`,
+    blocked: (path: string) => `вне разрешённых папок: ${path}`,
+    openDiff: 'открыть дифф',
+    newFile: 'новый файл',
+    diffNote: 'Полный дифф открывается в редакторе VS Code.',
+    fragmentNote: 'Фрагмент не найден в файле на диске — показана сама правка.',
+    tooLarge: 'Дифф слишком большой для превью — откройте его в редакторе.',
+    moreLines: (n: number) =>
+      `… ещё ${n} ${plural(n, 'строка', 'строки', 'строк')} — в полном диффе`,
+    previewLoading: 'готовлю превью…',
+    question: 'вопрос агента',
+    questionAnswered: 'вопрос агента · отвечен',
+    questionDeclined: 'вопрос агента · отклонён',
+    questionCancelled: 'вопрос агента · отменён',
+    multi: 'можно несколько',
+    custom: 'Свой вариант',
+    customHint: 'напишу в поле ввода',
+    submit: 'Ответить',
+    planTitle: 'План',
+    planTag: (steps: number, files: number) =>
+      [
+        steps ? `${steps} ${plural(steps, 'шаг', 'шага', 'шагов')}` : '',
+        files ? `${files} ${plural(files, 'файл', 'файла', 'файлов')}` : '',
+      ]
+        .filter(Boolean)
+        .join(' · ') || 'план',
+    planDone: {
+      run: 'план · принят',
+      'run-edits': 'план · принят, правки без вопросов',
+      refine: 'план · на доработке',
+      reject: 'план · отклонён',
+    } as Record<string, string>,
+    planCancelled: 'план · отменён',
+    run: 'Выполнять',
+    runEdits: 'Выполнять, принимая правки',
+    refine: 'Доработать план',
+    reject: 'Отклонить',
+    planFileNew: 'новый',
+    planFileEdit: 'правка',
+  },
+  reply: {
+    question: 'свой ответ на вопрос агента — enter · esc — отмена',
+    plan: 'что доработать в плане — enter · esc — отмена',
+    waiting: 'ответ агенту или новая задача — уйдёт после решения по запросу',
   },
   empty: {
     title: (project: string) => `Новая сессия в ${project}`,

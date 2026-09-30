@@ -2,14 +2,19 @@ import { signal, useSignalEffect } from '@preact/signals';
 import { useEffect, useLayoutEffect, useRef } from 'preact/hooks';
 import {
   chat,
+  chooseOption,
+  declineQuestion,
   hudState,
   interrupt,
   newSession,
   recent,
+  replyTarget,
+  respondPermission,
   showThinking,
   stopAgent,
   tick,
 } from '../store';
+import { activeCard, pendingPlan } from '../chatState';
 import { agentRows, cacheLive, sessionTotals, turnBadge, turnsView } from '../hudView';
 import { ui } from '../strings';
 import { send } from '../vscode';
@@ -56,10 +61,38 @@ export function Chat() {
     return () => clearInterval(id);
   }, [ticking]);
 
-  // Esc останавливает ход (поле ввода гасит Esc сама, когда закрывает меню/историю)
+  // Esc: отклонить ждущую карточку разрешения/вопроса, иначе остановить ход (поле ввода гасит Esc
+  // сама, когда закрывает меню/историю/ответ карточке). Enter и цифры — карточке, только когда фокус
+  // не в поле ввода и не на кнопке: печатающего человека карточка не перехватывает.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !e.defaultPrevented && chat.value.status === 'working') interrupt();
+      if (e.defaultPrevented || e.isComposing) return;
+      const card = activeCard(chat.value);
+      if (e.key === 'Escape') {
+        // идёт ответ карточке из поля ввода, а фокус ушёл из поля — Esc отменяет ответ, не карточку
+        if (replyTarget.value) {
+          replyTarget.value = undefined;
+          return;
+        }
+        if (card?.kind === 'perm') respondPermission(card.toolUseId, 'deny');
+        else if (card?.kind === 'question') declineQuestion(card.toolUseId);
+        else if (chat.value.status === 'working') interrupt();
+        return;
+      }
+      // с модификаторами — хоткеи VS Code (Cmd+1 — группа редактора), не карточке
+      if (!card || typingTarget(e.target) || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey)
+        return;
+      if (e.key === 'Enter' && card.kind === 'perm') {
+        e.preventDefault();
+        respondPermission(card.toolUseId, 'allow');
+      } else if (card.kind === 'question' && /^[1-9]$/.test(e.key)) {
+        const q = card.questions.find((x) => !card.picks[x.question]?.length) ?? card.questions[0];
+        const opt = q?.options[Number(e.key) - 1];
+        if (q && opt) {
+          e.preventDefault();
+          chooseOption(card.toolUseId, q.question, opt.label);
+        }
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -82,7 +115,10 @@ export function Chat() {
   const t = empty ? 'chat' : tab.value;
   const now = tick.value;
   const last = s.rows[s.rows.length - 1];
-  const live = working ? liveLabel(last, s.turnStartedAt, now) : undefined;
+  const live = working
+    ? liveLabel(last, s.turnStartedAt, now, s.status === 'waiting', !!pendingPlan(s))
+    : undefined;
+  const active = activeCard(s);
 
   const turnBdg = turnBadge(h);
 
@@ -112,13 +148,24 @@ export function Chat() {
               cwd={s.cwd}
               now={now}
               showThinking={showThinking.value}
+              mode={ui.modes[s.mode]?.[0] ?? s.mode}
+              {...(active ? { activeId: active.id } : {})}
               onDiff={(toolUseId) => send({ type: 'diff.open', sessionId: s.sessionId, toolUseId })}
             >
               {live && (
                 <div class="live">
-                  <span class="spin" /> {live}{' '}
+                  <span
+                    class="spin"
+                    style={
+                      s.status === 'waiting'
+                        ? { borderTopColor: pendingPlan(s) ? 'var(--agent)' : 'var(--warn)' }
+                        : undefined
+                    }
+                  />{' '}
+                  {live}{' '}
                   <button class="stop" onClick={interrupt}>
-                    {ui.log.stop}
+                    {/* пока ждёт ответа, Esc отклоняет карточку, а не останавливает ход */}
+                    {s.status === 'waiting' ? ui.log.stopOnly : ui.log.stop}
                   </button>
                 </div>
               )}
@@ -140,9 +187,22 @@ export function Chat() {
   );
 }
 
-function liveLabel(last: FeedRow | undefined, startedAt: number | undefined, now: number): string {
+/** Фокус там, где печатают или жмут кнопку: Enter и цифры принадлежат им, а не карточке. */
+function typingTarget(t: EventTarget | null): boolean {
+  if (!(t instanceof HTMLElement)) return false;
+  return t.isContentEditable || ['INPUT', 'TEXTAREA', 'BUTTON', 'SELECT', 'A'].includes(t.tagName);
+}
+
+function liveLabel(
+  last: FeedRow | undefined,
+  startedAt: number | undefined,
+  now: number,
+  waiting: boolean,
+  plan: boolean,
+): string {
   let what: string = ui.log.answering;
-  if (last?.kind === 'think' && last.endedAt === undefined) what = ui.log.thinking;
+  if (waiting) what = plan ? ui.log.waitingPlan : ui.log.waiting;
+  else if (last?.kind === 'think' && last.endedAt === undefined) what = ui.log.thinking;
   else if (last?.kind === 'tool' && last.state === 'run')
     what = ui.log.running(toolView(last.name, last.input).op);
   const elapsed = startedAt ? ` · ${formatDuration(now - startedAt)}` : '';

@@ -4,11 +4,20 @@ import type {
   AgentAdapter,
   AgentEvent,
   AgentSession,
+  PlanDecision,
   SessionCapabilities,
   SessionOptions,
 } from '../agent/types';
 import type { ToWebview } from '../protocol';
-import { ChatController, type ChatDeps } from './chatController';
+import {
+  ChatController,
+  PLAN_REFINE_MESSAGE,
+  PLAN_REFINE_PREFIX,
+  PLAN_REJECT_MESSAGE,
+  planDecision,
+  type ChatDeps,
+  type OpenDiff,
+} from './chatController';
 
 class FakeSession implements AgentSession {
   readonly events = new EventHub<AgentEvent>();
@@ -23,14 +32,18 @@ class FakeSession implements AgentSession {
     this.sent.push(text);
     return true;
   }
-  respondPermission(id: string, decision: 'allow' | 'allow-always' | 'deny', message?: string) {
+  respondPermission(id: string, decision: string, message?: string) {
     this.permissions.push([id, decision, message]);
     return true;
   }
-  answerQuestion() {
+  answers: [string, Record<string, string>][] = [];
+  plans: [string, PlanDecision][] = [];
+  answerQuestion(id: string, answers: Record<string, string>) {
+    this.answers.push([id, answers]);
     return true;
   }
-  decidePlan() {
+  decidePlan(id: string, d: PlanDecision) {
+    this.plans.push([id, d]);
     return true;
   }
   async setMode(m: string) {
@@ -175,22 +188,185 @@ describe('ChatController', () => {
     expect(titles.at(-1)).toBe('Agentura · мигание');
   });
 
-  it('запрос разрешения (заглушка этапа 3): отказ с пояснением, ход не виснет', async () => {
-    const { controller, sessions, deps } = setup();
+  it('запрос разрешения ждёт ответа карточки: маркер «?», ответ уходит в сессию', async () => {
+    const { controller, sessions, titles } = setup();
     controller.start();
     await tick();
     const s = sessions[0]!;
+    s.emit({ type: 'turn.start', at: 1, prompt: 'x' });
     s.emit({
       type: 'permission.request',
       toolUseId: 't1',
       toolName: 'Bash',
-      input: {},
+      input: { command: 'npm test' },
       canAlwaysAllow: true,
     });
-    expect(s.permissions).toHaveLength(1);
-    expect(s.permissions[0]![0]).toBe('t1');
-    expect(s.permissions[0]![1]).toBe('deny');
+    expect(s.permissions).toHaveLength(0);
+    expect(titles.at(-1)).toMatch(/^\? /);
+    await controller.handle({
+      type: 'permission.respond',
+      sessionId: 'sess-1',
+      toolUseId: 't1',
+      decision: 'allow-always',
+    });
+    expect(s.permissions).toEqual([['t1', 'allow-always', undefined]]);
+  });
+
+  it('два запроса сразу (основной и субагент): «?» держится до последнего ответа', async () => {
+    const { controller, sessions, titles } = setup();
+    controller.start();
+    await tick();
+    const s = sessions[0]!;
+    s.emit({ type: 'turn.start', at: 1, prompt: 'x' });
+    s.emit({ type: 'question.request', toolUseId: 'q', questions: [] });
+    s.emit({
+      type: 'permission.request',
+      agentId: 'sub',
+      toolUseId: 'p',
+      toolName: 'Bash',
+      input: {},
+      canAlwaysAllow: false,
+    });
+    s.emit({ type: 'permission.resolved', toolUseId: 'q', decision: 'allow', by: 'user' });
+    expect(titles.at(-1)).toMatch(/^\? /);
+    s.emit({
+      type: 'permission.resolved',
+      agentId: 'sub',
+      toolUseId: 'p',
+      decision: 'allow',
+      by: 'user',
+    });
+    expect(titles.at(-1)).toMatch(/^● /);
+  });
+
+  it('вопрос и план: ответы и кнопки плана → решения сессии', async () => {
+    const { controller, sessions } = setup();
+    controller.start();
+    await tick();
+    const s = sessions[0]!;
+    await controller.handle({
+      type: 'question.answer',
+      sessionId: '',
+      toolUseId: 'q',
+      answers: { 'Цвет?': 'Синий' },
+    });
+    expect(s.answers).toEqual([['q', { 'Цвет?': 'Синий' }]]);
+    for (const decision of ['run', 'run-edits', 'refine', 'reject'] as const) {
+      await controller.handle({
+        type: 'plan.decide',
+        sessionId: '',
+        toolUseId: decision,
+        decision,
+        ...(decision === 'refine' ? { feedback: ' добавь тесты ' } : {}),
+      });
+    }
+    expect(s.plans).toEqual([
+      ['run', { approve: true, mode: 'default' }],
+      ['run-edits', { approve: true, mode: 'acceptEdits' }],
+      ['refine', { approve: false, feedback: `${PLAN_REFINE_PREFIX}добавь тесты` }],
+      ['reject', { approve: false, feedback: PLAN_REJECT_MESSAGE, interrupt: true }],
+    ]);
+    expect(planDecision('refine', '  ')).toEqual({ approve: false, feedback: PLAN_REFINE_MESSAGE });
+  });
+
+  it('ответ карточке после /clear не уходит в старую сессию', async () => {
+    const { controller, sessions } = setup();
+    controller.start();
+    await tick();
+    sessions[0]!.emit({
+      type: 'permission.request',
+      toolUseId: 't1',
+      toolName: 'Bash',
+      input: {},
+      canAlwaysAllow: false,
+    });
+    controller.newSession(true);
+    await controller.handle({
+      type: 'permission.respond',
+      sessionId: 'sess-1',
+      toolUseId: 't1',
+      decision: 'allow',
+    });
+    expect(sessions[0]!.permissions).toEqual([]);
+    expect(sessions[1]!.permissions).toEqual([['t1', 'allow', undefined]]); // новая сессия: брокер вернёт false
+  });
+
+  it('bypass без настройки allowBypassPermissions не включается', async () => {
+    const { controller, sessions, deps } = setup();
+    controller.start();
+    await tick();
+    await controller.handle({ type: 'mode.set', sessionId: '', mode: 'bypassPermissions' });
+    expect(sessions[0]!.modes).toEqual([]);
     expect(deps.log.warn).toHaveBeenCalled();
+  });
+
+  it('правка: превью ханков вдогонку запросу, «открыть дифф» — предложенная, потом применённая', async () => {
+    const { controller, sessions, posted, deps } = setup();
+    const opened: OpenDiff[] = [];
+    deps.readText = async () => 'a\nb\nc\n';
+    deps.openDiff = async (d) => void opened.push(d);
+    controller.start();
+    await tick();
+    const s = sessions[0]!;
+    const input = {
+      file_path: '/p/f.ts',
+      old_string: 'b\n',
+      new_string: 'B\n',
+      replace_all: false,
+    };
+    s.emit({ type: 'tool.start', toolUseId: 'e1', name: 'Edit', input });
+    s.emit({
+      type: 'permission.request',
+      toolUseId: 'e1',
+      toolName: 'Edit',
+      input,
+      canAlwaysAllow: true,
+      diff: {
+        kind: 'edit',
+        filePath: '/p/f.ts',
+        oldText: 'b\n',
+        newText: 'B\n',
+        replaceAll: false,
+      },
+    });
+    await tick();
+    const preview = posted.find((m) => m.type === 'diff.preview');
+    expect(preview).toMatchObject({
+      toolUseId: 'e1',
+      preview: {
+        add: 1,
+        del: 1,
+        hunks: [{ header: '@@ -1,3 +1,3 @@', lines: [' a', '-b', '+B', ' c'] }],
+      },
+    });
+    await controller.handle({ type: 'diff.open', sessionId: '', toolUseId: 'e1' });
+    expect(opened[0]).toMatchObject({
+      key: 'e1-proposed',
+      before: 'a\nb\nc\n',
+      after: 'a\nB\nc\n',
+      stage: 'proposed',
+    });
+
+    s.emit({
+      type: 'tool.result',
+      toolUseId: 'e1',
+      isError: false,
+      content: 'ok',
+      result: {
+        filePath: '/p/f.ts',
+        oldString: 'b\n',
+        newString: 'B\n',
+        originalFile: 'a\nb\nc\n',
+        structuredPatch: [
+          { oldStart: 1, oldLines: 3, newStart: 1, newLines: 3, lines: [' a', '-b', '+B', ' c'] },
+        ],
+      },
+    });
+    await controller.handle({ type: 'diff.open', sessionId: '', toolUseId: 'e1' });
+    expect(opened[1]).toMatchObject({ key: 'e1-applied', after: 'a\nB\nc\n', stage: 'applied' });
+
+    await controller.handle({ type: 'diff.open', sessionId: '', toolUseId: 'нет' });
+    expect(opened).toHaveLength(2);
   });
 
   it('interrupt, режим, compact доходят до сессии', async () => {

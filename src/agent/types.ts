@@ -6,7 +6,24 @@
 
 export type PermissionMode = 'default' | 'acceptEdits' | 'plan' | 'bypassPermissions';
 export type EffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
-export type PermissionDecision = 'allow' | 'allow-always' | 'deny';
+/**
+ * Ответ на запрос разрешения. `allow-always` — принять подсказки движка как есть (правило в
+ * `.claude/settings.local.json` у Bash); `allow-edits` — разрешить и перейти в `acceptEdits` до
+ * конца сессии (карточка правки, этап 5).
+ */
+export type PermissionDecision = 'allow' | 'allow-always' | 'allow-edits' | 'deny';
+
+/** Что сделает «всегда» — сводка подсказок движка для подписи кнопки (этап 5). */
+export interface PermissionAlways {
+  /** Правила в форме настроек: `Bash(npm test:*)`, `Edit`. */
+  rules: string[];
+  /** Куда движок запишет правила: `localSettings` → `.claude/settings.local.json`. */
+  destination?: 'localSettings' | 'projectSettings' | 'userSettings' | 'session' | 'cliArg';
+  /** Подсказка-режим на сессию (`setMode`) — у Edit/Write это `acceptEdits`. */
+  mode?: PermissionMode;
+  /** Папки, добавляемые на сессию (`addDirectories`). */
+  directories: string[];
+}
 
 /** Токены одного API-ответа или хода. `cacheWrite` = `cacheWrite5m + cacheWrite1h`. */
 export interface TokenUsage {
@@ -126,6 +143,8 @@ export type AgentEvent =
       blockedPath?: string;
       /** Движок предложил правило «всегда» — кнопка «всегда» имеет смысл. */
       canAlwaysAllow: boolean;
+      /** Сводка подсказок «всегда» (этап 5); есть, когда `canAlwaysAllow`. */
+      always?: PermissionAlways;
       diff?: DiffPreview;
     })
   | (Base & { type: 'question.request'; toolUseId: string; questions: Question[] })
@@ -277,8 +296,13 @@ export interface ResumeOptions extends SessionOptions {
   baselineCostUsd?: number;
 }
 
+/**
+ * Решение по плану (`ExitPlanMode`). Одобрить — выйти в режим `mode`; не одобрить — отказ с
+ * текстом, который видит модель (доработка), с `interrupt` — ещё и остановить ход (отклонить).
+ */
 export type PlanDecision =
-  { approve: true; mode?: 'acceptEdits' | 'default' } | { approve: false; feedback: string };
+  | { approve: true; mode?: 'acceptEdits' | 'default' }
+  | { approve: false; feedback: string; interrupt?: boolean };
 
 /** Модель из `supportedModels()` движка (этап 3: переключатель модели и effort). */
 export interface ModelOption {

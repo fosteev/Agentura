@@ -6,8 +6,15 @@ import type {
   EffortLevel,
   PermissionMode,
 } from '../agent/types';
-import { nextStatus, tabTitle, type ChatStatus } from '../agent/status';
-import type { FromWebview, SessionSummary, ToWebview } from '../protocol';
+import {
+  nextStatus,
+  tabTitle,
+  updateInTurn,
+  updatePending,
+  type ChatStatus,
+} from '../agent/status';
+import type { FromWebview, PlanChoice, SessionSummary, ToWebview } from '../protocol';
+import { appliedSides, previewOf, proposedSides, type EditSides } from './editDiff';
 import { buildPrompt, attachmentKey, type Attachment, type FileHit } from '../shared/prompt';
 import type { LiveSessions } from '../data/sessions';
 
@@ -36,15 +43,41 @@ export interface ChatDeps {
   listRecent(): Promise<SessionSummary[]>;
   showSessions(): void;
   live?: LiveSessions;
+  /** Текст файла с диска для превью правки; `undefined` — файла нет или не прочитан. */
+  readText?(path: string): Promise<string | undefined>;
+  /** Нативный дифф VS Code (`vscode.diff` над `agentura-diff:`). */
+  openDiff?(d: OpenDiff): Promise<void>;
+}
+
+export interface OpenDiff {
+  /** Ключ документов: одна правка на одной стадии — одни и те же `agentura-diff:` URI. */
+  key: string;
+  filePath: string;
+  before: string;
+  after: string;
+  /** Правка ещё не применена (карточка разрешения) или уже в файле. */
+  stage: 'proposed' | 'applied';
 }
 
 const EFFORTS: readonly string[] = ['low', 'medium', 'high', 'xhigh', 'max'];
-const STUB_DENY = 'Интерфейс запросов разрешений ещё не готов (этап 5 Agentura): запрос отклонён.';
+/** Инструменты, у которых есть дифф правки. */
+const EDIT_TOOLS = new Set(['Edit', 'MultiEdit', 'Write']);
+/** Сколько правок помнить для «diff» в ленте (стороны — файлы целиком). */
+const MAX_EDITS = 50;
+
+/** Текст модели при «Отклонить» план: ход останавливается (`interrupt`), режим plan остаётся. */
+export const PLAN_REJECT_MESSAGE =
+  'The user rejected this plan. Stop and wait for further instructions; do not start implementing.';
+/** «Доработать план» с текстом из поля: текст пользователя после этой фразы. */
+export const PLAN_REFINE_PREFIX = 'The user wants the plan revised before execution: ';
+/** «Доработать план» с пустым полем. */
+export const PLAN_REFINE_MESSAGE =
+  'The user wants to refine the plan before execution. Ask what should change, then present an updated plan.';
 
 /**
  * Владелец сессии агента для одной вкладки чата: создаёт сессию, гонит события в webview,
- * принимает команды webview. Этап 3: разрешения, вопросы и планы отклоняются заглушкой с записью
- * в журнал (карточки — этап 5).
+ * принимает команды webview. Этап 5: ответы карточек разрешения, вопроса и плана уходят в
+ * сессию; правки агента запоминаются для нативного диффа (до и после применения).
  */
 export class ChatController {
   private session: Promise<AgentSession> | undefined;
@@ -56,6 +89,14 @@ export class ChatController {
   private editorContext: Extract<ToWebview, { type: 'editor.context' }> | undefined;
   private registeredId: string | undefined;
   private sendQueue: Promise<void> = Promise.resolve();
+  /** Запросы (разрешение, вопрос, план), ждущие ответа, — для `waiting` при нескольких сразу. */
+  private pending: string[] = [];
+  /** Идёт ход основного агента — куда вернуться после ответа на запрос субагента. */
+  private inTurn = false;
+  /** Правки для «открыть дифф» / «diff»: предложенные (карточка) и применённые (строка ленты). */
+  private readonly edits = new Map<string, { sides: EditSides; stage: OpenDiff['stage'] }>();
+  /** Вход Edit/Write по `toolUseId` до `tool.result` (в результате имени инструмента нет). */
+  private readonly editInputs = new Map<string, { name: string; input: Record<string, unknown> }>();
 
   constructor(private readonly deps: ChatDeps) {}
 
@@ -124,7 +165,7 @@ export class ChatController {
         deps.log.info(`Возобновление сессии ${m.sessionId}: появится на этапе 6`);
         return;
       case 'diff.open':
-        deps.log.info(`Diff для ${m.toolUseId}: появится на этапе 5`);
+        await this.openDiff(m.toolUseId);
         return;
       case 'files.find':
         try {
@@ -164,6 +205,12 @@ export class ChatController {
           await session.interrupt();
           return;
         case 'mode.set':
+          if (m.mode === 'bypassPermissions' && !deps.settings().allowBypass) {
+            deps.log.warn(
+              'mode.set bypassPermissions: выключено настройкой agentura.allowBypassPermissions',
+            );
+            return;
+          }
           await session.setMode(m.mode as PermissionMode);
           return;
         case 'model.set':
@@ -178,16 +225,18 @@ export class ChatController {
         case 'agent.stop':
           await session.stopTask(m.taskId);
           return;
+        // Ответ на карточку: сессия та же, что прислала запрос, — иначе (после /clear) id не
+        // найдётся в брокере новой сессии и ответ просто отбросится (`false` в журнал).
         case 'permission.respond':
-          session.respondPermission(m.toolUseId, m.decision);
+          this.answered(m.type, session.respondPermission(m.toolUseId, m.decision));
           return;
         case 'question.answer':
-          session.answerQuestion(m.toolUseId, m.answers);
+          this.answered(m.type, session.answerQuestion(m.toolUseId, m.answers));
           return;
         case 'plan.decide':
-          session.decidePlan(
-            m.toolUseId,
-            m.approve ? { approve: true } : { approve: false, feedback: '' },
+          this.answered(
+            m.type,
+            session.decidePlan(m.toolUseId, planDecision(m.decision, m.feedback)),
           );
           return;
         default:
@@ -196,6 +245,62 @@ export class ChatController {
     } catch (e) {
       deps.log.error(`${m.type}: ${String(e)}`);
     }
+  }
+
+  private answered(type: string, ok: boolean): void {
+    if (!ok)
+      this.deps.log.warn(`${type}: запрос уже закрыт или не из этой сессии — ответ отброшен`);
+  }
+
+  /** «открыть дифф» на карточке правки и «diff» в строке ленты. */
+  private async openDiff(toolUseId: string): Promise<void> {
+    const { deps } = this;
+    const edit = this.edits.get(toolUseId);
+    if (!edit) {
+      deps.log.warn(`diff.open ${toolUseId}: правка не найдена (старая сессия или не Edit/Write)`);
+      return;
+    }
+    if (!deps.openDiff) return;
+    try {
+      await deps.openDiff({
+        key: `${toolUseId}-${edit.stage}`,
+        filePath: edit.sides.filePath,
+        before: edit.sides.before,
+        after: edit.sides.after,
+        stage: edit.stage,
+      });
+    } catch (e) {
+      deps.log.error(`diff.open: ${String(e)}`);
+    }
+  }
+
+  private remember(toolUseId: string, sides: EditSides, stage: OpenDiff['stage']): void {
+    this.edits.delete(toolUseId);
+    this.edits.set(toolUseId, { sides, stage });
+    while (this.edits.size > MAX_EDITS) this.edits.delete(this.edits.keys().next().value!);
+  }
+
+  /** Превью правки к карточке разрешения: файл с диска → стороны → ханки вдогонку событию. */
+  private async preparePreview(
+    session: AgentSession,
+    e: Extract<AgentEvent, { type: 'permission.request' }>,
+  ): Promise<void> {
+    const diff = e.diff;
+    if (!diff) return;
+    const text = await (this.deps.readText?.(diff.filePath) ?? Promise.resolve(undefined)).catch(
+      () => undefined,
+    );
+    if (session !== this.current) return;
+    const sides = proposedSides(diff, text);
+    // результат мог прийти раньше чтения файла — применённая правка важнее предложенной
+    if (this.edits.get(e.toolUseId)?.stage !== 'applied')
+      this.remember(e.toolUseId, sides, 'proposed');
+    this.deps.post({
+      type: 'diff.preview',
+      sessionId: session.id,
+      toolUseId: e.toolUseId,
+      preview: previewOf(sides),
+    });
   }
 
   private async sendNow(
@@ -277,7 +382,9 @@ export class ChatController {
     this.forward(session.id, e);
 
     const prev = this.status;
-    this.status = nextStatus(this.status, e);
+    this.pending = updatePending(this.pending, e);
+    this.inTurn = updateInTurn(this.inTurn, e);
+    this.status = nextStatus(this.status, e, this.pending.length, this.inTurn);
     if (e.type === 'session.title' && !e.agentId) this.title = e.title;
     if (this.status !== prev || e.type === 'session.title') {
       this.deps.setTitle(tabTitle(this.status, this.title));
@@ -285,12 +392,25 @@ export class ChatController {
 
     switch (e.type) {
       case 'permission.request':
+        this.deps.log.info(`permission.request ${e.toolName}: ${e.description ?? ''}`);
+        if (e.diff) void this.preparePreview(session, e);
+        break;
       case 'question.request':
       case 'plan.request':
-        // заглушка этапа 3: запрос в журнал и отказ, чтобы ход не завис
-        this.deps.log.warn(`${e.type} (${'toolName' in e ? e.toolName : 'n/a'}): ${STUB_DENY}`);
-        session.respondPermission(e.toolUseId, 'deny', STUB_DENY);
+        this.deps.log.info(e.type);
         break;
+      case 'tool.start':
+        if (EDIT_TOOLS.has(e.name))
+          this.editInputs.set(e.toolUseId, { name: e.name, input: e.input });
+        break;
+      case 'tool.result': {
+        const call = this.editInputs.get(e.toolUseId);
+        if (!call) break;
+        this.editInputs.delete(e.toolUseId);
+        const sides = e.isError ? undefined : appliedSides(call.name, call.input, e.result);
+        if (sides) this.remember(e.toolUseId, sides, 'applied');
+        break;
+      }
       case 'session.init':
         this.register(session.id);
         this.deps.log.info(`session.init: ${e.model}, режим ${e.permissionMode}`);
@@ -358,5 +478,31 @@ export class ChatController {
     this.current?.dispose();
     this.current = undefined;
     this.session = undefined;
+    this.pending = [];
+    this.inTurn = false;
+    this.edits.clear();
+    this.editInputs.clear();
+  }
+}
+
+/** Кнопка карточки плана → решение сессии (семантика — docs/spikes/sdk-probe.md, раздел 9). */
+export function planDecision(
+  choice: PlanChoice,
+  feedback?: string,
+): Parameters<AgentSession['decidePlan']>[1] {
+  switch (choice) {
+    case 'run':
+      return { approve: true, mode: 'default' };
+    case 'run-edits':
+      return { approve: true, mode: 'acceptEdits' };
+    case 'refine': {
+      const text = feedback?.trim();
+      return {
+        approve: false,
+        feedback: text ? `${PLAN_REFINE_PREFIX}${text}` : PLAN_REFINE_MESSAGE,
+      };
+    }
+    case 'reject':
+      return { approve: false, feedback: PLAN_REJECT_MESSAGE, interrupt: true };
   }
 }

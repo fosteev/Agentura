@@ -26,7 +26,9 @@ import {
   meters,
   newSession,
   removeExtra,
+  replyTarget,
   sendMessage,
+  submitReply,
   setEffort,
   setMode,
   setModel,
@@ -121,6 +123,12 @@ export function Composer() {
   const [menu, setMenu] = useState<MenuName | undefined>();
   const [histIdx, setHistIdx] = useState<number | undefined>();
   const closed = !!s.closed;
+  const target = replyTarget.value;
+
+  // «Свой вариант» / «Доработать план» — фокус в поле ввода
+  useEffect(() => {
+    if (target) edRef.current?.focus();
+  }, [target]);
 
   // каретка: selectionchange ловит и клавиши, и мышь
   useEffect(() => {
@@ -223,6 +231,11 @@ export function Composer() {
     const t = text.trim();
     if (!t || closed) return;
     setHistIdx(undefined);
+    // ответ карточке (свой вариант, доработка плана) — не сообщение агенту; `/команда` — команда
+    if (replyTarget.value && !t.startsWith('/') && submitReply(t)) {
+      writeText('');
+      return;
+    }
     const cmd = /^\/([\w:.-]+)(?:\s+([\s\S]*))?$/.exec(t);
     if (cmd) {
       const name = cmd[1]!;
@@ -309,6 +322,11 @@ export function Composer() {
       e.stopPropagation();
       setHistIdx(undefined);
       writeText('');
+    } else if (e.key === 'Escape' && replyTarget.value) {
+      // отмена ответа карточке: поле снова пишет агенту, карточка ждёт дальше
+      e.preventDefault();
+      e.stopPropagation();
+      replyTarget.value = undefined;
     }
   }
 
@@ -400,7 +418,15 @@ export function Composer() {
             contenteditable={closed ? 'false' : 'plaintext-only'}
             role="textbox"
             aria-multiline="true"
-            data-placeholder={closed ? ui.compose.closedPlaceholder : ui.compose.placeholder}
+            data-placeholder={
+              closed
+                ? ui.compose.closedPlaceholder
+                : target
+                  ? ui.reply[target.kind]
+                  : s.status === 'waiting'
+                    ? ui.reply.waiting
+                    : ui.compose.placeholder
+            }
             onInput={onInput}
             onKeyDown={onKeyDown}
           />

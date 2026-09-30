@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import * as vscode from 'vscode';
 import { ClaudeAdapter } from '../agent/claude/adapter';
 import type { AgentAdapter } from '../agent/types';
@@ -5,6 +6,7 @@ import type { LimitsSource } from '../data/limits';
 import { TranscriptCache, listSessionRows, toSummary, type LiveSessions } from '../data/sessions';
 import { postToWebview } from '../protocol';
 import { ChatController } from './chatController';
+import type { DiffDocuments } from './diffDocuments';
 import { EditorContextTracker } from './editorContext';
 import type { UsageService } from './usage';
 import type { Logger } from './logger';
@@ -20,6 +22,8 @@ export interface ChatServices {
   transcripts: TranscriptCache;
   usage: UsageService;
   limits: LimitsSource;
+  /** Нативный дифф правок агента (`agentura-diff:`), этап 5. */
+  diffs: DiffDocuments;
 }
 
 export function createAdapter(log: Logger): AgentAdapter {
@@ -108,6 +112,15 @@ export class ChatPanel {
           .map(toSummary),
       showSessions: () => void vscode.commands.executeCommand('workbench.view.extension.agentura'),
       live: services.live,
+      readText: (p) => readFile(p, 'utf8').catch(() => undefined),
+      // дифф — в группу редактора, не поверх вкладки чата
+      openDiff: (d) =>
+        services.diffs.open(
+          d,
+          panel.viewColumn === vscode.ViewColumn.One
+            ? vscode.ViewColumn.Two
+            : vscode.ViewColumn.One,
+        ),
     });
 
     panel.webview.html = renderWebview(panel.webview, context.extensionUri, 'chat', 'Agentura');

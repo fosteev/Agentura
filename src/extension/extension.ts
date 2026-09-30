@@ -5,6 +5,7 @@ import { SIDEBAR_VIEW_ID, SidebarProvider } from './sidebarView';
 import { LimitsSource, startLimitsPolling } from '../data/limits';
 import { LiveSessions, TranscriptCache } from '../data/sessions';
 import { UsageService } from './usage';
+import { DiffDocuments } from './diffDocuments';
 
 export function activate(context: vscode.ExtensionContext): void {
   const log = new Logger('Agentura');
@@ -34,9 +35,11 @@ export function activate(context: vscode.ExtensionContext): void {
     transcripts: new TranscriptCache(),
     usage,
     limits,
+    diffs: new DiffDocuments(),
   };
 
   context.subscriptions.push(
+    services.diffs.register(),
     vscode.window.registerWebviewViewProvider(SIDEBAR_VIEW_ID, sidebar),
     vscode.commands.registerCommand('agentura.open', () => ChatPanel.show(context, log, services)),
     vscode.commands.registerCommand('agentura.newSession', () =>
