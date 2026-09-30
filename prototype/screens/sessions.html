@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ru" data-theme="dark" data-width="380">
+<html lang="ru" data-theme="dark" data-width="vscode">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -11,8 +11,9 @@
   /* 380: боковая панель VS Code (аккаунт, лимиты, сессии — чата в ней нет). 900: та же панель слева + вкладка чата с раскрытым списком сессий по кнопке sessions */
   .webview { grid-template-rows: 1fr; grid-template-columns: 1fr; }
   .chatside { display: none; }
-  html[data-width="900"] .webview, html[data-width="full"] .webview { grid-template-columns: 380px 1fr; }
-  html[data-width="900"] .chatside, html[data-width="full"] .chatside { display: grid; grid-template-rows: auto 1fr; border-left: 1px solid var(--line); font-family: var(--mono); font-size: 12px; min-width: 0; }
+  html[data-width="900"] .webview, html[data-width="vscode"] .webview, html[data-width="full"] .webview { grid-template-columns: 380px 1fr; }
+  html[data-width="vscode"] .webview { width: 1324px; border-radius: 6px; border-left: 1px solid #333; }
+  html[data-width="900"] .chatside, html[data-width="vscode"] .chatside, html[data-width="full"] .chatside { display: grid; grid-template-rows: auto 1fr; border-left: 1px solid var(--line); font-family: var(--mono); font-size: 12px; min-width: 0; }
   .chatside .hud .acts { position: relative; }
   .chatside .menu.down { left: auto; right: 0; min-width: 300px; }
   .chatside .fill { color: var(--fg-faint); padding: 40px 14px; text-align: center; font-family: var(--font); font-size: 12px; }
@@ -23,7 +24,7 @@
 <div class="preview-bar">
   <b>Боковая панель · аккаунт, лимиты, сессии</b>
   <span class="grp"><button data-set-theme="dark">Тёмная</button><button data-set-theme="light">Светлая</button></span>
-  <span class="grp"><button data-set-width="380">380</button><button data-set-width="900">900</button><button data-set-width="full">во всю ширину</button></span>
+  <span class="grp"><button data-set-width="vscode">боковая панель + вкладка</button><button data-set-width="380">380 · только панель</button><button data-set-width="full">во всю ширину</button></span>
   <a href="../index.html">← оглавление</a>
 </div>
 <div class="preview-stage">

@@ -28,3 +28,14 @@ html[data-width="full"] .webview { width: 100%; }
   border: 1px solid #333; border-radius: 6px; overflow: hidden;
   box-shadow: 0 20px 60px rgba(0,0,0,.5);
 }
+
+/* режим «боковая панель + вкладка»: слева боковая панель VS Code (380), справа вкладка чата (900) */
+html[data-width="vscode"] .webview { width: 900px; border-radius: 0 6px 6px 0; border-left: 0; }
+.sidebar-view { display: none; }
+html[data-width="vscode"] .sidebar-view { display: grid; grid-template-columns: 44px 1fr; width: 424px; height: 760px; border: 1px solid #333; border-right: 0; border-radius: 6px 0 0 6px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+html[data-width="vscode"] .sidebar-view .sidebar { border-right: 1px solid var(--line); height: 100%; }
+.sidebar-view .activity { background: var(--bg-side); border-right: 1px solid var(--line); display: grid; align-content: start; justify-items: center; gap: 14px; padding-top: 12px; }
+.sidebar-view .activity i { width: 20px; height: 20px; border-radius: 4px; background: var(--fg-faint); opacity: .45; }
+.sidebar-view .activity i.a { background: var(--fg-mute); opacity: .7; border-radius: 50%; }
+.sidebar-view .activity i.on { opacity: 1; background: var(--fg); box-shadow: -12px 0 0 -8px var(--fg); }
+.sidebar .s.err .dot { background: var(--full); }

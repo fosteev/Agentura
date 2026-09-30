@@ -11,7 +11,7 @@
     });
   }
   apply('theme', store.get('agentura-theme') || 'dark');
-  apply('width', store.get('agentura-width') || '380');
+  apply('width', store.get('agentura-width') || document.documentElement.getAttribute('data-width') || '380');
   document.addEventListener('click', function (e) {
     var t = e.target.closest('[data-set-theme],[data-set-width]');
     if (!t) return;

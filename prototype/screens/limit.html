@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ru" data-theme="dark" data-width="380">
+<html lang="ru" data-theme="dark" data-width="vscode">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -13,11 +13,11 @@
 <div class="preview-bar">
   <b>Лимит исчерпан · контекст в оранжевой зоне</b>
   <span class="grp"><button data-set-theme="dark">Тёмная</button><button data-set-theme="light">Светлая</button></span>
-  <span class="grp"><button data-set-width="380">380</button><button data-set-width="900">900</button><button data-set-width="full">во всю ширину</button></span>
+  <span class="grp"><button data-set-width="vscode">боковая панель + вкладка</button><button data-set-width="900">900 · вкладка</button><button data-set-width="380">380 · сплит</button><button data-set-width="full">во всю ширину</button></span>
   <a href="../index.html">← оглавление</a>
 </div>
 <div class="preview-stage">
-<div class="webview">
+<div class="webview" data-sidebar="limit">
 
   <header class="hud" aria-label="Приборы">
     <div class="line1">
@@ -107,6 +107,7 @@
 </div>
 </div>
 <script src="../shared/preview.js"></script>
+<script src="../shared/sidebar.js"></script>
 <script src="../shared/hud.js"></script>
 </body>
 </html>
