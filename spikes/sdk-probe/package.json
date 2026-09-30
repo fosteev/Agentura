@@ -1,0 +1,12 @@
+{
+  "name": "agentura-sdk-probe",
+  "private": true,
+  "type": "module",
+  "description": "Этап 0: проба Claude Agent SDK на живом движке. Логи в logs/*.jsonl — фикстуры тестов адаптера.",
+  "scripts": {
+    "probe": "node run.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.285"
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "budgetUsd": 2,
+  "spentUsd": 0.852072,
+  "scenarios": [
+    {
+      "name": "01-basic-control",
+      "costUsd": 0.07249180000000001,
+      "at": "2026-09-30T13:22:37.020Z"
+    },
+    {
+      "name": "02-permissions-edit",
+      "costUsd": 0.0778396,
+      "at": "2026-09-30T13:22:51.993Z"
+    },
+    {
+      "name": "03-ask-user-question",
+      "costUsd": 0.041313,
+      "at": "2026-09-30T13:22:56.886Z"
+    },
+    {
+      "name": "04-plan-mode",
+      "costUsd": 0.08729039999999999,
+      "at": "2026-09-30T13:23:18.245Z"
+    },
+    {
+      "name": "05-subagents",
+      "costUsd": 0.1664272,
+      "at": "2026-09-30T13:23:45.273Z"
+    },
+    {
+      "name": "06-compact",
+      "costUsd": 0.0902076,
+      "at": "2026-09-30T13:24:06.013Z"
+    },
+    {
+      "name": "07-thinking",
+      "costUsd": 0.077911,
+      "at": "2026-09-30T13:24:13.366Z"
+    },
+    {
+      "name": "08-sessions-resume",
+      "costUsd": 0.03607239999999999,
+      "at": "2026-09-30T13:24:17.603Z"
+    },
+    {
+      "name": "09-context-sonnet",
+      "costUsd": 0.0366696,
+      "at": "2026-09-30T13:24:22.833Z"
+    },
+    {
+      "name": "09-context-opus",
+      "costUsd": 0.06640839999999999,
+      "at": "2026-09-30T13:24:28.910Z"
+    },
+    {
+      "name": "02-permissions-edit",
+      "costUsd": 0.0994414,
+      "at": "2026-09-30T13:26:34.669Z"
+    }
+  ]
+}
