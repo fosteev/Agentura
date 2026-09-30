@@ -56,4 +56,18 @@ describe('UsageService', () => {
       updatedAt: 190_000,
     });
   });
+
+  it('onUpdate: подписчики получают снимок после запроса, а ответ из кэша их не зовёт', async () => {
+    let now = 0;
+    const svc = new UsageService(vi.fn().mockResolvedValue(windows), () => now, 60_000);
+    const seen = vi.fn();
+    const off = svc.onUpdate(seen);
+    await svc.refresh();
+    await svc.refresh();
+    expect(seen).toHaveBeenCalledTimes(1);
+    off();
+    now = 100_000;
+    await svc.refresh();
+    expect(seen).toHaveBeenCalledTimes(1);
+  });
 });

@@ -92,6 +92,8 @@ function setup() {
   return { controller, sessions, created, posted, titles, deps };
 }
 
+const snap = { windows: [{ kind: 'five-hour' as const, percent: 62 }], updatedAt: 1234 };
+
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
 describe('ChatController', () => {
@@ -242,5 +244,150 @@ describe('ChatController', () => {
       .filter((m) => m.type === 'agent.event')
       .map((m) => (m as { event: AgentEvent }).event.type);
     expect(events).toEqual(['error', 'session.closed']);
+  });
+
+  it('ready: пороги контекста из настроек и лимиты подписки уходят в webview', async () => {
+    const { controller, posted, deps } = setup();
+    deps.settings = () => ({ allowBypass: false, contextThresholds: [100, 200] });
+    const refresh = vi.fn(async () => snap);
+    deps.usage = { refresh };
+    controller.start();
+    await controller.handle({ type: 'ready' });
+    await tick();
+    expect(posted.find((m) => m.type === 'chat.info')).toMatchObject({
+      contextThresholds: [100, 200],
+    });
+    expect(posted).toContainEqual({ type: 'limits.update', ...snap });
+  });
+
+  it('limits.refresh и конец хода перечитывают лимиты; ошибка источника не роняет чат', async () => {
+    const { controller, sessions, posted, deps } = setup();
+    const refresh = vi.fn(async () => snap);
+    deps.usage = { refresh };
+    controller.start();
+    await controller.handle({ type: 'limits.refresh' });
+    expect(refresh).toHaveBeenCalledTimes(1);
+    sessions[0]!.emit({
+      type: 'turn.result',
+      ok: true,
+      subtype: 'success',
+      interrupted: false,
+      durationMs: 1,
+      apiDurationMs: 1,
+      numTurns: 1,
+      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      totalCostUsd: 0,
+      permissionDenials: [],
+    });
+    await tick();
+    expect(refresh).toHaveBeenCalledTimes(2);
+    refresh.mockRejectedValueOnce(new Error('сеть'));
+    await controller.handle({ type: 'limits.refresh' });
+    expect(deps.log.warn).toHaveBeenCalled();
+    expect(posted.filter((m) => m.type === 'limits.update')).toHaveLength(2);
+  });
+
+  it('limit.update движка: окна уходят в запасной источник, при rejected — обновление точных', async () => {
+    const { controller, sessions, deps } = setup();
+    const refresh = vi.fn(async () => snap);
+    const observe = vi.fn();
+    deps.usage = { refresh };
+    deps.observeLimits = observe;
+    controller.start();
+    await controller.handle({ type: 'limits.refresh' });
+    const w = [{ kind: 'five-hour' as const, percent: 100 }];
+    sessions[0]!.emit({ type: 'limit.update', source: 'engine', status: 'allowed', windows: w });
+    expect(observe).toHaveBeenCalledWith(w);
+    expect(refresh).toHaveBeenCalledTimes(1);
+    sessions[0]!.emit({ type: 'limit.update', source: 'engine', status: 'rejected', windows: w });
+    await tick();
+    expect(refresh).toHaveBeenCalledTimes(2);
+  });
+
+  // второй проход ревью этапа 3
+  it('падение старой сессии после /clear не затирает новую и не пишет в ленту', async () => {
+    const { deps, posted } = setup();
+    let rejectFirst: (e: Error) => void = () => {};
+    const made: FakeSession[] = [];
+    let calls = 0;
+    const controller = new ChatController({
+      ...deps,
+      adapter: {
+        createSession: () =>
+          calls++ === 0
+            ? new Promise<AgentSession>((_, reject) => (rejectFirst = reject))
+            : Promise.resolve(made[made.push(new FakeSession()) - 1]!),
+      } as unknown as AgentAdapter,
+    });
+    controller.start(); // сессия A висит
+    controller.newSession(true); // B создаётся
+    await tick();
+    rejectFirst(new Error('A упала'));
+    await tick();
+    await tick();
+    const events = posted.filter((m) => m.type === 'agent.event');
+    expect(events).toHaveLength(0);
+    // B осталась текущей: send доходит до неё
+    await controller.handle({ type: 'send', sessionId: '', text: 'привет' });
+    expect(made[0]!.sent).toEqual(['привет']);
+  });
+
+  it('send по очереди: сообщение с выделением не обгоняется следующим', async () => {
+    const { deps, sessions } = setup();
+    let release: (t: string) => void = () => {};
+    const controller = new ChatController({
+      ...deps,
+      readSelection: () => new Promise<string>((r) => (release = r)),
+    });
+    controller.start();
+    const first = controller.handle({
+      type: 'send',
+      sessionId: '',
+      text: 'первое',
+      attachments: [{ kind: 'selection', path: 'a.ts', startLine: 1, endLine: 2 }],
+    });
+    const second = controller.handle({ type: 'send', sessionId: '', text: 'второе' });
+    await tick();
+    expect(sessions[0]!.sent).toEqual([]);
+    release('текст');
+    await Promise.all([first, second]);
+    expect(sessions[0]!.sent.map((t) => t.split('\n')[0])).toEqual(['первое', 'второе']);
+  });
+
+  it('ошибка capabilities() не даёт необработанного отказа — только предупреждение', async () => {
+    const { controller, sessions, deps } = setup();
+    controller.start();
+    await tick();
+    sessions[0]!.capabilities = () => Promise.reject(new Error('движок молчит'));
+    controller.onReady();
+    await tick();
+    await tick();
+    expect(deps.log.warn).toHaveBeenCalledWith(expect.stringContaining('движок молчит'));
+  });
+
+  it('session.closed: сессия уходит из live-списка и не возвращается туда', async () => {
+    const { deps, sessions } = setup();
+    const live = { set: vi.fn(), delete: vi.fn() };
+    const controller = new ChatController({ ...deps, live: live as unknown as ChatDeps['live'] });
+    controller.start();
+    await tick();
+    const s = sessions[0]!;
+    s.emit({
+      type: 'session.init',
+      sessionId: 'sess-1',
+      model: 'sonnet',
+      cwd: '/p',
+      tools: [],
+      permissionMode: 'default',
+      slashCommands: [],
+      skills: [],
+      agents: [],
+      apiKeySource: 'none',
+    } as unknown as AgentEvent);
+    expect(live.set).toHaveBeenCalled();
+    live.set.mockClear();
+    s.emit({ type: 'session.closed', reason: 'error', message: 'упал' });
+    expect(live.delete).toHaveBeenCalledWith('sess-1');
+    expect(live.set).not.toHaveBeenCalled();
   });
 });

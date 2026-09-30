@@ -182,6 +182,7 @@ describe('пустое состояние и шапка совпадают с em
         tab: 'chat',
         onTab: () => {},
         sidePanesEnabled: false,
+        badges: {},
         onSessions: () => {},
         onNew: () => {},
       }),

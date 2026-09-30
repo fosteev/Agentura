@@ -1,5 +1,5 @@
 /** Стор чата webview на сигналах: состояние ленты, контекст редактора, поле ввода. */
-import { signal } from '@preact/signals';
+import { computed, signal } from '@preact/signals';
 import type {
   AgentEvent,
   CommandOption,
@@ -8,12 +8,22 @@ import type {
   PermissionMode,
 } from '../agent/types';
 import { attachmentKey, type Attachment, type FileHit } from '../shared/prompt';
-import type { EditorContext, SessionSummary, ToWebview } from '../protocol';
+import type { EditorContext, LimitWindowSummary, SessionSummary, ToWebview } from '../protocol';
 import { applyEvent, initialState, queueUser, resetSession, type ChatState } from './chatState';
 import { pushHistory } from './composer';
+import { applyHud, initialHud, resetHud, type HudState } from './hudState';
+import { cacheView, contextView, limitsView } from './hudView';
 import { send } from './vscode';
 
 export const chat = signal<ChatState>(initialState());
+/** Агрегаты приборов: контекст, кэш, итоги сессии, таймлайн хода, агенты (`hudState.ts`). */
+export const hudState = signal<HudState>(initialHud());
+/** Лимиты подписки от хоста (`limits.update`); `updatedAt: 0` — ещё не получены. */
+export const limits = signal<{
+  windows: LimitWindowSummary[];
+  updatedAt: number;
+  error?: string;
+}>({ windows: [], updatedAt: 0 });
 export const capabilities = signal<{ models: ModelOption[]; commands: CommandOption[] }>({
   models: [],
   commands: [],
@@ -35,13 +45,48 @@ export const fileHits = signal<{ requestId: number; items: FileHit[] }>({
 /** Тик раз в секунду, пока идёт ход: таймеры в ленте. */
 export const tick = signal(Date.now());
 
+/** Значения приборов у поля ввода: пересчитываются по событиям и по секундному тику. */
+export const meters = computed(() => {
+  const now = tick.value;
+  const h = hudState.value;
+  return {
+    context: contextView(h),
+    cache: cacheView(h, now),
+    limits: limitsView(limits.value.windows, now),
+  };
+});
+
+/**
+ * Сессия, которую webview уже бросил (`session.new`/`session.reset`): её события, успевшие уйти
+ * от хоста до закрытия, не должны попасть в ленту и приборы новой.
+ */
+let abandonedSessionId: string | undefined;
+
+function abandonSession(): void {
+  if (chat.value.sessionId) abandonedSessionId = chat.value.sessionId;
+}
+
 export function handleHostMessage(m: ToWebview): void {
   switch (m.type) {
     case 'agent.event':
+      if (abandonedSessionId !== undefined && m.sessionId === abandonedSessionId) break;
+      // новая сессия поднялась — фильтр больше не нужен (возобновление этапа 6 должно его снять само)
+      if (m.event.type === 'session.init') abandonedSessionId = undefined;
       dispatchEvent(m.event);
       break;
     case 'chat.info':
       chat.value = { ...chat.value, project: m.project, cwd: m.cwd, allowBypass: m.allowBypass };
+      if (m.contextThresholds?.length) {
+        hudState.value = { ...hudState.value, thresholds: [...m.contextThresholds] };
+      }
+      break;
+    case 'limits.update':
+      limits.value = {
+        // ошибка опроса без окон не стирает прежние проценты
+        windows: m.windows.length || !m.error ? m.windows : limits.value.windows,
+        updatedAt: m.updatedAt,
+        ...(m.error ? { error: m.error } : {}),
+      };
       break;
     case 'capabilities':
       capabilities.value = { models: m.models, commands: m.commands };
@@ -65,7 +110,9 @@ export function handleHostMessage(m: ToWebview): void {
       recent.value = m.sessions;
       break;
     case 'session.reset':
+      abandonSession();
       chat.value = resetSession(chat.value);
+      hudState.value = resetHud(hudState.value);
       extra.value = [];
       break;
     default:
@@ -75,6 +122,19 @@ export function handleHostMessage(m: ToWebview): void {
 
 export function dispatchEvent(event: AgentEvent, now = Date.now()): void {
   chat.value = applyEvent(chat.value, event, now);
+  hudState.value = applyHud(hudState.value, event, now);
+  // лимит от движка — запас, пока хост не прислал данные `/api/oauth/usage`
+  if (event.type === 'limit.update' && !event.agentId && limits.value.updatedAt === 0) {
+    limits.value = { windows: event.windows, updatedAt: now };
+  }
+}
+
+export function compact(): void {
+  send({ type: 'compact', sessionId: chat.value.sessionId });
+}
+
+export function stopAgent(taskId: string): void {
+  send({ type: 'agent.stop', sessionId: chat.value.sessionId, taskId });
 }
 
 export function addExtra(a: Attachment): void {
@@ -155,7 +215,9 @@ export function setEffort(effort: EffortLevel): void {
 }
 
 export function newSession(): void {
+  abandonSession();
   chat.value = resetSession(chat.value);
+  hudState.value = resetHud(hudState.value);
   extra.value = [];
   send({ type: 'session.new' });
 }

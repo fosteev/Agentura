@@ -217,3 +217,55 @@ describe('редьюсер: очередь и границы хода', () => {
     expect(r).toMatchObject({ project: 'p', cwd: '/p', allowBypass: true });
   });
 });
+
+describe('системные строки этапа 4', () => {
+  const e = (x: Record<string, unknown>) => x as unknown as AgentEvent;
+
+  it('смена режима движком — строка; выбранный из интерфейса режим (уже в состоянии) — нет', () => {
+    let s = initialState();
+    s = applyEvent(s, e({ type: 'mode.changed', mode: 'default' }), 0);
+    expect(s.rows).toHaveLength(0);
+    s = applyEvent(s, e({ type: 'mode.changed', mode: 'plan' }), 0);
+    expect(s.mode).toBe('plan');
+    expect(s.rows).toHaveLength(1);
+    expect(s.rows[0]).toMatchObject({ kind: 'sys', text: ['режим: plan'] });
+    s = applyEvent(
+      { ...s, mode: 'acceptEdits' },
+      e({ type: 'mode.changed', mode: 'acceptEdits' }),
+      0,
+    );
+    expect(s.rows).toHaveLength(1);
+  });
+
+  it('«ход не начат»: ошибка лимита со временем сброса из limit.update', () => {
+    let s = initialState();
+    const reset = new Date(2026, 9, 1, 17, 0).getTime();
+    s = applyEvent(
+      s,
+      e({
+        type: 'limit.update',
+        source: 'engine',
+        status: 'rejected',
+        windows: [],
+        resetsAt: reset,
+      }),
+      0,
+    );
+    s = applyEvent(
+      s,
+      e({ type: 'error', message: 'лимит 5-часового окна исчерпан', fatal: false, code: 'limit' }),
+      0,
+    );
+    const row = s.rows[0] as Extract<FeedRow, { kind: 'sys' }>;
+    expect(row.tone).toBe('bad');
+    expect(row.text).toEqual(['ход не начат: лимит 5-часового окна исчерпан · сброс в 17:00']);
+    // новый ход — время сброса забыто
+    s = applyEvent(s, e({ type: 'turn.start', at: 1 }), 1);
+    expect(s.limitResetsAt).toBeUndefined();
+  });
+
+  it('ошибка без кода лимита — как была, без «ход не начат»', () => {
+    const s = applyEvent(initialState(), e({ type: 'error', message: 'сеть', fatal: false }), 0);
+    expect((s.rows[0] as Extract<FeedRow, { kind: 'sys' }>).text).toEqual(['сеть']);
+  });
+});

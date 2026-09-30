@@ -86,6 +86,8 @@ export type ToWebview =
       project: string;
       cwd: string;
       allowBypass: boolean;
+      /** Пороги шкалы контекста (`agentura.contextThresholds`), токены. Добавлено на этапе 4. */
+      contextThresholds?: number[];
     }
   | { type: 'capabilities'; sessionId: string; models: ModelOption[]; commands: CommandOption[] }
   | ({ type: 'editor.context' } & EditorContext)
