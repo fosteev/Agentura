@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="ru" data-theme="dark" data-width="380">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agentura · направление 2 · Поля</title>
+<link rel="stylesheet" href="../shared/tokens.css">
+<link rel="stylesheet" href="../shared/preview.css">
+<style>
+/* ───────── Направление 2 · Поля ─────────
+   Идея: лента как гроссбух. Каждая строка хода (сообщение, мысль, инструмент,
+   ответ) — запись; цифры (время, токены, стоимость) живут на левом поле,
+   выровненные по строке. Контекст — вертикальная шкала вдоль левого края,
+   заполняется снизу вверх, бирка с числом едет вместе с уровнем.
+   В узкой колонке поле сворачивается: цифры уходят в правый край строки. */
+
+.webview { display: grid; grid-template-rows: auto auto 1fr auto; background: var(--bg); }
+
+/* шапка */
+.top { padding: 12px 16px 10px 22px; border-bottom: 1px solid var(--line); display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; align-items: baseline; }
+.top h1 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -.01em; line-height: 1.3; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.top .sub { grid-column: 1; color: var(--fg-mute); font-size: 12px; display: flex; gap: 10px; flex-wrap: wrap; }
+.top .sub .agent { color: var(--fg); border-bottom: 1px dotted var(--fg-mute); cursor: pointer; }
+.top .acts { grid-row: 1 / 3; display: flex; gap: 2px; align-self: start; }
+.top .acts button { color: var(--fg-mute); padding: 2px 6px; border-radius: 3px; }
+.top .acts button:hover { background: var(--bg-hover); color: var(--fg); }
+
+/* агенты — строка под шапкой */
+.agents { display: flex; gap: 6px 16px; flex-wrap: wrap; padding: 6px 16px 6px 22px; border-bottom: 1px solid var(--line); font-size: 11.5px; color: var(--fg-mute); background: var(--bg-side); }
+.agents .a { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.agents .a i { width: 7px; height: 7px; border-radius: 50%; background: var(--fg-faint); }
+.agents .a.busy i { background: var(--info); box-shadow: 0 0 0 2px color-mix(in srgb, var(--info) 30%, transparent); }
+.agents .a.main i { background: var(--ok); }
+.agents .a b { font-weight: 500; color: var(--fg); }
+.agents .a .n { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.agents .a .stop { color: var(--full); font-size: 10px; }
+
+/* тело со шкалой */
+.body { position: relative; min-height: 0; display: grid; grid-template-columns: 22px 1fr; }
+.rail { position: relative; background: var(--bg-side); border-right: 1px solid var(--line); }
+.rail .track { position: absolute; top: 12px; bottom: 12px; left: 7px; width: 6px; background: var(--bg-input); border-radius: 3px; }
+.rail .fill { position: absolute; left: 0; right: 0; bottom: 0; height: 65.6%; background: var(--warn); border-radius: 3px; }
+.rail .tick { position: absolute; left: -3px; right: -3px; height: 1px; background: var(--fg-mute); }
+.rail .tick.t1 { bottom: 60%; } .rail .tick.t2 { bottom: 75%; }
+.rail .tick span { display: none; }
+.rail .tag { position: absolute; left: 16px; bottom: calc(65.6% - 9px); transform: translateY(0); background: var(--warn); color: var(--bg); font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 10.5px; line-height: 1; padding: 4px 6px; border-radius: 3px; white-space: nowrap; z-index: 2; font-weight: 600; }
+.rail .tag::before { content: ""; position: absolute; left: -4px; top: 50%; margin-top: -4px; border: 4px solid transparent; border-right-color: var(--warn); border-left: 0; }
+.rail .tag small { font-weight: 400; opacity: .8; margin-left: 3px; }
+.rail .cap { position: absolute; top: 2px; left: 0; right: 0; text-align: center; font-family: var(--mono); font-size: 9px; color: var(--fg-faint); display: none; }
+
+/* лента-гроссбух */
+.feed { overflow: auto; min-width: 0; padding: 8px 0 12px; }
+.r { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; padding: 7px 16px 7px 14px; border-bottom: 1px solid var(--line); align-items: baseline; min-width: 0; }
+.r.tx { grid-template-columns: 1fr; }
+.r .mg { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 11px; color: var(--fg-mute); text-align: right; white-space: nowrap; }
+.r.tx .mg { order: 2; margin-top: 6px; display: flex; gap: 12px; flex-wrap: wrap; justify-content: flex-start; }
+.r .mg .l { display: none; }
+.r .mg b { color: var(--fg); font-weight: 500; }
+.r .c { min-width: 0; }
+.r.you { background: color-mix(in srgb, var(--fg) 4%, transparent); }
+.r.you .c { font-weight: 500; }
+.r.you .c code, .r.tx .c code { background: var(--bg-code); padding: 0 4px; border-radius: 3px; font-size: 12px; }
+.r.tx .c p { margin: 0; max-width: 70ch; }
+.r.tx .c p + p { margin-top: 8px; }
+.r.turn-end { border-bottom: 2px solid var(--line-strong); }
+
+.r.tool .c { display: flex; gap: 8px; align-items: baseline; font-size: 12px; min-width: 0; }
+.r.tool .verb { color: var(--fg-mute); flex: none; width: 52px; }
+.r.tool code { font-family: var(--mono); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.r.tool .res { color: var(--fg-mute); font-size: 11px; white-space: nowrap; margin-left: auto; font-family: var(--mono); }
+.r.tool .res .add { color: var(--add); } .r.tool .res .del { color: var(--del); } .r.tool .res .pass { color: var(--ok); }
+.r.tool .res a { color: var(--link); text-decoration: none; }
+.r.think .c { color: var(--fg-mute); font-style: italic; }
+.r.think .c::before { content: "мысль"; font-style: normal; color: var(--fg-mute); width: 52px; display: inline-block; }
+.r.think.folded .c span { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+.spin { display: inline-block; width: 9px; height: 9px; border: 1.5px solid var(--fg-faint); border-top-color: var(--info); border-radius: 50%; animation: spin 1s linear infinite; vertical-align: -1px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.cursor { display: inline-block; width: 7px; height: 14px; background: var(--fg); vertical-align: -2px; animation: blink 1s steps(2) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+.r.live { border-bottom: 0; color: var(--fg-mute); font-size: 12px; }
+.r.live .c { display: flex; align-items: center; gap: 8px; }
+.stop-btn { margin-left: auto; padding: 2px 10px; border: 1px solid var(--line-strong); border-radius: 3px; font-size: 12px; display: inline-flex; align-items: center; gap: 6px; color: var(--fg); }
+.stop-btn i { width: 8px; height: 8px; background: var(--full); border-radius: 1px; }
+
+/* широкая: настоящее поле слева */
+html[data-width="900"] .body, html[data-width="full"] .body { grid-template-columns: 30px 1fr; }
+html[data-width="900"] .rail .track, html[data-width="full"] .rail .track { left: 11px; width: 8px; }
+html[data-width="900"] .rail .tag, html[data-width="full"] .rail .tag { left: 22px; }
+html[data-width="900"] .rail .tick span, html[data-width="full"] .rail .tick span { display: block; position: absolute; left: 14px; top: -6px; font-family: var(--mono); font-size: 9.5px; color: var(--fg-faint); white-space: nowrap; }
+html[data-width="900"] .rail .cap, html[data-width="full"] .rail .cap { display: none; }
+html[data-width="900"] .top, html[data-width="full"] .top,
+html[data-width="900"] .agents, html[data-width="full"] .agents { padding-left: 30px; }
+html[data-width="900"] .r, html[data-width="full"] .r { grid-template-columns: 132px 1fr; padding: 7px 28px 7px 42px; }
+html[data-width="900"] .r.tx, html[data-width="full"] .r.tx { grid-template-columns: 132px 1fr; }
+html[data-width="900"] .r .mg, html[data-width="full"] .r .mg { order: 0; text-align: right; margin: 0; display: block; align-self: start; }
+html[data-width="900"] .r.tx .mg, html[data-width="full"] .r.tx .mg { display: grid; gap: 2px; justify-items: end; }
+html[data-width="900"] .r .mg .l, html[data-width="full"] .r .mg .l { display: inline; color: var(--fg-faint); margin-right: 5px; font-family: var(--font); }
+html[data-width="900"] .r.tool .c, html[data-width="full"] .r.tool .c { font-size: 12.5px; }
+
+/* статус-строка приборов + ввод */
+.meters { display: flex; gap: 6px 18px; flex-wrap: wrap; padding: 7px 16px 7px 22px; border-top: 1px solid var(--line); font-size: 11.5px; color: var(--fg-mute); background: var(--bg-side); }
+.meters .m { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+.meters .m b { color: var(--fg); font-weight: 500; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.meters .bar { width: 46px; height: 5px; background: var(--bg-input); border-radius: 2px; overflow: hidden; }
+.meters .bar i { display: block; height: 100%; background: var(--fg-mute); }
+.meters .m.h5 .bar i { width: 62%; } .meters .m.wk .bar i { width: 34%; }
+.meters .clock { width: 11px; height: 11px; border-radius: 50%; background: conic-gradient(var(--info) 84%, var(--bg-input) 0); }
+.meters .compact { margin-left: auto; color: var(--link); }
+
+.compose { padding: 10px 16px 12px 22px; border-top: 1px solid var(--line); }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; font-size: 11px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 1px 0 1px 7px; border-left: 2px solid var(--line-strong); color: var(--fg-mute); }
+.chip code { color: var(--fg); font-size: 11px; }
+.chip .x { opacity: .6; }
+.box { border: 1px solid var(--line-strong); border-radius: 3px; background: var(--bg-input); }
+.box:focus-within { border-color: var(--accent); }
+.box .text { padding: 9px 12px; min-height: 40px; color: var(--fg-mute); }
+.box .row { display: flex; align-items: center; gap: 2px; padding: 4px 6px 6px; border-top: 1px solid var(--line); flex-wrap: wrap; }
+.pick { padding: 3px 8px; border-radius: 3px; font-size: 12px; color: var(--fg-mute); display: inline-flex; gap: 5px; align-items: center; }
+.pick:hover { background: var(--bg-hover); color: var(--fg); }
+.pick .chev { font-size: 9px; opacity: .6; }
+.pick.mode { color: var(--fg); }
+.pick.mode::before { content: ""; width: 6px; height: 6px; background: var(--info); border-radius: 50%; }
+.send { margin-left: auto; padding: 3px 12px; border-radius: 3px; background: var(--btn); color: var(--btn-fg); font-size: 12px; }
+.plus { padding: 3px 7px; color: var(--fg-mute); font-size: 15px; line-height: 1; }
+</style>
+</head>
+<body>
+
+<div class="preview-bar">
+  <b>Направление 2 · Поля</b>
+  <span class="grp"><button data-set-theme="dark">Тёмная</button><button data-set-theme="light">Светлая</button></span>
+  <span class="grp"><button data-set-width="380">380</button><button data-set-width="900">900</button><button data-set-width="full">во всю ширину</button></span>
+  <a href="./index.html">← все направления</a>
+</div>
+
+<div class="preview-stage">
+<div class="webview">
+
+  <header class="top">
+    <h1>Мигание счётчика талонов</h1>
+    <div class="acts"><button title="Сессии">☰</button><button title="Новый диалог">＋</button></div>
+    <div class="sub"><span class="agent" title="Агент: Claude · Codex, Gemini — скоро">Claude ▾</span><span>queue-board</span><span>14 ходов · $1.84 · 2 ч 10 мин</span></div>
+  </header>
+
+  <div class="agents" aria-label="Агенты">
+    <span class="a main"><i></i><b>Основной</b> <span class="n">131k</span></span>
+    <span class="a"><i></i>Explore: reconnect <span class="n">8.1k</span> · готово</span>
+    <span class="a busy"><i></i>pnpm test <span class="n">3.2 с</span> <button class="stop" title="Остановить">■</button></span>
+  </div>
+
+  <div class="body">
+    <div class="rail" aria-label="Контекст 131 250 из 200 000 токенов">
+      <div class="track">
+        <div class="fill"></div>
+        <div class="tick t1"><span>120k</span></div>
+        <div class="tick t2"><span>150k</span></div>
+      </div>
+      <div class="tag num">131k<small>/200k</small></div>
+    </div>
+
+    <main class="feed">
+
+      <div class="r you"><div class="c">Почини мигание счётчика талонов на табло при переподключении сокета. Табло — <code>apps/board</code>, сокет — <code>packages/ws-client</code>.</div><div class="mg">14:41</div></div>
+
+      <div class="r think folded"><div class="c"><span>Табло, скорее всего, сбрасывает состояние при новом соединении, а не при новых данных. Проверю обработчик open в ws-client и подписку счётчика.</span></div><div class="mg">12 с</div></div>
+      <div class="r tool"><div class="c"><span class="verb">читал</span><code>packages/ws-client/src/reconnect.ts</code></div><div class="mg">0.4 с</div></div>
+      <div class="r tool"><div class="c"><span class="verb">искал</span><code>ticketCount</code><span class="res">3 совп.</span></div><div class="mg">0.2 с</div></div>
+      <div class="r tool"><div class="c"><span class="verb">читал</span><code>apps/board/src/Counter.tsx</code></div><div class="mg">0.3 с</div></div>
+      <div class="r tool"><div class="c"><span class="verb">правил</span><code>apps/board/src/Counter.tsx</code><span class="res"><span class="add">+6</span> <span class="del">−2</span> · <a href="#">дифф</a></span></div><div class="mg">1.1 с</div></div>
+      <div class="r tool"><div class="c"><span class="verb">запускал</span><code>pnpm test --filter board</code><span class="res"><span class="pass">12 ✓</span></span></div><div class="mg">9.8 с</div></div>
+      <div class="r tx turn-end">
+        <div class="c">
+          <p>Причина — <code>Counter</code> подписан на событие <code>open</code> сокета и при каждом переподключении сбрасывал <code>count</code> в ноль, пока не придёт первый снимок. На табло это выглядело как мигание.</p>
+          <p>Убрал сброс из обработчика <code>open</code>: счётчик держит последнее значение до нового снимка. Тесты табло проходят.</p>
+        </div>
+        <div class="mg">
+          <span><span class="l">ввод</span>1 204</span>
+          <span><span class="l">вывод</span>2 318</span>
+          <span><span class="l">кэш</span>↓128 400 ↑3 902</span>
+          <span><b>$0.21</b></span>
+          <span><span class="l">ход</span>48 с</span>
+        </div>
+      </div>
+
+      <div class="r you"><div class="c">Добавь тест на переподключение, чтобы это не вернулось.</div><div class="mg">14:51</div></div>
+      <div class="r tool"><div class="c"><span class="verb">правил</span><code>apps/board/src/__tests__/Counter.test.tsx</code><span class="res"><span class="add">+31</span> · <a href="#">дифф</a></span></div><div class="mg">1.4 с</div></div>
+      <div class="r tool"><div class="c"><span class="verb">запускает</span><code>pnpm test --filter board</code><span class="res"><span class="spin"></span></span></div><div class="mg">3.2 с</div></div>
+      <div class="r tx">
+        <div class="c"><p>Добавил тест: имитирую разрыв и повторный <code>open</code> без снимка и проверяю, что счётчик остаётся <code>42</code>, а не падает в ноль. Запускаю<span class="cursor"></span></p></div>
+        <div class="mg"><span><span class="l">ход</span>11 с</span></div>
+      </div>
+      <div class="r live"><div class="c"><span class="spin"></span> Отвечает <button class="stop-btn"><i></i>Остановить <kbd>Esc</kbd></button></div></div>
+
+    </main>
+  </div>
+
+  <div class="meters" aria-label="Приборы">
+    <span class="m"><span class="clock"></span>кэш <b>4:12</b> · попаданий <b>91 %</b></span>
+    <span class="m h5"><span class="bar"><i></i></span>5 ч <b>62 %</b> → 17:00</span>
+    <span class="m wk"><span class="bar"><i></i></span>неделя <b>34 %</b> → чт 09:00</span>
+    <button class="compact">сжать контекст</button>
+  </div>
+
+  <footer class="compose">
+    <div class="chips">
+      <span class="chip"><code>Counter.tsx</code> 12–40 <span class="x">✕</span></span>
+      <span class="chip"><code>reconnect.ts</code> <span class="x">✕</span></span>
+    </div>
+    <div class="box">
+      <div class="text">Спросите или дайте задачу · @ файлы · / команды</div>
+      <div class="row">
+        <button class="plus" title="Добавить контекст">＋</button>
+        <button class="pick mode">Manual <span class="chev">▼</span></button>
+        <button class="pick">Opus 5.5 <span class="chev">▼</span></button>
+        <button class="pick">high <span class="chev">▼</span></button>
+        <button class="send">Отправить</button>
+      </div>
+    </div>
+  </footer>
+
+</div>
+</div>
+<script src="../shared/preview.js"></script>
+</body>
+</html>

@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agentura · направления главного экрана</title>
+<style>
+  body { margin: 0; padding: 36px 20px 60px; background: #0a0a0a; color: #d6d6d6; font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
+  main { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 22px; font-weight: 600; margin: 0 0 6px; color: #fff; }
+  .lead { color: #9a9a9a; margin: 0 0 28px; max-width: 60ch; }
+  .dir { display: grid; grid-template-columns: 56px 1fr; gap: 4px 18px; padding: 20px 0; border-top: 1px solid #262626; }
+  .dir .n { font-size: 30px; font-weight: 600; color: #fff; line-height: 1; }
+  .dir h2 { margin: 0; font-size: 17px; font-weight: 600; color: #fff; }
+  .dir h2 a { color: inherit; text-decoration: none; border-bottom: 1px solid #444; }
+  .dir h2 a:hover { border-bottom-color: #fff; }
+  .dir p { margin: 6px 0 0; grid-column: 2; color: #bdbdbd; max-width: 62ch; }
+  .dir .k { grid-column: 2; margin-top: 8px; color: #8a8a8a; font-size: 13px; }
+  .dir .k b { color: #bdbdbd; font-weight: 500; }
+  .how { border-top: 1px solid #262626; padding-top: 20px; color: #9a9a9a; font-size: 13px; }
+  .how code { font: 12px ui-monospace, Menlo, monospace; color: #cfcfcf; background: #1a1a1a; padding: 1px 5px; border-radius: 3px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Направления главного экрана</h1>
+  <p class="lead">Три варианта одного экрана: чат с приборами на виду. Одна и та же сессия во всех трёх — починка мигающего счётчика талонов в <code>queue-board</code>. Различаются компоновкой и характером, цвета везде берутся из темы VS Code.</p>
+
+  <section class="dir">
+    <div class="n">1</div>
+    <h2><a href="1-cockpit.html">Кокпит</a></h2>
+    <p>Приборы — одна плотная полоса между лентой и полем ввода, как доска перед рулём: толстая шкала контекста с порогами и крупным числом, рядом кэш и оба лимита. Лента тихая: инструменты хода свёрнуты в одну строку и раскрываются по клику. В широкой вкладке справа появляется колонка «Ход и агенты».</p>
+    <div class="k"><b>Кому подойдёт:</b> если приборы — главное, а ход работы можно смотреть по требованию. <b>Что проверить:</b> не тяжело ли полосе внизу при высокой ленте.</div>
+  </section>
+
+  <section class="dir">
+    <div class="n">2</div>
+    <h2><a href="2-margins.html">Поля</a></h2>
+    <p>Лента как гроссбух: каждая мысль, инструмент и ответ — строка, а её цифры (время, токены, стоимость) стоят на левом поле напротив строки. Таймлайн хода получается сам собой. Контекст — вертикальная шкала вдоль левого края, заполняется снизу вверх, бирка с числом едет вместе с уровнем. В узкой колонке поле сворачивается, цифры уходят в правый край строки.</p>
+    <div class="k"><b>Кому подойдёт:</b> если важно видеть цену каждого шага, а не только итог. <b>Что проверить:</b> достаточно ли заметна вертикальная шкала как «прибор».</div>
+  </section>
+
+  <section class="dir">
+    <div class="n">3</div>
+    <h2><a href="3-hud.html">HUD</a></h2>
+    <p>Приборы сверху, как индикация на лобовом стекле: крупное число контекста и шкала из 20 блоков по 10k, под ней строка счётчиков. Всё моноширинным шрифтом редактора — лента читается как структурированный журнал, инструменты — строками лога. В узкой колонке ход и агенты живут во вкладках, в широкой — панелью справа.</p>
+    <div class="k"><b>Кому подойдёт:</b> если хочется характера терминала без его хаоса. <b>Что проверить:</b> не отъедает ли шапка слишком много высоты в узкой колонке.</div>
+  </section>
+
+  <p class="how">На каждой странице сверху — переключатели темы и ширины (380 — боковая панель, 900 — вкладка редактора). Открывается двойным кликом, без сборки. Выбор направления или смеси записывается в <code>docs/roadmap/01-features-prototype.md</code>, этап 2.1.</p>
+</main>
+</body>
+</html>

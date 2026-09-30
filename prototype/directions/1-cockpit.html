@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="ru" data-theme="dark" data-width="380">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agentura · направление 1 · Кокпит</title>
+<link rel="stylesheet" href="../shared/tokens.css">
+<link rel="stylesheet" href="../shared/preview.css">
+<style>
+/* ───────── Направление 1 · Кокпит ─────────
+   Идея: приборы — одна плотная полоса между лентой и полем ввода, как приборная
+   доска перед рулём. Лента тихая, инструменты одного хода свёрнуты в строку.
+   В широкой вкладке справа появляется колонка «Ход и агенты». */
+
+.webview { display: grid; grid-template-rows: auto 1fr auto; background: var(--bg); }
+
+/* шапка */
+.top { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); min-width: 0; }
+.agent { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px 3px 6px; border-radius: 999px; background: var(--bg-input); font-weight: 600; white-space: nowrap; }
+.agent .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); }
+.agent .chev, .pick .chev { opacity: .6; font-size: 10px; }
+.title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg-mute); }
+.title b { color: var(--fg); font-weight: 500; }
+.top .ico { color: var(--fg-mute); padding: 2px 4px; border-radius: 4px; }
+.top .ico:hover { background: var(--bg-hover); color: var(--fg); }
+
+/* тело: лента + опциональная колонка */
+.body { display: grid; grid-template-columns: 1fr; min-height: 0; }
+.feed { overflow: auto; padding: 16px 16px 8px; display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.aside { display: none; border-left: 1px solid var(--line); background: var(--bg-side); overflow: auto; }
+html[data-width="900"] .body, html[data-width="full"] .body { grid-template-columns: 1fr 272px; }
+html[data-width="900"] .aside, html[data-width="full"] .aside { display: block; }
+html[data-width="900"] .feed, html[data-width="full"] .feed { padding: 20px 28px 8px; }
+html[data-width="900"] .msg, html[data-width="full"] .msg { max-width: 62ch; }
+
+/* сообщения */
+.msg { display: flex; flex-direction: column; gap: 8px; }
+.you { border-left: 2px solid var(--line-strong); padding: 2px 0 2px 12px; color: var(--fg); }
+.you .who, .bot .who { font-size: 11px; color: var(--fg-mute); margin-bottom: 4px; }
+.you code { background: var(--bg-code); padding: 0 4px; border-radius: 3px; font-size: 12px; }
+.bot p { margin: 0; }
+.bot p + p { margin-top: 8px; }
+.bot code { background: var(--bg-code); padding: 0 4px; border-radius: 3px; font-size: 12px; }
+.bot pre { margin: 8px 0 0; padding: 10px 12px; background: var(--bg-code); border-radius: 6px; font-size: 12px; overflow: auto; position: relative; }
+.bot pre .copy { position: absolute; top: 6px; right: 8px; font-size: 11px; color: var(--fg-mute); }
+
+/* свёрнутая работа: thinking + инструменты */
+.work { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.work-head { display: flex; align-items: center; gap: 10px; padding: 7px 10px; color: var(--fg-mute); cursor: pointer; list-style: none; user-select: none; }
+.work-head .n { color: var(--fg); }
+.work-head .t { margin-left: auto; font-family: var(--mono); font-size: 11px; }
+.work-head .tri { display: inline-block; width: 0; height: 0; border: 4px solid transparent; border-left: 5px solid var(--fg-mute); transition: transform .15s; }
+.work-head[aria-expanded="true"] .tri { transform: rotate(90deg) translateX(1px); }
+.tools { border-top: 1px solid var(--line); background: var(--bg-side); }
+.tool { display: grid; grid-template-columns: 18px 1fr auto; gap: 8px; align-items: baseline; padding: 6px 10px; font-size: 12px; border-top: 1px solid var(--line); }
+.tool:first-child { border-top: 0; }
+.tool .k { color: var(--fg-mute); font-size: 11px; text-align: center; }
+.tool .what { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tool .what code { font-size: 11.5px; color: var(--fg); background: none; padding: 0; }
+.tool .verb { color: var(--fg-mute); margin-right: 6px; }
+.tool .res { color: var(--fg-mute); font-family: var(--mono); font-size: 11px; white-space: nowrap; }
+.tool .res .add { color: var(--add); } .tool .res .del { color: var(--del); }
+.tool .res .pass { color: var(--ok); }
+.tool .diff { color: var(--link); text-decoration: none; }
+.tool.think .what { color: var(--fg-mute); font-style: italic; }
+.tool.run .k { color: var(--info); }
+.spin { display: inline-block; width: 9px; height: 9px; border: 1.5px solid var(--fg-faint); border-top-color: var(--info); border-radius: 50%; animation: spin 1s linear infinite; vertical-align: -1px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* итог хода */
+.sum { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 11px; color: var(--fg-mute); font-family: var(--mono); font-variant-numeric: tabular-nums; padding-top: 4px; }
+.sum .cost { color: var(--fg); }
+
+/* стриминг */
+.cursor { display: inline-block; width: 7px; height: 14px; background: var(--fg); vertical-align: -2px; margin-left: 1px; animation: blink 1s steps(2) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+.live { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--fg-mute); }
+.stop { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border: 1px solid var(--line-strong); border-radius: 999px; font-size: 12px; margin-left: auto; }
+.stop .sq { width: 8px; height: 8px; background: var(--full); border-radius: 1px; }
+
+/* ───── ПРИБОРНАЯ ПОЛОСА ───── */
+.dash { border-top: 1px solid var(--line); background: var(--bg-side); padding: 10px 12px 8px; display: grid; gap: 8px; }
+.gauge { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 12px; }
+.gauge .lbl { font-size: 11px; color: var(--fg-mute); display: flex; justify-content: space-between; margin-bottom: 4px; }
+.gauge .lbl b { color: var(--fg); font-weight: 500; }
+.bar { position: relative; height: 14px; border-radius: 4px; background: var(--bg-input); overflow: hidden; }
+.bar .fill { position: absolute; inset: 0 auto 0 0; width: 65.6%; background: var(--warn); border-radius: 4px 2px 2px 4px; }
+.bar .tick { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--bg); }
+.bar .tick.t1 { left: 60%; } .bar .tick.t2 { left: 75%; }
+.gauge .ticks { position: relative; height: 12px; font-size: 10px; color: var(--fg-faint); font-family: var(--mono); }
+.gauge .ticks span { position: absolute; top: 0; transform: translateX(-50%); }
+.gauge .big { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 22px; line-height: 1; color: var(--warn); letter-spacing: -.02em; padding-bottom: 12px; }
+.gauge .big small { font-size: 11px; color: var(--fg-mute); letter-spacing: 0; margin-left: 4px; }
+
+.meters { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.m { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; align-items: center; font-size: 11px; color: var(--fg-mute); }
+.m .v { grid-column: 2; font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--fg); font-size: 12px; line-height: 1.1; }
+.m .v small { color: var(--fg-mute); font-size: 10px; }
+.m .name { grid-column: 2; }
+.ring { grid-row: 1 / 3; width: 26px; height: 26px; border-radius: 50%; background: conic-gradient(var(--info) 84%, var(--bg-input) 0); position: relative; }
+.ring::after { content: ""; position: absolute; inset: 5px; border-radius: 50%; background: var(--bg-side); }
+.mini { grid-row: 1 / 3; width: 26px; height: 26px; border-radius: 4px; background: var(--bg-input); position: relative; overflow: hidden; }
+.mini i { position: absolute; left: 0; right: 0; bottom: 0; background: var(--fg-mute); }
+.mini.h5 i { height: 62%; } .mini.wk i { height: 34%; }
+html[data-width="900"] .dash, html[data-width="full"] .dash { grid-template-columns: 1fr auto; align-items: center; gap: 24px; padding: 10px 20px 8px; }
+html[data-width="900"] .meters, html[data-width="full"] .meters { gap: 22px; }
+
+/* ввод */
+.compose { padding: 8px 12px 10px; border-top: 1px solid var(--line); background: var(--bg); }
+.ctx-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; font-size: 11px; }
+.chip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border: 1px solid var(--line-strong); border-radius: 999px; color: var(--fg-mute); }
+.chip code { background: none; padding: 0; color: var(--fg); font-size: 11px; }
+.chip .x { opacity: .6; }
+.box { border: 1px solid var(--line-strong); border-radius: 8px; background: var(--bg-input); }
+.box:focus-within { border-color: var(--accent); }
+.box .text { padding: 9px 12px; min-height: 40px; color: var(--fg-mute); }
+.box .row { display: flex; align-items: center; gap: 4px; padding: 4px 6px 6px; flex-wrap: wrap; }
+.pick { display: inline-flex; align-items: center; gap: 4px; padding: 3px 7px; border-radius: 5px; font-size: 12px; color: var(--fg-mute); }
+.pick:hover { background: var(--bg-hover); color: var(--fg); }
+.pick.mode { color: var(--fg); }
+.pick.mode::before { content: ""; width: 7px; height: 7px; border-radius: 2px; background: var(--info); }
+.send { margin-left: auto; width: 26px; height: 26px; border-radius: 6px; background: var(--btn); color: var(--btn-fg); display: grid; place-items: center; font-size: 13px; }
+.plus { width: 26px; height: 26px; border-radius: 6px; display: grid; place-items: center; color: var(--fg-mute); font-size: 16px; }
+
+/* правая колонка (широкая) */
+.aside h4 { margin: 0; padding: 12px 14px 8px; font-size: 11px; font-weight: 600; color: var(--fg-mute); letter-spacing: 0; }
+.tl { padding: 0 14px 14px; display: grid; gap: 0; }
+.tl .row { display: grid; grid-template-columns: 36px 1fr; gap: 8px; align-items: start; padding: 4px 0; font-size: 11.5px; position: relative; }
+.tl .row::before { content: ""; position: absolute; left: 46px; top: 0; bottom: 0; width: 1px; background: var(--line-strong); }
+.tl .row .at { font-family: var(--mono); color: var(--fg-faint); font-size: 10.5px; padding-top: 2px; }
+.tl .row .ev { padding-left: 16px; position: relative; min-width: 0; }
+.tl .row .ev::before { content: ""; position: absolute; left: 6px; top: 6px; width: 7px; height: 7px; border-radius: 50%; background: var(--fg-mute); border: 2px solid var(--bg-side); }
+.tl .row.edit .ev::before { background: var(--add); }
+.tl .row.run .ev::before { background: var(--info); }
+.tl .row.now .ev::before { background: var(--info); box-shadow: 0 0 0 3px color-mix(in srgb, var(--info) 30%, transparent); }
+.tl .row .ev .d { color: var(--fg-mute); font-family: var(--mono); font-size: 10.5px; margin-left: 6px; }
+.tl .row .ev code { font-size: 11px; background: none; padding: 0; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; max-width: 100%; vertical-align: bottom; }
+
+.agents { padding: 0 14px 14px; }
+.ag { display: grid; grid-template-columns: 14px 1fr auto; gap: 8px; align-items: center; padding: 6px 0; font-size: 12px; border-top: 1px solid var(--line); }
+.ag:first-child { border-top: 0; }
+.ag .st { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); justify-self: center; }
+.ag.busy .st { background: var(--info); box-shadow: 0 0 0 3px color-mix(in srgb, var(--info) 25%, transparent); }
+.ag.done .st { background: var(--fg-faint); }
+.ag .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ag .nm small { display: block; color: var(--fg-mute); font-size: 11px; }
+.ag .tk { font-family: var(--mono); font-size: 11px; color: var(--fg-mute); text-align: right; }
+.ag .tk button { color: var(--full); margin-left: 6px; font-size: 11px; }
+.ag.sub { margin-left: 16px; }
+.aside .tot { padding: 10px 14px 14px; font-size: 11px; color: var(--fg-mute); border-top: 1px solid var(--line); display: grid; grid-template-columns: 1fr auto; gap: 3px 10px; font-variant-numeric: tabular-nums; }
+.aside .tot b { color: var(--fg); font-weight: 500; font-family: var(--mono); }
+</style>
+</head>
+<body>
+
+<div class="preview-bar">
+  <b>Направление 1 · Кокпит</b>
+  <span class="grp"><button data-set-theme="dark">Тёмная</button><button data-set-theme="light">Светлая</button></span>
+  <span class="grp"><button data-set-width="380">380</button><button data-set-width="900">900</button><button data-set-width="full">во всю ширину</button></span>
+  <a href="./index.html">← все направления</a>
+</div>
+
+<div class="preview-stage">
+<div class="webview">
+
+  <header class="top">
+    <button class="agent" aria-haspopup="listbox" title="Агент: Claude · Codex, Gemini — скоро"><span class="dot"></span>Claude <span class="chev">▼</span></button>
+    <div class="title"><b>Мигание счётчика талонов</b> · queue-board</div>
+    <button class="ico" title="Сессии">☰</button>
+    <button class="ico" title="Новый диалог">＋</button>
+  </header>
+
+  <div class="body">
+  <main class="feed">
+
+    <section class="msg">
+      <div class="you">
+        <div class="who">Вы · 14:41</div>
+        Почини мигание счётчика талонов на табло при переподключении сокета. Табло — <code>apps/board</code>, сокет — <code>packages/ws-client</code>.
+      </div>
+    </section>
+
+    <section class="msg bot">
+      <div class="work">
+        <button class="work-head" data-toggle="w1" aria-expanded="true">
+          <span class="tri"></span><span class="n">5 инструментов</span> · думал 12 с <span class="t">24 с</span>
+        </button>
+        <div class="tools" id="w1">
+          <div class="tool think"><span class="k">…</span><span class="what">Табло, скорее всего, сбрасывает состояние при новом соединении, а не при новых данных</span><span class="res">12 с</span></div>
+          <div class="tool"><span class="k">≡</span><span class="what"><span class="verb">читал</span><code>packages/ws-client/src/reconnect.ts</code></span><span class="res">0.4 с</span></div>
+          <div class="tool"><span class="k">⌕</span><span class="what"><span class="verb">искал</span><code>ticketCount</code> в apps/board</span><span class="res">3 совп. · 0.2 с</span></div>
+          <div class="tool"><span class="k">≡</span><span class="what"><span class="verb">читал</span><code>apps/board/src/Counter.tsx</code></span><span class="res">0.3 с</span></div>
+          <div class="tool"><span class="k">✎</span><span class="what"><span class="verb">правил</span><code>apps/board/src/Counter.tsx</code></span><span class="res"><span class="add">+6</span> <span class="del">−2</span> · <a class="diff" href="#">дифф</a></span></div>
+          <div class="tool run"><span class="k">▶</span><span class="what"><span class="verb">запускал</span><code>pnpm test --filter board</code></span><span class="res"><span class="pass">12 ✓</span> · 9.8 с</span></div>
+        </div>
+      </div>
+      <p>Причина — <code>Counter</code> подписан на событие <code>open</code> сокета и при каждом переподключении сбрасывал <code>count</code> в ноль, пока не придёт первый снимок. На табло это выглядело как мигание.</p>
+      <p>Убрал сброс из обработчика <code>open</code>: счётчик держит последнее значение до нового снимка. Тесты табло проходят.</p>
+      <div class="sum">
+        <span>ввод 1 204</span><span>вывод 2 318</span><span>кэш ↓128 400 ↑3 902</span><span class="cost">$0.21</span><span>48 с</span>
+      </div>
+    </section>
+
+    <section class="msg">
+      <div class="you">
+        <div class="who">Вы · 14:51</div>
+        Добавь тест на переподключение, чтобы это не вернулось.
+      </div>
+    </section>
+
+    <section class="msg bot">
+      <div class="work">
+        <button class="work-head" data-toggle="w2" aria-expanded="true">
+          <span class="tri"></span><span class="n">2 инструмента</span> · <span class="spin"></span> идёт <span class="t">11 с</span>
+        </button>
+        <div class="tools" id="w2">
+          <div class="tool"><span class="k">✎</span><span class="what"><span class="verb">правил</span><code>apps/board/src/__tests__/Counter.test.tsx</code></span><span class="res"><span class="add">+31</span> · <a class="diff" href="#">дифф</a></span></div>
+          <div class="tool run"><span class="k"><span class="spin"></span></span><span class="what"><span class="verb">запускает</span><code>pnpm test --filter board</code></span><span class="res">3.2 с</span></div>
+        </div>
+      </div>
+      <p>Добавил тест: имитирую разрыв и повторный <code>open</code> без снимка и проверяю, что счётчик остаётся <code>42</code>, а не падает в ноль. Запускаю<span class="cursor"></span></p>
+      <div class="live"><span class="spin"></span> Отвечает · 11 с <button class="stop"><span class="sq"></span>Остановить <kbd>Esc</kbd></button></div>
+    </section>
+
+  </main>
+
+  <aside class="aside">
+    <h4>Ход · 14:51</h4>
+    <div class="tl">
+      <div class="row"><span class="at">0.0</span><span class="ev"><code>__tests__/Counter.test.tsx</code><span class="d">правка · 1.4 с</span></span></div>
+      <div class="row run now"><span class="at">1.6</span><span class="ev"><code>pnpm test --filter board</code><span class="d">идёт · 3.2 с</span></span></div>
+      <div class="row"><span class="at">—</span><span class="ev" style="color:var(--fg-mute)">текст ответа · стримится</span></div>
+    </div>
+    <h4>Предыдущий ход · 14:41 → 48 с</h4>
+    <div class="tl">
+      <div class="row"><span class="at">0.0</span><span class="ev"><span style="color:var(--fg-mute);font-style:italic">думал</span><span class="d">12 с</span></span></div>
+      <div class="row"><span class="at">12.1</span><span class="ev"><code>ws-client/src/reconnect.ts</code><span class="d">0.4 с</span></span></div>
+      <div class="row"><span class="at">12.6</span><span class="ev"><code>grep ticketCount</code><span class="d">3 · 0.2 с</span></span></div>
+      <div class="row"><span class="at">13.0</span><span class="ev"><code>board/src/Counter.tsx</code><span class="d">0.3 с</span></span></div>
+      <div class="row edit"><span class="at">21.4</span><span class="ev"><code>board/src/Counter.tsx</code><span class="d">+6 −2 · 1.1 с</span></span></div>
+      <div class="row run"><span class="at">22.7</span><span class="ev"><code>pnpm test --filter board</code><span class="d">12 ✓ · 9.8 с</span></span></div>
+      <div class="row"><span class="at">33.0</span><span class="ev" style="color:var(--fg-mute)">текст ответа<span class="d">15 с</span></span></div>
+    </div>
+    <h4>Агенты</h4>
+    <div class="agents">
+      <div class="ag busy"><span class="st"></span><span class="nm">Основной<small>Opus 5.5 · отвечает</small></span><span class="tk">131k</span></div>
+      <div class="ag sub done"><span class="st"></span><span class="nm">Explore: где обрабатывается reconnect<small>Sonnet 5.5 · готово, 14:43</small></span><span class="tk">8.1k</span></div>
+      <div class="ag sub busy"><span class="st"></span><span class="nm">pnpm test --filter board<small>фоновая задача · 3.2 с</small></span><span class="tk">—<button title="Остановить">■</button></span></div>
+    </div>
+    <div class="tot">
+      <span>За сессию</span><b>$1.84</b>
+      <span>Ходов</span><b>14</b>
+      <span>Длительность</span><b>2 ч 10 мин</b>
+      <span>Кэш-попадания</span><b>91 %</b>
+    </div>
+  </aside>
+  </div>
+
+  <!-- приборная полоса -->
+  <section class="dash" aria-label="Приборы">
+    <div class="gauge">
+      <div>
+        <div class="lbl"><span>Контекст · <b>окно 200k</b></span><span>сжать</span></div>
+        <div class="bar"><div class="fill"></div><div class="tick t1"></div><div class="tick t2"></div></div>
+        <div class="ticks"><span style="left:60%">120k</span><span style="left:75%">150k</span><span style="left:100%;transform:translateX(-100%)">200k</span></div>
+      </div>
+      <div class="big num">131 250<small>/ 200k</small></div>
+    </div>
+    <div class="meters">
+      <div class="m"><span class="ring" title="Кэш живёт ещё 4:12"></span><span class="v">4:12 <small>· 91 %</small></span><span class="name">кэш · попадания</span></div>
+      <div class="m"><span class="mini h5"><i></i></span><span class="v">62 % <small>→ 17:00</small></span><span class="name">лимит 5 ч</span></div>
+      <div class="m"><span class="mini wk"><i></i></span><span class="v">34 % <small>→ чт 09:00</small></span><span class="name">лимит недели</span></div>
+    </div>
+  </section>
+
+  <footer class="compose">
+    <div class="ctx-chips">
+      <span class="chip"><code>Counter.tsx</code> · 12–40 <span class="x">✕</span></span>
+      <span class="chip"><code>reconnect.ts</code> <span class="x">✕</span></span>
+    </div>
+    <div class="box">
+      <div class="text">Спросите или дайте задачу · @ файлы · / команды</div>
+      <div class="row">
+        <button class="plus" title="Добавить контекст">＋</button>
+        <button class="pick mode">Manual <span class="chev">▼</span></button>
+        <button class="pick">Opus 5.5 <span class="chev">▼</span></button>
+        <button class="pick">high <span class="chev">▼</span></button>
+        <button class="send" title="Отправить (Enter)">↑</button>
+      </div>
+    </div>
+  </footer>
+
+</div>
+</div>
+<script src="../shared/preview.js"></script>
+</body>
+</html>
