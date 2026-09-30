@@ -6,9 +6,10 @@ stock clients hide — context in tokens, cost per turn, cache, limits, agent ma
 Starts with Claude (via the Claude Agent SDK); other agents plug in through
 adapters later.
 
-**Status:** pre-prototype. Nothing to install yet.
+**Status:** prototype approved (`prototype-v1`), implementation roadmap written. Nothing to install yet.
 
 - [docs/features.md](docs/features.md) — what we build (MVP / later / never)
 - [docs/feature-inventory.md](docs/feature-inventory.md) — catalog of the official Claude Code extension, the baseline
-- [docs/roadmap/](docs/roadmap/) — plan and progress
-- `prototype/` — static HTML prototype of the interface
+- [docs/roadmap/01-features-prototype.md](docs/roadmap/01-features-prototype.md) — features and prototype (done)
+- [docs/roadmap/02-implementation.md](docs/roadmap/02-implementation.md) — implementation plan to v0.1
+- [prototype/](prototype/) — approved static HTML prototype of the interface (open `index.html`)
