@@ -89,6 +89,15 @@ export function toolView(name: string, input: Record<string, unknown>, cwd?: str
       return { op: 'search', what: clip(str(input['query']) ?? '') };
     case 'TodoWrite':
       return { op: 'todo', what: 'список задач' };
+    case 'AskUserQuestion': {
+      // этап 5: сам вопрос — карточкой ниже, строка — след в ленте и таймлайне
+      const q = Array.isArray(input['questions'])
+        ? (input['questions'][0] as Record<string, unknown>)
+        : undefined;
+      return { op: 'ask', what: clip(str(q?.['question']) ?? 'вопрос') };
+    }
+    case 'ExitPlanMode':
+      return { op: 'plan', what: 'план готов' };
     default: {
       const first = Object.values(input).find((v) => typeof v === 'string' && v) as
         string | undefined;

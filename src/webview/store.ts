@@ -5,11 +5,33 @@ import type {
   CommandOption,
   EffortLevel,
   ModelOption,
+  PermissionDecision,
   PermissionMode,
 } from '../agent/types';
 import { attachmentKey, type Attachment, type FileHit } from '../shared/prompt';
-import type { EditorContext, LimitWindowSummary, SessionSummary, ToWebview } from '../protocol';
-import { applyEvent, initialState, queueUser, resetSession, type ChatState } from './chatState';
+import type {
+  EditorContext,
+  LimitWindowSummary,
+  PlanChoice,
+  SessionSummary,
+  ToWebview,
+} from '../protocol';
+import {
+  answersOf,
+  applyEvent,
+  attachPreview,
+  initialState,
+  markPermission,
+  markPlan,
+  markQuestionSent,
+  pickOption,
+  queueUser,
+  questionReady,
+  resetSession,
+  setCustomAnswer,
+  type ChatState,
+  type QuestionCard,
+} from './chatState';
 import { pushHistory } from './composer';
 import { applyHud, initialHud, resetHud, type HudState } from './hudState';
 import { cacheView, contextView, limitsView } from './hudView';
@@ -42,6 +64,14 @@ export const fileHits = signal<{ requestId: number; items: FileHit[] }>({
   requestId: 0,
   items: [],
 });
+/**
+ * Куда уйдёт следующий текст поля ввода (этап 5): свой ответ на вопрос агента или доработка
+ * плана — вместо сообщения агенту.
+ */
+export type ReplyTarget =
+  { kind: 'question'; toolUseId: string; question: string } | { kind: 'plan'; toolUseId: string };
+export const replyTarget = signal<ReplyTarget | undefined>(undefined);
+
 /** Тик раз в секунду, пока идёт ход: таймеры в ленте. */
 export const tick = signal(Date.now());
 
@@ -109,8 +139,13 @@ export function handleHostMessage(m: ToWebview): void {
     case 'sessions.update':
       recent.value = m.sessions;
       break;
+    case 'diff.preview':
+      if (abandonedSessionId !== undefined && m.sessionId === abandonedSessionId) break;
+      chat.value = attachPreview(chat.value, m.toolUseId, m.preview);
+      break;
     case 'session.reset':
       abandonSession();
+      replyTarget.value = undefined;
       chat.value = resetSession(chat.value);
       hudState.value = resetHud(hudState.value);
       extra.value = [];
@@ -122,6 +157,11 @@ export function handleHostMessage(m: ToWebview): void {
 
 export function dispatchEvent(event: AgentEvent, now = Date.now()): void {
   chat.value = applyEvent(chat.value, event, now);
+  // карточка, которой адресован ответ из поля, закрыта (ответ, отмена движком) — поле снова обычное
+  const t = replyTarget.value;
+  if (t && event.type === 'permission.resolved' && event.toolUseId === t.toolUseId) {
+    replyTarget.value = undefined;
+  }
   hudState.value = applyHud(hudState.value, event, now);
   // лимит от движка — запас, пока хост не прислал данные `/api/oauth/usage`
   if (event.type === 'limit.update' && !event.agentId && limits.value.updatedAt === 0) {
@@ -214,7 +254,98 @@ export function setEffort(effort: EffortLevel): void {
   send({ type: 'effort.set', sessionId: chat.value.sessionId, effort });
 }
 
+function questionCard(toolUseId: string): QuestionCard | undefined {
+  return chat.value.rows.find(
+    (r): r is QuestionCard => r.kind === 'question' && r.toolUseId === toolUseId,
+  );
+}
+
+/** Кнопка карточки разрешения. */
+export function respondPermission(toolUseId: string, decision: PermissionDecision): void {
+  const card = chat.value.rows.find((r) => r.kind === 'perm' && r.toolUseId === toolUseId);
+  if (!card || (card.kind === 'perm' && card.sent)) return;
+  chat.value = markPermission(chat.value, toolUseId, decision);
+  send({ type: 'permission.respond', sessionId: chat.value.sessionId, toolUseId, decision });
+}
+
+/** Вариант ответа: один вопрос с одним выбором — ответ уходит сразу, иначе — кнопка «Ответить». */
+export function chooseOption(toolUseId: string, question: string, label: string): void {
+  chat.value = pickOption(chat.value, toolUseId, question, label);
+  const t = replyTarget.value;
+  if (t?.kind === 'question' && t.toolUseId === toolUseId && t.question === question) {
+    replyTarget.value = undefined;
+  }
+  const card = questionCard(toolUseId);
+  if (card && card.questions.length === 1 && !card.questions[0]!.multiSelect) {
+    submitQuestion(toolUseId);
+  }
+}
+
+/** «Свой вариант»: следующий текст поля ввода станет ответом на этот вопрос. */
+export function replyToQuestion(toolUseId: string, question: string): void {
+  replyTarget.value = { kind: 'question', toolUseId, question };
+}
+
+export function submitQuestion(toolUseId: string): void {
+  const card = questionCard(toolUseId);
+  if (!card || card.state !== 'pending' || !questionReady(card)) return;
+  const answers = answersOf(card);
+  chat.value = markQuestionSent(chat.value, toolUseId);
+  if (replyTarget.value?.toolUseId === toolUseId) replyTarget.value = undefined;
+  send({ type: 'question.answer', sessionId: chat.value.sessionId, toolUseId, answers });
+}
+
+/** Esc / «Отклонить» на вопросе: отказ, модель продолжит без ответа. */
+export function declineQuestion(toolUseId: string): void {
+  const card = questionCard(toolUseId);
+  if (!card || card.state !== 'pending') return;
+  chat.value = markQuestionSent(chat.value, toolUseId);
+  if (replyTarget.value?.toolUseId === toolUseId) replyTarget.value = undefined;
+  send({
+    type: 'permission.respond',
+    sessionId: chat.value.sessionId,
+    toolUseId,
+    decision: 'deny',
+  });
+}
+
+/** Кнопка плана. «Доработать» без текста — ждём его из поля ввода. */
+export function decidePlan(toolUseId: string, choice: PlanChoice, feedback?: string): void {
+  const card = chat.value.rows.find((r) => r.kind === 'plan' && r.toolUseId === toolUseId);
+  if (!card || card.kind !== 'plan' || card.state !== 'pending') return;
+  const text = feedback?.trim();
+  if (choice === 'refine' && !text) {
+    replyTarget.value = { kind: 'plan', toolUseId };
+    return;
+  }
+  chat.value = markPlan(chat.value, toolUseId, choice, text);
+  if (replyTarget.value?.toolUseId === toolUseId) replyTarget.value = undefined;
+  send({
+    type: 'plan.decide',
+    sessionId: chat.value.sessionId,
+    toolUseId,
+    decision: choice,
+    ...(choice === 'refine' && text ? { feedback: text } : {}),
+  });
+}
+
+/** Текст поля ввода при `replyTarget`: ответ карточке вместо сообщения. `false` — цели нет. */
+export function submitReply(text: string): boolean {
+  const t = replyTarget.value;
+  if (!t) return false;
+  if (t.kind === 'plan') {
+    decidePlan(t.toolUseId, 'refine', text);
+    return true;
+  }
+  chat.value = setCustomAnswer(chat.value, t.toolUseId, t.question, text);
+  replyTarget.value = undefined;
+  const card = questionCard(t.toolUseId);
+  if (card && card.questions.length === 1) submitQuestion(t.toolUseId);
+  return true;
+}
+
 export function newSession(): void {
+  replyTarget.value = undefined;
   abandonSession();
   chat.value = resetSession(chat.value);
   hudState.value = resetHud(hudState.value);

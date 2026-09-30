@@ -2,8 +2,17 @@
  * Состояние чата webview: чистый редьюсер событий агента в строки ленты. Без Preact и DOM —
  * проверяется юнит-тестами; стор на сигналах (`store.ts`) только хранит результат.
  */
-import type { AgentEvent, EffortLevel, PermissionMode } from '../agent/types';
-import { nextStatus, type ChatStatus } from '../agent/status';
+import type {
+  AgentEvent,
+  DiffPreview,
+  EffortLevel,
+  PermissionAlways,
+  PermissionDecision,
+  PermissionMode,
+  Question,
+} from '../agent/types';
+import { nextStatus, updateInTurn, updatePending, type ChatStatus } from '../agent/status';
+import type { EditPreview, PlanChoice } from '../protocol';
 import { splitPrompt } from '../shared/prompt';
 import type { Seg } from './fixtures/chat';
 import { formatCost, formatDuration, formatInt } from './toolView';
@@ -34,7 +43,58 @@ export type FeedRow =
       result?: unknown;
     }
   | { id: number; kind: 'text'; messageId: string; text: string; streaming: boolean }
-  | { id: number; kind: 'sum'; parts: string[]; cost?: string; time: string };
+  | { id: number; kind: 'sum'; parts: string[]; cost?: string; time: string }
+  | PermCard
+  | QuestionCard
+  | PlanCard;
+
+/**
+ * Карточки `.ask` (этап 5). Живут строками ленты там, где пришёл запрос. `sent` — кнопка нажата,
+ * ответ ушёл хосту, ждём `permission.resolved`; итог решения — системной строкой рядом.
+ */
+export interface PermCard {
+  id: number;
+  kind: 'perm';
+  toolUseId: string;
+  agentId?: string;
+  toolName: string;
+  input: Record<string, unknown>;
+  description?: string;
+  reason?: string;
+  blockedPath?: string;
+  always?: PermissionAlways;
+  diff?: DiffPreview;
+  /** Ханки с номерами строк от хоста (`diff.preview`), приходят вдогонку. */
+  preview?: EditPreview;
+  sent?: PermissionDecision;
+}
+
+export interface QuestionCard {
+  id: number;
+  kind: 'question';
+  toolUseId: string;
+  agentId?: string;
+  questions: Question[];
+  /** Выбранные варианты по тексту вопроса (метки). */
+  picks: Record<string, string[]>;
+  /** Свой ответ по тексту вопроса (из поля ввода). */
+  custom: Record<string, string>;
+  state: 'pending' | 'sent' | 'answered' | 'declined' | 'cancelled';
+}
+
+export interface PlanCard {
+  id: number;
+  kind: 'plan';
+  toolUseId: string;
+  agentId?: string;
+  plan: string;
+  planFilePath?: string;
+  state: 'pending' | 'sent' | 'done' | 'cancelled';
+  choice?: PlanChoice;
+  feedback?: string;
+}
+
+export type Card = PermCard | QuestionCard | PlanCard;
 
 export interface ChatState {
   rows: FeedRow[];
@@ -57,6 +117,10 @@ export interface ChatState {
   limitResetsAt?: number;
   compactingRow?: number;
   closed?: { reason: 'exit' | 'error' | 'disposed'; message?: string };
+  /** Запросы, ждущие ответа (`updatePending`): пока есть — состояние `waiting`. */
+  pending: string[];
+  /** Идёт ход основного агента (`updateInTurn`) — куда вернуться после ответа на запрос. */
+  inTurn?: boolean;
 }
 
 export function initialState(): ChatState {
@@ -71,6 +135,7 @@ export function initialState(): ChatState {
     mode: 'default',
     skills: [],
     slashCommands: [],
+    pending: [],
   };
 }
 
@@ -140,21 +205,29 @@ function deliverUser(s: ChatState, prompt: string, atMs: number): ChatState {
 }
 
 export function applyEvent(s: ChatState, event: AgentEvent, now = Date.now()): ChatState {
-  const status = nextStatus(s.status, event);
-  const next = reduce({ ...s, status }, event, now);
+  const pending = updatePending(s.pending, event);
+  const inTurn = updateInTurn(!!s.inTurn, event);
+  const status = nextStatus(s.status, event, pending.length, inTurn);
+  const { inTurn: _was, ...rest } = s;
+  void _was;
+  const next = reduce({ ...rest, status, pending, ...(inTurn ? { inTurn } : {}) }, event, now);
   return next;
 }
 
+/** События субагентов, которые всё же попадают в ленту: их запросы ждут человека. */
+const SUBAGENT_FEED: ReadonlySet<AgentEvent['type']> = new Set([
+  'agent.start',
+  'agent.progress',
+  'agent.end',
+  'permission.request',
+  'question.request',
+  'plan.request',
+  'permission.resolved',
+]);
+
 function reduce(s: ChatState, e: AgentEvent, now: number): ChatState {
-  // Субагенты: в ленте основного агента их строк нет (панель «агенты» — этап 4).
-  if (
-    e.agentId &&
-    e.type !== 'agent.start' &&
-    e.type !== 'agent.progress' &&
-    e.type !== 'agent.end'
-  ) {
-    return s;
-  }
+  // Субагенты: в ленте основного агента их строк нет (панель «агенты» — этап 4), кроме карточек.
+  if (e.agentId && !SUBAGENT_FEED.has(e.type)) return s;
   switch (e.type) {
     case 'session.init': {
       const out: ChatState = {
@@ -252,15 +325,42 @@ function reduce(s: ChatState, e: AgentEvent, now: number): ChatState {
       return replaceAt(s, i, done);
     }
     case 'permission.request':
+      if (findCard(s, e.toolUseId) >= 0) return s;
       return push(s, {
-        kind: 'sys',
-        tone: 'bad',
-        text: [ui.stubs.permission(e.toolName)],
+        kind: 'perm',
+        toolUseId: e.toolUseId,
+        ...(e.agentId ? { agentId: e.agentId } : {}),
+        toolName: e.toolName,
+        input: e.input,
+        ...(e.description ? { description: e.description } : {}),
+        ...(e.reason ? { reason: e.reason } : {}),
+        ...(e.blockedPath ? { blockedPath: e.blockedPath } : {}),
+        ...(e.always ? { always: e.always } : {}),
+        ...(e.diff ? { diff: e.diff } : {}),
       });
     case 'question.request':
-      return push(s, { kind: 'sys', tone: 'bad', text: [ui.stubs.question] });
+      if (findCard(s, e.toolUseId) >= 0) return s;
+      return push(s, {
+        kind: 'question',
+        toolUseId: e.toolUseId,
+        ...(e.agentId ? { agentId: e.agentId } : {}),
+        questions: e.questions,
+        picks: {},
+        custom: {},
+        state: 'pending',
+      });
     case 'plan.request':
-      return push(s, { kind: 'sys', tone: 'bad', text: [ui.stubs.plan] });
+      if (findCard(s, e.toolUseId) >= 0) return s;
+      return push(s, {
+        kind: 'plan',
+        toolUseId: e.toolUseId,
+        ...(e.agentId ? { agentId: e.agentId } : {}),
+        plan: e.plan,
+        ...(e.planFilePath ? { planFilePath: e.planFilePath } : {}),
+        state: 'pending',
+      });
+    case 'permission.resolved':
+      return resolveCard(s, e, now);
     case 'compaction.start': {
       const out = push(s, { kind: 'sys', text: [ui.sys.compacting] });
       return { ...out, compactingRow: out.rows[out.rows.length - 1]!.id };
@@ -324,6 +424,234 @@ function reduce(s: ChatState, e: AgentEvent, now: number): ChatState {
     default:
       return s;
   }
+}
+
+function findCard(s: ChatState, toolUseId: string): number {
+  return s.rows.findIndex(
+    (r) =>
+      (r.kind === 'perm' || r.kind === 'question' || r.kind === 'plan') &&
+      r.toolUseId === toolUseId,
+  );
+}
+
+function insertAfter(s: ChatState, index: number, row: DistributiveOmit<FeedRow, 'id'>): ChatState {
+  const rows = s.rows.slice();
+  rows.splice(index + 1, 0, { ...row, id: s.nextId } as FeedRow);
+  return { ...s, rows, nextId: s.nextId + 1 };
+}
+
+/**
+ * Запрос закрыт. Разрешение: карточка снимается, на её месте — строка итога для «отклонено» и
+ * «всегда» (простое «разрешить» видно по строке инструмента). Вопрос и план остаются в ленте
+ * отвеченными, итог — строкой под ними. Отмена движком (`abort`) итоговых строк не даёт.
+ */
+function resolveCard(
+  s: ChatState,
+  e: Extract<AgentEvent, { type: 'permission.resolved' }>,
+  now: number,
+): ChatState {
+  const i = findCard(s, e.toolUseId);
+  if (i < 0) return s;
+  const card = s.rows[i] as Card;
+  const at = clock(now);
+  const byUser = e.by === 'user';
+  switch (card.kind) {
+    case 'perm': {
+      const decision: PermissionDecision =
+        e.decision === 'deny' ? 'deny' : card.sent && card.sent !== 'deny' ? card.sent : 'allow';
+      const summary = byUser ? permissionSummary(card, decision) : undefined;
+      if (!summary) return { ...s, rows: s.rows.filter((_, k) => k !== i) };
+      return replaceAt(s, i, { ...summary, id: card.id, at } as FeedRow);
+    }
+    case 'question': {
+      if (!byUser) return replaceAt(s, i, { ...card, state: 'cancelled' });
+      if (e.decision === 'deny') {
+        const out = replaceAt(s, i, { ...card, state: 'declined' });
+        return insertAfter(out, i, { kind: 'sys', text: [ui.sys.questionDeclined], at });
+      }
+      const out = replaceAt(s, i, { ...card, state: 'answered' });
+      return insertAfter(out, i, { kind: 'sys', text: answerSummary(card), at });
+    }
+    case 'plan': {
+      if (!byUser) return replaceAt(s, i, { ...card, state: 'cancelled' });
+      const choice: PlanChoice =
+        e.decision === 'allow'
+          ? card.choice === 'run-edits'
+            ? 'run-edits'
+            : 'run'
+          : card.choice === 'refine'
+            ? 'refine'
+            : 'reject';
+      const out = replaceAt(s, i, { ...card, state: 'done', choice });
+      const text =
+        ui.sys.plan[choice] + (choice === 'refine' && card.feedback ? `: ${card.feedback}` : '');
+      return insertAfter(out, i, {
+        kind: 'sys',
+        ...(choice === 'reject'
+          ? { tone: 'bad' as const }
+          : choice === 'refine'
+            ? {}
+            : { tone: 'ok' as const }),
+        text: [text],
+        at,
+      });
+    }
+  }
+}
+
+function permissionSummary(
+  card: PermCard,
+  decision: PermissionDecision,
+): DistributiveOmit<FeedRow, 'id'> | undefined {
+  const what = permissionSubject(card);
+  if (decision === 'deny')
+    return { kind: 'sys', tone: 'bad', text: [ui.sys.denied, { code: what }] };
+  if (decision === 'allow-always' && card.always) {
+    const rules = card.always.rules.join(', ');
+    const where = ui.cards.destination(card.always.destination);
+    if (rules) return { kind: 'sys', text: [ui.sys.alwaysRule, { code: rules }, ` → ${where}`] };
+  }
+  return undefined;
+}
+
+/** Что просили разрешить — одной строкой: команда, файл, иначе имя инструмента. */
+export function permissionSubject(
+  card: Pick<PermCard, 'toolName' | 'input' | 'description'>,
+): string {
+  const cmd = card.input['command'];
+  if (typeof cmd === 'string' && cmd) return cmd.split('\n', 1)[0]!;
+  const file = card.input['file_path'];
+  if (typeof file === 'string' && file) return file.split('/').pop() || file;
+  return card.description || card.toolName;
+}
+
+/** Ответы на `AskUserQuestion`: вопрос → метка; несколько меток — через запятую; свой ответ — текстом. */
+export function answersOf(card: QuestionCard): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const q of card.questions) {
+    const custom = card.custom[q.question];
+    const picks = card.picks[q.question] ?? [];
+    const value = custom ?? picks.join(', ');
+    if (value) out[q.question] = value;
+  }
+  return out;
+}
+
+/** Все вопросы карточки отвечены — можно отправлять. */
+export function questionReady(card: QuestionCard): boolean {
+  return card.questions.every(
+    (q) => (card.custom[q.question] ?? '') !== '' || (card.picks[q.question]?.length ?? 0) > 0,
+  );
+}
+
+/** «выбран вариант 2», «выбраны варианты 1, 3», «свой ответ: …»; у нескольких вопросов — с заголовком. */
+export function answerSummary(card: QuestionCard): Seg[] {
+  const parts = card.questions.map((q) => {
+    const custom = card.custom[q.question];
+    let text: string;
+    if (custom !== undefined) text = ui.sys.customAnswer(custom);
+    else {
+      const nums = (card.picks[q.question] ?? [])
+        .map((label) => q.options.findIndex((o) => o.label === label) + 1)
+        .filter((n) => n > 0);
+      text = ui.sys.picked(nums);
+    }
+    return card.questions.length > 1 ? `${q.header ?? q.question}: ${text}` : text;
+  });
+  return [parts.join(' · ')];
+}
+
+/** Карточка, которой адресованы Enter/Esc/цифры: первая ждущая разрешения или вопроса. */
+export function activeCard(s: ChatState): PermCard | QuestionCard | undefined {
+  for (const r of s.rows) {
+    if (r.kind === 'perm' && !r.sent) return r;
+    if (r.kind === 'question' && r.state === 'pending') return r;
+  }
+  return undefined;
+}
+
+/** Ждущая решения карточка плана. */
+export function pendingPlan(s: ChatState): PlanCard | undefined {
+  return s.rows.find((r): r is PlanCard => r.kind === 'plan' && r.state === 'pending');
+}
+
+function updateCard<K extends Card['kind']>(
+  s: ChatState,
+  toolUseId: string,
+  kind: K,
+  f: (c: Extract<Card, { kind: K }>) => Extract<Card, { kind: K }>,
+): ChatState {
+  const i = findCard(s, toolUseId);
+  if (i < 0 || s.rows[i]!.kind !== kind) return s;
+  return replaceAt(s, i, f(s.rows[i] as Extract<Card, { kind: K }>));
+}
+
+/** Кнопка разрешения нажата: ответ ушёл, кнопки гаснут до `permission.resolved`. */
+export function markPermission(
+  s: ChatState,
+  toolUseId: string,
+  decision: PermissionDecision,
+): ChatState {
+  return updateCard(s, toolUseId, 'perm', (c) => (c.sent ? c : { ...c, sent: decision }));
+}
+
+/** Превью ханков от хоста. */
+export function attachPreview(s: ChatState, toolUseId: string, preview: EditPreview): ChatState {
+  return updateCard(s, toolUseId, 'perm', (c) => ({ ...c, preview }));
+}
+
+/** Выбор варианта: одиночный — заменяет, множественный — переключает; снимает свой ответ. */
+export function pickOption(
+  s: ChatState,
+  toolUseId: string,
+  question: string,
+  label: string,
+): ChatState {
+  return updateCard(s, toolUseId, 'question', (c) => {
+    if (c.state !== 'pending') return c;
+    const q = c.questions.find((x) => x.question === question);
+    if (!q) return c;
+    const cur = c.picks[question] ?? [];
+    const next = q.multiSelect
+      ? cur.includes(label)
+        ? cur.filter((l) => l !== label)
+        : [...cur, label]
+      : [label];
+    const { [question]: _drop, ...custom } = c.custom;
+    void _drop;
+    return { ...c, picks: { ...c.picks, [question]: next }, custom };
+  });
+}
+
+/** Свой ответ из поля ввода. */
+export function setCustomAnswer(
+  s: ChatState,
+  toolUseId: string,
+  question: string,
+  text: string,
+): ChatState {
+  return updateCard(s, toolUseId, 'question', (c) =>
+    c.state !== 'pending'
+      ? c
+      : { ...c, custom: { ...c.custom, [question]: text }, picks: { ...c.picks, [question]: [] } },
+  );
+}
+
+export function markQuestionSent(s: ChatState, toolUseId: string): ChatState {
+  return updateCard(s, toolUseId, 'question', (c) =>
+    c.state === 'pending' ? { ...c, state: 'sent' } : c,
+  );
+}
+
+export function markPlan(
+  s: ChatState,
+  toolUseId: string,
+  choice: PlanChoice,
+  feedback?: string,
+): ChatState {
+  return updateCard(s, toolUseId, 'plan', (c) =>
+    c.state !== 'pending' ? c : { ...c, state: 'sent', choice, ...(feedback ? { feedback } : {}) },
+  );
 }
 
 function compactionText(e: Extract<AgentEvent, { type: 'compaction.end' }>, now: number): Seg[] {

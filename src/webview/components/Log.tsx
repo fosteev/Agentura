@@ -4,6 +4,7 @@ import type { FeedRow } from '../chatState';
 import { onCodeCopyClick, renderMarkdown, withCursor } from '../markdown';
 import { ui } from '../strings';
 import { editStats, formatDuration, matchCount, toolView } from '../toolView';
+import { PermissionCard, PlanCardView, QuestionCardView } from './Cards';
 
 type Row<K extends FeedRow['kind']> = Extract<FeedRow, { kind: K }>;
 
@@ -158,6 +159,8 @@ export function Log({
   cwd,
   now,
   showThinking,
+  mode,
+  activeId,
   onDiff,
   children,
 }: {
@@ -165,6 +168,10 @@ export function Log({
   cwd: string;
   now: number;
   showThinking: boolean;
+  /** Подпись режима для тега карточки разрешения («режим manual»). */
+  mode: string;
+  /** Строка карточки, которой адресованы Enter/Esc (подсказки клавиш только на ней). */
+  activeId?: number;
   onDiff: (toolUseId: string) => void;
   children?: preact.ComponentChildren;
 }) {
@@ -196,6 +203,21 @@ export function Log({
             return <Tool key={it.id} t={it} cwd={cwd} now={now} onDiff={onDiff} />;
           case 'text':
             return <Text key={it.id} r={it} last={i === rows.length - 1} />;
+          case 'perm':
+            return (
+              <PermissionCard
+                key={it.id}
+                c={it}
+                cwd={cwd}
+                mode={mode}
+                active={it.id === activeId}
+                onDiff={onDiff}
+              />
+            );
+          case 'question':
+            return <QuestionCardView key={it.id} c={it} active={it.id === activeId} />;
+          case 'plan':
+            return <PlanCardView key={it.id} c={it} cwd={cwd} />;
           case 'sum':
             return (
               <div class="sum" key={it.id}>

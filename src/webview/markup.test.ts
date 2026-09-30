@@ -96,7 +96,14 @@ function renderLog(
   if (extra) s = extra(s);
   const host = document.createElement('div');
   render(
-    h(Log, { rows: s.rows, cwd: '/p', now: T0 + 60_000, showThinking: true, onDiff: () => {} }),
+    h(Log, {
+      rows: s.rows,
+      cwd: '/p',
+      now: T0 + 60_000,
+      showThinking: true,
+      mode: 'manual',
+      onDiff: () => {},
+    }),
     host,
   );
   return host.querySelector('.log')!;

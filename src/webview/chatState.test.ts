@@ -6,12 +6,27 @@ import type { AgentEvent } from '../agent/types';
 import { formatCost } from './toolView';
 import { buildPrompt } from '../shared/prompt';
 import {
+  activeCard,
+  answerSummary,
+  answersOf,
   applyEvent,
+  attachPreview,
   initialState,
+  markPermission,
+  markPlan,
+  markQuestionSent,
+  pendingPlan,
+  permissionSubject,
+  pickOption,
   queueUser,
+  questionReady,
   resetSession,
+  setCustomAnswer,
   type ChatState,
   type FeedRow,
+  type PermCard,
+  type PlanCard,
+  type QuestionCard,
 } from './chatState';
 
 const logsDir = join(__dirname, '..', '..', 'spikes', 'sdk-probe', 'logs');
@@ -72,11 +87,80 @@ describe('редьюсер ленты на логах пробы', () => {
     expect(tools.some((t) => t.name === 'Edit' && t.state === 'ok')).toBe(true);
   });
 
-  it('03–04: запросы вопроса и плана дают заглушку в ленте (карточки — этап 5)', async () => {
-    for (const name of ['03-ask-user-question', '04-plan-mode']) {
-      const { state } = await feed(name);
-      expect(state.rows.some((r) => r.kind === 'sys' && r.tone === 'bad')).toBe(true);
+  it('02: карточки разрешений — «всегда» для Bash даёт строку с правилом, после хода карточек нет', async () => {
+    const { events } = await replayProbeLog(readLog('02-permissions-edit'), 0);
+    let state: ChatState = { ...initialState(), cwd: '/Users/fost/Projects/Agentura' };
+    const seen: string[] = [];
+    for (const e of events) {
+      state = applyEvent(state, e, 1_000_000);
+      if (e.type === 'permission.request') {
+        seen.push(e.toolName);
+        expect(state.status).toBe('waiting');
+        const card = state.rows.at(-1) as PermCard;
+        expect(card.kind).toBe('perm');
+        // как ответил пользователь в пробе: Bash node -e — «всегда», остальное — «разрешить»
+        const always = e.toolName === 'Bash' && String(e.input['command']).startsWith('node');
+        state = markPermission(state, e.toolUseId, always ? 'allow-always' : 'allow');
+      }
     }
+    expect(seen).toEqual(['Edit', 'Bash', 'Bash', 'Write', 'Bash', 'Bash']);
+    expect(state.rows.some((r) => r.kind === 'perm')).toBe(false);
+    expect(state.pending).toEqual([]);
+    expect(state.status).toBe('idle');
+    const always = state.rows.find(
+      (r) => r.kind === 'sys' && JSON.stringify(r.text).includes('всегда'),
+    );
+    expect(always).toMatchObject({
+      text: [
+        'всегда: ',
+        { code: 'Bash(node -e "console.log(1)")' },
+        ' → .claude/settings.local.json',
+      ],
+    });
+  });
+
+  it('03: вопрос — карточка остаётся отвеченной, под ней «выбран вариант 2»', async () => {
+    const { events } = await replayProbeLog(readLog('03-ask-user-question'), 0);
+    let state = initialState();
+    for (const e of events) {
+      state = applyEvent(state, e, 1_000_000);
+      if (e.type === 'question.request') {
+        const q = e.questions[0]!;
+        state = pickOption(state, e.toolUseId, q.question, 'Синий');
+        const card = state.rows.at(-1) as QuestionCard;
+        expect(answersOf(card)).toEqual({ [q.question]: 'Синий' });
+        state = markQuestionSent(state, e.toolUseId);
+      }
+    }
+    const i = state.rows.findIndex((r) => r.kind === 'question');
+    expect(state.rows[i]).toMatchObject({ kind: 'question', state: 'answered' });
+    expect(state.rows[i + 1]).toMatchObject({ kind: 'sys', text: ['выбран вариант 2'] });
+  });
+
+  it('04: план — «доработать» с текстом, затем «выполнять, принимая правки»; режим сменил движок', async () => {
+    const { events } = await replayProbeLog(readLog('04-plan-mode'), 0);
+    let state = initialState();
+    let n = 0;
+    for (const e of events) {
+      state = applyEvent(state, e, 1_000_000);
+      if (e.type === 'plan.request') {
+        expect(pendingPlan(state)?.toolUseId).toBe(e.toolUseId);
+        state =
+          n++ === 0
+            ? markPlan(state, e.toolUseId, 'refine', 'добавь проверку git diff')
+            : markPlan(state, e.toolUseId, 'run-edits');
+      }
+    }
+    const sys = state.rows.flatMap((r) => (r.kind === 'sys' ? [r.text.join('')] : []));
+    expect(sys).toContain('план на доработку: добавь проверку git diff');
+    expect(sys).toContain('план принят · выполняю, принимая правки');
+    expect(sys).toContain('режим: принимать правки');
+    const plans = state.rows.filter((r): r is PlanCard => r.kind === 'plan');
+    expect(plans.map((p) => [p.state, p.choice])).toEqual([
+      ['done', 'refine'],
+      ['done', 'run-edits'],
+    ]);
+    expect(state.mode).toBe('acceptEdits');
   });
 
   it('05: события субагентов не попадают в ленту основного агента', async () => {
@@ -267,5 +351,147 @@ describe('системные строки этапа 4', () => {
   it('ошибка без кода лимита — как была, без «ход не начат»', () => {
     const s = applyEvent(initialState(), e({ type: 'error', message: 'сеть', fatal: false }), 0);
     expect((s.rows[0] as Extract<FeedRow, { kind: 'sys' }>).text).toEqual(['сеть']);
+  });
+});
+
+describe('карточки .ask (этап 5)', () => {
+  const ev = (e: Record<string, unknown>) => e as unknown as AgentEvent;
+  const perm = (id: string, extra: Record<string, unknown> = {}) =>
+    ev({
+      type: 'permission.request',
+      toolUseId: id,
+      toolName: 'Bash',
+      input: { command: 'ls' },
+      canAlwaysAllow: false,
+      ...extra,
+    });
+  const resolved = (
+    id: string,
+    decision: 'allow' | 'deny',
+    by: 'user' | 'abort' = 'user',
+    agentId?: string,
+  ) =>
+    ev({
+      type: 'permission.resolved',
+      toolUseId: id,
+      decision,
+      by,
+      ...(agentId ? { agentId } : {}),
+    });
+
+  it('запрос субагента — карточка в ленте и waiting; повтор того же id — без второй карточки', () => {
+    let s = applyEvent(initialState(), ev({ type: 'turn.start', at: 1 }), 1);
+    s = applyEvent(s, perm('p', { agentId: 'sub' }), 2);
+    s = applyEvent(s, perm('p', { agentId: 'sub' }), 2);
+    expect(s.rows.filter((r) => r.kind === 'perm')).toHaveLength(1);
+    expect(s.status).toBe('waiting');
+    expect(activeCard(s)?.toolUseId).toBe('p');
+  });
+
+  it('два запроса: ответ на один оставляет waiting и активной — второй', () => {
+    let s = applyEvent(initialState(), ev({ type: 'turn.start', at: 1 }), 1);
+    s = applyEvent(s, perm('a'), 2);
+    s = applyEvent(s, perm('b'), 2);
+    s = markPermission(s, 'a', 'allow');
+    expect(activeCard(s)?.toolUseId).toBe('b');
+    s = applyEvent(s, resolved('a', 'allow'), 3);
+    expect(s.status).toBe('waiting');
+    s = applyEvent(s, resolved('b', 'allow'), 3);
+    expect(s.status).toBe('working');
+    expect(s.rows.some((r) => r.kind === 'perm')).toBe(false);
+  });
+
+  it('отказ — строка «отклонено: команда» на месте карточки; отмена движком — без строки', () => {
+    let s = applyEvent(initialState(), perm('a'), 1);
+    s = markPermission(s, 'a', 'deny');
+    s = applyEvent(s, resolved('a', 'deny'), 1);
+    expect(s.rows).toMatchObject([
+      { kind: 'sys', tone: 'bad', text: ['отклонено: ', { code: 'ls' }] },
+    ]);
+    let t = applyEvent(initialState(), perm('b'), 1);
+    t = applyEvent(t, resolved('b', 'deny', 'abort'), 1);
+    expect(t.rows).toEqual([]);
+    expect(t.pending).toEqual([]);
+  });
+
+  it('превью от хоста цепляется к карточке по toolUseId', () => {
+    let s = applyEvent(
+      initialState(),
+      perm('a', { toolName: 'Edit', input: { file_path: '/p/x.ts' } }),
+      1,
+    );
+    s = attachPreview(s, 'a', {
+      filePath: '/p/x.ts',
+      add: 1,
+      del: 0,
+      hunks: [],
+      hidden: 0,
+      isNew: false,
+    });
+    expect((s.rows[0] as PermCard).preview?.add).toBe(1);
+    expect(permissionSubject(s.rows[0] as PermCard)).toBe('x.ts');
+  });
+
+  it('вопросы: multiSelect, свой ответ, несколько вопросов', () => {
+    const questions = [
+      {
+        question: 'Цвет?',
+        header: 'Цвет',
+        options: [{ label: 'Красный' }, { label: 'Синий' }],
+        multiSelect: true,
+      },
+      {
+        question: 'Размер?',
+        header: 'Размер',
+        options: [{ label: 'S' }, { label: 'M' }],
+        multiSelect: false,
+      },
+    ];
+    let s = applyEvent(
+      initialState(),
+      ev({ type: 'question.request', toolUseId: 'q', questions }),
+      1,
+    );
+    s = pickOption(s, 'q', 'Цвет?', 'Красный');
+    s = pickOption(s, 'q', 'Цвет?', 'Синий');
+    expect(questionReady(s.rows[0] as QuestionCard)).toBe(false);
+    s = setCustomAnswer(s, 'q', 'Размер?', 'XL');
+    const card = s.rows[0] as QuestionCard;
+    expect(questionReady(card)).toBe(true);
+    expect(answersOf(card)).toEqual({ 'Цвет?': 'Красный, Синий', 'Размер?': 'XL' });
+    expect(answerSummary(card)).toEqual(['Цвет: выбраны варианты 1, 2 · Размер: свой ответ: XL']);
+    // повторный клик снимает выбор
+    s = pickOption(s, 'q', 'Цвет?', 'Красный');
+    expect(answersOf(s.rows[0] as QuestionCard)['Цвет?']).toBe('Синий');
+  });
+
+  it('отклонённый вопрос и отменённый план', () => {
+    let s = applyEvent(
+      initialState(),
+      ev({ type: 'question.request', toolUseId: 'q', questions: [] }),
+      1,
+    );
+    s = applyEvent(s, resolved('q', 'deny'), 1);
+    expect(s.rows.map((r) => r.kind)).toEqual(['question', 'sys']);
+    expect((s.rows[0] as QuestionCard).state).toBe('declined');
+    let t = applyEvent(
+      initialState(),
+      ev({ type: 'plan.request', toolUseId: 'p', plan: '# P' }),
+      1,
+    );
+    t = applyEvent(t, resolved('p', 'deny', 'abort'), 1);
+    expect(t.rows.map((r) => r.kind)).toEqual(['plan']);
+    expect((t.rows[0] as PlanCard).state).toBe('cancelled');
+  });
+
+  it('отклонённый план — красная строка', () => {
+    let s = applyEvent(
+      initialState(),
+      ev({ type: 'plan.request', toolUseId: 'p', plan: '# P' }),
+      1,
+    );
+    s = markPlan(s, 'p', 'reject');
+    s = applyEvent(s, resolved('p', 'deny'), 1);
+    expect(s.rows[1]).toMatchObject({ kind: 'sys', tone: 'bad', text: ['план отклонён'] });
   });
 });

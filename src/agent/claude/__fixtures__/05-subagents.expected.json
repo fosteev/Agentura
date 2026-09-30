@@ -534,7 +534,14 @@
       },
       "description": "Wait about 90 seconds",
       "reason": "This command requires approval",
-      "canAlwaysAllow": true
+      "canAlwaysAllow": true,
+      "always": {
+        "rules": [
+          "Bash(node -e \"setTimeout(()=>{}, 90000)\")"
+        ],
+        "directories": [],
+        "destination": "localSettings"
+      }
     },
     {
       "type": "permission.resolved",

@@ -350,7 +350,14 @@
         "command": "tail -c1 README.md | xxd | head -1"
       },
       "description": "tail -c1 README.md | xxd | head -1",
-      "canAlwaysAllow": true
+      "canAlwaysAllow": true,
+      "always": {
+        "rules": [
+          "Bash(xxd)"
+        ],
+        "directories": [],
+        "destination": "localSettings"
+      }
     },
     {
       "type": "permission.resolved",

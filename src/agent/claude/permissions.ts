@@ -1,5 +1,13 @@
-import type { AgentEvent, DiffPreview, PermissionDecision, PlanDecision, Question } from '../types';
-import { arr, isObj, obj, str, type Json } from './json';
+import type {
+  AgentEvent,
+  DiffPreview,
+  PermissionAlways,
+  PermissionDecision,
+  PermissionMode,
+  PlanDecision,
+  Question,
+} from '../types';
+import { arr, isObj, obj, str, strings, type Json } from './json';
 
 /**
  * Единая точка `canUseTool`: запрос → событие в интерфейс → промис, который резолвит ответ
@@ -95,6 +103,7 @@ export class PermissionBroker {
         });
       } else {
         const diff = diffPreview(toolName, input);
+        const always = alwaysFrom(suggestions);
         this.emit({
           type: 'permission.request',
           ...agent,
@@ -106,6 +115,7 @@ export class PermissionBroker {
           ...(options.decisionReason ? { reason: options.decisionReason } : {}),
           ...(options.blockedPath ? { blockedPath: options.blockedPath } : {}),
           canAlwaysAllow: suggestions.length > 0,
+          ...(always ? { always } : {}),
           ...(diff ? { diff } : {}),
         });
       }
@@ -115,7 +125,9 @@ export class PermissionBroker {
   /**
    * Ответ на запрос разрешения. «Всегда» возвращает подсказки движка как есть — так SDK
    * советует и так проверено пробой (правило Bash ушло в `.claude/settings.local.json`;
-   * у Edit подсказка — режим `acceptEdits` на сессию). Отказ работает и для вопроса, и для плана.
+   * у Edit подсказка — режим `acceptEdits` на сессию). `allow-edits` — разрешить и перейти в
+   * `acceptEdits` на сессию той же формой, что проба проверила для плана (`04-plan-mode:149`).
+   * Отказ работает и для вопроса, и для плана.
    */
   respondPermission(toolUseId: string, decision: PermissionDecision, message?: string): boolean {
     const p = this.pending.get(toolUseId);
@@ -124,8 +136,13 @@ export class PermissionBroker {
       return this.finish(toolUseId, { behavior: 'deny', message: message ?? DEFAULT_DENY_MESSAGE });
     if (p.kind !== 'permission') return false;
     const result: ToolPermissionResult = { behavior: 'allow', updatedInput: p.input };
-    if (decision === 'allow-always' && p.suggestions.length > 0)
-      result.updatedPermissions = p.suggestions;
+    // «всегда» — подсказки движка как есть, кроме перехода в bypass: он решается только меню
+    // режима и настройкой `agentura.allowBypassPermissions`, не кнопкой на карточке
+    const always = p.suggestions.filter(
+      (s) => !(isObj(s) && s['type'] === 'setMode' && s['mode'] === 'bypassPermissions'),
+    );
+    if (decision === 'allow-always' && always.length > 0) result.updatedPermissions = always;
+    if (decision === 'allow-edits') result.updatedPermissions = [setMode('acceptEdits')];
     return this.finish(toolUseId, result);
   }
 
@@ -140,13 +157,17 @@ export class PermissionBroker {
   decidePlan(toolUseId: string, decision: PlanDecision): boolean {
     const p = this.pending.get(toolUseId);
     if (!p || p.kind !== 'plan') return false;
-    if (!decision.approve)
-      return this.finish(toolUseId, { behavior: 'deny', message: decision.feedback });
+    if (!decision.approve) {
+      const message = decision.feedback || DEFAULT_DENY_MESSAGE;
+      return this.finish(
+        toolUseId,
+        decision.interrupt
+          ? { behavior: 'deny', message, interrupt: true }
+          : { behavior: 'deny', message },
+      );
+    }
     const result: ToolPermissionResult = { behavior: 'allow', updatedInput: p.input };
-    if (decision.mode)
-      result.updatedPermissions = [
-        { type: 'setMode', mode: decision.mode, destination: 'session' },
-      ];
+    if (decision.mode) result.updatedPermissions = [setMode(decision.mode)];
     return this.finish(toolUseId, result);
   }
 
@@ -183,6 +204,49 @@ export class PermissionBroker {
     });
     return true;
   }
+}
+
+function setMode(mode: PermissionMode): Record<string, unknown> {
+  return { type: 'setMode', mode, destination: 'session' };
+}
+
+const DESTINATIONS = new Set([
+  'localSettings',
+  'projectSettings',
+  'userSettings',
+  'session',
+  'cliArg',
+]);
+const MODES = new Set(['default', 'acceptEdits', 'plan', 'bypassPermissions']);
+
+/**
+ * Сводка подсказок движка (`PermissionUpdate[]`) для подписи «всегда»: правила в форме настроек
+ * (`Bash(npm test:*)`), куда запишутся, режим и папки на сессию. Формы — `02-permissions-edit:48, :57`.
+ */
+export function alwaysFrom(suggestions: unknown[]): PermissionAlways | undefined {
+  const out: PermissionAlways = { rules: [], directories: [] };
+  for (const raw of suggestions) {
+    const s = obj(raw);
+    if (!s) continue;
+    const type = str(s['type']);
+    const destination = str(s['destination']);
+    if (type === 'addRules' && str(s['behavior']) !== 'deny') {
+      for (const r of arr(s['rules']).filter(isObj)) {
+        const tool = str(r['toolName']);
+        if (!tool) continue;
+        const content = str(r['ruleContent']);
+        out.rules.push(content ? `${tool}(${content})` : tool);
+      }
+      if (destination && DESTINATIONS.has(destination) && !out.destination)
+        out.destination = destination as NonNullable<PermissionAlways['destination']>;
+    } else if (type === 'setMode') {
+      const mode = str(s['mode']);
+      if (mode && MODES.has(mode)) out.mode = mode as PermissionMode;
+    } else if (type === 'addDirectories') {
+      out.directories.push(...strings(s['directories']));
+    }
+  }
+  return out.rules.length || out.mode || out.directories.length ? out : undefined;
 }
 
 function questionsFrom(input: Json): Question[] {

@@ -179,6 +179,11 @@
       },
       "description": "README.md",
       "canAlwaysAllow": true,
+      "always": {
+        "rules": [],
+        "directories": [],
+        "mode": "acceptEdits"
+      },
       "diff": {
         "kind": "edit",
         "filePath": "/Users/fost/Projects/Agentura/README.md",
@@ -241,7 +246,16 @@
       },
       "description": "echo probe > spikes/sdk-probe/.bash-probe.tmp",
       "blockedPath": "/Users/fost/Projects/Agentura/spikes/sdk-probe/.bash-probe.tmp",
-      "canAlwaysAllow": true
+      "canAlwaysAllow": true,
+      "always": {
+        "rules": [
+          "Bash(echo probe *)"
+        ],
+        "directories": [
+          "/Users/fost/Projects/Agentura/spikes/sdk-probe"
+        ],
+        "destination": "localSettings"
+      }
     },
     {
       "type": "permission.resolved",
@@ -404,7 +418,16 @@
       },
       "description": "echo probe > spikes/sdk-probe/.bash-probe-2.tmp",
       "blockedPath": "/Users/fost/Projects/Agentura/spikes/sdk-probe/.bash-probe-2.tmp",
-      "canAlwaysAllow": true
+      "canAlwaysAllow": true,
+      "always": {
+        "rules": [
+          "Bash(echo probe *)"
+        ],
+        "directories": [
+          "/Users/fost/Projects/Agentura/spikes/sdk-probe"
+        ],
+        "destination": "localSettings"
+      }
     },
     {
       "type": "permission.resolved",
@@ -447,6 +470,11 @@
       },
       "description": "spikes/sdk-probe/.write-probe.tmp",
       "canAlwaysAllow": true,
+      "always": {
+        "rules": [],
+        "directories": [],
+        "mode": "acceptEdits"
+      },
       "diff": {
         "kind": "write",
         "filePath": "/Users/fost/Projects/Agentura/spikes/sdk-probe/.write-probe.tmp",
@@ -575,7 +603,14 @@
       },
       "description": "node -e \"console.log(1)\"",
       "reason": "This command requires approval",
-      "canAlwaysAllow": true
+      "canAlwaysAllow": true,
+      "always": {
+        "rules": [
+          "Bash(node -e \"console.log(1)\")"
+        ],
+        "directories": [],
+        "destination": "localSettings"
+      }
     },
     {
       "type": "permission.resolved",
@@ -803,7 +838,17 @@
       },
       "description": "touch spikes/sdk-probe/.deny-probe.tmp",
       "blockedPath": "/Users/fost/Projects/Agentura/spikes/sdk-probe/.deny-probe.tmp",
-      "canAlwaysAllow": true
+      "canAlwaysAllow": true,
+      "always": {
+        "rules": [
+          "Bash(touch spikes/sdk-probe/.deny-probe.tmp)"
+        ],
+        "directories": [
+          "/Users/fost/Projects/Agentura/spikes/sdk-probe"
+        ],
+        "destination": "localSettings",
+        "mode": "acceptEdits"
+      }
     },
     {
       "type": "permission.resolved",

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { nextStatus, statusMarker, tabTitle } from './status';
+import { nextStatus, statusMarker, tabTitle, updateInTurn, updatePending } from './status';
 import type { AgentEvent } from './types';
 
 const ev = (e: Partial<AgentEvent> & { type: AgentEvent['type'] }) => e as AgentEvent;
@@ -46,6 +46,52 @@ describe('состояние чата', () => {
     expect(
       nextStatus('working', ev({ type: 'error', message: 'x', fatal: false, code: 'api_retry' })),
     ).toBe('working');
+  });
+  it('два запроса: ответ на первый оставляет waiting, на второй — working (этап 5)', () => {
+    const req = (id: string, agentId?: string) =>
+      ev({
+        type: 'question.request',
+        toolUseId: id,
+        questions: [],
+        ...(agentId ? { agentId } : {}),
+      });
+    const res = (id: string) =>
+      ev({ type: 'permission.resolved', toolUseId: id, decision: 'allow', by: 'user' });
+    let pending: string[] = [];
+    let s: ReturnType<typeof nextStatus> = 'working';
+    for (const e of [req('a'), req('b', 'sub')]) {
+      pending = updatePending(pending, e);
+      s = nextStatus(s, e, pending.length);
+    }
+    expect([s, pending]).toEqual(['waiting', ['a', 'b']]);
+    pending = updatePending(pending, res('a'));
+    s = nextStatus(s, res('a'), pending.length);
+    expect(s).toBe('waiting');
+    pending = updatePending(pending, res('b'));
+    s = nextStatus(s, res('b'), pending.length);
+    expect(s).toBe('working');
+  });
+  it('запрос субагента между ходами — тоже waiting, после ответа — снова idle', () => {
+    const events = [
+      ev({ type: 'turn.start', at: 1 }),
+      ev({ type: 'turn.result' }),
+      ev({ type: 'permission.request', toolUseId: 'p', agentId: 'x' }),
+      ev({ type: 'permission.resolved', toolUseId: 'p', agentId: 'x' }),
+    ];
+    let s: ReturnType<typeof nextStatus> = 'idle';
+    let inTurn = false;
+    let pending: string[] = [];
+    const seen: string[] = [];
+    for (const e of events) {
+      inTurn = updateInTurn(inTurn, e);
+      pending = updatePending(pending, e);
+      s = nextStatus(s, e, pending.length, inTurn);
+      seen.push(s);
+    }
+    expect(seen).toEqual(['working', 'idle', 'waiting', 'idle']);
+    // ход субагента не открывает ход основного
+    expect(updateInTurn(false, ev({ type: 'turn.start', at: 1, agentId: 'x' }))).toBe(false);
+    expect(updateInTurn(true, ev({ type: 'session.closed', reason: 'exit' }))).toBe(false);
   });
   it('маркер и заголовок вкладки', () => {
     expect(statusMarker('working')).toBe('●');

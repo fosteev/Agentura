@@ -257,4 +257,37 @@ describe('PermissionBroker', () => {
     expect(broker.respondPermission('q1', 'deny', 'не сейчас')).toBe(true);
     await expect(q).resolves.toEqual({ behavior: 'deny', message: 'не сейчас' });
   });
+
+  it('«всегда» — ровно подсказки движка без перехода в bypass; allow-edits — только acceptEdits', async () => {
+    const broker = new PermissionBroker(() => undefined);
+    const rule = {
+      type: 'addRules',
+      rules: [{ toolName: 'Bash', ruleContent: 'npm test:*' }],
+      behavior: 'allow',
+      destination: 'localSettings',
+    };
+    const bypass = { type: 'setMode', mode: 'bypassPermissions', destination: 'session' };
+    const input = { command: 'npm test' };
+    const a = broker.canUseTool('Bash', input, { toolUseID: 'b1', suggestions: [rule, bypass] });
+    expect(broker.respondPermission('b1', 'allow-always')).toBe(true);
+    await expect(a).resolves.toEqual({
+      behavior: 'allow',
+      updatedInput: input,
+      updatedPermissions: [rule],
+    });
+    // одна кнопка — один ответ: повтор по тому же id отброшен
+    expect(broker.respondPermission('b1', 'deny')).toBe(false);
+
+    const only = broker.canUseTool('Bash', input, { toolUseID: 'b2', suggestions: [bypass] });
+    broker.respondPermission('b2', 'allow-always');
+    await expect(only).resolves.toEqual({ behavior: 'allow', updatedInput: input });
+
+    const e = broker.canUseTool('Edit', {}, { toolUseID: 'e2', suggestions: [rule] });
+    broker.respondPermission('e2', 'allow-edits');
+    await expect(e).resolves.toEqual({
+      behavior: 'allow',
+      updatedInput: {},
+      updatedPermissions: [{ type: 'setMode', mode: 'acceptEdits', destination: 'session' }],
+    });
+  });
 });
