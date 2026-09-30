@@ -24,6 +24,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const sub = attachMessaging(webview, 'sidebar', version, this.log, (m) => {
       if (m.type === 'session.new') void vscode.commands.executeCommand('agentura.newSession');
       if (m.type === 'limits.refresh') void this.refreshUsage();
+      // Опрос лимитов идёт с активации; открытой позже панели отдаём снимок (в кулдауне — из кэша).
+      if (m.type === 'ready') void this.refreshUsage();
     });
     view.onDidDispose(() => {
       sub.dispose();

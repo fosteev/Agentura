@@ -1,0 +1,289 @@
+{
+  "log": "03-ask-user-question.jsonl",
+  "counts": {
+    "session.title": 1,
+    "session.init": 1,
+    "turn.start": 1,
+    "tool.start": 1,
+    "question.request": 1,
+    "permission.resolved": 1,
+    "tool.result": 1,
+    "usage.message": 2,
+    "context.usage": 2,
+    "limit.update": 1,
+    "text.delta": 3,
+    "turn.result": 1
+  },
+  "events": [
+    {
+      "type": "session.title",
+      "title": "sdk-probe 03-ask-user-question"
+    },
+    {
+      "type": "session.init",
+      "sessionId": "8ab7e980-6a05-4420-932f-d95ffbf0e823",
+      "model": "claude-sonnet-5-5",
+      "cwd": "/Users/fost/Projects/Agentura",
+      "permissionMode": "default",
+      "tools": [
+        "Task",
+        "AskUserQuestion",
+        "Bash",
+        "CronCreate",
+        "CronDelete",
+        "…+23"
+      ],
+      "slashCommands": [
+        "deep-research",
+        "design",
+        "design-sync",
+        "dataviz",
+        "update-config",
+        "…+49"
+      ],
+      "skills": [
+        "deep-research",
+        "design",
+        "design-sync",
+        "dataviz",
+        "update-config",
+        "…+13"
+      ],
+      "agents": [
+        "claude",
+        "Explore",
+        "general-purpose",
+        "Plan",
+        "statusline-setup"
+      ],
+      "apiKeySource": "none",
+      "engineVersion": "2.1.285"
+    },
+    {
+      "type": "turn.start",
+      "prompt": "Вызови инструмент AskUserQuestion: один вопрос «Какой цвет выбрать для шкалы?», заголовок «Цвет», ва…[214]",
+      "at": 0
+    },
+    {
+      "type": "tool.start",
+      "toolUseId": "toolu_01UZEbPAZeB7hwL6sQCWB1WV",
+      "name": "AskUserQuestion",
+      "input": {
+        "questions": [
+          {
+            "question": "Какой цвет выбрать для шкалы?",
+            "header": "Цвет",
+            "multiSelect": false,
+            "options": [
+              {
+                "label": "Красный",
+                "description": "Яркий, привлекает внимание"
+              },
+              {
+                "label": "Синий",
+                "description": "Спокойный, нейтральный"
+              },
+              {
+                "label": "Зелёный",
+                "description": "Мягкий, ассоциируется с нормой"
+              }
+            ]
+          }
+        ]
+      },
+      "at": 1790774574828
+    },
+    {
+      "type": "question.request",
+      "toolUseId": "toolu_01UZEbPAZeB7hwL6sQCWB1WV",
+      "questions": [
+        {
+          "question": "Какой цвет выбрать для шкалы?",
+          "header": "Цвет",
+          "options": [
+            {
+              "label": "Красный",
+              "description": "Яркий, привлекает внимание"
+            },
+            {
+              "label": "Синий",
+              "description": "Спокойный, нейтральный"
+            },
+            {
+              "label": "Зелёный",
+              "description": "Мягкий, ассоциируется с нормой"
+            }
+          ],
+          "multiSelect": false
+        }
+      ]
+    },
+    {
+      "type": "permission.resolved",
+      "toolUseId": "toolu_01UZEbPAZeB7hwL6sQCWB1WV",
+      "decision": "allow",
+      "by": "user"
+    },
+    {
+      "type": "tool.result",
+      "toolUseId": "toolu_01UZEbPAZeB7hwL6sQCWB1WV",
+      "isError": false,
+      "content": "Your questions have been answered: \"Какой цвет выбрать для шкалы?\"=\"Синий\". You can now continue with these answers in mind.",
+      "result": {
+        "questions": [
+          {
+            "question": "Какой цвет выбрать для шкалы?",
+            "header": "Цвет",
+            "options": [
+              {
+                "label": "Красный",
+                "description": "Яркий, привлекает внимание"
+              },
+              {
+                "label": "Синий",
+                "description": "Спокойный, нейтральный"
+              },
+              {
+                "label": "Зелёный",
+                "description": "Мягкий, ассоциируется с нормой"
+              }
+            ],
+            "multiSelect": false
+          }
+        ],
+        "answers": {
+          "Какой цвет выбрать для шкалы?": "Синий"
+        }
+      },
+      "at": 1790774574837,
+      "durationMs": 9
+    },
+    {
+      "type": "usage.message",
+      "messageId": "msg_011CfZhJAriJhtW2Pqv3985m",
+      "model": "claude-sonnet-5-5",
+      "usage": {
+        "input": 2,
+        "output": 181,
+        "cacheRead": 13472,
+        "cacheWrite": 7411,
+        "thinking": 0,
+        "cacheWrite5m": 0,
+        "cacheWrite1h": 7411
+      },
+      "final": true,
+      "at": 1790774574828
+    },
+    {
+      "type": "context.usage",
+      "usedTokens": 20885,
+      "source": "usage"
+    },
+    {
+      "type": "limit.update",
+      "source": "engine",
+      "windows": [
+        {
+          "kind": "five-hour",
+          "percent": 79,
+          "resetsAt": 1790787000000
+        },
+        {
+          "kind": "weekly",
+          "percent": 36,
+          "resetsAt": 1790856000000
+        }
+      ],
+      "status": "allowed",
+      "resetsAt": 1790787000000
+    },
+    {
+      "type": "text.delta",
+      "messageId": "msg_011CfZhJLYNUKduvRnpqVPL4",
+      "text": "Ты выбрал синий цвет для шкалы.",
+      "chunks": 3,
+      "length": 31
+    },
+    {
+      "type": "usage.message",
+      "messageId": "msg_011CfZhJLYNUKduvRnpqVPL4",
+      "model": "claude-sonnet-5-5",
+      "usage": {
+        "input": 2,
+        "output": 20,
+        "cacheRead": 20883,
+        "cacheWrite": 695,
+        "thinking": 0,
+        "cacheWrite5m": 0,
+        "cacheWrite1h": 695
+      },
+      "final": true,
+      "at": 1790774575881
+    },
+    {
+      "type": "context.usage",
+      "usedTokens": 21580,
+      "source": "usage"
+    },
+    {
+      "type": "turn.result",
+      "ok": true,
+      "subtype": "success",
+      "interrupted": false,
+      "durationMs": 3142,
+      "apiDurationMs": 3094,
+      "numTurns": 2,
+      "usage": {
+        "input": 4,
+        "output": 201,
+        "cacheRead": 34355,
+        "cacheWrite": 8106,
+        "cacheWrite5m": 0,
+        "cacheWrite1h": 8106,
+        "thinking": 0
+      },
+      "totalCostUsd": 0.041313,
+      "permissionDenials": [],
+      "costUsd": 0.041313,
+      "model": "claude-sonnet-5-5",
+      "contextWindow": 1000000,
+      "stopReason": "end_turn",
+      "terminalReason": "completed",
+      "text": "Ты выбрал синий цвет для шкалы."
+    }
+  ],
+  "permissionResults": [
+    {
+      "toolUseId": "toolu_01UZEbPAZeB7hwL6sQCWB1WV",
+      "result": {
+        "behavior": "allow",
+        "updatedInput": {
+          "questions": [
+            {
+              "question": "Какой цвет выбрать для шкалы?",
+              "header": "Цвет",
+              "options": [
+                {
+                  "label": "Красный",
+                  "description": "Яркий, привлекает внимание"
+                },
+                {
+                  "label": "Синий",
+                  "description": "Спокойный, нейтральный"
+                },
+                {
+                  "label": "Зелёный",
+                  "description": "Мягкий, ассоциируется с нормой"
+                }
+              ],
+              "multiSelect": false
+            }
+          ],
+          "answers": {
+            "Какой цвет выбрать для шкалы?": "Синий"
+          }
+        }
+      }
+    }
+  ]
+}

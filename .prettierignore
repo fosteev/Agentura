@@ -6,3 +6,6 @@ spikes
 media/tokens.css
 media/hud.css
 package-lock.json
+src/data/agentmeter
+test/fixtures
+src/agent/claude/__fixtures__

@@ -1,0 +1,366 @@
+{
+  "log": "01-basic-control.jsonl",
+  "counts": {
+    "session.title": 1,
+    "session.init": 2,
+    "turn.start": 3,
+    "text.delta": 20,
+    "usage.message": 3,
+    "context.usage": 4,
+    "limit.update": 1,
+    "turn.result": 3,
+    "mode.changed": 2,
+    "thinking.start": 1,
+    "thinking.stop": 1
+  },
+  "events": [
+    {
+      "type": "session.title",
+      "title": "sdk-probe 01-basic-control"
+    },
+    {
+      "type": "session.init",
+      "sessionId": "348155b6-7889-4c2e-8413-7063b90c4ae0",
+      "model": "claude-sonnet-5-5",
+      "cwd": "/Users/fost/Projects/Agentura",
+      "permissionMode": "default",
+      "tools": [
+        "Task",
+        "AskUserQuestion",
+        "Bash",
+        "CronCreate",
+        "CronDelete",
+        "…+23"
+      ],
+      "slashCommands": [
+        "deep-research",
+        "design",
+        "design-sync",
+        "dataviz",
+        "update-config",
+        "…+49"
+      ],
+      "skills": [
+        "deep-research",
+        "design",
+        "design-sync",
+        "dataviz",
+        "update-config",
+        "…+13"
+      ],
+      "agents": [
+        "claude",
+        "Explore",
+        "general-purpose",
+        "Plan",
+        "statusline-setup"
+      ],
+      "apiKeySource": "none",
+      "engineVersion": "2.1.285"
+    },
+    {
+      "type": "turn.start",
+      "prompt": "Привет! Ответь одним коротким предложением.",
+      "at": 0
+    },
+    {
+      "type": "text.delta",
+      "messageId": "msg_011CfZhGVhjA4iF1RnyZaAL8",
+      "text": "Привет! Готов работать — что делаем?",
+      "chunks": 4,
+      "length": 36
+    },
+    {
+      "type": "usage.message",
+      "messageId": "msg_011CfZhGVhjA4iF1RnyZaAL8",
+      "model": "claude-sonnet-5-5",
+      "usage": {
+        "input": 2,
+        "output": 17,
+        "cacheRead": 20797,
+        "cacheWrite": 0,
+        "thinking": 0,
+        "cacheWrite5m": 0,
+        "cacheWrite1h": 0
+      },
+      "final": true,
+      "at": 1790774551481
+    },
+    {
+      "type": "context.usage",
+      "usedTokens": 20799,
+      "source": "usage"
+    },
+    {
+      "type": "limit.update",
+      "source": "engine",
+      "windows": [
+        {
+          "kind": "five-hour",
+          "percent": 79,
+          "resetsAt": 1790787000000
+        },
+        {
+          "kind": "weekly",
+          "percent": 36,
+          "resetsAt": 1790856000000
+        }
+      ],
+      "status": "allowed",
+      "resetsAt": 1790787000000
+    },
+    {
+      "type": "turn.result",
+      "ok": true,
+      "subtype": "success",
+      "interrupted": false,
+      "durationMs": 1494,
+      "apiDurationMs": 1434,
+      "numTurns": 1,
+      "usage": {
+        "input": 2,
+        "output": 17,
+        "cacheRead": 20797,
+        "cacheWrite": 0,
+        "cacheWrite5m": 0,
+        "cacheWrite1h": 0,
+        "thinking": 0
+      },
+      "totalCostUsd": 0.004333399999999999,
+      "permissionDenials": [],
+      "costUsd": 0.004333,
+      "model": "claude-sonnet-5-5",
+      "contextWindow": 1000000,
+      "stopReason": "end_turn",
+      "terminalReason": "completed",
+      "text": "Привет! Готов работать — что делаем?"
+    },
+    {
+      "type": "turn.start",
+      "prompt": "Напиши подробное эссе на 600 слов об истории Unix.",
+      "at": 1790774551481
+    },
+    {
+      "type": "text.delta",
+      "messageId": "msg_011CfZhGc1FNLEAn6s9o34q1",
+      "text": "**История Unix**\n\nИстория Unix начинается в 1969 году в Bell Labs, исследовательском подразделении AT&T. К т",
+      "chunks": 10,
+      "length": 108
+    },
+    {
+      "type": "usage.message",
+      "messageId": "msg_011CfZhGc1FNLEAn6s9o34q1",
+      "model": "claude-sonnet-5-5",
+      "usage": {
+        "input": 2,
+        "output": 8,
+        "cacheRead": 20797,
+        "cacheWrite": 96,
+        "cacheWrite5m": 0,
+        "cacheWrite1h": 96
+      },
+      "final": false,
+      "at": 1790774552697
+    },
+    {
+      "type": "context.usage",
+      "usedTokens": 20895,
+      "source": "usage",
+      "maxTokens": 1000000
+    },
+    {
+      "type": "turn.result",
+      "ok": false,
+      "subtype": "error_during_execution",
+      "interrupted": true,
+      "durationMs": 1152,
+      "apiDurationMs": 1434,
+      "numTurns": 2,
+      "usage": {
+        "input": 2,
+        "output": 8,
+        "cacheRead": 20797,
+        "cacheWrite": 96,
+        "cacheWrite5m": 0,
+        "cacheWrite1h": 96
+      },
+      "totalCostUsd": 0.004333399999999999,
+      "permissionDenials": [],
+      "costUsd": 0,
+      "model": "claude-sonnet-5-5",
+      "contextWindow": 1000000,
+      "terminalReason": "aborted_streaming",
+      "errors": [
+        "[ede_diagnostic] result_type=user last_content_type=n/a stop_reason=null"
+      ]
+    },
+    {
+      "type": "mode.changed",
+      "mode": "acceptEdits"
+    },
+    {
+      "type": "mode.changed",
+      "mode": "default"
+    },
+    {
+      "type": "session.init",
+      "sessionId": "348155b6-7889-4c2e-8413-7063b90c4ae0",
+      "model": "claude-opus-5-5",
+      "cwd": "/Users/fost/Projects/Agentura",
+      "permissionMode": "default",
+      "tools": [
+        "Task",
+        "AskUserQuestion",
+        "Bash",
+        "CronCreate",
+        "CronDelete",
+        "…+23"
+      ],
+      "slashCommands": [
+        "deep-research",
+        "design",
+        "design-sync",
+        "dataviz",
+        "update-config",
+        "…+49"
+      ],
+      "skills": [
+        "deep-research",
+        "design",
+        "design-sync",
+        "dataviz",
+        "update-config",
+        "…+13"
+      ],
+      "agents": [
+        "claude",
+        "Explore",
+        "general-purpose",
+        "Plan",
+        "statusline-setup"
+      ],
+      "apiKeySource": "none",
+      "engineVersion": "2.1.285"
+    },
+    {
+      "type": "turn.start",
+      "prompt": "Какая ты модель? Ответь одним коротким предложением.",
+      "at": 1790774552906
+    },
+    {
+      "type": "thinking.start",
+      "messageId": "msg_011CfZhGjjaFLDWMC3VCXJKw",
+      "at": 1790774552906
+    },
+    {
+      "type": "thinking.stop",
+      "messageId": "msg_011CfZhGjjaFLDWMC3VCXJKw",
+      "at": 1790774554763
+    },
+    {
+      "type": "text.delta",
+      "messageId": "msg_011CfZhGjjaFLDWMC3VCXJKw",
+      "text": "Я Claude Opus 5.5 (`claude-opus-5-5`), ты только что переключил меня через `/model`.",
+      "chunks": 6,
+      "length": 84
+    },
+    {
+      "type": "usage.message",
+      "messageId": "msg_011CfZhGjjaFLDWMC3VCXJKw",
+      "model": "claude-opus-5-5",
+      "usage": {
+        "input": 2,
+        "output": 88,
+        "cacheRead": 13472,
+        "cacheWrite": 7962,
+        "thinking": 45,
+        "cacheWrite5m": 0,
+        "cacheWrite1h": 7962
+      },
+      "final": true,
+      "at": 1790774554763
+    },
+    {
+      "type": "context.usage",
+      "usedTokens": 21436,
+      "source": "usage"
+    },
+    {
+      "type": "turn.result",
+      "ok": true,
+      "subtype": "success",
+      "interrupted": false,
+      "durationMs": 2410,
+      "apiDurationMs": 3824,
+      "numTurns": 1,
+      "usage": {
+        "input": 2,
+        "output": 88,
+        "cacheRead": 13472,
+        "cacheWrite": 7962,
+        "cacheWrite5m": 0,
+        "cacheWrite1h": 7962,
+        "thinking": 45
+      },
+      "totalCostUsd": 0.07249180000000001,
+      "permissionDenials": [],
+      "costUsd": 0.068158,
+      "model": "claude-opus-5-5",
+      "contextWindow": 1000000,
+      "stopReason": "end_turn",
+      "terminalReason": "completed",
+      "text": "Я Claude Opus 5.5 (`claude-opus-5-5`), ты только что переключил меня через `/model`."
+    },
+    {
+      "type": "context.usage",
+      "usedTokens": 21464,
+      "source": "engine",
+      "maxTokens": 1000000,
+      "percentage": 2,
+      "autoCompactThreshold": 967000,
+      "categories": [
+        {
+          "name": "System prompt",
+          "tokens": 2240,
+          "kind": "used"
+        },
+        {
+          "name": "System tools",
+          "tokens": 9187,
+          "kind": "used"
+        },
+        {
+          "name": "System tools (deferred)",
+          "tokens": 15177,
+          "kind": "deferred"
+        },
+        {
+          "name": "Memory files",
+          "tokens": 3140,
+          "kind": "used"
+        },
+        {
+          "name": "Skills",
+          "tokens": 2074,
+          "kind": "used"
+        },
+        {
+          "name": "Messages",
+          "tokens": 4823,
+          "kind": "used"
+        },
+        {
+          "name": "Autocompact buffer",
+          "tokens": 33000,
+          "kind": "buffer"
+        },
+        {
+          "name": "Free space",
+          "tokens": 945536,
+          "kind": "free"
+        }
+      ]
+    }
+  ],
+  "permissionResults": []
+}

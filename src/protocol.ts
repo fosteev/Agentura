@@ -1,12 +1,18 @@
 /**
- * Протокол extension ↔ webview. Типы и заглушки под события этапа 2:
- * полный `AgentEvent` появится в `src/agent/types.ts`, здесь — имена и форма полезной нагрузки
- * в объёме, нужном, чтобы webview не менялся при подключении адаптера.
+ * Протокол extension ↔ webview. События агента — `AgentEvent` из `src/agent/types.ts` (этап 2):
+ * webview получает их как есть в сообщении `agent.event`.
  */
+import type { AgentEvent, LimitWindow, PermissionDecision, PermissionMode } from './agent/types';
 
-/** Имена событий агента (этап 2). Нагрузка пока не типизирована. */
+export type { AgentEvent, PermissionDecision, PermissionMode };
+
+/**
+ * Имена событий агента. Список этапа 1 плюс три события, добавленных на этапе 2 (записаны в
+ * roadmap, «Решения по итогам сессии 2»): `session.title`, `permission.resolved`, `session.closed`.
+ */
 export const AGENT_EVENT_TYPES = [
   'session.init',
+  'session.title', // этап 2: system/session_title_changed — название для заголовка и списка сессий
   'turn.start',
   'text.delta',
   'thinking.start',
@@ -18,6 +24,7 @@ export const AGENT_EVENT_TYPES = [
   'permission.request',
   'question.request',
   'plan.request',
+  'permission.resolved', // этап 2: запрос закрыт (ответ или отмена движком) — снять карточку
   'usage.message',
   'context.usage',
   'turn.result',
@@ -28,26 +35,21 @@ export const AGENT_EVENT_TYPES = [
   'agent.end',
   'limit.update',
   'mode.changed',
+  'session.closed', // этап 2 (приёмка): движок завершился / сессия закрыта — последнее событие потока
   'error',
-] as const;
+] as const satisfies readonly AgentEvent['type'][];
 
 export type AgentEventType = (typeof AGENT_EVENT_TYPES)[number];
 
-/** Заглушка события агента; уточняется на этапе 2. */
-export interface AgentEventStub {
-  type: AgentEventType;
-  /** Субагент, если событие пришло не от основного агента. */
-  agentId?: string;
-  payload?: unknown;
-}
-
-export type PermissionDecision = 'allow' | 'allow-always' | 'deny';
-export type PermissionMode = 'default' | 'acceptEdits' | 'plan' | 'bypassPermissions';
+// Список и union совпадают: новое событие без записи в список не соберётся.
+type MissingEventType = Exclude<AgentEvent['type'], AgentEventType>;
+const _allEventTypesListed: MissingEventType extends never ? true : MissingEventType = true;
+void _allEventTypesListed;
 
 /** Extension → webview. */
 export type ToWebview =
   | { type: 'init'; surface: 'chat' | 'sidebar'; version: string }
-  | { type: 'agent.event'; sessionId: string; event: AgentEventStub }
+  | { type: 'agent.event'; sessionId: string; event: AgentEvent }
   | { type: 'sessions.update'; sessions: SessionSummary[] }
   | {
       type: 'limits.update';
@@ -88,16 +90,16 @@ export interface SessionSummary {
   id: string;
   title: string;
   turns: number;
-  costUsd: number;
+  /** Нет — стоимость неизвестна (модель без цены), показывать «—», не $0. */
+  costUsd?: number;
+  /** Оценка без части запросов (модели без цены) — показывать с пометкой. */
+  costPartial?: boolean;
   state: 'idle' | 'live' | 'waiting' | 'error' | 'limit';
   updatedAt: number;
 }
 
-export interface LimitWindowSummary {
-  kind: 'five-hour' | 'weekly';
-  percent: number;
-  resetsAt: number;
-}
+/** Окно лимита: `kind`, проценты 0…100, сброс в мс. */
+export type LimitWindowSummary = LimitWindow;
 
 const FROM_WEBVIEW_TYPES: ReadonlySet<string> = new Set<FromWebview['type']>([
   'ready',

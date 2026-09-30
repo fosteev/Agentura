@@ -1,0 +1,448 @@
+{
+  "log": "06-compact.jsonl",
+  "counts": {
+    "session.title": 1,
+    "session.init": 1,
+    "turn.start": 3,
+    "tool.start": 1,
+    "usage.message": 3,
+    "context.usage": 6,
+    "limit.update": 1,
+    "tool.result": 1,
+    "thinking.start": 1,
+    "thinking.stop": 1,
+    "text.delta": 26,
+    "turn.result": 3,
+    "compaction.start": 1,
+    "compaction.end": 1
+  },
+  "events": [
+    {
+      "type": "session.title",
+      "title": "sdk-probe 06-compact"
+    },
+    {
+      "type": "session.init",
+      "sessionId": "c24252eb-e48a-4460-8570-584e2f17560c",
+      "model": "claude-sonnet-5-5",
+      "cwd": "/Users/fost/Projects/Agentura",
+      "permissionMode": "default",
+      "tools": [
+        "Task",
+        "AskUserQuestion",
+        "Bash",
+        "CronCreate",
+        "CronDelete",
+        "…+23"
+      ],
+      "slashCommands": [
+        "deep-research",
+        "design",
+        "design-sync",
+        "dataviz",
+        "update-config",
+        "…+49"
+      ],
+      "skills": [
+        "deep-research",
+        "design",
+        "design-sync",
+        "dataviz",
+        "update-config",
+        "…+13"
+      ],
+      "agents": [
+        "claude",
+        "Explore",
+        "general-purpose",
+        "Plan",
+        "statusline-setup"
+      ],
+      "apiKeySource": "none",
+      "engineVersion": "2.1.285"
+    },
+    {
+      "type": "turn.start",
+      "prompt": "Прочитай prototype/README.md и одной строкой скажи, сколько в нём заголовков второго уровня.",
+      "at": 0
+    },
+    {
+      "type": "tool.start",
+      "toolUseId": "toolu_01P4x3wQQDSbtDz5ojruY56e",
+      "name": "Bash",
+      "input": {
+        "command": "grep -c '^## ' prototype/README.md"
+      },
+      "at": 1790774628200
+    },
+    {
+      "type": "usage.message",
+      "messageId": "msg_011CfZhN8KH8svUSFV71uPwX",
+      "model": "claude-sonnet-5-5",
+      "usage": {
+        "input": 2,
+        "output": 62,
+        "cacheRead": 13472,
+        "cacheWrite": 7350,
+        "thinking": 0,
+        "cacheWrite5m": 0,
+        "cacheWrite1h": 7350
+      },
+      "final": true,
+      "at": 1790774628200
+    },
+    {
+      "type": "context.usage",
+      "usedTokens": 20824,
+      "source": "usage"
+    },
+    {
+      "type": "limit.update",
+      "source": "engine",
+      "windows": [
+        {
+          "kind": "five-hour",
+          "percent": 80,
+          "resetsAt": 1790787000000
+        },
+        {
+          "kind": "weekly",
+          "percent": 36,
+          "resetsAt": 1790856000000
+        }
+      ],
+      "status": "allowed",
+      "resetsAt": 1790787000000
+    },
+    {
+      "type": "tool.result",
+      "toolUseId": "toolu_01P4x3wQQDSbtDz5ojruY56e",
+      "isError": false,
+      "content": "4",
+      "result": {
+        "stdout": "4",
+        "stderr": "",
+        "interrupted": false,
+        "isImage": false,
+        "noOutputExpected": false
+      },
+      "at": 1790774629158,
+      "durationMs": 958
+    },
+    {
+      "type": "thinking.start",
+      "messageId": "msg_011CfZhNKy1cy5GfwZnriwTy",
+      "at": 1790774629158
+    },
+    {
+      "type": "thinking.stop",
+      "messageId": "msg_011CfZhNKy1cy5GfwZnriwTy",
+      "at": 1790774631193,
+      "estimatedTokens": 186
+    },
+    {
+      "type": "text.delta",
+      "messageId": "msg_011CfZhNKy1cy5GfwZnriwTy",
+      "text": "В `prototype/README.md` 4 заголовка второго уровня. Считал grep'ом по `^## `, поэтому строки внутри блоков кода, если они там есть, тоже попали бы в счёт.",
+      "chunks": 16,
+      "length": 154
+    },
+    {
+      "type": "usage.message",
+      "messageId": "msg_011CfZhNKy1cy5GfwZnriwTy",
+      "model": "claude-sonnet-5-5",
+      "usage": {
+        "input": 2,
+        "output": 139,
+        "cacheRead": 20822,
+        "cacheWrite": 120,
+        "thinking": 67,
+        "cacheWrite5m": 0,
+        "cacheWrite1h": 120
+      },
+      "final": true,
+      "at": 1790774631193
+    },
+    {
+      "type": "context.usage",
+      "usedTokens": 20944,
+      "source": "usage"
+    },
+    {
+      "type": "turn.result",
+      "ok": true,
+      "subtype": "success",
+      "interrupted": false,
+      "durationMs": 5071,
+      "apiDurationMs": 4064,
+      "numTurns": 2,
+      "usage": {
+        "input": 4,
+        "output": 201,
+        "cacheRead": 34294,
+        "cacheWrite": 7470,
+        "cacheWrite5m": 0,
+        "cacheWrite1h": 7470,
+        "thinking": 67
+      },
+      "totalCostUsd": 0.0387568,
+      "permissionDenials": [],
+      "costUsd": 0.038757,
+      "model": "claude-sonnet-5-5",
+      "contextWindow": 1000000,
+      "stopReason": "end_turn",
+      "terminalReason": "completed",
+      "text": "В `prototype/README.md` 4 заголовка второго уровня. Считал grep'ом по `^## `, поэтому строки внутри блоков кода, если они там есть, тоже попали бы в счёт."
+    },
+    {
+      "type": "context.usage",
+      "usedTokens": 20995,
+      "source": "engine",
+      "maxTokens": 1000000,
+      "percentage": 2,
+      "autoCompactThreshold": 967000,
+      "categories": [
+        {
+          "name": "System prompt",
+          "tokens": 2240,
+          "kind": "used"
+        },
+        {
+          "name": "System tools",
+          "tokens": 9187,
+          "kind": "used"
+        },
+        {
+          "name": "System tools (deferred)",
+          "tokens": 15177,
+          "kind": "deferred"
+        },
+        {
+          "name": "Memory files",
+          "tokens": 3140,
+          "kind": "used"
+        },
+        {
+          "name": "Skills",
+          "tokens": 2074,
+          "kind": "used"
+        },
+        {
+          "name": "Messages",
+          "tokens": 4354,
+          "kind": "used"
+        },
+        {
+          "name": "Autocompact buffer",
+          "tokens": 33000,
+          "kind": "buffer"
+        },
+        {
+          "name": "Free space",
+          "tokens": 946005,
+          "kind": "free"
+        }
+      ]
+    },
+    {
+      "type": "turn.start",
+      "prompt": "/compact",
+      "at": 1790774631200
+    },
+    {
+      "type": "compaction.start"
+    },
+    {
+      "type": "compaction.end",
+      "ok": true,
+      "trigger": "manual",
+      "preTokens": 21122,
+      "postTokens": 1393,
+      "durationMs": 10788
+    },
+    {
+      "type": "turn.result",
+      "ok": true,
+      "subtype": "success",
+      "interrupted": false,
+      "durationMs": 10811,
+      "apiDurationMs": 0,
+      "numTurns": 0,
+      "usage": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "cacheWrite5m": 0,
+        "cacheWrite1h": 0,
+        "thinking": 0
+      },
+      "totalCostUsd": 0.0616772,
+      "permissionDenials": [],
+      "costUsd": 0.02292,
+      "model": "claude-sonnet-5-5",
+      "contextWindow": 1000000
+    },
+    {
+      "type": "context.usage",
+      "usedTokens": 18825,
+      "source": "engine",
+      "maxTokens": 1000000,
+      "percentage": 2,
+      "autoCompactThreshold": 967000,
+      "categories": [
+        {
+          "name": "System prompt",
+          "tokens": 2240,
+          "kind": "used"
+        },
+        {
+          "name": "System tools",
+          "tokens": 9139,
+          "kind": "used"
+        },
+        {
+          "name": "System tools (deferred)",
+          "tokens": 15177,
+          "kind": "deferred"
+        },
+        {
+          "name": "Memory files",
+          "tokens": 3140,
+          "kind": "used"
+        },
+        {
+          "name": "Skills",
+          "tokens": 2074,
+          "kind": "used"
+        },
+        {
+          "name": "Messages",
+          "tokens": 2232,
+          "kind": "used"
+        },
+        {
+          "name": "Autocompact buffer",
+          "tokens": 33000,
+          "kind": "buffer"
+        },
+        {
+          "name": "Free space",
+          "tokens": 948175,
+          "kind": "free"
+        }
+      ]
+    },
+    {
+      "type": "turn.start",
+      "prompt": "О каком файле мы говорили? Одно предложение.",
+      "at": 1790774642987
+    },
+    {
+      "type": "text.delta",
+      "messageId": "msg_011CfZhPN53MYzWXJYjiwr8p",
+      "text": "Мы говорили про `prototype/README.md` в проекте Agentura — считали в нём заголовки второго уровня (их 4).",
+      "chunks": 10,
+      "length": 105
+    },
+    {
+      "type": "usage.message",
+      "messageId": "msg_011CfZhPN53MYzWXJYjiwr8p",
+      "model": "claude-sonnet-5-5",
+      "usage": {
+        "input": 2,
+        "output": 46,
+        "cacheRead": 13472,
+        "cacheWrite": 6343,
+        "thinking": 0,
+        "cacheWrite5m": 0,
+        "cacheWrite1h": 6343
+      },
+      "final": true,
+      "at": 1790774645707
+    },
+    {
+      "type": "context.usage",
+      "usedTokens": 19817,
+      "source": "usage",
+      "maxTokens": 1000000
+    },
+    {
+      "type": "turn.result",
+      "ok": true,
+      "subtype": "success",
+      "interrupted": false,
+      "durationMs": 2522,
+      "apiDurationMs": 17324,
+      "numTurns": 1,
+      "usage": {
+        "input": 2,
+        "output": 46,
+        "cacheRead": 13472,
+        "cacheWrite": 6343,
+        "cacheWrite5m": 0,
+        "cacheWrite1h": 6343,
+        "thinking": 0
+      },
+      "totalCostUsd": 0.0902076,
+      "permissionDenials": [],
+      "costUsd": 0.02853,
+      "model": "claude-sonnet-5-5",
+      "contextWindow": 1000000,
+      "stopReason": "end_turn",
+      "terminalReason": "completed",
+      "text": "Мы говорили про `prototype/README.md` в проекте Agentura — считали в нём заголовки второго уровня (их 4)."
+    },
+    {
+      "type": "context.usage",
+      "usedTokens": 19817,
+      "source": "engine",
+      "maxTokens": 1000000,
+      "percentage": 2,
+      "autoCompactThreshold": 967000,
+      "categories": [
+        {
+          "name": "System prompt",
+          "tokens": 2240,
+          "kind": "used"
+        },
+        {
+          "name": "System tools",
+          "tokens": 9187,
+          "kind": "used"
+        },
+        {
+          "name": "System tools (deferred)",
+          "tokens": 15177,
+          "kind": "deferred"
+        },
+        {
+          "name": "Memory files",
+          "tokens": 3140,
+          "kind": "used"
+        },
+        {
+          "name": "Skills",
+          "tokens": 2074,
+          "kind": "used"
+        },
+        {
+          "name": "Messages",
+          "tokens": 3176,
+          "kind": "used"
+        },
+        {
+          "name": "Autocompact buffer",
+          "tokens": 33000,
+          "kind": "buffer"
+        },
+        {
+          "name": "Free space",
+          "tokens": 947183,
+          "kind": "free"
+        }
+      ]
+    }
+  ],
+  "permissionResults": []
+}
