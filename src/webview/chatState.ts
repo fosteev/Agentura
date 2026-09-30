@@ -53,6 +53,8 @@ export interface ChatState {
   skills: string[];
   slashCommands: string[];
   turnStartedAt?: number;
+  /** Сброс окна, упёршегося в лимит (`limit.update` со статусом `rejected`) — для строки «ход не начат». */
+  limitResetsAt?: number;
   compactingRow?: number;
   closed?: { reason: 'exit' | 'error' | 'disposed'; message?: string };
 }
@@ -168,10 +170,22 @@ function reduce(s: ChatState, e: AgentEvent, now: number): ChatState {
     }
     case 'session.title':
       return { ...s, title: e.title };
-    case 'mode.changed':
-      return { ...s, mode: e.mode };
+    case 'mode.changed': {
+      // режим, выбранный из интерфейса, уже стоит в состоянии — строка только для смены движком
+      if (e.mode === s.mode) return s;
+      const out = addSys({ ...s, mode: e.mode }, [
+        ui.sys.modeChanged(ui.modes[e.mode]?.[0] ?? e.mode),
+      ]);
+      const last = out.rows[out.rows.length - 1] as Extract<FeedRow, { kind: 'sys' }>;
+      return replaceAt(out, out.rows.length - 1, { ...last, at: clock(now) });
+    }
+    case 'limit.update':
+      if (e.status !== 'rejected') return s;
+      return e.resetsAt !== undefined ? { ...s, limitResetsAt: e.resetsAt } : s;
     case 'turn.start': {
-      const out: ChatState = { ...s, turnStartedAt: e.at };
+      const { limitResetsAt: _l, ...base } = s;
+      void _l;
+      const out: ChatState = { ...base, turnStartedAt: e.at };
       // склеенные движком сообщения — каждое своей строкой
       const prompts = e.prompts ?? (e.prompt !== undefined ? [e.prompt] : []);
       return prompts.reduce((acc, p) => deliverUser(acc, p, e.at), out);
@@ -285,12 +299,17 @@ function reduce(s: ChatState, e: AgentEvent, now: number): ChatState {
       }
       return out;
     }
-    case 'error':
+    case 'error': {
+      if (e.code !== 'limit') return push(s, { kind: 'sys', tone: 'bad', text: [e.message] });
+      const reset =
+        s.limitResetsAt !== undefined ? ` · ${ui.sys.resetAt(clock(s.limitResetsAt))}` : '';
       return push(s, {
         kind: 'sys',
         tone: 'bad',
-        text: [e.code === 'limit' ? ui.sys.limit(e.message) : e.message],
+        at: clock(now),
+        text: [ui.sys.turnNotStarted(e.message) + reset],
       });
+    }
     case 'session.closed': {
       const out = closeOpenRows(s, true, now);
       return push(

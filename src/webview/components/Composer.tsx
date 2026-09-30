@@ -10,19 +10,20 @@ import {
   historyStep,
   type SlashItem,
 } from '../composer';
-import type { Hud as HudData } from '../fixtures/chat';
 import {
   autoAttachments,
   autoFile,
   autoSelection,
   capabilities,
   chat,
+  compact,
   dismiss,
   dismissed,
   editor,
   extra,
   fileHits,
   history,
+  meters,
   newSession,
   removeExtra,
   sendMessage,
@@ -31,6 +32,7 @@ import {
   setModel,
   showThinking,
 } from '../store';
+import type { LimitMeter } from '../hudView';
 import { ui } from '../strings';
 import { shortModel } from '../toolView';
 import { send } from '../vscode';
@@ -108,8 +110,9 @@ function Switch({ on }: { on: boolean }) {
   return <span class={on ? 'sw on' : 'sw'} />;
 }
 
-export function Composer({ hud }: { hud: HudData }) {
+export function Composer() {
   const s = chat.value;
+  const hv = meters.value;
   const edRef = useRef<HTMLDivElement>(null);
   const [text, setText] = useState('');
   const [caret, setCaret] = useState(0);
@@ -153,9 +156,13 @@ export function Composer({ hud }: { hud: HudData }) {
 
   // «@»: запрос файлов у хоста при смене набранного
   const requestId = useRef(0);
+  /** Запрос → набранное: хиты показываются, только если ответ на то, что набрано сейчас. */
+  const queries = useRef(new Map<number, string>());
   useEffect(() => {
     if (trig?.kind !== 'at') return;
     requestId.current += 1;
+    queries.current.set(requestId.current, trig.query);
+    queries.current.delete(requestId.current - 50);
     send({ type: 'files.find', requestId: requestId.current, query: trig.query });
   }, [trig?.kind, trig?.kind === 'at' ? trig.query : '']);
 
@@ -181,7 +188,8 @@ export function Composer({ hud }: { hud: HudData }) {
       hint: i.own ? ui.commands[i.name]?.[1] : i.group === 'skill' ? ui.menus.skillHint : '',
       insert: i.name,
     }));
-  } else if (trig?.kind === 'at') {
+  } else if (trig?.kind === 'at' && queries.current.get(fileHits.value.requestId) === trig.query) {
+    // старые хиты (прошлое «@» или ответ ещё не пришёл) не показываются и не вставляются
     items = fileHits.value.items.map((h) => ({
       key: h.path,
       label: h.isDir ? `${h.name}/` : h.name,
@@ -214,6 +222,7 @@ export function Composer({ hud }: { hud: HudData }) {
   function submit() {
     const t = text.trim();
     if (!t || closed) return;
+    setHistIdx(undefined);
     const cmd = /^\/([\w:.-]+)(?:\s+([\s\S]*))?$/.exec(t);
     if (cmd) {
       const name = cmd[1]!;
@@ -247,7 +256,6 @@ export function Composer({ hud }: { hud: HudData }) {
       }
     }
     if (!sendMessage(t, !t.startsWith('/'))) return;
-    setHistIdx(undefined);
     writeText('');
   }
 
@@ -338,8 +346,8 @@ export function Composer({ hud }: { hud: HudData }) {
   return (
     <footer class={closed ? 'compose off' : 'compose'}>
       <div class="blocks" aria-hidden="true">
-        {hud.blocks.map((c) => (
-          <i class={c} />
+        {hv.context.blocks.map((b) => (
+          <i class={b.cls} style={b.style} />
         ))}
       </div>
       <div class="ctx">
@@ -377,11 +385,10 @@ export function Composer({ hud }: { hud: HudData }) {
             </span>
           );
         })}
-        <span class="cn" title={ui.compose.ctxTitle}>
-          {ui.compose.context} <b class="warn">{hud.ctxNow}</b> / {hud.ctxMax} ·{' '}
-          <button onClick={() => send({ type: 'compact', sessionId: s.sessionId })}>
-            {ui.compose.compact}
-          </button>
+        <span class="cn" title={hv.context.title}>
+          {ui.compose.context} <b class={hv.context.numCls}>{hv.context.now}</b> / {hv.context.max}{' '}
+          · {hv.context.note && <>{hv.context.note} · </>}
+          <button onClick={compact}>{ui.compose.compact}</button>
         </span>
       </div>
       <div class="pop">
@@ -493,7 +500,7 @@ export function Composer({ hud }: { hud: HudData }) {
         </span>
         <span class="pop">
           <button class="agent" title={ui.compose.agentTitle} onClick={() => toggle('agent')}>
-            {ui.compose.agent} <b>{hud.agent}</b>
+            {ui.compose.agent} <b>claude</b>
           </button>
           {menu === 'agent' && (
             <div class="menu up">
@@ -575,24 +582,68 @@ export function Composer({ hud }: { hud: HudData }) {
           )}
         </span>
         <span class="meters">
-          <span class="m">
-            <span class="clock" />
-            {ui.compose.cache} <b>{hud.cache.time}</b> · <b>{hud.cache.hit}</b>
+          <span class="m" title={hv.cache.title}>
+            <span
+              class="clock"
+              style={{
+                background: hv.cache.expired
+                  ? 'var(--bg-input)'
+                  : `conic-gradient(var(--info) ${Math.round(hv.cache.left * 100)}%, var(--bg-input) 0)`,
+              }}
+            />
+            {ui.compose.cache} <b>{hv.cache.time}</b> · <b>{hv.cache.hit}</b>
           </span>
-          <span class="m" title={ui.compose.fiveHourTitle(hud.h5.reset)}>
-            <span class="cells">
-              {Array.from({ length: 10 }, (_, i) => (
-                <i class={i < hud.h5.cells ? 'on' : ''} />
-              ))}
-            </span>
-            {ui.compose.fiveHour} <b>{hud.h5.percent}%</b>
-          </span>
+          <LimitMeterView
+            label={ui.compose.fiveHour}
+            meter={hv.limits.five}
+            title={hv.limits.title}
+          />
+          {hv.limits.week && hv.limits.week.percent > 70 && (
+            <LimitMeterView
+              label={ui.compose.weekShort}
+              meter={hv.limits.week}
+              title={hv.limits.title}
+            />
+          )}
         </span>
         <button class="send" title={ui.compose.sendTitle} disabled={closed} onClick={submit}>
           {ui.compose.send}
         </button>
       </div>
     </footer>
+  );
+}
+
+function LimitMeterView({
+  label,
+  meter,
+  title,
+}: {
+  label: string;
+  meter: LimitMeter | undefined;
+  title: string;
+}) {
+  if (!meter) {
+    return (
+      <span class="m" title={title}>
+        <span class="cells">
+          {Array.from({ length: 10 }, () => (
+            <i />
+          ))}
+        </span>
+        {label} <b>—</b>
+      </span>
+    );
+  }
+  return (
+    <span class={`m lim ${meter.level}`} title={title}>
+      <span class="cells">
+        {Array.from({ length: 10 }, (_, i) => (
+          <i class={i < meter.cells ? (meter.full ? 'on f' : 'on') : ''} />
+        ))}
+      </span>
+      {label} <b class={meter.full ? 'pct full' : 'pct'}>{meter.percent}%</b>
+    </span>
   );
 }
 

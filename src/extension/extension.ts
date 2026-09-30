@@ -22,7 +22,8 @@ export function activate(context: vscode.ExtensionContext): void {
       vscode.workspace.getConfiguration('agentura').get<boolean>('limits.readKeychain', true),
     userAgent: `Agentura/${String(context.extension.packageJSON.version)}`,
   });
-  const sidebar = new SidebarProvider(context, log, new UsageService(limits.fetch));
+  const usage = new UsageService(limits.fetch);
+  const sidebar = new SidebarProvider(context, log, usage);
   const pollMinutes = () =>
     vscode.workspace.getConfiguration('agentura').get<number>('usagePollMinutes', 15);
   context.subscriptions.push(startLimitsPolling(() => sidebar.refreshUsage(), pollMinutes));
@@ -31,6 +32,8 @@ export function activate(context: vscode.ExtensionContext): void {
     adapter: createAdapter(log),
     live: new LiveSessions(),
     transcripts: new TranscriptCache(),
+    usage,
+    limits,
   };
 
   context.subscriptions.push(

@@ -2,8 +2,20 @@
 import { h, render } from 'preact';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Composer } from './components/Composer';
-import { hud } from './fixtures/chat';
-import { capabilities, chat, editor, extra, history, handleHostMessage } from './store';
+import {
+  capabilities,
+  chat,
+  dispatchEvent,
+  editor,
+  extra,
+  history,
+  handleHostMessage,
+  hudState,
+  limits,
+  newSession,
+  tick,
+} from './store';
+import { initialHud } from './hudState';
 import { initialState } from './chatState';
 import * as vscode from './vscode';
 
@@ -12,7 +24,7 @@ const posted: unknown[] = [];
 function mount() {
   const host = document.createElement('div');
   document.body.append(host);
-  render(h(Composer, { hud }), host);
+  render(h(Composer, {}), host);
   return host;
 }
 
@@ -48,6 +60,8 @@ beforeEach(() => {
   editor.value = {};
   extra.value = [];
   history.value = [];
+  hudState.value = initialHud();
+  limits.value = { windows: [], updatedAt: 0 };
 });
 
 describe('поле ввода', () => {
@@ -136,6 +150,51 @@ describe('поле ввода', () => {
     expect(ed.textContent).toBe('смотри @src/Counter.tsx ');
   });
 
+  it('«@»: хиты прошлого запроса не видны и не вставляются, пока не пришёл ответ на новый', async () => {
+    const host = mount();
+    type(host, '@Cou');
+    await flush();
+    const first = posted.find((m) => (m as { type: string }).type === 'files.find') as {
+      requestId: number;
+    };
+    handleHostMessage({
+      type: 'files.result',
+      requestId: first.requestId,
+      items: [{ path: 'src/Counter.tsx', name: 'Counter.tsx', dir: 'src', isDir: false }],
+    });
+    await flush();
+    expect(host.querySelector('.menu .it')).not.toBeNull();
+    const ed = type(host, '@Xyz');
+    await flush();
+    expect(host.querySelector('.menu .it')).toBeNull();
+    key(ed, 'Tab');
+    await flush();
+    expect(ed.textContent).toBe('@Xyz');
+    render(null, host); // иначе живой компонент дошлёт files.find в следующий тест
+  });
+
+  it('новая сессия: запоздавшие события брошенной не попадают в ленту', () => {
+    handleHostMessage({
+      type: 'agent.event',
+      sessionId: 'old',
+      event: { type: 'session.title', title: 'старая' },
+    });
+    chat.value = { ...chat.value, sessionId: 'old' };
+    newSession();
+    handleHostMessage({
+      type: 'agent.event',
+      sessionId: 'old',
+      event: { type: 'session.title', title: 'запоздала' },
+    });
+    expect(chat.value.title).toBeUndefined();
+    handleHostMessage({
+      type: 'agent.event',
+      sessionId: 'new',
+      event: { type: 'session.title', title: 'новая' },
+    });
+    expect(chat.value.title).toBe('новая');
+  });
+
   it('автоконтекст: чипы из редактора, крестик снимает, отправка несёт вложения', async () => {
     handleHostMessage({
       type: 'editor.context',
@@ -177,6 +236,19 @@ describe('поле ввода', () => {
     expect(host.querySelector('.note')).toBeNull();
   });
 
+  it('история: своя команда из истории (/status) сбрасывает позицию истории', async () => {
+    history.value = ['/status '];
+    const host = mount();
+    const ed = host.querySelector<HTMLElement>('.typed')!;
+    key(ed, 'ArrowUp');
+    await flush();
+    expect(host.querySelector('.note')).not.toBeNull();
+    key(ed, 'Enter');
+    await flush();
+    expect(ed.textContent).toBe('');
+    expect(host.querySelector('.note')).toBeNull();
+  });
+
   it('закрытая сессия: поле недоступно, отправка не идёт', async () => {
     chat.value = { ...chat.value, closed: { reason: 'exit' } };
     const host = mount();
@@ -193,5 +265,89 @@ describe('поле ввода', () => {
     expect(items.map((i) => i.classList.contains('dis'))).toEqual([false, false, false, true]);
     (items[1] as HTMLElement).click();
     expect(posted).toEqual([{ type: 'mode.set', sessionId: '', mode: 'acceptEdits' }]);
+  });
+});
+
+describe('приборы у поля ввода — живые значения', () => {
+  it('контекст: число, шкала из 20 блоков, цвет по порогу; «сжать» шлёт compact', () => {
+    const host = mount();
+    dispatchEvent({
+      type: 'context.usage',
+      usedTokens: 160_000,
+      maxTokens: 200_000,
+      source: 'engine',
+    });
+    return flush().then(() => {
+      const cn = host.querySelector('.ctx .cn')!;
+      expect(cn.querySelector('b')?.textContent).toBe('160 000');
+      expect(cn.querySelector('b')?.className).toBe('hot');
+      expect(cn.textContent).toContain('/ 200 000');
+      expect(cn.textContent).toContain('порог 150k пройден');
+      expect(host.querySelectorAll('.blocks i')).toHaveLength(20);
+      expect(host.querySelectorAll('.blocks i.on')).toHaveLength(16);
+      host.querySelector<HTMLButtonElement>('.ctx .cn button')!.click();
+      expect(posted).toContainEqual({ type: 'compact', sessionId: '' });
+    });
+  });
+
+  it('кэш: таймер по тику и доля попаданий; лимит 5ч — проценты, ячейки, красный на 100 %', async () => {
+    const host = mount();
+    dispatchEvent(
+      {
+        type: 'session.init',
+        sessionId: 's',
+        model: 'm',
+        cwd: '/p',
+        permissionMode: 'default',
+        tools: [],
+        slashCommands: [],
+        skills: [],
+        agents: [],
+        apiKeySource: 'none',
+        engineVersion: '1',
+      },
+      0,
+    );
+    dispatchEvent(
+      {
+        type: 'usage.message',
+        messageId: 'a',
+        model: 'm',
+        final: true,
+        at: 10_000,
+        usage: { input: 10, output: 1, cacheRead: 80, cacheWrite: 10 },
+      },
+      10_000,
+    );
+    dispatchEvent(
+      {
+        type: 'turn.result',
+        ok: true,
+        subtype: 'success',
+        interrupted: false,
+        durationMs: 1,
+        apiDurationMs: 1,
+        numTurns: 1,
+        usage: { input: 10, output: 1, cacheRead: 80, cacheWrite: 10 },
+        totalCostUsd: 0.1,
+        permissionDenials: [],
+      },
+      10_000,
+    );
+    tick.value = 10_000 + 252_000;
+    handleHostMessage({
+      type: 'limits.update',
+      windows: [{ kind: 'five-hour', percent: 100, resetsAt: 0 }],
+      updatedAt: 1,
+    });
+    await flush();
+    const m = [...host.querySelectorAll('.meters .m')];
+    expect(m[0]!.textContent).toContain('кэш');
+    expect(m[0]!.querySelectorAll('b')[0]!.textContent).toBe('55:48');
+    expect(m[0]!.querySelectorAll('b')[1]!.textContent).toBe('80%');
+    expect(m[1]!.textContent).toContain('5ч');
+    expect(m[1]!.querySelector('b')!.className).toBe('pct full');
+    expect(m[1]!.querySelectorAll('.cells i.on.f')).toHaveLength(10);
+    expect(m[1]!.className).toContain('lim-full');
   });
 });

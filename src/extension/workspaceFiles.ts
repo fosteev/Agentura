@@ -33,6 +33,32 @@ export class WorkspaceFiles {
 
   constructor(private readonly root: vscode.Uri) {}
 
+  /** Сброс кэшей: список — при создании/удалении/переименовании файлов; решения «исключён» — ещё и при смене `.gitignore`/`files.exclude`/`search.exclude`. */
+  watch(): vscode.Disposable {
+    const dropList = () => (this.listed = undefined);
+    const dropAll = () => {
+      this.listed = undefined;
+      this.ignoreCache.clear();
+    };
+    const gitignore = vscode.workspace.createFileSystemWatcher(
+      new vscode.RelativePattern(this.root, '**/.gitignore'),
+    );
+    return vscode.Disposable.from(
+      vscode.workspace.onDidCreateFiles(dropList),
+      vscode.workspace.onDidDeleteFiles(dropAll),
+      vscode.workspace.onDidRenameFiles(dropAll),
+      vscode.workspace.onDidChangeConfiguration((e) => {
+        if (e.affectsConfiguration('files.exclude') || e.affectsConfiguration('search.exclude')) {
+          dropAll();
+        }
+      }),
+      gitignore,
+      gitignore.onDidCreate(dropAll),
+      gitignore.onDidChange(dropAll),
+      gitignore.onDidDelete(dropAll),
+    );
+  }
+
   private excludePattern(): string {
     const cfg = vscode.workspace.getConfiguration();
     const globs = excludeGlobs(

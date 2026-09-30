@@ -8,6 +8,7 @@ export function Hud({
   tab,
   onTab,
   sidePanesEnabled,
+  badges,
   onSessions,
   onNew,
 }: {
@@ -17,6 +18,8 @@ export function Hud({
   onTab: (t: Tab) => void;
   /** Панели «ход» и «агенты» недоступны в пустой сессии (экран empty). */
   sidePanesEnabled: boolean;
+  /** Бейджи вкладок: число строк хода (`live` — ход идёт) и число агентов. */
+  badges: { turn?: { count: number; live: boolean }; agents?: number };
   onSessions: () => void;
   onNew: () => void;
 }) {
@@ -36,6 +39,12 @@ export function Hud({
             onClick={() => onTab(k)}
           >
             {label}
+            {k === 'turn' && badges.turn && (
+              <span class={badges.turn.live ? 'b live' : 'b'}>{badges.turn.count}</span>
+            )}
+            {k === 'agents' && badges.agents !== undefined && (
+              <span class="b">{badges.agents}</span>
+            )}
           </button>
         ))}
       </nav>

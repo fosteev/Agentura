@@ -1,7 +1,16 @@
 import { signal, useSignalEffect } from '@preact/signals';
 import { useEffect, useLayoutEffect, useRef } from 'preact/hooks';
-import { hud } from '../fixtures/chat';
-import { chat, interrupt, newSession, recent, showThinking, tick } from '../store';
+import {
+  chat,
+  hudState,
+  interrupt,
+  newSession,
+  recent,
+  showThinking,
+  stopAgent,
+  tick,
+} from '../store';
+import { agentRows, cacheLive, sessionTotals, turnBadge, turnsView } from '../hudView';
 import { ui } from '../strings';
 import { send } from '../vscode';
 import { Composer } from './Composer';
@@ -9,9 +18,8 @@ import { Empty } from './Empty';
 import { Hud, type Tab } from './Hud';
 import { Log } from './Log';
 import { AgentsPane, TurnPane } from './SidePanes';
-import type { AgentRow } from '../fixtures/chat';
 import type { FeedRow } from '../chatState';
-import { formatDuration, shortModel, toolView } from '../toolView';
+import { formatDuration, toolView } from '../toolView';
 
 const tab = signal<Tab>('chat');
 /** Широкая вёрстка (ход и агенты панелью справа) включается с этой ширины вкладки. */
@@ -37,13 +45,16 @@ export function Chat() {
   const s = chat.value;
   const working = s.status === 'working' || s.status === 'waiting';
 
-  // секундный тик для таймеров ленты — только пока идёт ход
+  // секундный тик для таймеров ленты и кэша — пока идёт ход, есть живой агент или кэш не истёк
+  const h = hudState.value;
+  const ticking =
+    working || h.agents.some((a) => a.status === 'running') || cacheLive(h, tick.value);
   useEffect(() => {
-    if (!working) return;
+    if (!ticking) return;
     tick.value = Date.now();
     const id = setInterval(() => (tick.value = Date.now()), 1000);
     return () => clearInterval(id);
-  }, [working]);
+  }, [ticking]);
 
   // Esc останавливает ход (поле ввода гасит Esc сама, когда закрывает меню/историю)
   useEffect(() => {
@@ -73,13 +84,7 @@ export function Chat() {
   const last = s.rows[s.rows.length - 1];
   const live = working ? liveLabel(last, s.turnStartedAt, now) : undefined;
 
-  const mainRow: AgentRow = {
-    kind: 'main',
-    mark: working ? '●' : '○',
-    name: ui.agents.main,
-    meta: `${s.model ? shortModel(s.model) : '—'} · ${working ? ui.agents.answering : ui.agents.waitingTask}`,
-    tokens: '0',
-  };
+  const turnBdg = turnBadge(h);
 
   return (
     <div class="webview">
@@ -89,6 +94,7 @@ export function Chat() {
         tab={t}
         onTab={(k) => (tab.value = k)}
         sidePanesEnabled={!empty}
+        badges={empty ? {} : { ...(turnBdg ? { turn: turnBdg } : {}), agents: 1 + h.agents.length }}
         onSessions={() => send({ type: 'sessions.show' })}
         onNew={newSession}
       />
@@ -120,11 +126,16 @@ export function Chat() {
           )}
         </main>
         <aside class="pane side" style={{ display: t === 'chat' ? 'none' : 'block' }}>
-          <TurnPane turns={[]} hidden={t !== 'turn'} />
-          <AgentsPane rows={[mainRow]} totals={[]} hidden={t !== 'agents'} />
+          <TurnPane turns={turnsView(h, now, s.cwd)} hidden={t !== 'turn'} />
+          <AgentsPane
+            rows={agentRows(h, { working, now, ...(s.model ? { model: s.model } : {}) })}
+            totals={sessionTotals(h)}
+            hidden={t !== 'agents'}
+            onStop={stopAgent}
+          />
         </aside>
       </div>
-      <Composer hud={hud} />
+      <Composer />
     </div>
   );
 }

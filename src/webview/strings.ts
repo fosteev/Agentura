@@ -29,7 +29,6 @@ export const ui = {
     compactedManual: 'контекст сжат',
     compactFailed: (error?: string) => `не удалось сжать контекст${error ? `: ${error}` : ''}`,
     interrupted: 'ход остановлен',
-    limit: (message: string) => `лимит: ${message}`,
     closed: (reason: 'exit' | 'error' | 'disposed', message?: string) =>
       reason === 'error'
         ? `сессия оборвалась${message ? `: ${message}` : ''}`
@@ -40,6 +39,9 @@ export const ui = {
       `/status · модель ${model} · режим ${mode} · ${cwd}`,
     planOn: 'режим plan включён',
     sendFailed: 'сообщение не отправлено: сессия завершена',
+    modeChanged: (mode: string) => `режим: ${mode}`,
+    turnNotStarted: (message: string) => `ход не начат: ${message}`,
+    resetAt: (time: string) => `сброс в ${time}`,
   },
   // этап 3: карточек разрешений нет (этап 5) — хост отклоняет запрос, лента говорит об этом
   stubs: {
@@ -70,6 +72,21 @@ export const ui = {
     main: 'основной',
     waitingTask: 'ждёт задачу',
     answering: 'отвечает',
+    background: 'фоновая задача',
+    done: 'готово',
+    failed: 'ошибка',
+    stopped: 'остановлено',
+    totalCost: 'за сессию',
+    totalTurns: 'ходов',
+    totalTime: 'время',
+    totalCache: 'кэш-попадания',
+  },
+  turn: {
+    turn: 'ход',
+    previous: 'предыдущий',
+    running: 'идёт',
+    text: 'текст ответа',
+    streaming: 'стримится',
   },
   compose: {
     mode: 'режим',
@@ -79,10 +96,17 @@ export const ui = {
     agentTitle: 'Агент: Claude · Codex, Gemini — скоро',
     context: 'контекст',
     compact: 'сжать',
-    ctxTitle: 'Контекст: пороги 120k 150k, автосжатие при 200k',
+    ctxTitle: (thresholds: string[], fullAt: string, scale?: string) =>
+      `Контекст: пороги ${thresholds.join(' ')}, автосжатие при ${fullAt}${scale ? ` · шкала до ${scale}` : ''}`,
+    thresholdPassed: (k: string) => `порог ${k} пройден`,
     cache: 'кэш',
+    cacheExpired: 'истёк',
+    cacheTitle: (ttl: string) => `Кэш промпта: живёт ${ttl} после последнего ответа`,
     fiveHour: '5ч',
-    fiveHourTitle: (reset: string) => `5-часовое окно · сброс ${reset}`,
+    fiveHourWindow: '5-часовое окно',
+    week: 'неделя',
+    weekShort: 'нед',
+    limitsUnknown: 'Лимиты подписки пока не получены',
     send: 'enter ↵',
     sendTitle: 'Отправить (Enter)',
     placeholder: 'задача, @файл, /команда',

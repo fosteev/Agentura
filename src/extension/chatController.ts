@@ -1,4 +1,5 @@
 import type {
+  LimitWindow,
   AgentAdapter,
   AgentEvent,
   AgentSession,
@@ -23,7 +24,11 @@ export interface ChatDeps {
     warn(m: string): void;
     error(m: string): void;
   };
-  settings(): { defaultModel?: string; allowBypass: boolean };
+  settings(): { defaultModel?: string; allowBypass: boolean; contextThresholds?: number[] };
+  /** Лимиты подписки (этап 4): `refresh` ограничен кулдауном сервиса, ответ уходит в webview. */
+  usage?: { refresh(): Promise<{ windows: LimitWindow[]; updatedAt: number; error?: string }> };
+  /** Окна из `rate_limit_event` движка — запас для `LimitsSource`. */
+  observeLimits?(windows: LimitWindow[]): void;
   findFiles(query: string): Promise<FileHit[]>;
   pickFiles(): Promise<FileHit[]>;
   /** Текст выделения для вложения `selection`. */
@@ -50,6 +55,7 @@ export class ChatController {
   private generation = 0;
   private editorContext: Extract<ToWebview, { type: 'editor.context' }> | undefined;
   private registeredId: string | undefined;
+  private sendQueue: Promise<void> = Promise.resolve();
 
   constructor(private readonly deps: ChatDeps) {}
 
@@ -66,13 +72,19 @@ export class ChatController {
       project: deps.project,
       cwd: deps.cwd,
       allowBypass: deps.settings().allowBypass,
+      ...(deps.settings().contextThresholds?.length
+        ? { contextThresholds: deps.settings().contextThresholds! }
+        : {}),
     });
+    void this.refreshLimits();
     if (this.editorContext) deps.post(this.editorContext);
     void deps
       .listRecent()
       .then((sessions) => deps.post({ type: 'sessions.update', sessions }))
       .catch((e) => deps.log.warn(`список сессий не получен: ${String(e)}`));
-    void this.ensureSession().then((s) => this.postCapabilities(s));
+    void this.ensureSession()
+      .then((s) => this.postCapabilities(s))
+      .catch((e) => deps.log.warn(`возможности движка: ${String(e)}`));
   }
 
   postEditorContext(ctx: Omit<Extract<ToWebview, { type: 'editor.context' }>, 'type'>): void {
@@ -87,7 +99,9 @@ export class ChatController {
     this.title = undefined;
     this.deps.setTitle(tabTitle(this.status, this.title));
     if (notify) this.deps.post({ type: 'session.reset' });
-    void this.ensureSession().then((s) => this.postCapabilities(s));
+    void this.ensureSession()
+      .then((s) => this.postCapabilities(s))
+      .catch((e) => this.deps.log.warn(`возможности движка: ${String(e)}`));
   }
 
   dispose(): void {
@@ -130,6 +144,7 @@ export class ChatController {
         return;
       }
       case 'limits.refresh':
+        await this.refreshLimits();
         return;
       default:
         break;
@@ -139,19 +154,10 @@ export class ChatController {
     try {
       switch (m.type) {
         case 'send': {
-          const texts: Record<string, string> = {};
-          for (const a of m.attachments ?? []) {
-            if (a.kind !== 'selection') continue;
-            // файл закрыт/удалён — сообщение всё равно уходит, просто без текста выделения
-            const t = await deps.readSelection(a).catch((e: unknown) => {
-              deps.log.warn(`выделение ${a.path}: ${String(e)}`);
-              return undefined;
-            });
-            if (t) texts[attachmentKey(a)] = t;
-          }
-          if (!session.send(buildPrompt(m.text, m.attachments ?? [], texts))) {
-            deps.log.warn('send: сессия закрыта, сообщение не принято');
-          }
+          // по очереди: сообщение с выделением (ждёт чтения файла) не обгоняется следующим
+          const run = this.sendQueue.then(() => this.sendNow(session, m));
+          this.sendQueue = run.catch(() => undefined);
+          await run;
           return;
         }
         case 'interrupt':
@@ -192,6 +198,38 @@ export class ChatController {
     }
   }
 
+  private async sendNow(
+    session: AgentSession,
+    m: Extract<FromWebview, { type: 'send' }>,
+  ): Promise<void> {
+    const { deps } = this;
+    const texts: Record<string, string> = {};
+    for (const a of m.attachments ?? []) {
+      if (a.kind !== 'selection') continue;
+      // файл закрыт/удалён — сообщение всё равно уходит, просто без текста выделения
+      const t = await deps.readSelection(a).catch((e: unknown) => {
+        deps.log.warn(`выделение ${a.path}: ${String(e)}`);
+        return undefined;
+      });
+      if (t) texts[attachmentKey(a)] = t;
+    }
+    if (!session.send(buildPrompt(m.text, m.attachments ?? [], texts))) {
+      deps.log.warn('send: сессия закрыта, сообщение не принято');
+    }
+  }
+
+  /** Лимиты подписки → webview (`limits.update`). Не чаще кулдауна `UsageService`. */
+  private async refreshLimits(): Promise<void> {
+    const { usage, post } = this.deps;
+    if (!usage) return;
+    try {
+      const snap = await usage.refresh();
+      post({ type: 'limits.update', ...snap });
+    } catch (e) {
+      this.deps.log.warn(`лимиты для чата: ${String(e)}`);
+    }
+  }
+
   private async postCapabilities(session: AgentSession | undefined): Promise<void> {
     if (!session) return;
     const caps = await session.capabilities();
@@ -222,6 +260,8 @@ export class ChatController {
           return session;
         });
       this.session.catch((e: unknown) => {
+        // сессию уже заменили (`/clear`, новая) — падение старой не касается ни новой, ни ленты
+        if (gen !== this.generation) return;
         const message = e instanceof Error ? e.message : String(e);
         deps.log.error(`сессия не создана: ${message}`);
         this.session = undefined;
@@ -260,6 +300,14 @@ export class ChatController {
           `ход завершён: ${e.ok ? 'ok' : 'ошибка'}, $${(e.costUsd ?? 0).toFixed(4)}, ${e.durationMs} мс`,
         );
         if (session.id) this.deps.live?.set(session.id, this.liveState(), e.totalCostUsd);
+        void this.refreshLimits();
+        break;
+      case 'limit.update':
+        if (!e.agentId) {
+          this.deps.observeLimits?.(e.windows);
+          // упёрлись или близко — забрать точные проценты и время сброса
+          if (e.status && e.status !== 'allowed') void this.refreshLimits();
+        }
         break;
       case 'error':
         this.deps.log.warn(`error: ${e.message}`);
@@ -267,7 +315,9 @@ export class ChatController {
       case 'session.closed':
         this.deps.log.info(`session.closed: ${e.reason}${e.message ? ` — ${e.message}` : ''}`);
         if (this.registeredId) this.deps.live?.delete(this.registeredId);
-        break;
+        // закрытая сессия больше не «живая»: не возвращать её в список ниже
+        this.registeredId = undefined;
+        return;
       default:
         break;
     }

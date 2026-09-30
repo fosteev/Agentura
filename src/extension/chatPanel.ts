@@ -1,10 +1,12 @@
 import * as vscode from 'vscode';
 import { ClaudeAdapter } from '../agent/claude/adapter';
 import type { AgentAdapter } from '../agent/types';
+import type { LimitsSource } from '../data/limits';
 import { TranscriptCache, listSessionRows, toSummary, type LiveSessions } from '../data/sessions';
 import { postToWebview } from '../protocol';
 import { ChatController } from './chatController';
 import { EditorContextTracker } from './editorContext';
+import type { UsageService } from './usage';
 import type { Logger } from './logger';
 import { attachMessaging, renderWebview, webviewOptions } from './webviewHost';
 import { WorkspaceFiles } from './workspaceFiles';
@@ -16,6 +18,8 @@ export interface ChatServices {
   adapter: AgentAdapter;
   live: LiveSessions;
   transcripts: TranscriptCache;
+  usage: UsageService;
+  limits: LimitsSource;
 }
 
 export function createAdapter(log: Logger): AgentAdapter {
@@ -82,8 +86,11 @@ export class ChatPanel {
         return {
           defaultModel: cfg.get<string>('defaultModel') || undefined,
           allowBypass: cfg.get<boolean>('allowBypassPermissions', false),
+          contextThresholds: cfg.get<number[]>('contextThresholds', [120000, 150000]),
         };
       },
+      usage: services.usage,
+      observeLimits: (windows) => services.limits.observeEngine(windows),
       findFiles: (q) => files.find(q),
       pickFiles: () => files.pick(),
       readSelection: (a) => files.readSelection(a),
@@ -109,6 +116,13 @@ export class ChatPanel {
         // 'ready' уже обработан в attachMessaging (init); остальное — контроллеру
         void this.controller.handle(m).catch((e) => log.error(`${m.type}: ${String(e)}`));
       }),
+      // автоопрос лимитов (раз в `usagePollMinutes`) доходит и до открытого чата
+      {
+        dispose: services.usage.onUpdate((snap) =>
+          postToWebview(panel.webview, { type: 'limits.update', ...snap }),
+        ),
+      },
+      files.watch(),
       new EditorContextTracker(files, (ctx) => this.controller.postEditorContext(ctx)),
       { dispose: () => this.controller.dispose() },
     );
