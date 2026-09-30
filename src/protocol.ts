@@ -2,9 +2,31 @@
  * Протокол extension ↔ webview. События агента — `AgentEvent` из `src/agent/types.ts` (этап 2):
  * webview получает их как есть в сообщении `agent.event`.
  */
-import type { AgentEvent, LimitWindow, PermissionDecision, PermissionMode } from './agent/types';
+import type {
+  AgentEvent,
+  CommandOption,
+  LimitWindow,
+  ModelOption,
+  PermissionDecision,
+  PermissionMode,
+} from './agent/types';
+import type { Attachment, FileHit } from './shared/prompt';
 
-export type { AgentEvent, PermissionDecision, PermissionMode };
+export type {
+  AgentEvent,
+  Attachment,
+  CommandOption,
+  FileHit,
+  ModelOption,
+  PermissionDecision,
+  PermissionMode,
+};
+
+/** Открытый файл и выделение активного редактора (автоконтекст, B3). */
+export interface EditorContext {
+  file?: { path: string; name: string };
+  selection?: { path: string; name: string; startLine: number; endLine: number };
+}
 
 /**
  * Имена событий агента. Список этапа 1 плюс три события, добавленных на этапе 2 (записаны в
@@ -46,10 +68,30 @@ type MissingEventType = Exclude<AgentEvent['type'], AgentEventType>;
 const _allEventTypesListed: MissingEventType extends never ? true : MissingEventType = true;
 void _allEventTypesListed;
 
-/** Extension → webview. */
+/**
+ * Extension → webview.
+ *
+ * Этап 3 добавил: `chat.info`, `capabilities`, `editor.context`, `files.result`, `attach.picked`,
+ * `session.reset` (записаны в roadmap, «Решения по итогам сессии 3»). Одна вкладка чата = одна
+ * сессия: `sessionId` в сообщениях webview → хост информативен, хост направляет сообщение в
+ * текущую сессию вкладки (до первого `session.init` id ещё пуст).
+ */
 export type ToWebview =
   | { type: 'init'; surface: 'chat' | 'sidebar'; version: string }
   | { type: 'agent.event'; sessionId: string; event: AgentEvent }
+  | {
+      type: 'chat.info';
+      /** Имя папки воркспейса и путь к ней. */
+      project: string;
+      cwd: string;
+      allowBypass: boolean;
+    }
+  | { type: 'capabilities'; sessionId: string; models: ModelOption[]; commands: CommandOption[] }
+  | ({ type: 'editor.context' } & EditorContext)
+  | { type: 'files.result'; requestId: number; items: FileHit[] }
+  | { type: 'attach.picked'; items: FileHit[] }
+  /** Начата новая сессия (команда, `/clear`, `new`): очистить ленту. */
+  | { type: 'session.reset' }
   | { type: 'sessions.update'; sessions: SessionSummary[] }
   | {
       type: 'limits.update';
@@ -59,10 +101,18 @@ export type ToWebview =
       error?: string;
     };
 
-/** Webview → extension. */
+/**
+ * Webview → extension. Этап 3 добавил `files.find`, `attach.pick`, `sessions.show`, `diff.open` и
+ * поле `attachments` у `send` (roadmap, «Решения по итогам сессии 3»). `diff.open` пока только
+ * пишется в журнал — открытие диффа на этапе 5.
+ */
 export type FromWebview =
   | { type: 'ready' }
-  | { type: 'send'; sessionId: string; text: string }
+  | { type: 'send'; sessionId: string; text: string; attachments?: Attachment[] }
+  | { type: 'files.find'; requestId: number; query: string }
+  | { type: 'attach.pick' }
+  | { type: 'sessions.show' }
+  | { type: 'diff.open'; sessionId: string; toolUseId: string }
   | { type: 'interrupt'; sessionId: string }
   | {
       type: 'permission.respond';
@@ -104,6 +154,10 @@ export type LimitWindowSummary = LimitWindow;
 const FROM_WEBVIEW_TYPES: ReadonlySet<string> = new Set<FromWebview['type']>([
   'ready',
   'send',
+  'files.find',
+  'attach.pick',
+  'sessions.show',
+  'diff.open',
   'interrupt',
   'permission.respond',
   'question.answer',

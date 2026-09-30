@@ -13,11 +13,14 @@ import type {
   AgentEvent,
   AgentEventOf,
   AgentSession,
+  CommandOption,
   EffortLevel,
+  ModelOption,
   PermissionDecision,
   PermissionMode,
   PlanDecision,
   ResumeOptions,
+  SessionCapabilities,
   SessionInfo,
   SessionOptions,
 } from '../types';
@@ -315,6 +318,31 @@ class ClaudeSession implements AgentSession {
       this.log('warn', `getContextUsage не ответил: ${String(error)}`);
       return undefined;
     }
+  }
+
+  async capabilities(): Promise<SessionCapabilities> {
+    const result: SessionCapabilities = { models: [], commands: [] };
+    try {
+      for (const m of await this.q.supportedModels()) {
+        const option: ModelOption = { value: m.value, displayName: m.displayName };
+        if (m.description) option.description = m.description;
+        if (m.supportsEffort !== undefined) option.supportsEffort = m.supportsEffort;
+        if (m.supportedEffortLevels) option.effortLevels = m.supportedEffortLevels as EffortLevel[];
+        result.models.push(option);
+      }
+    } catch (error) {
+      this.log('warn', `supportedModels не ответил: ${String(error)}`);
+    }
+    try {
+      for (const c of await this.q.supportedCommands()) {
+        const option: CommandOption = { name: c.name, description: c.description };
+        if (c.argumentHint) option.argumentHint = c.argumentHint;
+        result.commands.push(option);
+      }
+    } catch (error) {
+      this.log('warn', `supportedCommands не ответил: ${String(error)}`);
+    }
+    return result;
   }
 
   dispose(): void {
