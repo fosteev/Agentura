@@ -38,23 +38,3 @@ body {
   color: var(--fg-mute);
   border-bottom: 1px solid var(--line);
 }
-
-/* ↻ обновление лимитов рядом с /status (не из прототипа; добавлено по просьбе владельца) */
-.sidebar .sec h3 .refresh {
-  color: var(--fg-mute);
-  font-size: 13px;
-  line-height: 1;
-  padding: 0 2px;
-}
-.sidebar .sec h3 .refresh:hover:not(:disabled) {
-  color: var(--fg);
-}
-.sidebar .sec h3 .refresh.busy {
-  animation: agentura-spin 0.8s linear infinite;
-  cursor: progress;
-}
-@keyframes agentura-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
