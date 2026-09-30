@@ -1,6 +1,6 @@
 # Agentura: реализация расширения до версии 0.1
 
-> Статус: в работе · 2026-09-30 · этап 0 закрыт (`docs/spikes/sdk-probe.md`) · следующий — этап 1 (каркас) · продолжение `01-features-prototype.md` (прототип утверждён, тег `prototype-v1`)
+> Статус: в работе · 2026-09-30 · этап 0 закрыт (`docs/spikes/sdk-probe.md`) · этап 1 (каркас) собран и принят по коду, ждёт сверки двух тем владельцем (F5) · следующий — этап 2 (адаптер, сильная модель) · продолжение `01-features-prototype.md` (прототип утверждён, тег `prototype-v1`)
 > Исполнитель отмечает чекбоксы по ходу работы — по факту проверки, не «вроде сделал».
 
 ## Цель
@@ -64,7 +64,7 @@
 - **Решено.** TypeScript strict, esbuild (две сборки: extension CJS для Node, webview ESM для
   браузера), Preact + `@preact/signals` в webview, vitest для юнитов, `@vscode/test-electron`
   для одного интеграционного теста, `@vscode/vsce` для упаковки. Один пакет в корне репозитория,
-  без монорепо. Язык интерфейса — русский (как прототип), строки в одном модуле для будущей локализации.
+  без монорепо. Язык интерфейса — русский (как прототип), строки в одном модуле для будущей локализации (`src/webview/strings.ts`).
 - **Не в этом плане.** Публикация в Marketplace, другие агенты (A13), фичи «Потом» и «Нет».
 - **Юридическое (риск).** Дока SDK: «Anthropic does not allow third party developers to offer
   claude.ai login … for their products» без одобрения. Для личного использования расширение
@@ -110,19 +110,31 @@
 Сборка, манифест, две webview-поверхности и перенос стилей прототипа. Проверка, что токены
 `--vscode-*` дают в реальных темах то, что показывал прототип.
 
-- [ ] `package.json` расширения: `engines.vscode ^1.138`, `main`, `contributes`: viewContainer `agentura` в activity bar с webview view `agentura.sidebar`; команды `agentura.open`, `agentura.newSession`, `agentura.openLast`, `agentura.resumeSession`, `agentura.showLogs`; хоткеи для open/newSession; настройки `agentura.contextThresholds` ([120000,150000]), `agentura.allowBypassPermissions` (false), `agentura.defaultModel`, `agentura.claudeExecutable` (пусто = бандленный), `agentura.usagePollMinutes` (15)
-- [ ] `esbuild.mjs`: сборка `src/extension/**` → `dist/extension.js` (cjs, platform node, external vscode) и `src/webview/**` → `dist/webview/{chat,sidebar}.js` (esm, browser), режим watch; `npm run build`, `npm run watch`, `npm run check` (tsc + eslint + vitest)
-- [ ] `media/tokens.css`, `media/hud.css` скопированы из `prototype/shared/` без правок; `prototype/shared/preview.*` не переносится
-- [ ] Webview-панель чата (`WebviewPanel`, `retainContextWhenHidden`, CSP с nonce, `localResourceRoots`), Preact-приложение рендерит экран `prototype/screens/chat.html` из статических данных (та же разметка и классы)
-- [ ] Webview view боковой панели рендерит `prototype/screens/sessions.html` (левая часть) из статических данных
-- [ ] `src/protocol.ts`: типы сообщений extension ↔ webview (`ToWebview`, `FromWebview`) с заглушками под события этапа 2; `postMessage` обёртки с типами
-- [ ] Output channel «Agentura» и логгер с уровнями (B20)
-- [ ] `vitest` с одним тестом на протокол; `eslint` + `prettier` конфиги
+- [x] `package.json` расширения: `engines.vscode ^1.138`, `main`, `contributes`: viewContainer `agentura` в activity bar с webview view `agentura.sidebar`; команды `agentura.open`, `agentura.newSession`, `agentura.openLast`, `agentura.resumeSession`, `agentura.showLogs`; хоткеи для open/newSession; настройки `agentura.contextThresholds` ([120000,150000]), `agentura.allowBypassPermissions` (false), `agentura.defaultModel`, `agentura.claudeExecutable` (пусто = бандленный), `agentura.usagePollMinutes` (15)
+- [x] `esbuild.mjs`: сборка `src/extension/**` → `dist/extension.js` (cjs, platform node, external vscode) и `src/webview/**` → `dist/webview/{chat,sidebar}.js` (esm, browser), режим watch; `npm run build`, `npm run watch`, `npm run check` (tsc + eslint + vitest)
+- [x] `media/tokens.css`, `media/hud.css` скопированы из `prototype/shared/` без правок; `prototype/shared/preview.*` не переносится
+- [x] Webview-панель чата (`WebviewPanel`, `retainContextWhenHidden`, CSP с nonce, `localResourceRoots`), Preact-приложение рендерит экран `prototype/screens/chat.html` из статических данных (та же разметка и классы)
+- [x] Webview view боковой панели рендерит `prototype/screens/sessions.html` (левая часть) из статических данных
+- [x] `src/protocol.ts`: типы сообщений extension ↔ webview (`ToWebview`, `FromWebview`) с заглушками под события этапа 2; `postMessage` обёртки с типами
+- [x] Output channel «Agentura» и логгер с уровнями (B20)
+- [x] `vitest` с одним тестом на протокол; `eslint` + `prettier` конфиги
 - [ ] Обе темы проверены на глаз владельцем: F5 → вкладка и боковая панель совпадают с прототипом
 
 **Готово, когда:** `npm run check` зелёный; F5 открывает Extension Development Host, команда «Agentura: открыть чат» показывает статический экран чата, значок в activity bar — боковую панель; в Dark Modern и Light Modern нет непрокрашенных мест.
 
 **Сессия:** sonnet, effort medium; после этапа 0 (зависит от списка событий). Промт 1.
+
+**Решения (2026-09-30, по итогам сессии 1):**
+- Раскладка: `src/extension/` (хост: `extension.ts`, `chatPanel.ts`, `sidebarView.ts`, `webviewHost.ts`, `html.ts`, `logger.ts`), `src/webview/{chat,sidebar}/index.tsx` (точки входа), `src/webview/components/`, `src/webview/fixtures/`, `src/protocol.ts` (общий для обеих сторон). `npm run check` = typecheck + eslint + vitest + build.
+- Строки интерфейса webview — `src/webview/strings.ts` (`ui.*`); в фикстурах только данные сессии. Новые компоненты берут подписи оттуда, не из JSX.
+- `hud.js` прототипа не переносится: вкладки чат/ход/агенты — сигнал в `Chat.tsx`. Широкую вёрстку (`html[data-width="900"]`, на неё завязан `hud.css`) включает сам webview при ширине ≥ 700px; ниже — вкладки. Порог подобран между 380 (сплит) и 900 (вкладка) прототипа, уточняется владельцем на глаз.
+- `media/webview.css` — поправки под реальный webview, которых нет в `hud.css`: высота 100vh, пятый ряд грида `.sidebar` (в `sessions.html` пять блоков при четырёх рядах в `hud.css`), стиль `.sidebar .head` из inline-`<style>` экрана. `tokens.css` и `hud.css` — побайтовые копии.
+- Хэндшейк: webview шлёт `ready`, хост отвечает `init {surface, version}`. События агента идут в webview как `agent.event {sessionId, event}`; `AgentEventStub` в `src/protocol.ts` на этапе 2 заменяется настоящим `AgentEvent` из `src/agent/types.ts`.
+- Хоткеи: `cmd+alt+a` — открыть чат; `cmd+shift+n` — новая сессия, только при фокусе в панели чата или боковой панели (иначе перехватывает «Новое окно»). Команды `newSession`/`openLast` пока открывают чат, `resumeSession` — заглушка (этап 6).
+- Вкладка чата открывается в `ViewColumn.Beside`, одна на окно. Версии: preact 11, @preact/signals 2.11, typescript 6, esbuild 0.28, vitest 5, eslint 10; `@types/node` 24 — под extension host.
+- Сверка разметки с прототипом сделана механически (теги, классы, тексты, inline-стили компонентов против `chat.html` и левой части `sessions.html`) — совпадает; визуальная сверка тем остаётся за владельцем.
+- Обновление лимитов вручную (просьба владельца, 2026-09-30, сверх прототипа): кнопка ↻ в заголовке «Аккаунт и лимиты» боковой панели и команда «Agentura: Обновить лимиты» → `limits.refresh` → `UsageService.refresh()` → `limits.update {windows, updatedAt, error?}`. Кулдаун 60 с (эндпоинт `/api/oauth/usage` ограничен по частоте): раньше отдаётся кэш с прежним `updatedAt`; параллельные нажатия склеиваются; ошибка не затирает прошлые данные. Время данных — в подсказке кнопки. HUD чата (5ч/нед) подпишется на `limits.update` на этапе 4.
+- В `hud.css` два цвета мимо токенов: `#fff` у `.tabs button .b.live` (строка 46) и у `.menu .it .sw.on::after` (строка 234). Править в `prototype/shared/hud.css` и перекопировать — в этапе 7, если в светлой теме будет заметно.
 
 ### 2. Адаптер агента и слой данных
 
@@ -137,7 +149,7 @@
 - [ ] `canUseTool` → промисы по `toolUseID`: ветки `AskUserQuestion`, `ExitPlanMode`, Edit/Write (превью диффа в событии), остальные; ответы `respondPermission/answerQuestion/decidePlan` резолвят промис
 - [ ] `src/data/agentmeter/` — vendored части `@agentmeter/core`: `sources/claude/parse.ts`, `sources/types.ts`, `sources/jsonl.ts`, `limits/oauth.ts`, `limits/windows.ts`, `format/tokens.ts` + файл `ORIGIN.md` (коммит-источник, MIT)
 - [ ] `src/data/pricing.ts`: таблица $/MTok по моделям (ввод, вывод, чтение кэша, запись кэша 5m/1h) с датой; `cost(usage, model)`; для живых ходов приоритет у `modelUsage.costUSD`
-- [ ] `src/data/limits.ts`: опрос `/api/oauth/usage` (токен из `.credentials.json`/Keychain, троттлинг по настройке) → `LimitWindow[]`; fallback — `rate_limit_event`
+- [ ] `src/data/limits.ts`: опрос `/api/oauth/usage` (токен из `.credentials.json`/Keychain, троттлинг по настройке) → `LimitWindow[]`; fallback — `rate_limit_event`; подставляется как `UsageFetcher` в `UsageService` (`src/extension/usage.ts`) вместо `stubUsageFetcher` — ручное обновление ↻ и команда `agentura.refreshUsage` уже идут через него
 - [ ] `src/data/sessions.ts`: `listSessions()` SDK + итоги по транскрипту парсером Agentmeter (ходы, токены, стоимость по `pricing`), статус живых сессий по собственному реестру запущенных
 - [ ] Тесты vitest: маппинг адаптера на фикстурах из `spikes/sdk-probe/logs/` (ожидаемая последовательность событий), `pricing`, парсер на фикстурах Agentmeter (`fixtures/claude`)
 

@@ -1,0 +1,92 @@
+/* Agentura · общие токены прототипа.
+   Цвета и шрифты — из переменных VS Code (--vscode-*), запасные значения
+   повторяют темы Dark Modern / Light Modern, чтобы страница правдоподобно
+   выглядела и в обычном браузере. Внутри webview запасные значения не нужны. */
+
+:root {
+  --font: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif);
+  --mono: var(--vscode-editor-font-family, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace);
+  --fs: var(--vscode-font-size, 13px);
+
+  --bg: var(--vscode-editor-background, #1f1f1f);
+  --bg-side: var(--vscode-sideBar-background, #181818);
+  --bg-raise: var(--vscode-editorWidget-background, #202020);
+  --bg-input: var(--vscode-input-background, #313131);
+  --bg-hover: var(--vscode-list-hoverBackground, #2a2d2e);
+  --bg-code: var(--vscode-textCodeBlock-background, #2b2b2b);
+  --fg: var(--vscode-foreground, #cccccc);
+  --fg-mute: var(--vscode-descriptionForeground, #9d9d9d);
+  --fg-faint: var(--vscode-disabledForeground, #6f6f6f);
+  --line: var(--vscode-panel-border, #2b2b2b);
+  --line-strong: var(--vscode-input-border, #3c3c3c);
+  --accent: var(--vscode-focusBorder, #0078d4);
+  --link: var(--vscode-textLink-foreground, #4daafc);
+  --btn: var(--vscode-button-background, #0078d4);
+  --btn-fg: var(--vscode-button-foreground, #ffffff);
+  --btn-2: var(--vscode-button-secondaryBackground, #313131);
+  --btn-2-fg: var(--vscode-button-secondaryForeground, #cccccc);
+  --sel: var(--vscode-editor-selectionBackground, #264f78);
+  --badge: var(--vscode-badge-background, #616161);
+  --badge-fg: var(--vscode-badge-foreground, #f8f8f8);
+
+  /* приборы: пороги контекста и статусы */
+  --ok: var(--vscode-charts-green, #89d185);
+  --warn: var(--vscode-charts-yellow, #cca700);
+  --hot: var(--vscode-charts-orange, #d18616);
+  --full: var(--vscode-charts-red, #f14c4c);
+  --info: var(--vscode-charts-blue, #3794ff);
+  --agent: var(--vscode-charts-purple, #b180d7);
+  --add: var(--vscode-gitDecoration-addedResourceForeground, #81b88b);
+  --del: var(--vscode-gitDecoration-deletedResourceForeground, #c74e39);
+}
+
+:root[data-theme="light"] {
+  --bg: var(--vscode-editor-background, #ffffff);
+  --bg-side: var(--vscode-sideBar-background, #f8f8f8);
+  --bg-raise: var(--vscode-editorWidget-background, #f8f8f8);
+  --bg-input: var(--vscode-input-background, #ffffff);
+  --bg-hover: var(--vscode-list-hoverBackground, #f2f2f2);
+  --bg-code: var(--vscode-textCodeBlock-background, #f0f0f0);
+  --fg: var(--vscode-foreground, #3b3b3b);
+  --fg-mute: var(--vscode-descriptionForeground, #717171);
+  --fg-faint: var(--vscode-disabledForeground, #a0a0a0);
+  --line: var(--vscode-panel-border, #e5e5e5);
+  --line-strong: var(--vscode-input-border, #cecece);
+  --accent: var(--vscode-focusBorder, #005fb8);
+  --link: var(--vscode-textLink-foreground, #005fb8);
+  --btn: var(--vscode-button-background, #005fb8);
+  --btn-fg: var(--vscode-button-foreground, #ffffff);
+  --btn-2: var(--vscode-button-secondaryBackground, #e5e5e5);
+  --btn-2-fg: var(--vscode-button-secondaryForeground, #3b3b3b);
+  --sel: var(--vscode-editor-selectionBackground, #add6ff);
+  --badge: var(--vscode-badge-background, #cccccc);
+  --badge-fg: var(--vscode-badge-foreground, #3b3b3b);
+
+  --ok: var(--vscode-charts-green, #388a34);
+  --warn: var(--vscode-charts-yellow, #bf8803);
+  --hot: var(--vscode-charts-orange, #d18616);
+  --full: var(--vscode-charts-red, #e51400);
+  --info: var(--vscode-charts-blue, #1a85ff);
+  --agent: var(--vscode-charts-purple, #652d90);
+  --add: var(--vscode-gitDecoration-addedResourceForeground, #587c0c);
+  --del: var(--vscode-gitDecoration-deletedResourceForeground, #ad0707);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  font-family: var(--font);
+  font-size: var(--fs);
+  line-height: 1.45;
+  color: var(--fg);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+button, input, textarea { font: inherit; color: inherit; }
+button { background: none; border: 0; padding: 0; cursor: pointer; }
+:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
+code, kbd, .num { font-family: var(--mono); }
+.num { font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}

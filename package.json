@@ -1,0 +1,143 @@
+{
+  "name": "agentura",
+  "displayName": "Agentura",
+  "description": "Чат с Claude в VS Code: приборы контекста, стоимости, кэша и лимитов",
+  "version": "0.0.1",
+  "private": true,
+  "publisher": "fost",
+  "license": "UNLICENSED",
+  "engines": {
+    "vscode": "^1.138.0"
+  },
+  "categories": [
+    "AI",
+    "Chat"
+  ],
+  "main": "./dist/extension.js",
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "test": "vitest run",
+    "check": "npm run typecheck && npm run lint && npm test && npm run build"
+  },
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "agentura",
+          "title": "Agentura",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "agentura": [
+        {
+          "type": "webview",
+          "id": "agentura.sidebar",
+          "name": "Agentura"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "agentura.open",
+        "title": "Открыть чат",
+        "category": "Agentura"
+      },
+      {
+        "command": "agentura.newSession",
+        "title": "Новая сессия",
+        "category": "Agentura"
+      },
+      {
+        "command": "agentura.openLast",
+        "title": "Открыть последнюю сессию",
+        "category": "Agentura"
+      },
+      {
+        "command": "agentura.resumeSession",
+        "title": "Возобновить сессию",
+        "category": "Agentura"
+      },
+      {
+        "command": "agentura.refreshUsage",
+        "title": "Обновить лимиты",
+        "category": "Agentura"
+      },
+      {
+        "command": "agentura.showLogs",
+        "title": "Показать логи",
+        "category": "Agentura"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "agentura.open",
+        "key": "ctrl+alt+a",
+        "mac": "cmd+alt+a"
+      },
+      {
+        "command": "agentura.newSession",
+        "key": "ctrl+shift+n",
+        "mac": "cmd+shift+n",
+        "when": "activeWebviewPanelId == 'agentura.chat' || focusedView == 'agentura.sidebar'"
+      }
+    ],
+    "configuration": {
+      "title": "Agentura",
+      "properties": {
+        "agentura.contextThresholds": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "default": [
+            120000,
+            150000
+          ],
+          "description": "Пороги шкалы контекста в токенах: жёлтая и оранжевая зоны."
+        },
+        "agentura.allowBypassPermissions": {
+          "type": "boolean",
+          "default": false,
+          "description": "Разрешить режим bypassPermissions (запуск инструментов без подтверждений)."
+        },
+        "agentura.defaultModel": {
+          "type": "string",
+          "default": "",
+          "description": "Модель по умолчанию для новых сессий (пусто — выбор движка)."
+        },
+        "agentura.claudeExecutable": {
+          "type": "string",
+          "default": "",
+          "description": "Путь к исполняемому файлу claude (пусто — бандленный)."
+        },
+        "agentura.usagePollMinutes": {
+          "type": "number",
+          "default": 15,
+          "minimum": 5,
+          "description": "Как часто опрашивать лимиты подписки, минут."
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "@preact/signals": "^2.11.3",
+    "preact": "^11.0.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24.19.0",
+    "@types/vscode": "^1.138.0",
+    "esbuild": "^0.28.2",
+    "eslint": "^10.11.0",
+    "prettier": "^3.9.9",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.71.0",
+    "vitest": "^5.0.3"
+  }
+}
