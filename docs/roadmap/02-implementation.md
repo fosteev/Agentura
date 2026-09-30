@@ -1,6 +1,6 @@
 # Agentura: реализация расширения до версии 0.1
 
-> Статус: черновик · 2026-09-30 · продолжение `01-features-prototype.md` (прототип утверждён, тег `prototype-v1`)
+> Статус: в работе · 2026-09-30 · следующий — этап 0 (разведка SDK) · продолжение `01-features-prototype.md` (прототип утверждён, тег `prototype-v1`)
 > Исполнитель отмечает чекбоксы по ходу работы — по факту проверки, не «вроде сделал».
 
 ## Цель
@@ -17,7 +17,8 @@
   `screens/*.html` — эталон разметки и текстов. Таблица «фича → экран» в `prototype/README.md`.
 - **Движок.** Claude Agent SDK для TypeScript, `@anthropic-ai/claude-agent-sdk` 0.3.285
   (CLI `claude` 2.1.285 установлен в `~/.local/share/claude/versions/`). Разведка доки
-  30.09.2026 (факты, не допущения):
+  30.09.2026 — выжимка `docs/spikes/sdk-doc-review.md`, снимки страниц `docs/spikes/sdk-docs-2026-09-30/`
+  (факты по доке, не по живому прогону):
   - `interrupt()`, `setPermissionMode()`, `setModel()`, `applyFlagSettings()` работают только
     в streaming input mode — prompt как `AsyncIterable<SDKUserMessage>`. Значит, одна живая
     `query()` на сессию с очередью входящих сообщений.
@@ -256,7 +257,8 @@
 
 Читай: docs/roadmap/02-implementation.md (этап 0 — твой, раздел «Контекст» — что уже известно из доки);
 docs/features.md раздел A (какие данные нужны приборам). Дока SDK: https://code.claude.com/docs/en/agent-sdk/typescript
-(сырой markdown доступен как https://code.claude.com/docs/en/agent-sdk/typescript.md). Код Agentmeter для
+(сырой markdown доступен как https://code.claude.com/docs/en/agent-sdk/typescript.md; снимки на 30.09 —
+docs/spikes/sdk-docs-2026-09-30/, выжимка — docs/spikes/sdk-doc-review.md). Код Agentmeter для
 OAuth-usage: /Users/fost/Projects/Agentmeter/packages/core/src/limits/oauth.ts и
 apps/desktop/src/main/oauth.ts (только читать).
 
