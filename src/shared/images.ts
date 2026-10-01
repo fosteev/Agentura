@@ -190,7 +190,7 @@ export function hostImage(i: {
 }
 
 /** Ошибка вложения для красной плашки (`undefined` — картинка годится). */
-export type ImageProblem = 'format' | 'size' | 'count' | 'total' | 'read';
+export type ImageProblem = 'format' | 'size' | 'count' | 'total' | 'read' | 'session' | 'context';
 
 /** Проверка готовой картинки перед отправкой (webview — до плашки, хост — ещё раз). */
 export function imageProblem(i: { mediaType: string; data: string }): ImageProblem | undefined {

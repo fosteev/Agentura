@@ -24,6 +24,7 @@ import type {
   PromptFile,
   PromptImage,
   ResumeOptions,
+  RetryPoint,
   SessionCapabilities,
   SessionHistory,
   SessionInfo,
@@ -32,9 +33,10 @@ import type {
 import { AsyncQueue, EventHub } from '../stream';
 import { ClaudeEventMapper } from './mapper';
 import { PermissionBroker } from './permissions';
-import { buildHistory, DEFAULT_MAX_TURNS, type HistoryMessage } from './history';
+import { buildHistory, DEFAULT_MAX_TURNS, findRetryPoint, type HistoryMessage } from './history';
 import { transcriptPath } from '../../data/sessions';
 import { readTranscriptExtras } from '../../data/transcriptExtras';
+import { streamLines } from '../../data/jsonlStream';
 import {
   readSubagentMeta,
   readSubagentRecords,
@@ -170,6 +172,22 @@ export function userContent(
 /** Сколько ждать `accountInfo()` от временного процесса CLI. */
 export const ACCOUNT_INFO_TIMEOUT_MS = 15_000;
 
+/** `parentUuid` записи `uuid` в транскрипте (потоком: файл бывает в десятки МБ); нет — `undefined`. */
+export async function promptParent(path: string, uuid: string): Promise<string | undefined> {
+  const needle = `"uuid":"${uuid}"`;
+  let parent: string | undefined;
+  await streamLines(path, (line) => {
+    if (parent !== undefined || !line.includes(needle)) return;
+    try {
+      const v = JSON.parse(line) as { uuid?: unknown; parentUuid?: unknown };
+      if (v.uuid === uuid && typeof v.parentUuid === 'string') parent = v.parentUuid;
+    } catch {
+      // оборванная строка — пропускаем
+    }
+  });
+  return parent;
+}
+
 export class ClaudeAdapter implements AgentAdapter {
   readonly id = 'claude';
   private sdk: Promise<SdkModule> | undefined;
@@ -214,10 +232,19 @@ export class ClaudeAdapter implements AgentAdapter {
   async loadHistory(
     sessionId: string,
     cwd: string,
-    options: { live?: boolean; tasksAlive?: boolean; maxTurns?: number } = {},
+    options: {
+      live?: boolean;
+      tasksAlive?: boolean;
+      maxTurns?: number;
+      stopBefore?: string;
+    } = {},
   ): Promise<SessionHistory> {
     const sdk = await this.loadSdk();
-    const messages = await sdk.getSessionMessages(sessionId, { dir: cwd });
+    let messages = await sdk.getSessionMessages(sessionId, { dir: cwd });
+    if (options.stopBefore) {
+      const at = messages.findIndex((m) => m.uuid === options.stopBefore);
+      if (at >= 0) messages = messages.slice(0, at);
+    }
     let extras: Awaited<ReturnType<typeof readTranscriptExtras>> = { toolResults: new Map() };
     try {
       extras = await readTranscriptExtras(transcriptPath(cwd, sessionId));
@@ -238,6 +265,27 @@ export class ClaudeAdapter implements AgentAdapter {
       ...(extras.mode ? { mode: extras.mode } : {}),
       ...(extras.totalCostUsd !== undefined ? { totalCostUsd: extras.totalCostUsd } : {}),
     };
+  }
+
+  async retryPoint(
+    sessionId: string,
+    cwd: string,
+    prompt: string,
+  ): Promise<RetryPoint | undefined> {
+    const sdk = await this.loadSdk();
+    const point = findRetryPoint(
+      (await sdk.getSessionMessages(sessionId, { dir: cwd })) as HistoryMessage[],
+      prompt,
+    );
+    if (!point) return undefined;
+    // SDK: откатываться на ПОСЛЕДНЮЮ запись сохраняемого хода, какой бы она ни была (вложение
+    // `structured_output`, сводка хука — `getSessionMessages` их не отдаёт). Это `parentUuid` промпта
+    // в транскрипте; не нашли — последнее сообщение перед промптом (при ошибке SDK откажет, и
+    // `ChatController` возобновит сессию целиком)
+    const parent = await promptParent(transcriptPath(cwd, sessionId), point.promptUuid).catch(
+      () => undefined,
+    );
+    return parent ? { ...point, keepUuid: parent } : point;
   }
 
   /**
@@ -376,6 +424,11 @@ class ClaudeSession implements AgentSession {
     if (options.effort) sdkOptions.effort = this.effort = options.effort;
     if (options.title) sdkOptions.title = options.title;
     if (resume) sdkOptions.resume = resume;
+    // «Повторить ход»: оборванный ход отбрасывается при возобновлении, промпт не двоится в транскрипте
+    if (resume && options.dropTurn) {
+      sdkOptions.resumeSessionAt = options.dropTurn.keepUuid;
+      sdkOptions.resumeDropsTurn = options.dropTurn.promptUuid;
+    }
 
     this.q = sdk.query({ prompt: this.input, options: sdkOptions });
     void this.pump();

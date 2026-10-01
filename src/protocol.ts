@@ -141,6 +141,11 @@ export type ToWebview =
   /** Начата новая сессия (команда, `/clear`, `new`): очистить ленту. */
   | { type: 'session.reset' }
   /**
+   * Этап 6 roadmap 0.2: вложения в истории сессии с последней компакции (страницы pdf, символы
+   * base64/текста). Лимиты API — на запрос со всей историей, поэтому webview проверяет по ним новые вложения.
+   */
+  | { type: 'session.attach'; pdfPages: number; chars: number }
+  /**
    * Этап 3 roadmap 0.2: режим и effort, с которыми хост создал новую сессию (`agentura.defaultPermissionMode`,
    * `agentura.defaultEffort`). `session.init` приходит только после первого хода — без этого меню режима до
    * первого сообщения показывало бы «спрашивать», а движок уже шёл бы в `acceptEdits`/`bypassPermissions`.

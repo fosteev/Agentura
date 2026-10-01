@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { isAbsolute } from 'node:path';
+import { samePath } from './pathKey';
 import * as vscode from 'vscode';
 import { resolveExecutable } from '../agent/claude/executable';
 import { ClaudeAdapter } from '../agent/claude/adapter';
@@ -103,6 +104,11 @@ interface OpenOptions {
   lazy?: boolean;
   /** Готовая панель (сериализатор). */
   panel?: vscode.WebviewPanel;
+}
+
+/** Открытый документ с несохранёнными изменениями по пути файла (сравнение — `samePath`: `fsPath`, Windows). */
+function dirtyDocument(path: string): vscode.TextDocument | undefined {
+  return vscode.workspace.textDocuments.find((d) => d.isDirty && samePath(d.uri.fsPath, path));
 }
 
 /**
@@ -350,12 +356,15 @@ export class ChatPanel {
       showSessions: () => void vscode.commands.executeCommand('workbench.view.extension.agentura'),
       showLogs: () => log.show(),
       live: services.live,
-      // перед превью правки несохранённые изменения файла в редакторе сохраняются: дифф и сама правка
-      // идут по диску, иначе они разошлись бы с тем, что видит человек (автосохранение, B-таблица features.md)
+      // превью — по тексту из редактора, если там несохранённые правки: именно он попадёт на диск.
+      // Сохраняет файл `saveFile` — когда человек разрешил правку, а не когда показана карточка
       readText: async (p) => {
-        const doc = vscode.workspace.textDocuments.find((d) => d.isDirty && d.uri.fsPath === p);
-        if (doc) await Promise.resolve(doc.save()).catch(() => false);
+        const doc = dirtyDocument(p);
+        if (doc) return doc.getText();
         return readFile(p, 'utf8').catch(() => undefined);
+      },
+      saveFile: async (p) => {
+        await Promise.resolve(dirtyDocument(p)?.save()).catch(() => false);
       },
       // дифф и превью — в группу редактора, не поверх вкладки чата
       openDiff: (d) => services.diffs.open(d, editorColumn()),

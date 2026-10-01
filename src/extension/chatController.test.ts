@@ -716,6 +716,309 @@ describe('ChatController', () => {
 
 // ——— этап 6: возобновление, история, пересев webview ———
 
+describe('ChatController: долг разрешений (этап 6 roadmap 0.2)', () => {
+  const edit = (filePath: string) => ({
+    type: 'permission.request' as const,
+    toolUseId: 'e1',
+    toolName: 'Edit',
+    input: { file_path: filePath },
+    canAlwaysAllow: false,
+    diff: { kind: 'edit' as const, filePath, oldText: 'b', newText: 'c', replaceAll: false },
+  });
+
+  it('относительный file_path: превью читает файл от cwd сессии, а не процесса', async () => {
+    const t = setup();
+    const read = vi.fn(async () => 'a\nb\n');
+    t.deps.readText = read;
+    t.controller.start();
+    await tick();
+    t.sessions[0]!.emit(edit('src/a.ts'));
+    await tick();
+    expect(read).toHaveBeenCalledWith('/p/src/a.ts');
+    const opened: OpenDiff[] = [];
+    t.deps.openDiff = async (d) => void opened.push(d);
+    await t.controller.handle({ type: 'diff.open', sessionId: '', toolUseId: 'e1' });
+    expect(opened[0]).toMatchObject({ filePath: '/p/src/a.ts', stage: 'proposed' });
+  });
+
+  it('автосохранение: файл сохраняется, когда человек разрешил правку, а не когда показана карточка; отказ не сохраняет', async () => {
+    const t = setup();
+    const saved: string[] = [];
+    t.deps.readText = async () => 'a\nb\n';
+    t.deps.saveFile = async (p) => void saved.push(p);
+    t.controller.start();
+    await tick();
+    const s = t.sessions[0]!;
+    s.emit(edit('rel/f.ts'));
+    await tick();
+    expect(saved).toEqual([]); // карточка показана, решения ещё нет
+    await t.controller.handle({
+      type: 'permission.respond',
+      sessionId: '',
+      toolUseId: 'e1',
+      decision: 'deny',
+    });
+    expect(saved).toEqual([]);
+    expect(s.permissions).toEqual([['e1', 'deny', undefined]]);
+    await t.controller.handle({
+      type: 'permission.respond',
+      sessionId: '',
+      toolUseId: 'e1',
+      decision: 'allow',
+    });
+    expect(saved).toEqual(['/p/rel/f.ts']);
+    expect(s.permissions.at(-1)).toEqual(['e1', 'allow', undefined]);
+  });
+
+  it('автосохранение: запрос не на правку (Bash) файлов не трогает; сбой сохранения ответ не блокирует', async () => {
+    const t = setup();
+    const saveFile = vi.fn(async () => {
+      throw new Error('диск');
+    });
+    t.deps.saveFile = saveFile;
+    t.controller.start();
+    await tick();
+    const s = t.sessions[0]!;
+    s.emit({
+      type: 'permission.request',
+      toolUseId: 'b1',
+      toolName: 'Bash',
+      input: { command: 'ls' },
+      canAlwaysAllow: false,
+    });
+    await t.controller.handle({
+      type: 'permission.respond',
+      sessionId: '',
+      toolUseId: 'b1',
+      decision: 'allow',
+    });
+    expect(saveFile).not.toHaveBeenCalled();
+    s.emit(edit('/p/x.ts'));
+    await t.controller.handle({
+      type: 'permission.respond',
+      sessionId: '',
+      toolUseId: 'e1',
+      decision: 'allow',
+    });
+    expect(saveFile).toHaveBeenCalledTimes(1);
+    expect(s.permissions.at(-1)).toEqual(['e1', 'allow', undefined]);
+  });
+});
+
+describe('ChatController: лимиты API на сессию (этап 6 roadmap 0.2)', () => {
+  const pdfOf = (pages: number) =>
+    Buffer.from(`%PDF-1.4\n1 0 obj << /Type /Pages /Count ${pages} >> endobj\n%%EOF`).toString(
+      'base64',
+    );
+  const pdf = (pages: number, path = `d${pages}.pdf`) => ({
+    kind: 'pdf' as const,
+    path,
+    data: pdfOf(pages),
+    size: 100,
+    pages,
+  });
+  const attachMsgs = (posted: ToWebview[]) =>
+    posted.filter(
+      (m): m is Extract<ToWebview, { type: 'session.attach' }> => m.type === 'session.attach',
+    );
+
+  it('два pdf по 60 страниц в разных ходах: второй отброшен (100 страниц на запрос со всей историей)', async () => {
+    const t = setup();
+    t.controller.start();
+    await tick();
+    await t.controller.handle({
+      type: 'send',
+      sessionId: '',
+      text: 'один',
+      files: [pdf(60, 'a.pdf')],
+    });
+    expect(t.sessions[0]!.files[0]).toHaveLength(1);
+    expect(attachMsgs(t.posted).at(-1)).toMatchObject({ pdfPages: 60 });
+    const before = attachMsgs(t.posted).length;
+    await t.controller.handle({
+      type: 'send',
+      sessionId: '',
+      text: 'два',
+      files: [pdf(60, 'b.pdf')],
+    });
+    expect(t.sessions[0]!.sent).toEqual(['один', 'два']);
+    expect(t.sessions[0]!.files[1]).toBeUndefined(); // текст ушёл, pdf — нет
+    expect(t.deps.log.warn).toHaveBeenCalledWith(expect.stringContaining('sessionPages'));
+    // webview прибавил 60 страниц заранее — хост возвращает точный счёт и для отброшенного вложения
+    expect(attachMsgs(t.posted)).toHaveLength(before + 1);
+    expect(attachMsgs(t.posted).at(-1)).toMatchObject({ pdfPages: 60 });
+    // небольшой pdf в пределах остатка проходит
+    await t.controller.handle({
+      type: 'send',
+      sessionId: '',
+      text: 'три',
+      files: [pdf(40, 'c.pdf')],
+    });
+    expect(t.sessions[0]!.files[2]).toHaveLength(1);
+    expect(attachMsgs(t.posted).at(-1)).toMatchObject({ pdfPages: 100 });
+  });
+
+  it('два сообщения по 15 МБ base64: второе отброшено по размеру тела запроса (24 МБ на сессию)', async () => {
+    const t = setup();
+    t.controller.start();
+    await tick();
+    const big = `iVBORw0KGgo${'A'.repeat(4 * 1024 * 1024 - 11)}`; // < 5 МБ на картинку
+    const images = Array.from({ length: 3 }, () => ({
+      mediaType: 'image/png' as const,
+      data: big,
+    }));
+    await t.controller.handle({ type: 'send', sessionId: '', text: 'первые', images }); // 12 МБ
+    await t.controller.handle({ type: 'send', sessionId: '', text: 'вторые', images }); // ещё 12 МБ — впритык
+    expect(t.sessions[0]!.images[1]).toHaveLength(3);
+    await t.controller.handle({ type: 'send', sessionId: '', text: 'третьи', images });
+    expect(t.sessions[0]!.images[2]).toBeUndefined();
+    expect(t.deps.log.warn).toHaveBeenCalledWith(expect.stringContaining('session'));
+  });
+
+  it('компакция сбрасывает счёт: после compaction.end pdf снова принимаются', async () => {
+    const t = setup();
+    t.controller.start();
+    await tick();
+    const s = t.sessions[0]!;
+    await t.controller.handle({
+      type: 'send',
+      sessionId: '',
+      text: 'один',
+      files: [pdf(90, 'a.pdf')],
+    });
+    s.emit({ type: 'compaction.end', ok: true, preTokens: 100, postTokens: 10 });
+    expect(attachMsgs(t.posted).at(-1)).toEqual({ type: 'session.attach', pdfPages: 0, chars: 0 });
+    await t.controller.handle({
+      type: 'send',
+      sessionId: '',
+      text: 'два',
+      files: [pdf(90, 'b.pdf')],
+    });
+    expect(s.files[1]).toHaveLength(1);
+  });
+
+  it('неудачная компакция счёт не трогает', async () => {
+    const t = setup();
+    t.controller.start();
+    await tick();
+    await t.controller.handle({
+      type: 'send',
+      sessionId: '',
+      text: 'один',
+      files: [pdf(90, 'a.pdf')],
+    });
+    t.sessions[0]!.emit({ type: 'compaction.end', ok: false });
+    await t.controller.handle({
+      type: 'send',
+      sessionId: '',
+      text: 'два',
+      files: [pdf(90, 'b.pdf')],
+    });
+    expect(t.sessions[0]!.files[1]).toBeUndefined();
+  });
+
+  it('resume: счёт берётся из истории сессии (attach) и уходит в webview вместе с ней', async () => {
+    const sessions: FakeSession[] = [];
+    const adapter = {
+      id: 'fake',
+      loadHistory: async (): Promise<SessionHistory> => ({
+        events: [],
+        turns: 2,
+        skippedTurns: 0,
+        attach: { pdfPages: 70, chars: 1000 },
+      }),
+      createSession: async () => {
+        const s = new FakeSession();
+        sessions.push(s);
+        return s;
+      },
+      resumeSession: async (id: string) => {
+        const s = new FakeSession();
+        s.id = id;
+        sessions.push(s);
+        return s;
+      },
+    } as unknown as AgentAdapter;
+    const posted: ToWebview[] = [];
+    const deps: ChatDeps = {
+      adapter,
+      cwd: '/p',
+      project: 'p',
+      post: (m) => posted.push(m),
+      setTitle: vi.fn(),
+      log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      settings: () => ({ allowBypass: false }),
+      findFiles: async () => [],
+      pickFiles: async () => [],
+      readSelection: async () => undefined,
+      listRecent: async () => [],
+      showSessions: vi.fn(),
+    };
+    const controller = new ChatController(deps);
+    await controller.handle({ type: 'ready' });
+    await controller.resume('s-old');
+    await tick();
+    expect(attachMsgs(posted).at(-1)).toEqual({
+      type: 'session.attach',
+      pdfPages: 70,
+      chars: 1000,
+    });
+    await controller.handle({ type: 'send', sessionId: 's-old', text: 'ещё', files: [pdf(40)] });
+    expect(sessions.at(-1)!.files[0]).toBeUndefined(); // 70 + 40 > 100
+    await controller.handle({ type: 'send', sessionId: 's-old', text: 'мало', files: [pdf(30)] });
+    expect(sessions.at(-1)!.files[1]).toHaveLength(1);
+  });
+
+  it('текст файлов — не больше 70 % свободного окна модели: лишний файл отброшен', async () => {
+    const t = setup();
+    t.controller.start();
+    await tick();
+    const s = t.sessions[0]!;
+    // окно 200k, занято 160k → вложениям 70 % свободных 40k токенов = 28k ≈ 112k символов
+    s.emit({
+      type: 'context.usage',
+      usedTokens: 160_000,
+      maxTokens: 200_000,
+      source: 'engine',
+    });
+    const file = (path: string, chars: number) => ({
+      kind: 'text' as const,
+      path,
+      data: 'x'.repeat(chars),
+      size: chars,
+    });
+    await t.controller.handle({
+      type: 'send',
+      sessionId: '',
+      text: 'файлы',
+      files: [file('a.txt', 60_000), file('b.txt', 60_000)], // 15k + 15k токенов > 28k
+    });
+    expect(s.files[0]!.map((f) => f.path)).toEqual(['a.txt']);
+    expect(t.deps.log.warn).toHaveBeenCalledWith(expect.stringContaining('context'));
+  });
+
+  it('окно ещё неизвестно (движок не прислал context.usage) — хост окном не режет, проверка за webview', async () => {
+    const t = setup();
+    t.controller.start();
+    await tick();
+    const s = t.sessions[0]!;
+    const file = (path: string) => ({
+      kind: 'text' as const,
+      path,
+      data: 'x'.repeat(250_000),
+      size: 250_000,
+    });
+    // ≈ 250k токенов — больше 70 % окна 200k по умолчанию, но у сессии после resume окно может быть 1M
+    await t.controller.handle({
+      type: 'send',
+      sessionId: '',
+      text: 'файлы',
+      files: [file('a.txt'), file('b.txt'), file('c.txt'), file('d.txt')],
+    });
+    expect(s.files[0]).toHaveLength(4);
+  });
+});
+
 describe('ChatController: сессии (этап 6)', () => {
   const editResult = {
     filePath: '/p/a.ts',
@@ -1143,6 +1446,72 @@ describe('ChatController: сессии (этап 6)', () => {
     expect(posted.map((m) => m.type)).toEqual(['agent.event']);
   });
 
+  it('пересев: карточка, пришедшая пока читали транскрипт, и ждущая из снимка — после истории; ответ на неё доходит движку', async () => {
+    const { controller, sessions, posted, loadHistory } = setupResume();
+    controller.start();
+    await controller.handle({ type: 'ready' });
+    await tick();
+    const s = sessions[0]!;
+    s.id = 'live-1';
+    s.emit({
+      type: 'session.init',
+      sessionId: 'live-1',
+      model: 'sonnet',
+      cwd: '/p',
+      permissionMode: 'default',
+      tools: [],
+      slashCommands: [],
+      skills: [],
+      agents: [],
+      apiKeySource: 'none',
+      engineVersion: '2.1.285',
+    });
+    s.emit({ type: 'turn.start', at: 100, prompt: 'сделай' });
+    const ask = {
+      type: 'permission.request' as const,
+      toolUseId: 'p-1',
+      toolName: 'Bash',
+      input: { command: 'ls' },
+      canAlwaysAllow: false,
+    };
+    s.emit(ask); // ждала до пересева: попадёт в снимок
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    loadHistory.mockImplementation(async () => {
+      await gate;
+      return {
+        events: [{ type: 'turn.start', prompt: 'сделай', at: 100 }],
+        turns: 1,
+        skippedTurns: 0,
+      };
+    });
+    posted.length = 0;
+    await controller.handle({ type: 'ready' });
+    await tick();
+    s.emit({ ...ask, toolUseId: 'p-2' }); // пришла во время чтения: в буфер
+    release();
+    await tick();
+    await tick();
+    const ids = posted.map((m) =>
+      m.type === 'agent.event' && m.event.type === 'permission.request'
+        ? m.event.toolUseId
+        : m.type === 'session.history'
+          ? 'history'
+          : '',
+    );
+    const h = ids.indexOf('history');
+    // обе карточки — после истории; p-1 может прийти и снимком, и из буфера — webview дедупит по toolUseId
+    expect(ids.indexOf('p-1')).toBeGreaterThan(h);
+    expect(ids.indexOf('p-2')).toBeGreaterThan(h);
+    await controller.handle({
+      type: 'permission.respond',
+      sessionId: 'live-1',
+      toolUseId: 'p-1',
+      decision: 'allow',
+    });
+    expect(s.permissions).toEqual([['p-1', 'allow', undefined]]);
+  });
+
   it('два пересева подряд: первый, дочитавший позже, не затирает второй; события обоих не теряются', async () => {
     const { controller, sessions, posted, loadHistory } = setupResume();
     controller.start();
@@ -1168,7 +1537,11 @@ describe('ChatController: сессии (этап 6)', () => {
     const gates: (() => void)[] = [];
     loadHistory.mockImplementation(async () => {
       await new Promise<void>((r) => gates.push(r));
-      return { events: [{ type: 'turn.start', prompt: 'сделай', at: 100 }], turns: 1, skippedTurns: 0 };
+      return {
+        events: [{ type: 'turn.start', prompt: 'сделай', at: 100 }],
+        turns: 1,
+        skippedTurns: 0,
+      };
     });
     posted.length = 0;
     await controller.handle({ type: 'ready' }); // пересев A
@@ -1274,6 +1647,13 @@ describe('ChatController: ошибки и повтор хода (этап 7)', (
   function build(over: Partial<ChatDeps> = {}) {
     const sessions: FakeSession[] = [];
     const resumed: string[] = [];
+    const resumeOptions: Record<string, unknown>[] = [];
+    const retryPoint = vi.fn(
+      async (): Promise<{ keepUuid: string; promptUuid: string } | undefined> => ({
+        keepUuid: 'keep-1',
+        promptUuid: 'prompt-1',
+      }),
+    );
     const loadHistory = vi.fn(async (): Promise<SessionHistory> => ({
       events: [],
       turns: 0,
@@ -1282,13 +1662,15 @@ describe('ChatController: ошибки и повтор хода (этап 7)', (
     const adapter = {
       id: 'fake',
       loadHistory,
+      retryPoint,
       createSession: async () => {
         const s = new FakeSession();
         sessions.push(s);
         return s;
       },
-      resumeSession: async (id: string) => {
+      resumeSession: async (id: string, o: Record<string, unknown>) => {
         resumed.push(id);
+        resumeOptions.push(o);
         const s = new FakeSession();
         s.id = id;
         sessions.push(s);
@@ -1312,7 +1694,16 @@ describe('ChatController: ошибки и повтор хода (этап 7)', (
       showLogs: vi.fn(),
       ...over,
     };
-    return { controller: new ChatController(deps), sessions, resumed, loadHistory, posted, deps };
+    return {
+      controller: new ChatController(deps),
+      sessions,
+      resumed,
+      resumeOptions,
+      retryPoint,
+      loadHistory,
+      posted,
+      deps,
+    };
   }
 
   /** Новая сессия: init, пользователь отправил промпт, движок упал посреди хода. */
@@ -1433,6 +1824,179 @@ describe('ChatController: ошибки и повтор хода (этап 7)', (
     live.delete.mockClear();
     await t.controller.handle({ type: 'turn.retry', sessionId: 'sess-1', turn: true });
     expect(live.delete).toHaveBeenCalledWith('sess-1');
+  });
+
+  /** Ход начался (turn.start с промптом) и оборвался: упал движок. */
+  async function interrupted(t: ReturnType<typeof build>, text = 'почини табло') {
+    t.controller.start();
+    await tick();
+    t.sessions[0]!.emit(initEvent);
+    await t.controller.handle({ type: 'send', sessionId: 'sess-1', text });
+    t.sessions[0]!.emit({ type: 'turn.start', at: 1, prompt: text } as AgentEvent);
+    t.sessions[0]!.emit({ type: 'error', fatal: true, message: 'ECONNRESET' });
+    t.sessions[0]!.emit({ type: 'session.closed', reason: 'error', message: 'ECONNRESET' });
+  }
+
+  it('«Повторить»: оборванный ход отбрасывается при возобновлении (resumeSessionAt), в ленте его промпта нет, промпт уходит один раз', async () => {
+    const t = build();
+    await interrupted(t);
+    await t.controller.handle({ type: 'turn.retry', sessionId: 'sess-1', turn: true });
+    await tick();
+    expect(t.retryPoint).toHaveBeenCalledWith('sess-1', '/p', 'почини табло');
+    expect(t.resumeOptions[0]).toMatchObject({
+      dropTurn: { keepUuid: 'keep-1', promptUuid: 'prompt-1' },
+    });
+    expect(t.loadHistory).toHaveBeenCalledWith('sess-1', '/p', { stopBefore: 'prompt-1' });
+    expect(t.sessions[1]!.sent).toEqual(['почини табло']);
+  });
+
+  it('«Повторить»: нет точки отката (чужие сообщения после промпта, ход первый) — возобновление целиком, как раньше', async () => {
+    const t = build();
+    t.retryPoint.mockResolvedValue(undefined);
+    await interrupted(t);
+    await t.controller.handle({ type: 'turn.retry', sessionId: 'sess-1', turn: true });
+    await tick();
+    expect(t.resumeOptions[0]).not.toHaveProperty('dropTurn');
+    expect(t.loadHistory).toHaveBeenLastCalledWith('sess-1', '/p');
+    expect(t.sessions[1]!.sent).toEqual(['почини табло']);
+  });
+
+  it('«Повторить»: сообщение, которое движок ещё не начал, не отбрасывает ничего (его может не быть в транскрипте)', async () => {
+    const t = build();
+    t.controller.start();
+    await tick();
+    t.sessions[0]!.emit(initEvent);
+    await t.controller.handle({ type: 'send', sessionId: 'sess-1', text: 'не начато' });
+    t.sessions[0]!.emit({ type: 'session.closed', reason: 'error', message: 'упал' });
+    await t.controller.handle({ type: 'turn.retry', sessionId: 'sess-1', turn: true });
+    await tick();
+    expect(t.retryPoint).not.toHaveBeenCalled();
+    expect(t.resumeOptions[0]).not.toHaveProperty('dropTurn');
+  });
+
+  it('SDK отказал в отбрасывании («Resume rejected»): сразу повтор без него, промпт не теряется, повторно не отбрасывается', async () => {
+    const t = build();
+    await interrupted(t);
+    await t.controller.handle({ type: 'turn.retry', sessionId: 'sess-1', turn: true });
+    await tick();
+    expect(t.sessions).toHaveLength(2);
+    // движок возобновил с отбрасыванием и отказал на первом сообщении
+    t.sessions[1]!.emit({
+      type: 'error',
+      fatal: true,
+      message:
+        'Claude Code returned an error result: Resume rejected by --resume-drops-turn: resuming at x would discard entries not attributable',
+    });
+    await tick();
+    await tick();
+    expect(t.resumeOptions).toHaveLength(2);
+    expect(t.resumeOptions[0]).toHaveProperty('dropTurn');
+    expect(t.resumeOptions[1]).not.toHaveProperty('dropTurn');
+    expect(t.sessions[2]!.sent).toEqual(['почини табло']);
+    // третьего захода нет: отказ запомнен
+    t.sessions[2]!.emit({ type: 'turn.start', at: 2, prompt: 'почини табло' } as AgentEvent);
+    t.sessions[2]!.emit({ type: 'session.closed', reason: 'error', message: 'снова' });
+    await t.controller.handle({ type: 'turn.retry', sessionId: 'sess-1', turn: true });
+    await tick();
+    expect(t.resumeOptions[2]).not.toHaveProperty('dropTurn');
+  });
+
+  it('отказ SDK только итогом хода (`error_during_execution` с errors) посреди хода — повтор без отбрасывания после итога', async () => {
+    const t = build();
+    await interrupted(t);
+    await t.controller.handle({ type: 'turn.retry', sessionId: 'sess-1', turn: true });
+    await tick();
+    // маппер открывает ход по очереди промптов и закрывает его итогом с ошибкой отказа
+    t.sessions[1]!.emit({ type: 'turn.start', at: 2, prompt: 'почини табло' } as AgentEvent);
+    await tick();
+    expect(t.resumeOptions).toHaveLength(1);
+    t.sessions[1]!.emit({
+      type: 'turn.result',
+      ok: false,
+      subtype: 'error_during_execution',
+      durationMs: 1,
+      errors: ['Resume rejected by --resume-drops-turn: resuming at x would discard entries'],
+    } as AgentEvent);
+    await tick();
+    await tick();
+    expect(t.resumeOptions).toHaveLength(2);
+    expect(t.resumeOptions[1]).not.toHaveProperty('dropTurn');
+    expect(t.sessions[2]!.sent).toEqual(['почини табло']);
+  });
+
+  it('ход-пробуждение без промпта не забирает сообщение из очереди: его успешный итог не мешает повтору', async () => {
+    const t = build();
+    t.controller.start();
+    await tick();
+    t.sessions[0]!.emit(initEvent);
+    await t.controller.handle({ type: 'send', sessionId: 'sess-1', text: 'моё' });
+    // фоновая задача разбудила движок раньше, чем он взял сообщение
+    t.sessions[0]!.emit({ type: 'turn.start', at: 1 } as AgentEvent);
+    t.sessions[0]!.emit({
+      type: 'turn.result',
+      ok: true,
+      subtype: 'success',
+      durationMs: 1,
+    } as AgentEvent);
+    t.sessions[0]!.emit({ type: 'turn.start', at: 2, prompt: 'моё' } as AgentEvent);
+    t.sessions[0]!.emit({ type: 'session.closed', reason: 'error', message: 'обрыв' });
+    t.retryPoint.mockResolvedValue(undefined);
+    await t.controller.handle({ type: 'turn.retry', sessionId: 'sess-1', turn: true });
+    await tick();
+    expect(t.sessions[1]!.sent).toEqual(['моё']);
+  });
+
+  it('inflight — очередь: два сообщения, упавшие вместе, «Повторить» шлёт оба по порядку', async () => {
+    const t = build();
+    t.controller.start();
+    await tick();
+    t.sessions[0]!.emit(initEvent);
+    await t.controller.handle({ type: 'send', sessionId: 'sess-1', text: 'первое' });
+    t.sessions[0]!.emit({ type: 'turn.start', at: 1, prompt: 'первое' } as AgentEvent);
+    // во время хода отправлено второе — движок поставил его в очередь, отдельным ходом оно ещё не шло
+    await t.controller.handle({ type: 'send', sessionId: 'sess-1', text: 'второе' });
+    t.sessions[0]!.emit({ type: 'error', fatal: true, message: 'ECONNRESET' });
+    t.sessions[0]!.emit({ type: 'session.closed', reason: 'error', message: 'ECONNRESET' });
+    await t.controller.handle({ type: 'turn.retry', sessionId: 'sess-1', turn: true });
+    await tick();
+    expect(t.resumed).toEqual(['sess-1']);
+    expect(t.sessions[1]!.sent).toEqual(['первое', 'второе']);
+  });
+
+  it('inflight: успешный итог снимает начатое сообщение, ждущее остаётся; влитое в ход (turn.input) — тоже снято', async () => {
+    const t = build();
+    t.controller.start();
+    await tick();
+    const s = t.sessions[0]!;
+    s.emit(initEvent);
+    await t.controller.handle({ type: 'send', sessionId: 'sess-1', text: 'А' });
+    s.emit({ type: 'turn.start', at: 1, prompt: 'А' } as AgentEvent);
+    await t.controller.handle({ type: 'send', sessionId: 'sess-1', text: 'Б' });
+    await t.controller.handle({ type: 'send', sessionId: 'sess-1', text: 'В' });
+    s.emit({ type: 'turn.input', at: 2, prompt: 'Б' } as AgentEvent);
+    s.emit(okResult); // закрыл ход с А и влитым Б; В ещё в очереди
+    s.emit({ type: 'error', fatal: true, message: 'упал' });
+    s.emit({ type: 'session.closed', reason: 'error', message: 'упал' });
+    await t.controller.handle({ type: 'turn.retry', sessionId: 'sess-1', turn: true });
+    await tick();
+    expect(t.sessions[1]!.sent).toEqual(['В']);
+  });
+
+  it('inflight: упавший законченный ход не повторяется вместе с новым сообщением', async () => {
+    const t = build();
+    t.controller.start();
+    await tick();
+    const s = t.sessions[0]!;
+    s.emit(initEvent);
+    await t.controller.handle({ type: 'send', sessionId: 'sess-1', text: 'старое' });
+    s.emit({ type: 'turn.start', at: 1, prompt: 'старое' } as AgentEvent);
+    s.emit({ ...okResult, ok: false, subtype: 'error_max_turns' } as AgentEvent);
+    await t.controller.handle({ type: 'send', sessionId: 'sess-1', text: 'новое' });
+    s.emit({ type: 'error', fatal: true, message: 'упал' });
+    s.emit({ type: 'session.closed', reason: 'error', message: 'упал' });
+    await t.controller.handle({ type: 'turn.retry', sessionId: 'sess-1', turn: true });
+    await tick();
+    expect(t.sessions[1]!.sent).toEqual(['новое']);
   });
 
   it('log.show открывает журнал', async () => {

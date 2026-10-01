@@ -16,6 +16,8 @@ import {
   hudState,
   limits,
   openFile,
+  sendMessage,
+  sessionAttach,
 } from './store';
 import { initialHud } from './hudState';
 import { applyEvent, initialState, queueUser, type FeedRow } from './chatState';
@@ -89,6 +91,7 @@ beforeEach(() => {
   history.value = [];
   draftImages.value = [];
   draftFiles.value = [];
+  sessionAttach.value = { pdfPages: 0, chars: 0 };
   hudState.value = initialHud();
   limits.value = { windows: [], updatedAt: 0 };
 });
@@ -143,6 +146,44 @@ describe('файлы в поле ввода (этап 8 roadmap 0.2)', () => {
     draftFiles.value = [];
     addFiles([{ ...PDF, data: 'A'.repeat(MAX_MESSAGE_ATTACH_CHARS) }, { ...TXT }]);
     expect(draftFiles.value.map((d) => d.problem)).toEqual([undefined, 'total']);
+  });
+
+  it('лимиты API на сессию: pdf сверх 100 страниц с историей, тело запроса сверх 24 МБ, окно модели — плашки', () => {
+    sessionAttach.value = { pdfPages: 70, chars: 0 };
+    addFiles([
+      { ...PDF, pages: 40 },
+      { ...PDF, path: '/abs/b.pdf', name: 'b.pdf', pages: 30 },
+    ]);
+    expect(draftFiles.value.map((d) => d.problem)).toEqual(['sessionPages', undefined]);
+    // pdf в одном поле тоже копятся: 70 + 30 + 1 > 100
+    addFiles([{ ...PDF, path: '/abs/c.pdf', name: 'c.pdf', pages: 1 }]);
+    expect(draftFiles.value.at(-1)?.problem).toBe('sessionPages');
+
+    draftFiles.value = [];
+    sessionAttach.value = { pdfPages: 0, chars: 23 * 1024 * 1024 };
+    addFiles([{ ...TXT, data: 'x'.repeat(2 * 1024 * 1024), size: 100 }]);
+    expect(draftFiles.value.at(-1)?.problem).toBe('session');
+
+    // окно по умолчанию 200k, занято 160k: вложениям 70 % от 40k = 28k токенов ≈ 112k символов
+    draftFiles.value = [];
+    sessionAttach.value = { pdfPages: 0, chars: 0 };
+    hudState.value = { ...initialHud(), context: { used: 160_000, max: 200_000 } };
+    addFiles([
+      { ...TXT, data: 'x'.repeat(60_000), size: 60_000 },
+      { ...TXT, path: 'b.txt', name: 'b.txt', data: 'y'.repeat(60_000), size: 60_000 },
+    ]);
+    expect(draftFiles.value.map((d) => d.problem)).toEqual([undefined, 'context']);
+  });
+
+  it('session.attach от хоста обновляет счёт, session.reset и отправка — сбрасывают/копят его', () => {
+    handleHostMessage({ type: 'session.attach', pdfPages: 12, chars: 345 });
+    expect(sessionAttach.value).toEqual({ pdfPages: 12, chars: 345 });
+    addFiles([{ ...PDF, pages: 5, data: 'AAAA' }]);
+    expect(sendMessage('вот')).toBe(true);
+    // до снимка хоста уже учтено: 12 + 5 страниц, 345 + 4 символа
+    expect(sessionAttach.value).toEqual({ pdfPages: 17, chars: 349 });
+    handleHostMessage({ type: 'session.reset' });
+    expect(sessionAttach.value).toEqual({ pdfPages: 0, chars: 0 });
   });
 
   it('Enter: текст и файлы одним send; строка «в очереди» с чипами; поле очищено', async () => {

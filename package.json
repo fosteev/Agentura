@@ -90,6 +90,14 @@
         "category": "Agentura"
       }
     ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "agentura.debug.showState",
+          "when": "agentura.debug"
+        }
+      ]
+    },
     "keybindings": [
       {
         "command": "agentura.open",

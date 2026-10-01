@@ -660,6 +660,16 @@ export function markRetrying(s: ChatState): ChatState {
   return replaceAt(s, i, { ...(s.rows[i] as FailCard), state: 'retrying' });
 }
 
+/**
+ * «Повторить ход» не дождалась ответа хоста (повтор молча пропущен: двойной клик, идёт ход): кнопки
+ * снова доступны. Закрытая или заменённая карточка (пришла история, начался ход) — ничего не меняет.
+ */
+export function unmarkRetrying(s: ChatState): ChatState {
+  const i = lastIndex(s.rows, (r) => r.kind === 'fail' && r.state === 'retrying');
+  if (i < 0) return s;
+  return replaceAt(s, i, { ...(s.rows[i] as FailCard), state: 'open' });
+}
+
 function findCard(s: ChatState, toolUseId: string): number {
   return s.rows.findIndex(
     (r) =>

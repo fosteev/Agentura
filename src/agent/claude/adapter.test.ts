@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { AgentEvent } from '../types';
 import { AsyncQueue } from '../stream';
-import { ClaudeAdapter, engineEnv, userContent } from './adapter';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { ClaudeAdapter, engineEnv, promptParent, userContent } from './adapter';
 
 /** Поддельный SDK: запоминает опции `query()`, отдаёт входящие сообщения и выдаёт заданный поток. */
 function fakeSdk(extra: Record<string, unknown> = {}) {
@@ -239,6 +242,82 @@ describe('ClaudeAdapter', () => {
     expect(fake.control).toContain('close');
   });
 
+  it('resume с dropTurn: resumeSessionAt и resumeDropsTurn уходят в query; без него — нет', async () => {
+    const fake = fakeSdk();
+    const adapter = new ClaudeAdapter({ loadSdk: async () => fake.sdk });
+    await adapter.resumeSession('s-1', {
+      cwd: '/w',
+      dropTurn: { keepUuid: 'keep-1', promptUuid: 'prompt-1' },
+    });
+    expect(fake.calls[0]!.options).toMatchObject({
+      resume: 's-1',
+      resumeSessionAt: 'keep-1',
+      resumeDropsTurn: 'prompt-1',
+    });
+    await adapter.resumeSession('s-2', { cwd: '/w' });
+    expect(fake.calls[1]!.options['resumeSessionAt']).toBeUndefined();
+    expect(fake.calls[1]!.options['resumeDropsTurn']).toBeUndefined();
+    // новая сессия dropTurn игнорирует
+    await adapter.createSession({
+      cwd: '/w',
+      ...({ dropTurn: { keepUuid: 'x', promptUuid: 'y' } } as object),
+    });
+    expect(fake.calls[2]!.options['resumeSessionAt']).toBeUndefined();
+  });
+
+  it('loadHistory(stopBefore) обрезает цепочку перед промптом; retryPoint ищет точку отката в транскрипте', async () => {
+    const msgs = [
+      {
+        type: 'user',
+        uuid: 'u1',
+        message: { role: 'user', content: 'раз' },
+        parent_tool_use_id: null,
+      },
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        message: {
+          id: 'm1',
+          model: 'x',
+          role: 'assistant',
+          content: [{ type: 'text', text: 'ок' }],
+          usage: {},
+        },
+        parent_tool_use_id: null,
+      },
+      {
+        type: 'user',
+        uuid: 'u2',
+        message: { role: 'user', content: 'два' },
+        parent_tool_use_id: null,
+      },
+      {
+        type: 'assistant',
+        uuid: 'a2',
+        message: {
+          id: 'm2',
+          model: 'x',
+          role: 'assistant',
+          content: [{ type: 'text', text: 'ок' }],
+          usage: {},
+        },
+        parent_tool_use_id: null,
+      },
+    ];
+    const fake = fakeSdk();
+    const sdk = { ...(fake.sdk as object), getSessionMessages: async () => msgs } as never;
+    const adapter = new ClaudeAdapter({ loadSdk: async () => sdk });
+    const full = await adapter.loadHistory('s-1', '/w');
+    expect(full.turns).toBe(2);
+    const cut = await adapter.loadHistory('s-1', '/w', { stopBefore: 'u2' });
+    expect(cut.turns).toBe(1);
+    expect(await adapter.retryPoint('s-1', '/w', 'два')).toEqual({
+      keepUuid: 'a1',
+      promptUuid: 'u2',
+    });
+    expect(await adapter.retryPoint('s-1', '/w', 'другое')).toBeUndefined();
+  });
+
   it('поток → события; промпт привязан по эху uuid; контекст от движка; управление уходит в query', async () => {
     const fake = fakeSdk();
     const adapter = new ClaudeAdapter({ loadSdk: async () => fake.sdk });
@@ -447,5 +526,30 @@ describe('ClaudeAdapter', () => {
       commands: [],
     });
     session.dispose();
+  });
+});
+
+describe('promptParent — точка отката по транскрипту', () => {
+  it('parentUuid промпта — последняя запись сохраняемого хода (вложение, которого нет в getSessionMessages)', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'agentura-parent-'));
+    const path = join(dir, 's.jsonl');
+    try {
+      await writeFile(
+        path,
+        [
+          { type: 'assistant', uuid: 'a1', parentUuid: 'u1' },
+          { type: 'attachment', uuid: 'att1', parentUuid: 'a1' },
+          { type: 'user', uuid: 'u2', parentUuid: 'att1' },
+          '{"type":"user","uuid":"u3"', // оборванная строка
+        ]
+          .map((x) => (typeof x === 'string' ? x : JSON.stringify(x)))
+          .join('\n') + '\n',
+      );
+      expect(await promptParent(path, 'u2')).toBe('att1');
+      expect(await promptParent(path, 'u3')).toBeUndefined();
+      expect(await promptParent(path, 'нет')).toBeUndefined();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

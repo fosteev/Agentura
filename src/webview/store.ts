@@ -13,12 +13,17 @@ import type {
   PromptImage,
 } from '../agent/types';
 import { attachmentKey, type Attachment, type FileHit } from '../shared/prompt';
-import { MAX_IMAGES_PER_MESSAGE, type ImageProblem } from '../shared/images';
+import { imageTokens, MAX_IMAGES_PER_MESSAGE, type ImageProblem } from '../shared/images';
 import {
+  attachFileTokens,
+  attachTokenBudget,
   fileName,
   MAX_FILES_PER_MESSAGE,
   MAX_MESSAGE_ATTACH_CHARS,
+  sessionPdfPages,
+  sessionProblem,
   type FileProblem,
+  type SessionAttach,
 } from '../shared/files';
 import {
   baseName,
@@ -45,6 +50,7 @@ import {
   markPermission,
   markPlan,
   markRetrying,
+  unmarkRetrying,
   markQuestionSent,
   pickOption,
   queueUser,
@@ -56,8 +62,8 @@ import {
   type QuestionCard,
 } from './chatState';
 import { pushHistory } from './composer';
-import { applyHud, initialHud, resetHud, type HudState } from './hudState';
-import { cacheView, contextView, limitsView } from './hudView';
+import { applyHud, contextMax, initialHud, resetHud, type HudState } from './hudState';
+import { cacheView, contextFullAt, contextView, kilo, limitsView } from './hudView';
 import { limitBlock, type LimitBlock } from './limitView';
 import { ui } from './strings';
 import { shortModel } from './toolView';
@@ -95,6 +101,11 @@ export interface DraftFile {
 }
 /** Текстовые файлы и pdf в поле ввода: «+», перетаскивание из проводника VS Code. */
 export const draftFiles = signal<DraftFile[]>([]);
+/**
+ * Вложения в истории сессии с последней компакции (снимок хоста `session.attach`): лимиты API —
+ * на запрос со всей историей, поэтому новые вложения проверяются с их учётом.
+ */
+export const sessionAttach = signal<SessionAttach>({ pdfPages: 0, chars: 0 });
 export const autoFile = signal(true);
 export const autoSelection = signal(true);
 export const showThinking = signal(true);
@@ -252,7 +263,11 @@ export function handleHostMessage(m: ToWebview): void {
       if (abandonedSessionId !== undefined && m.sessionId === abandonedSessionId) break;
       chat.value = attachPreview(chat.value, m.toolUseId, m.preview);
       break;
+    case 'session.attach':
+      sessionAttach.value = { pdfPages: m.pdfPages, chars: m.chars };
+      break;
     case 'session.reset':
+      sessionAttach.value = { pdfPages: 0, chars: 0 };
       abandonSession();
       replyTarget.value = undefined;
       chat.value = resetSession(chat.value);
@@ -272,11 +287,27 @@ export function dispatchEvent(event: AgentEvent, now = Date.now()): void {
   if (t && event.type === 'permission.resolved' && event.toolUseId === t.toolUseId) {
     replyTarget.value = undefined;
   }
-  hudState.value = applyHud(hudState.value, event, now);
+  const before = hudState.value;
+  hudState.value = applyHud(before, event, now);
+  noteThreshold(before, hudState.value, event);
   // лимит от движка — запас, пока хост не прислал данные `/api/oauth/usage`
   if (event.type === 'limit.update' && !event.agentId && limits.value.updatedAt === 0) {
     limits.value = { windows: event.windows, updatedAt: now };
   }
+}
+
+/**
+ * Контекст перешагнул последний порог (с кнопкой «сжать» в HUD): системная строка в ленте, как в
+ * прототипе (`limit.html`). Раз на пересечение: после сжатия и нового роста — снова.
+ */
+function noteThreshold(before: HudState, after: HudState, event: AgentEvent): void {
+  if (event.type !== 'context.usage' || event.agentId) return;
+  const top = Math.max(0, ...after.thresholds);
+  const was = before.context?.used ?? 0;
+  const used = after.context?.used ?? 0;
+  if (top <= 0 || was >= top || used < top) return;
+  const fullAt = contextFullAt(after.context?.autoCompact, contextMax(after));
+  chat.value = addSys(chat.value, [ui.sys.contextPassed(kilo(used), kilo(top), kilo(fullAt))]);
 }
 
 /** `/status` — строка в ленту: модель, режим, папка (из поля ввода и из боковой панели). */
@@ -350,6 +381,42 @@ export function currentAttachments(): Attachment[] {
   return [...auto, ...extra.value.filter((x) => !autoKeys.has(attachmentKey(x)))];
 }
 
+/** Вложения, которые уйдут в этом сообщении, — в счёт сессии (оптимистично, до снимка хоста). */
+function noteSentAttach(images: readonly PromptImage[], files: readonly PromptFile[]): void {
+  const chars =
+    images.reduce((sum, i) => sum + i.data.length, 0) +
+    files.reduce((sum, f) => sum + f.data.length, 0);
+  if (chars === 0) return;
+  const pages = files.reduce((sum, f) => sum + sessionPdfPages(f), 0);
+  const a = sessionAttach.value;
+  sessionAttach.value = { pdfPages: a.pdfPages + pages, chars: a.chars + chars };
+}
+
+/** Вложения, уже лежащие в поле ввода (без уменьшающихся и плашек), кроме `skip`. */
+function draftAttach(skipImage?: number): SessionAttach & { tokens: number } {
+  let chars = 0;
+  let pdfPages = 0;
+  let tokens = 0;
+  for (const d of draftImages.value) {
+    if (!d.image || d.id === skipImage) continue;
+    chars += d.image.data.length;
+    if (d.image.width && d.image.height) tokens += imageTokens(d.image.width, d.image.height);
+  }
+  for (const d of draftFiles.value) {
+    if (!d.file) continue;
+    chars += d.file.data.length;
+    pdfPages += sessionPdfPages(d.file);
+    tokens += attachFileTokens(d.file);
+  }
+  return { chars, pdfPages, tokens };
+}
+
+/** Сколько токенов окна вложения одного сообщения могут занять: 70 % свободного места. */
+function attachBudget(): number {
+  const h = hudState.value;
+  return attachTokenBudget(contextMax(h), h.context?.used);
+}
+
 let imageSeq = 0;
 /** Сквозной номер «скриншот N» в пределах вкладки (как в прототипе: 1, 2 в ленте, 3 в поле). */
 let screenshotNo = 0;
@@ -389,6 +456,18 @@ export async function addImages(
           ) + filesChars();
         if (!('problem' in r) && others + r.image.data.length > MAX_MESSAGE_ATTACH_CHARS) {
           r = { problem: 'total' };
+        }
+        if (!('problem' in r)) {
+          const draft = draftAttach(id);
+          const sess = sessionAttach.value;
+          const tokens =
+            r.image.width && r.image.height ? imageTokens(r.image.width, r.image.height) : 0;
+          const over = sessionProblem(
+            { pdfPages: sess.pdfPages + draft.pdfPages, chars: sess.chars + draft.chars },
+            { chars: r.image.data.length },
+          );
+          if (over) r = { problem: over === 'sessionPages' ? 'session' : over };
+          else if (draft.tokens + tokens > attachBudget()) r = { problem: 'context' };
         }
         const next: DraftImage =
           'problem' in r
@@ -448,10 +527,6 @@ export function addFiles(items: readonly PickedFile[]): void {
         : images + filesChars() + it.data.length > MAX_MESSAGE_ATTACH_CHARS
           ? 'total'
           : undefined;
-    if (problem) {
-      draftFiles.value = [...draftFiles.value, { id, name, problem }];
-      continue;
-    }
     const file: PromptFile = {
       kind: it.kind,
       path: it.path,
@@ -459,6 +534,20 @@ export function addFiles(items: readonly PickedFile[]): void {
       size: it.size ?? it.data.length,
       ...(it.pages !== undefined ? { pages: it.pages } : {}),
     };
+    // лимиты API — на запрос со всей историей сессии, а вложения в окне — не больше 70 % свободного
+    const draft = draftAttach();
+    const sess = sessionAttach.value;
+    const final: FileProblem | undefined =
+      problem ??
+      sessionProblem(
+        { pdfPages: sess.pdfPages + draft.pdfPages, chars: sess.chars + draft.chars },
+        { pages: sessionPdfPages(file), chars: file.data.length },
+      ) ??
+      (draft.tokens + attachFileTokens(file) > attachBudget() ? 'context' : undefined);
+    if (final) {
+      draftFiles.value = [...draftFiles.value, { id, name, problem: final }];
+      continue;
+    }
     draftFiles.value = [...draftFiles.value, { id, name, file }];
   }
 }
@@ -510,6 +599,8 @@ export function sendMessage(text: string, withContext = true): boolean {
     draftImages.value = [];
     draftFiles.value = [];
   }
+  // хост пришлёт точный снимок; до него следующее сообщение уже проверяется с этим
+  noteSentAttach(images, files);
   send({
     type: 'send',
     sessionId: s.sessionId,
@@ -636,7 +727,16 @@ export function retryTurn(): void {
   const turn = card?.kind === 'fail' && card.turn;
   chat.value = markRetrying(chat.value);
   send({ type: 'turn.retry', sessionId: chat.value.sessionId, turn });
+  // хост мог молча пропустить повтор — карточка не должна висеть в «повторяю…» вечно
+  clearTimeout(retryTimer);
+  retryTimer = setTimeout(() => {
+    chat.value = unmarkRetrying(chat.value);
+  }, RETRY_TIMEOUT_MS);
 }
+
+/** Сколько ждём начала хода после «Повторить», прежде чем вернуть кнопки (resume + старт движка). */
+export const RETRY_TIMEOUT_MS = 20_000;
+let retryTimer: ReturnType<typeof setTimeout> | undefined;
 
 export function showLog(): void {
   send({ type: 'log.show' });
@@ -658,6 +758,7 @@ export function releaseLimit(): void {
 
 export function newSession(): void {
   replyTarget.value = undefined;
+  sessionAttach.value = { pdfPages: 0, chars: 0 };
   abandonSession();
   chat.value = resetSession(chat.value);
   hudState.value = resetHud(hudState.value);

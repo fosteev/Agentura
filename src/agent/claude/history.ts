@@ -11,13 +11,15 @@ import type {
   FileRef,
   ImageRef,
   PermissionMode,
+  RetryPoint,
   SessionHistory,
   TokenUsage,
 } from '../types';
 import { imageSize, base64Bytes } from '../../shared/images';
-import { documentKind, pdfPages, utf8Bytes } from '../../shared/files';
+import { documentKind, pdfPages, sessionPdfPages, utf8Bytes } from '../../shared/files';
+import { splitPrompt } from '../../shared/prompt';
 import { cost } from '../../data/pricing';
-import { arr, isObj, num, obj, str, timestamp, type Json } from './json';
+import { arr, isObj, num, obj, str, timestamp, withoutImageData, type Json } from './json';
 import { usageFrom } from './mapper';
 
 /** Сообщение `getSessionMessages()` — только то, что нам нужно. */
@@ -27,6 +29,56 @@ export interface HistoryMessage {
   message?: unknown;
   parent_tool_use_id?: string | null;
   timestamp?: string;
+}
+
+/** Инструменты без побочных эффектов: ход только с ними можно отбросить и начать заново. */
+const READ_ONLY_TOOLS = new Set([
+  'Read',
+  'Glob',
+  'Grep',
+  'LS',
+  'WebFetch',
+  'WebSearch',
+  'TodoWrite',
+]);
+
+/**
+ * Точка отката для «Повторить ход»: `messages` — цепочка транскрипта, `prompt` — текст пользователя
+ * оборванного хода. Берётся последнее сообщение пользователя без результатов инструментов; оно
+ * должно совпасть с промптом, быть не первым, а всё после него — только ответы и результаты
+ * инструментов (иначе SDK откажет: в отбрасываемом диапазоне чужие сообщения — влитые, уведомления).
+ */
+export function findRetryPoint(
+  messages: readonly HistoryMessage[],
+  prompt: string,
+): RetryPoint | undefined {
+  const main = messages.filter(
+    (m) => (m.type === 'user' || m.type === 'assistant') && !m.parent_tool_use_id,
+  );
+  const isPrompt = (m: HistoryMessage): boolean => {
+    if (m.type !== 'user') return false;
+    const content = obj(m.message)?.['content'];
+    return !arr(content)
+      .filter(isObj)
+      .some((b) => b['type'] === 'tool_result');
+  };
+  let i = main.length - 1;
+  while (i >= 0 && !isPrompt(main[i]!)) i--;
+  if (i < 1) return undefined;
+  const at = main[i]!;
+  const text = textOf(obj(at.message)?.['content']);
+  if (text === undefined || splitPrompt(text).text.trim() !== prompt.trim()) return undefined;
+  // оборванный ход успел что-то изменить (правка, команда, субагент) — не отбрасываем: модель
+  // забыла бы о сделанном и начала заново поверх изменённых файлов. Пусть лучше промпт будет дважды
+  const acted = main.slice(i + 1).some((m) =>
+    arr(obj(m.message)?.['content'])
+      .filter(isObj)
+      .some((b) => b['type'] === 'tool_use' && !READ_ONLY_TOOLS.has(str(b['name']) ?? '')),
+  );
+  if (acted) return undefined;
+  const keep = main[i - 1]!;
+  if (!at.uuid || !keep.uuid) return undefined;
+  return { keepUuid: keep.uuid, promptUuid: at.uuid };
 }
 
 export interface BuildOptions {
@@ -285,6 +337,8 @@ export function buildHistory(
   options: BuildOptions = {},
 ): SessionHistory {
   const toolResults = options.toolResults ?? new Map<string, unknown>();
+  // вложения с последней компакции — до обрезки данных в `limitHistoryAttachments`
+  let attach = { pdfPages: 0, chars: 0 };
   const main = messages.filter(
     (m) => (m.type === 'user' || m.type === 'assistant') && !m.parent_tool_use_id,
   );
@@ -490,7 +544,8 @@ export function buildHistory(
             content: resultText(block['content']),
           };
           const structured = toolResults.get(toolUseId);
-          if (results.length === 1 && structured !== undefined) event.result = structured;
+          if (results.length === 1 && structured !== undefined)
+            event.result = withoutImageData(structured);
           if (at) {
             event.at = at;
             if (started !== undefined) event.durationMs = Math.max(0, at - started);
@@ -507,6 +562,8 @@ export function buildHistory(
       const t = text.trimStart();
       if (COMPACT_SUMMARY.test(t)) {
         events.push({ type: 'compaction.end', ok: true });
+        // после компакции картинки и документы из запросов уходят — счёт вложений сессии с нуля
+        attach = { pdfPages: 0, chars: 0 };
         continue;
       }
       if (t.startsWith(INTERRUPTED)) {
@@ -517,6 +574,15 @@ export function buildHistory(
       if (TASK_NOTIFICATION.test(t)) {
         wake(t, at);
         continue;
+      }
+      for (const i of images) attach.chars += i.data?.length ?? 0;
+      for (const f of files) {
+        attach.chars += f.data?.length ?? 0;
+        attach.pdfPages += sessionPdfPages({
+          kind: f.kind,
+          size: f.size ?? 0,
+          ...(f.pages ? { pages: f.pages } : {}),
+        });
       }
       startTurn(text, at, images, files);
       continue;
@@ -623,5 +689,6 @@ export function buildHistory(
     turns,
     skippedTurns: skipped,
     ...(lastModel ? { model: lastModel } : {}),
+    ...(attach.chars > 0 || attach.pdfPages > 0 ? { attach } : {}),
   };
 }

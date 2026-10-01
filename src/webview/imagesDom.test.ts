@@ -11,6 +11,7 @@ import {
   editor,
   extra,
   handleHostMessage,
+  sessionAttach,
   history,
   hudState,
   limits,
@@ -64,6 +65,7 @@ beforeEach(() => {
   extra.value = [];
   history.value = [];
   draftImages.value = [];
+  sessionAttach.value = { pdfPages: 0, chars: 0 };
   hudState.value = initialHud();
   limits.value = { windows: [], updatedAt: 0 };
 });
@@ -126,6 +128,17 @@ describe('картинки в поле ввода (этап 4 roadmap 0.2)', () 
     (err.querySelector('.x') as HTMLElement).click();
     await flush();
     expect(host.querySelector('.att')).toBeNull();
+  });
+
+  it('история сессии уже почти у лимита запроса (24 МБ): новая картинка — плашка «начните новую»', async () => {
+    const host = mount();
+    sessionAttach.value = { pdfPages: 0, chars: 24 * 1024 * 1024 - 2 };
+    await addImages([{ name: 'image.png', mediaType: 'image/png', data: 'iVBOR' }], codec);
+    await flush();
+    expect(draftImages.value.map((d) => d.problem)).toEqual(['session']);
+    expect(host.querySelector('.att .im.err small')?.textContent).toBe(
+      'сессия: вложений больше 24 МБ — начните новую',
+    );
   });
 
   it('Enter: текст и готовые картинки одним send; строка «в очереди» с миниатюрой; поле очищено', async () => {

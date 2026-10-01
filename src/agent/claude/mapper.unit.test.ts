@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AgentEvent, AgentEventOf } from '../types';
+import { withoutImageData } from './json';
 import { ClaudeEventMapper } from './mapper';
 
 /** Минимальные сообщения SDK в форме живых логов пробы. */
@@ -214,5 +215,66 @@ describe('прерывание', () => {
     expect(stop).toBeGreaterThan(-1);
     expect(stop).toBeLessThan(end);
     expect(events[stop]).toMatchObject({ messageId: 'm1', at: 5 });
+  });
+});
+
+describe('Read картинки моделью', () => {
+  const B64 = 'iVBORw0KGgo'.repeat(1000);
+  const imageResult = {
+    type: 'image',
+    file: { base64: B64, type: 'image/png', originalSize: 8000, dimensions: { originalWidth: 10 } },
+  };
+
+  it('tool.result: плашка [image] в тексте, структурный результат без base64', () => {
+    const m = new ClaudeEventMapper({ baselineCostUsd: 0, now: () => 5 });
+    const events = run(m, [
+      init(),
+      {
+        type: 'user',
+        parent_tool_use_id: null,
+        message: {
+          role: 'user',
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: 'r1',
+              content: [
+                { type: 'image', source: { type: 'base64', media_type: 'image/png', data: B64 } },
+              ],
+            },
+          ],
+        },
+        tool_use_result: imageResult,
+      },
+    ]);
+    const [e] = ofType(events, 'tool.result');
+    expect(e?.content).toBe('[image]');
+    expect(JSON.stringify(e)).not.toContain('iVBORw0KGgo');
+    expect(e?.result).toEqual({
+      type: 'image',
+      file: {
+        type: 'image/png',
+        originalSize: 8000,
+        dimensions: { originalWidth: 10 },
+        dataOmitted: true,
+      },
+    });
+  });
+
+  it('Read pdf моделью: копия base64 тоже убрана', () => {
+    expect(
+      withoutImageData({
+        type: 'pdf',
+        file: { filePath: '/a.pdf', base64: 'JVBERi0x', originalSize: 8 },
+      }),
+    ).toEqual({ type: 'pdf', file: { filePath: '/a.pdf', originalSize: 8, dataOmitted: true } });
+  });
+
+  it('результат без base64 и не-картинки не трогаются', () => {
+    const text = { type: 'text', file: { filePath: '/a', content: 'x' } };
+    expect(withoutImageData(text)).toBe(text);
+    expect(withoutImageData(undefined)).toBeUndefined();
+    const noData = { type: 'image', file: { type: 'image/png' } };
+    expect(withoutImageData(noData)).toBe(noData);
   });
 });

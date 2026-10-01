@@ -33,9 +33,13 @@ export function alwaysButton(always: PermissionAlways | undefined): AlwaysButton
       ? ui.cards.plusDirs(always.directories[0]!, always.directories.length - 1)
       : '';
     const hint =
-      (always.destination && always.destination !== 'session'
-        ? ui.cards.alwaysHint(ui.cards.destination(always.destination))
-        : ui.cards.sessionHint) + dirs;
+      (always.destinations
+        ? ui.cards.alwaysHint(
+            [...new Set(always.destinations.map((d) => ui.cards.destination(d)))].join(', '),
+          )
+        : always.destination && always.destination !== 'session'
+          ? ui.cards.alwaysHint(ui.cards.destination(always.destination))
+          : ui.cards.sessionHint) + dirs;
     return { label: ui.cards.alwaysFor, code: first + more, hint };
   }
   if (always.directories.length) {

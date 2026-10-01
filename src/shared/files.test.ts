@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  attachFileTokens,
+  attachTokenBudget,
   classifyBytes,
   fileBadge,
   fileName,
@@ -9,7 +11,10 @@ import {
   hostFile,
   MAX_PDF_BYTES,
   MAX_TEXT_FILE_BYTES,
+  MAX_SESSION_ATTACH_CHARS,
   pdfPages,
+  sessionPdfPages,
+  sessionProblem,
 } from './files';
 
 const bytes = (s: string) => new TextEncoder().encode(s);
@@ -138,5 +143,44 @@ describe('оценка и подписи', () => {
     expect(formatBytes(12 * 1024)).toBe('12 КБ');
     expect(formatBytes(1.4 * 1024 * 1024)).toBe('1.4 МБ');
     expect(formatBytes(15 * 1024 * 1024)).toBe('15 МБ');
+  });
+});
+
+describe('лимиты API на сессию (этап 6 roadmap 0.2)', () => {
+  it('sessionProblem: 100 страниц pdf и 24 МБ тела запроса на всю историю', () => {
+    expect(sessionProblem({ pdfPages: 60, chars: 0 }, { pages: 40, chars: 10 })).toBeUndefined();
+    expect(sessionProblem({ pdfPages: 60, chars: 0 }, { pages: 41, chars: 10 })).toBe(
+      'sessionPages',
+    );
+    expect(sessionProblem({ pdfPages: 0, chars: MAX_SESSION_ATTACH_CHARS - 5 }, { chars: 5 })).toBe(
+      undefined,
+    );
+    expect(sessionProblem({ pdfPages: 0, chars: MAX_SESSION_ATTACH_CHARS - 5 }, { chars: 6 })).toBe(
+      'session',
+    );
+    // страницы важнее размера, если нарушены оба
+    expect(
+      sessionProblem({ pdfPages: 100, chars: MAX_SESSION_ATTACH_CHARS }, { pages: 1, chars: 1 }),
+    ).toBe('sessionPages');
+  });
+
+  it('sessionPdfPages: известные страницы, иначе по размеру; текст — 0', () => {
+    expect(sessionPdfPages({ kind: 'pdf', size: 1, pages: 7 })).toBe(7);
+    expect(sessionPdfPages({ kind: 'pdf', size: 120_000 })).toBe(3);
+    expect(sessionPdfPages({ kind: 'pdf', size: 10 })).toBe(1);
+    expect(sessionPdfPages({ kind: 'text', size: 10 })).toBe(0);
+  });
+
+  it('attachFileTokens: pdf без числа страниц — по оценке страниц из размера, а не ноль', () => {
+    expect(attachFileTokens({ kind: 'pdf', data: 'x', size: 120_000 })).toBe(3 * 1500);
+    expect(attachFileTokens({ kind: 'pdf', data: 'x', size: 1, pages: 2 })).toBe(3000);
+    expect(attachFileTokens({ kind: 'text', data: 'x'.repeat(8), size: 8 })).toBe(2);
+  });
+
+  it('attachTokenBudget: 70 % свободного окна; окно неизвестно — 200k; занято всё — 0', () => {
+    expect(attachTokenBudget(200_000, 160_000)).toBe(28_000);
+    expect(attachTokenBudget(undefined, undefined)).toBe(140_000);
+    expect(attachTokenBudget(1_000_000, 0)).toBe(700_000);
+    expect(attachTokenBudget(200_000, 250_000)).toBe(0);
   });
 });

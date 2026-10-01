@@ -16,6 +16,17 @@ describe('кнопка «всегда»', () => {
     });
   });
 
+  it('правила с разными destination: подпись называет все места', () => {
+    expect(
+      alwaysButton({
+        rules: ['Bash(a)', 'Bash(b)'],
+        destination: 'localSettings',
+        destinations: ['localSettings', 'userSettings'],
+        directories: [],
+      })?.hint,
+    ).toBe('«всегда» пишется в .claude/settings.local.json, ~/.claude/settings.json');
+  });
+
   it('несколько правил, папки на сессию, только режим, ничего', () => {
     expect(
       alwaysButton({

@@ -76,6 +76,8 @@ export interface PermissionAlways {
   rules: string[];
   /** Куда движок запишет правила: `localSettings` → `.claude/settings.local.json`. */
   destination?: 'localSettings' | 'projectSettings' | 'userSettings' | 'session' | 'cliArg';
+  /** Все места, если у правил разные `destination` (первое — `destination`); иначе поля нет. */
+  destinations?: NonNullable<PermissionAlways['destination']>[];
   /** Подсказка-режим на сессию (`setMode`) — у Edit/Write это `acceptEdits`. */
   mode?: PermissionMode;
   /** Папки, добавляемые на сессию (`addDirectories`). */
@@ -366,7 +368,19 @@ export interface SessionOptions {
   allowBypassPermissions?: boolean;
 }
 
+/**
+ * Точка отката для «Повторить ход» (`resumeSessionAt` + `resumeDropsTurn` SDK): последнее целое
+ * сообщение перед оборванным ходом и промпт этого хода. Возобновление отбрасывает ход, и повторный
+ * промпт не двоится в транскрипте.
+ */
+export interface RetryPoint {
+  keepUuid: string;
+  promptUuid: string;
+}
+
 export interface ResumeOptions extends SessionOptions {
+  /** Отбросить оборванный ход при возобновлении (только «Повторить ход»). */
+  dropTurn?: RetryPoint;
   /**
    * Последний известный `total_cost_usd` сессии: движок продолжает счёт с него, и без базы
    * стоимость первого хода после resume неизвестна.
@@ -464,6 +478,11 @@ export interface SessionHistory {
   mode?: PermissionMode;
   /** Модель последнего ответа — с ней продолжаем (движок при `resume` берёт модель из опций, не из сессии). */
   model?: string;
+  /**
+   * Вложения с последней компакции (до обрезки данных в `events`): страницы pdf и символы
+   * base64/текста. Нет — вложений нет. Нужны лимитам API на запрос со всей историей (этап 6 roadmap 0.2).
+   */
+  attach?: { pdfPages: number; chars: number };
   /** Последний `total_cost_usd` движка (запись `cost-state` транскрипта) — база стоимости после `resume`. */
   totalCostUsd?: number;
 }
@@ -481,8 +500,20 @@ export interface AgentAdapter {
     sessionId: string,
     cwd: string,
     /** `tasksAlive` — процесс движка жив: незакрытые фоновые задачи из транскрипта ещё идут. */
-    options?: { live?: boolean; tasksAlive?: boolean; maxTurns?: number },
+    options?: {
+      live?: boolean;
+      tasksAlive?: boolean;
+      maxTurns?: number;
+      /** История до этого сообщения, без него: промпт хода, который «Повторить» отбросит. */
+      stopBefore?: string;
+    },
   ): Promise<SessionHistory>;
+  /**
+   * Где оборвался ход с промптом `prompt` (текст пользователя): точка отката для «Повторить ход».
+   * `undefined` — отбросить ход нельзя (промпта нет в транскрипте, после него есть чужие сообщения,
+   * ход первый в сессии): тогда сессию возобновляют целиком, и промпт в транскрипте будет дважды.
+   */
+  retryPoint?(sessionId: string, cwd: string, prompt: string): Promise<RetryPoint | undefined>;
   /** Переименование (`customTitle` в транскрипте). */
   renameSession(sessionId: string, title: string, cwd: string): Promise<void>;
   /**

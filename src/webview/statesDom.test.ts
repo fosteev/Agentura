@@ -20,6 +20,8 @@ import {
   limitBlocked,
   limits,
   replyTarget,
+  RETRY_TIMEOUT_MS,
+  retryTurn,
   tick,
 } from './store';
 import * as vscode from './vscode';
@@ -119,6 +121,41 @@ describe('фикстуры состояний', () => {
   });
 });
 
+describe('порог контекста в ленте (limit.html)', () => {
+  const usage = (usedTokens: number): AgentEvent => ({
+    type: 'context.usage',
+    usedTokens,
+    maxTokens: 200_000,
+    autoCompactThreshold: 190_000,
+    source: 'usage',
+  });
+  const passed = () =>
+    chat.value.rows.filter((r) => r.kind === 'sys' && r.text.join('').includes('пройден'));
+
+  it('последний порог пройден — одна строка; дальше рост без повторов; после сжатия и нового роста — снова', () => {
+    hudState.value = initialHud([120_000, 150_000]);
+    dispatchEvent(usage(100_000));
+    dispatchEvent(usage(140_000));
+    expect(passed()).toHaveLength(0);
+    dispatchEvent(usage(168_420));
+    expect(passed()).toHaveLength(1);
+    expect((passed()[0] as { text: string[] }).text.join('')).toBe(
+      'контекст 168k: порог 150k пройден, автосжатие при 190k',
+    );
+    dispatchEvent(usage(170_000));
+    expect(passed()).toHaveLength(1);
+    dispatchEvent({ type: 'compaction.end', ok: true, postTokens: 30_000 } as AgentEvent);
+    dispatchEvent(usage(155_000));
+    expect(passed()).toHaveLength(2);
+  });
+
+  it('субагент контекст основного не двигает и строку не рисует', () => {
+    hudState.value = initialHud([120_000, 150_000]);
+    dispatchEvent({ ...usage(180_000), agentId: 'a1' });
+    expect(passed()).toHaveLength(0);
+  });
+});
+
 describe('экран error (error.html)', () => {
   it('карточка: заголовок, текст ошибки, подсказка про сеть, три элемента управления', async () => {
     const host = mount();
@@ -146,6 +183,31 @@ describe('экран error (error.html)', () => {
     const card = host.querySelector('.ask.danger')!;
     expect(button(card, 'Повторить ход')).toBeUndefined();
     expect(card.querySelector('.hint')?.textContent).toBe('повторяю…');
+  });
+
+  it('хост не начал ход: «повторяю…» по таймауту возвращает кнопки; пришедшая история таймер не ломает', () => {
+    vi.useFakeTimers();
+    try {
+      play('error');
+      retryTurn();
+      expect(chat.value.rows.find((r) => r.kind === 'fail')).toMatchObject({ state: 'retrying' });
+      vi.advanceTimersByTime(RETRY_TIMEOUT_MS - 1);
+      expect(chat.value.rows.find((r) => r.kind === 'fail')).toMatchObject({ state: 'retrying' });
+      vi.advanceTimersByTime(1);
+      expect(chat.value.rows.find((r) => r.kind === 'fail')).toMatchObject({ state: 'open' });
+      // второй клик: история пришла раньше таймера — карточки уже нет, таймер ничего не трогает
+      retryTurn();
+      handleHostMessage({
+        type: 'session.history',
+        sessionId: 'd0000000-0000-4000-8000-000000000007',
+        events: [],
+        skippedTurns: 0,
+      });
+      vi.advanceTimersByTime(RETRY_TIMEOUT_MS);
+      expect(chat.value.rows.some((r) => r.kind === 'fail')).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('после повтора история сессии заменяет ленту и снимает closed', async () => {
