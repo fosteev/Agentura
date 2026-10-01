@@ -1,10 +1,13 @@
 #!/usr/bin/env node
 // Дымовой прогон этапа 6 на живом движке (тратит лимит подписки, ~$0.05–0.15):
 //   node scripts/sessions-smoke.mjs [--cwd <пустая временная папка>] [--model claude-haiku-4-5]
+//   node scripts/sessions-smoke.mjs --rename-during-turn [--raw] — только переименование во время хода (этап 5
+//     roadmap 0.2): название, данное посреди хода через SessionsService (с `--raw` — голым renameSession), переживает
+//     конец хода, следующий ход и выход процесса? Временную папку и её каталог в ~/.claude/projects удаляет.
 // Проверяет: listSessions → loadHistory → resumeSession (init до первого сообщения, режим, контекст),
 // продолжение диалога в той же сессии (id не меняется, стоимость хода от базы), renameSession,
 // сверку итогов списка с транскриптом.
-import { mkdtempSync } from 'node:fs';
+import { existsSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { loadTs } from './lib/load-ts.mjs';
@@ -37,11 +40,13 @@ function watch(session, label) {
     const extra =
       e.type === 'session.init'
         ? `${e.sessionId} model=${e.model} mode=${e.permissionMode}`
-        : e.type === 'turn.result'
-          ? `cost=${e.costUsd?.toFixed(4) ?? '—'} total=${e.totalCostUsd.toFixed(4)} «${short(e.text ?? '')}»`
-          : e.type === 'context.usage'
-            ? `${e.source} ${e.usedTokens}/${e.maxTokens ?? '?'}`
-            : '';
+        : e.type === 'session.title'
+          ? `«${e.title}»`
+          : e.type === 'turn.result'
+            ? `cost=${e.costUsd?.toFixed(4) ?? '—'} total=${e.totalCostUsd.toFixed(4)} «${short(e.text ?? '')}»`
+            : e.type === 'context.usage'
+              ? `${e.source} ${e.usedTokens}/${e.maxTokens ?? '?'}`
+              : '';
     console.log(`${t()} [${label}] ${e.type} ${extra}`);
     for (const w of [...waiters]) {
       if (!w.pred(e)) continue;
@@ -59,6 +64,97 @@ function watch(session, label) {
         waiters.push({ pred, resolve: (e) => (clearTimeout(timer), resolve(e)) });
       }),
   };
+}
+
+async function titleOf(id) {
+  const rows = await listSessionRows(adapter, {
+    cwd,
+    live: new LiveSessions(),
+    cache: new TranscriptCache(),
+  });
+  return rows.find((r) => r.id === id)?.title;
+}
+
+if (args.includes('--rename-during-turn')) {
+  const { projectDir } = await loadTs('src/data/sessions.ts');
+  const { SessionsService } = await loadTs('src/extension/sessionsService.ts');
+  const fix = !args.includes('--raw');
+  let code = 0;
+  const wanted = 'smoke: имя во время хода';
+  const live = new LiveSessions();
+  // как в расширении: список следит за каталогом транскриптов и знает живые сессии окна
+  const service = new SessionsService({
+    adapter,
+    cwd,
+    live,
+    cache: new TranscriptCache(),
+    log: {
+      debug: (m) => console.log(`  [список] ${m}`),
+      warn: (m) => console.log(`  [список] ${m}`),
+    },
+    debounceMs: 200,
+    maxWaitMs: 1000,
+    retryMs: 500,
+  });
+  service.start();
+  live.onChange(() => service.schedule());
+  let s;
+  try {
+    s = await adapter.createSession({ cwd, model, permissionMode: 'default' });
+    const w = watch(s, 'rename');
+    s.events.on((e) => {
+      if (e.type === 'session.init') live.set(e.sessionId, 'live');
+      if (e.type === 'turn.start' && !e.agentId && s.id) live.set(s.id, 'live');
+      if (e.type === 'turn.result' && !e.agentId && s.id) live.set(s.id, 'idle', e.totalCostUsd);
+      if (e.type === 'session.closed' && s.id) live.delete(s.id);
+    });
+    s.send('Напиши 20 коротких пронумерованных строк про осень, без вступления.');
+    // ответ haiku идёт секунд 5–7; дельт текста может не быть (ответ одним блоком) — ждём начало хода
+    await w.waitFor((e) => e.type === 'turn.start');
+    await new Promise((r) => setTimeout(r, 1500));
+    if (w.log.some((e) => e.type === 'turn.result')) throw new Error('ход кончился раньше rename');
+    const id = w.log.find((e) => e.type === 'session.init').sessionId;
+    console.log(
+      `${t()} ход идёт, переименовываю ${id.slice(0, 8)} (${fix ? 'SessionsService' : 'только renameSession'})`,
+    );
+    if (fix) await service.rename(id, wanted);
+    else await adapter.renameSession(id, wanted, cwd);
+    console.log(`${t()} сразу после rename: «${await titleOf(id)}»`);
+    await w.waitFor((e) => e.type === 'turn.result');
+    await new Promise((r) => setTimeout(r, 3000));
+    const afterTurn = await titleOf(id);
+    console.log(`${t()} после конца хода (на диске): «${afterTurn}»`);
+    s.send('Теперь одну строку про зиму.');
+    await w.waitFor(
+      (e) => e.type === 'turn.result' && w.log.filter((x) => x.type === 'turn.result').length >= 2,
+    );
+    await new Promise((r) => setTimeout(r, 3000));
+    const afterNext = await titleOf(id);
+    console.log(`${t()} после следующего хода (на диске): «${afterNext}»`);
+    s.dispose();
+    await new Promise((r) => setTimeout(r, 3000));
+    const afterExit = await titleOf(id);
+    console.log(`${t()} после выхода процесса (на диске): «${afterExit}»`);
+    const kept = [afterTurn, afterNext, afterExit].every((x) => x === wanted);
+    console.log(`итог: название ${kept ? 'держится' : 'ПЕРЕЗАПИСАНО'}`);
+    if (!kept) code = 1;
+  } catch (error) {
+    console.error(`ошибка: ${error.stack ?? error}`);
+    code = 1;
+  } finally {
+    service.dispose();
+    // при ошибке процесс движка ещё жив и дописал бы транскрипт уже после уборки
+    s?.dispose();
+    await new Promise((r) => setTimeout(r, 500));
+    // убираем только свою временную папку: с `--cwd` папка чужая
+    if (!args.includes('--cwd')) {
+      const dir = projectDir(realpathSync(cwd));
+      if (existsSync(dir)) rmSync(dir, { recursive: true, force: true });
+      rmSync(cwd, { recursive: true, force: true });
+      console.log(`убрано: ${dir}, ${cwd}`);
+    }
+  }
+  process.exit(code);
 }
 
 let exit = 0;

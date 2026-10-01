@@ -45,6 +45,11 @@ export interface BuildOptions {
   maxImages?: number;
   /** Сколько последних файлов отдать с содержимым (по умолчанию `MAX_HISTORY_FILES`). */
   maxFiles?: number;
+  /**
+   * `uuid` записей-ошибок API (`isApiErrorMessage` транскрипта; `getSessionMessages` флага не отдаёт). Ход, который
+   * ими закончился, — `turn.result` с `ok: false`. Не передан — ошибкой считается любой ответ `<synthetic>`.
+   */
+  apiErrors?: ReadonlySet<string>;
 }
 
 export const DEFAULT_MAX_TURNS = 200;
@@ -61,6 +66,8 @@ interface Turn {
   /** API-ответы хода: id → итоговый usage и модель. */
   calls: Map<string, { usage: TokenUsage; model: string }>;
   assistantMessages: number;
+  /** Последний ответ хода — ошибка API (`<synthetic>`): ход закончился ошибкой, а не ответом. */
+  failed: boolean;
 }
 
 function addTo(into: TokenUsage, u: TokenUsage): void {
@@ -297,6 +304,8 @@ export function buildHistory(
   let events: AgentEvent[] = [];
   let turn: Turn | undefined;
   let runningCost = 0;
+  /** В `runningCost` нет части ходов (модель без цены) — итог с пометкой. */
+  let costPartial = false;
   let turns = 0;
   let lastModel: string | undefined;
   const toolStartedAt = new Map<string, number>();
@@ -323,9 +332,11 @@ export function buildHistory(
       model = call.model;
     }
     if (!unpriced) runningCost += usd;
+    else costPartial = true;
     events.push({
       type: 'turn.result',
-      ok: true,
+      // как у движка: ошибка API — `subtype: success` с `is_error: true`
+      ok: !t.failed,
       subtype: 'success',
       interrupted: t.interrupted,
       durationMs: Math.max(0, t.lastAt - t.startAt),
@@ -334,6 +345,7 @@ export function buildHistory(
       usage,
       ...(t.calls.size > 0 && !unpriced ? { costUsd: usd } : {}),
       totalCostUsd: runningCost,
+      ...(costPartial ? { costPartial: true } : {}),
       ...(model ? { model } : {}),
       permissionDenials: [],
     });
@@ -345,6 +357,7 @@ export function buildHistory(
     interrupted: false,
     calls: new Map(),
     assistantMessages: 0,
+    failed: false,
   });
 
   const startTurn = (
@@ -515,6 +528,11 @@ export function buildHistory(
     const model = str(msg['model']) ?? '';
     const synthetic = model === '<synthetic>';
     if (!synthetic && model) lastModel = model;
+    // ошибка API, после которой движок ответил (повтор, следующий запрос), ход не роняет; служебный
+    // `<synthetic>` без флага ошибки («No response requested.») состояние хода не меняет
+    const apiError = options.apiErrors ? !!m.uuid && options.apiErrors.has(m.uuid) : synthetic;
+    if (turn && apiError) turn.failed = true;
+    else if (turn && !synthetic) turn.failed = false;
     if (turn && !synthetic) {
       turn.assistantMessages++;
       const usage = finalUsage.get(id);

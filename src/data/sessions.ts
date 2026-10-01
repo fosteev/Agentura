@@ -1,12 +1,14 @@
-import { existsSync, readdirSync, realpathSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, realpathSync } from 'node:fs';
+import { readdir, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, extname, join } from 'node:path';
 import type { AgentAdapter, SessionInfo, TokenUsage } from '../agent/types';
 import type { SessionSummary } from '../protocol';
 import { readJsonlLines } from './agentmeter/sources/jsonl.ts';
 import { parseSessionFile, parseSubagents } from './agentmeter/sources/claude/parse.ts';
 import type { Request } from './agentmeter/sources/types.ts';
 import { cost, type CostExtras } from './pricing';
+import { FileTally, isTurn, type TallyRequest } from './transcriptTally';
 
 /**
  * Список сессий для боковой панели (A10): `listSessions()` движка + итоги по транскрипту
@@ -171,16 +173,42 @@ export function requestExtras(path: string): Map<string, CostExtras> {
   return out;
 }
 
-/** Итоги сессии по транскрипту: парсер Agentmeter (дедуп по requestId) + сабагенты + таблица цен. */
+/**
+ * Итоги сессии по транскрипту целиком: парсер Agentmeter (дедуп по requestId) + сабагенты + таблица цен.
+ * Синхронно и с полным чтением — эталон для тестов; список сессий считает то же с хвоста (`TranscriptCache`).
+ */
 export function transcriptTotals(path: string): TranscriptTotals {
   const main = parseSessionFile(path);
-  const requests: Request[] = [...main.requests];
+  const requests: TotalsRequest[] = [...main.requests];
   const extras = requestExtras(path);
   for (const sub of parseSubagents(path)) {
     requests.push(...sub.requests);
     for (const [k, v] of requestExtras(sub.session.sourcePath)) extras.set(k, v);
   }
+  return totalsOf(requests, main.requests, extras, countTurns(path));
+}
 
+type TotalsRequest = Pick<
+  Request,
+  | 'requestId'
+  | 'model'
+  | 'isSidechain'
+  | 'input'
+  | 'output'
+  | 'cacheRead'
+  | 'cacheWrite'
+  | 'cacheWrite5m'
+  | 'cacheWrite1h'
+  | 'contextTokens'
+>;
+
+/** Сумма токенов и цена по запросам; контекст и модель — последнего запроса основной ветки. */
+function totalsOf(
+  requests: readonly TotalsRequest[],
+  main: readonly TotalsRequest[],
+  extras: ReadonlyMap<string, CostExtras>,
+  turns: number,
+): TranscriptTotals {
   const tokens: TokenUsage = {
     input: 0,
     output: 0,
@@ -214,8 +242,8 @@ export function transcriptTotals(path: string): TranscriptTotals {
       priced++;
     }
   }
-  const last = [...main.requests].reverse().find((r) => !r.isSidechain);
-  const totals: TranscriptTotals = { turns: countTurns(path), tokens };
+  const last = [...main].reverse().find((r) => !r.isSidechain);
+  const totals: TranscriptTotals = { turns, tokens };
   if (priced > 0 || unpriced === 0) totals.costUsd = usd;
   if (unpriced > 0) totals.costPartial = true;
   if (last) {
@@ -225,68 +253,104 @@ export function transcriptTotals(path: string): TranscriptTotals {
   return totals;
 }
 
-/**
- * Ходы = промпты пользователя в основной ветке: запись `user` с текстом, не результат инструмента,
- * не служебная (`isMeta`, сводка компакции, эхо команд `<command-…>` / `<local-command-…>`,
- * «[Request interrupted…]»).
- */
+/** Ходы = промпты пользователя в основной ветке (`isTurn`), по файлу целиком. */
 export function countTurns(path: string): number {
   let turns = 0;
   for (const line of readJsonlLines(path, true).lines) {
-    let rec: Record<string, unknown>;
+    let rec: unknown;
     try {
-      rec = JSON.parse(line) as Record<string, unknown>;
+      rec = JSON.parse(line);
     } catch {
       continue;
     }
-    if (rec['type'] !== 'user' || rec['isSidechain'] === true || rec['isMeta'] === true) continue;
-    if (rec['isCompactSummary'] === true) continue;
-    const content = (rec['message'] as { content?: unknown } | undefined)?.content;
-    let text: string | undefined;
-    let image = false;
-    if (typeof content === 'string') text = content;
-    else if (Array.isArray(content)) {
-      if (content.some((b) => (b as { type?: string })?.type === 'tool_result')) continue;
-      text = (
-        content.find((b) => (b as { type?: string })?.type === 'text') as
-          { text?: string } | undefined
-      )?.text;
-      // ход из одной картинки или файла без текста (этапы 4 и 8 roadmap 0.2) — тоже ход, как в `buildHistory`
-      image = content.some((b) => {
-        const type = (b as { type?: string })?.type;
-        return type === 'image' || type === 'document';
-      });
-    }
-    if (!text) {
-      if (image) turns++;
-      continue;
-    }
-    const t = text.trimStart();
-    if (
-      t.startsWith('<command-') ||
-      t.startsWith('<local-command-') ||
-      t.startsWith('[Request interrupted')
-    )
-      continue;
-    turns++;
+    if (typeof rec === 'object' && rec !== null && isTurn(rec as Record<string, unknown>)) turns++;
   }
   return turns;
 }
 
-/** Кэш итогов по файлу: пересчёт только при смене размера или времени изменения. */
+/**
+ * Итоги по файлу для списка сессий (этап 5 roadmap 0.2): транскрипт и файлы субагентов дочитываются с
+ * сохранённого смещения (`FileTally`) асинхронно, кусками — идущий ход не заставляет перечитывать 50 МБ на
+ * каждом тике, а холодный проход не держит поток хоста. Не изменился (размер и время) — готовые итоги.
+ */
 export class TranscriptCache {
   private readonly cache = new Map<string, { key: string; totals: TranscriptTotals }>();
+  private readonly tallies = new Map<string, FileTally>();
+  /** Один проход на файл за раз: два параллельных дочитывания разобрали бы хвост дважды. */
+  private readonly running = new Map<string, Promise<TranscriptTotals | undefined>>();
 
-  get(path: string): TranscriptTotals | undefined {
-    if (!existsSync(path)) return undefined;
-    const st = statSync(path);
+  get(path: string): Promise<TranscriptTotals | undefined> {
+    const run = this.running.get(path);
+    if (run) return run.catch(() => undefined).then(() => this.get(path));
+    const next = this.load(path).finally(() => this.running.delete(path));
+    this.running.set(path, next);
+    return next;
+  }
+
+  private async load(path: string): Promise<TranscriptTotals | undefined> {
+    let st;
+    try {
+      st = await stat(path);
+    } catch {
+      return undefined;
+    }
     const key = `${st.size}:${st.mtimeMs}`;
     const hit = this.cache.get(path);
     if (hit?.key === key) return hit.totals;
-    const totals = transcriptTotals(path);
+    const main = await this.advance(path);
+    const mainRequests = main.requests();
+    const requests: TallyRequest[] = [...mainRequests];
+    const extras = new Map(main.extras);
+    for (const file of await subagentFiles(path)) {
+      const sub = await this.advance(file);
+      requests.push(...sub.requests());
+      for (const [k, v] of sub.extras) extras.set(k, v);
+    }
+    const totals = totalsOf(requests, mainRequests, extras, main.turns);
     this.cache.set(path, { key, totals });
     return totals;
   }
+
+  private async advance(path: string): Promise<FileTally> {
+    let tally = this.tallies.get(path);
+    if (!tally) {
+      tally = new FileTally();
+      this.tallies.set(path, tally);
+    }
+    try {
+      await tally.advance(path);
+    } catch (e) {
+      // разбор с ошибкой посередине: в следующий раз — с начала
+      this.tallies.delete(path);
+      throw e;
+    }
+    return tally;
+  }
+}
+
+/**
+ * Файлы субагентов сессии, как `parseSubagents` Agentmeter: `agent-*.jsonl` (рекурсивно) в `<сессия>.subagents/`
+ * и `<сессия>/subagents/`, по алфавиту.
+ */
+async function subagentFiles(sessionPath: string): Promise<string[]> {
+  const id = basename(sessionPath, extname(sessionPath));
+  const dir = dirname(sessionPath);
+  const out: string[] = [];
+  for (const root of [join(dir, `${id}.subagents`), join(dir, id, 'subagents')]) {
+    let entries;
+    try {
+      entries = await readdir(root, { recursive: true, withFileTypes: true });
+    } catch {
+      continue;
+    }
+    out.push(
+      ...entries
+        .filter((e) => e.isFile() && e.name.startsWith('agent-') && e.name.endsWith('.jsonl'))
+        .map((e) => join(e.parentPath, e.name))
+        .sort((a, b) => a.localeCompare(b)),
+    );
+  }
+  return out;
 }
 
 export interface ListOptions {
@@ -304,7 +368,9 @@ export async function listSessionRows(
 ): Promise<SessionRow[]> {
   const sessions = await adapter.listSessions(options.cwd);
   const cache = options.cache ?? new TranscriptCache();
-  return sessions.map((s): SessionRow => {
+  const rows: SessionRow[] = [];
+  // по одной: сотни сессий проекта не открывают сотни файлов разом; поток хоста свободен между кусками
+  for (const s of sessions) {
     const live = options.live.get(s.id);
     const row: SessionRow = {
       ...s,
@@ -314,7 +380,9 @@ export async function listSessionRows(
     };
     try {
       // `listSessions` отдаёт и сессии из worktree проекта — у них свой каталог транскриптов.
-      const totals = cache.get(transcriptPath(s.cwd ?? options.cwd, s.id, options.claudeHome));
+      const totals = await cache.get(
+        transcriptPath(s.cwd ?? options.cwd, s.id, options.claudeHome),
+      );
       if (totals) {
         row.turns = totals.turns;
         row.tokens = totals.tokens;
@@ -333,8 +401,9 @@ export async function listSessionRows(
       row.costSource = 'engine';
       delete row.costPartial;
     }
-    return row;
-  });
+    rows.push(row);
+  }
+  return rows;
 }
 
 /** Строка для webview (`sessions.update`). */

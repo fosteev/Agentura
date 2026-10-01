@@ -161,6 +161,48 @@ describe('SessionsService', () => {
     expect(got).toEqual(['новое']);
   });
 
+  it('rename во время хода: движок перебил название — список держит своё и переименовывает снова, пока процесс жив', async () => {
+    const { svc, adapter, live, set } = setup([info('a', 1, 'старое')]);
+    live.set('a', 'live');
+    await svc.rename('a', 'моё');
+    expect(adapter.renameSession).toHaveBeenCalledTimes(1);
+    // конец хода: CLI дописал своё название из памяти процесса
+    set([info('a', 2, 'Название от CLI')]);
+    live.set('a', 'idle');
+    const rows = await svc.refresh();
+    expect(rows[0]!.title).toBe('моё');
+    expect(adapter.renameSession).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(adapter.renameSession).mock.calls[1]!.slice(0, 2)).toEqual(['a', 'моё']);
+    await vi.runAllTimersAsync();
+    expect((await svc.refresh())[0]!.title).toBe('моё');
+    // процесс ушёл, название на месте — больше не следим
+    live.delete('a');
+    await svc.refresh();
+    set([info('a', 3, 'другое')]);
+    expect((await svc.refresh())[0]!.title).toBe('другое');
+    expect(adapter.renameSession).toHaveBeenCalledTimes(2);
+  });
+
+  it('rename сессии без живого процесса в окне — один раз, без слежения', async () => {
+    const { svc, adapter, set } = setup([info('a', 1, 'старое')]);
+    await svc.rename('a', 'моё');
+    set([info('a', 2, 'другое')]);
+    expect((await svc.refresh())[0]!.title).toBe('другое');
+    expect(adapter.renameSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('название перебивается снова и снова (формат записи сменился) — после 5 попыток сдаёмся', async () => {
+    const { svc, adapter, live } = setup([info('a', 1, 'старое')]);
+    vi.mocked(adapter.renameSession).mockImplementation(async () => {});
+    live.set('a', 'live');
+    await svc.rename('a', 'моё');
+    for (let i = 0; i < 8; i++) {
+      await svc.refresh();
+      await vi.runAllTimersAsync();
+    }
+    expect(adapter.renameSession).toHaveBeenCalledTimes(1 + 5);
+  });
+
   it('каталога ещё нет (первая сессия проекта): ждём и подключаемся, когда появится', async () => {
     const svc = new SessionsService({
       adapter: { listSessions: async () => [] } as unknown as AgentAdapter,

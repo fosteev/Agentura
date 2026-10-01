@@ -20,14 +20,14 @@ function ofType<T extends AgentEvent['type']>(events: AgentEvent[], type: T): Ag
   return events.filter((e): e is AgentEventOf<T> => e.type === type);
 }
 
-function history(): AgentEvent[] {
-  const extras = readTranscriptExtras(AGENTS_TRANSCRIPT);
+async function history(): Promise<AgentEvent[]> {
+  const extras = await readTranscriptExtras(AGENTS_TRANSCRIPT);
   return buildHistory(agentsParallelMessages(), { toolResults: extras.toolResults }).events;
 }
 
 describe('история с субагентами (фикстура agents-parallel)', () => {
-  it('агенты из вызовов Agent/Bash: id задачи и итоги из toolUseResult, фоновые — из уведомлений', () => {
-    const events = history();
+  it('агенты из вызовов Agent/Bash: id задачи и итоги из toolUseResult, фоновые — из уведомлений', async () => {
+    const events = await history();
     const starts = ofType(events, 'agent.start');
     expect(starts.map((a) => [a.taskType, a.subagentType ?? '-', a.background])).toEqual([
       ['local_bash', '-', true],
@@ -57,8 +57,8 @@ describe('история с субагентами (фикстура agents-para
     expect(ends[2]?.summary).toContain('5 lines');
   });
 
-  it('уведомление о задаче — ход-пробуждение без промпта, а не сообщение пользователя', () => {
-    const events = history();
+  it('уведомление о задаче — ход-пробуждение без промпта, а не сообщение пользователя', async () => {
+    const events = await history();
     const starts = ofType(events, 'turn.start');
     expect(starts.map((t) => t.prompt === undefined)).toEqual([false, true, true]);
     expect(starts.some((t) => t.prompt?.includes('<task-notification>'))).toBe(false);
@@ -66,8 +66,8 @@ describe('история с субагентами (фикстура agents-para
     expect(buildHistory(agentsParallelMessages()).turns).toBe(1);
   });
 
-  it('задача без конца: закрытая сессия — агент остановлен, идущая (live) — ещё идёт', () => {
-    const extras = readTranscriptExtras(AGENTS_TRANSCRIPT);
+  it('задача без конца: закрытая сессия — агент остановлен, идущая (live) — ещё идёт', async () => {
+    const extras = await readTranscriptExtras(AGENTS_TRANSCRIPT);
     const msgs = agentsParallelMessages();
     // обрыв до уведомлений о фоновых задачах
     const cut = msgs.slice(
@@ -93,7 +93,7 @@ describe('история с субагентами (фикстура agents-para
     expect(ofType(alive, 'turn.result')).toHaveLength(1);
   });
 
-  it('два уведомления в одной реплике — закрыты обе задачи', () => {
+  it('два уведомления в одной реплике — закрыты обе задачи', async () => {
     const note = (id: string) =>
       `<task-notification>\n<task-id>${id}</task-id>\n<tool-use-id>toolu_${id}</tool-use-id>\n<status>completed</status>\n</task-notification>`;
     const events = buildHistory([
@@ -115,9 +115,9 @@ describe('история с субагентами (фикстура agents-para
     expect(ofType(events, 'agent.end').map((e) => e.taskId)).toEqual(['a', 'b']);
   });
 
-  it('ход субагента из subagents/: вызовы с agentId сразу после agent.start', () => {
-    const events = history();
-    withSubagentTimelines(events, AGENTS_SUBAGENTS_DIR);
+  it('ход субагента из subagents/: вызовы с agentId сразу после agent.start', async () => {
+    const events = await history();
+    await withSubagentTimelines(events, AGENTS_SUBAGENTS_DIR);
     for (const a of ofType(events, 'agent.start').filter((x) => x.taskType === 'local_agent')) {
       const i = events.indexOf(a);
       const own = events.filter((e) => e.agentId === a.agentId && e.type === 'tool.start');
@@ -132,22 +132,22 @@ describe('история с субагентами (фикстура agents-para
 });
 
 describe('транскрипт субагента', () => {
-  it('файл по id задачи; чужой id в путь не попадает', () => {
-    expect(subagentFile(AGENTS_SUBAGENTS_DIR, 'a8829ceaf8a64fefc')).toMatch(
+  it('файл по id задачи; чужой id в путь не попадает', async () => {
+    expect(await subagentFile(AGENTS_SUBAGENTS_DIR, 'a8829ceaf8a64fefc')).toMatch(
       /agent-a8829ceaf8a64fefc\.jsonl$/,
     );
-    expect(subagentFile(AGENTS_SUBAGENTS_DIR, '../x')).toBeUndefined();
-    expect(subagentFile(AGENTS_SUBAGENTS_DIR, 'nope')).toBeUndefined();
+    expect(await subagentFile(AGENTS_SUBAGENTS_DIR, '../x')).toBeUndefined();
+    expect(await subagentFile(AGENTS_SUBAGENTS_DIR, 'nope')).toBeUndefined();
   });
 
-  it('Markdown: промпт, вызов, результат, итог; мета — тип и описание', () => {
-    const file = subagentFile(AGENTS_SUBAGENTS_DIR, 'a8829ceaf8a64fefc')!;
-    const meta = readSubagentMeta(file);
+  it('Markdown: промпт, вызов, результат, итог; мета — тип и описание', async () => {
+    const file = (await subagentFile(AGENTS_SUBAGENTS_DIR, 'a8829ceaf8a64fefc'))!;
+    const meta = await readSubagentMeta(file);
     expect(meta).toEqual({
       agentType: 'Explore',
       description: 'Read second line from alpha/notes.md',
     });
-    const md = subagentMarkdown(readSubagentRecords(file), {
+    const md = subagentMarkdown(await readSubagentRecords(file), {
       title: meta.description!,
       agentType: meta.agentType!,
     });
@@ -158,9 +158,9 @@ describe('транскрипт субагента', () => {
     expect(md).toContain('сброс состояния в onOpen');
   });
 
-  it('события: модель, вызов и результат с agentId', () => {
-    const file = subagentFile(AGENTS_SUBAGENTS_DIR, 'af768b2aec0b6c731')!;
-    const events = subagentEvents(readSubagentRecords(file), 'A');
+  it('события: модель, вызов и результат с agentId', async () => {
+    const file = (await subagentFile(AGENTS_SUBAGENTS_DIR, 'af768b2aec0b6c731'))!;
+    const events = subagentEvents(await readSubagentRecords(file), 'A');
     expect(events.every((e) => e.agentId === 'A')).toBe(true);
     expect(ofType(events, 'usage.message')[0]?.model).toBe('claude-haiku-4-5-20251001');
     expect(ofType(events, 'tool.start').map((t) => t.name)).toEqual(['Read']);
@@ -169,14 +169,14 @@ describe('транскрипт субагента', () => {
 });
 
 describe('разбор служебного текста', () => {
-  it('handBackText снимает рамку и отступ', () => {
+  it('handBackText снимает рамку и отступ', async () => {
     const text =
       '[Subagent hand-back] The text below… The report follows:\n  line 1\n    code\n  line 3';
     expect(handBackText(text)).toBe('line 1\n  code\nline 3');
     expect(handBackText('plain')).toBe('plain');
   });
 
-  it('notificationEnd: статус, итог, токены; остановленная задача', () => {
+  it('notificationEnd: статус, итог, токены; остановленная задача', async () => {
     const end = notificationEnd(
       '<task-notification>\n<task-id>t1</task-id>\n<tool-use-id>toolu_1</tool-use-id>\n<status>killed</status>\n<summary>stopped</summary>\n</task-notification>',
       5,

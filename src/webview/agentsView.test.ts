@@ -186,12 +186,12 @@ describe('живой прогон agents-parallel: стор и вид', () => {
 });
 
 describe('история agents-parallel: resume показывает группу с итогами', () => {
-  it('группа ×3, итоги, ход агента из subagents/', () => {
-    const extras = readTranscriptExtras(AGENTS_TRANSCRIPT);
+  it('группа ×3, итоги, ход агента из subagents/', async () => {
+    const extras = await readTranscriptExtras(AGENTS_TRANSCRIPT);
     const events = buildHistory(agentsParallelMessages(), {
       toolResults: extras.toolResults,
     }).events;
-    withSubagentTimelines(events, AGENTS_SUBAGENTS_DIR);
+    await withSubagentTimelines(events, AGENTS_SUBAGENTS_DIR);
     const now = Date.now();
     const chat = seedHistory(initialState(), { sessionId: 's', skippedTurns: 0 }, events, now);
     let hud = initialHud();

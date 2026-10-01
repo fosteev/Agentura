@@ -1065,6 +1065,138 @@ describe('ChatController: сессии (этап 6)', () => {
     );
   });
 
+  it('пересев при идущем ходе: события во время чтения транскрипта — после истории, без дублей и без потерь', async () => {
+    const { controller, sessions, posted, loadHistory } = setupResume();
+    controller.start();
+    await controller.handle({ type: 'ready' });
+    await tick();
+    const s = sessions[0]!;
+    s.id = 'live-1';
+    s.emit({
+      type: 'session.init',
+      sessionId: 'live-1',
+      model: 'sonnet',
+      cwd: '/p',
+      permissionMode: 'default',
+      tools: [],
+      slashCommands: [],
+      skills: [],
+      agents: [],
+      apiKeySource: 'none',
+      engineVersion: '2.1.285',
+    });
+    s.emit({ type: 'turn.start', at: 100, prompt: 'сделай' });
+    // ответ m0 пишется: его дельты до пересева в транскрипте ещё нет
+    s.emit({ type: 'text.delta', messageId: 'm0', text: 'Начинаю' });
+    await tick();
+    // транскрипт к моменту чтения: ход открыт, m1 и вызов t1 уже записаны
+    const transcript: AgentEvent[] = [
+      { type: 'turn.start', prompt: 'сделай', at: 100 },
+      { type: 'text.delta', messageId: 'm1', text: 'Смотрю.' },
+      { type: 'tool.start', toolUseId: 't1', name: 'Bash', input: {} },
+      { type: 'tool.result', toolUseId: 't1', isError: false, content: 'ok' },
+    ];
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    loadHistory.mockImplementation(async () => {
+      await gate; // искусственная задержка чтения транскрипта
+      return { events: transcript, turns: 1, skippedTurns: 0 };
+    });
+    posted.length = 0;
+
+    await controller.handle({ type: 'ready' }); // webview пересоздан
+    await tick();
+    // пока читаем: часть уже в транскрипте (m1, t1), часть — нет
+    s.emit({ type: 'text.delta', messageId: 'm0', text: ' работу' });
+    s.emit({ type: 'text.delta', messageId: 'm1', text: 'Смотрю.' });
+    s.emit({ type: 'tool.start', toolUseId: 't1', name: 'Bash', input: {} });
+    s.emit({ type: 'tool.result', toolUseId: 't1', isError: false, content: 'ok' });
+    s.emit({ type: 'text.delta', messageId: 'm2', text: 'Готово' });
+    s.emit({ type: 'tool.start', toolUseId: 't2', name: 'Bash', input: {} });
+    expect(posted.some((m) => m.type === 'agent.event')).toBe(false);
+    release();
+    await tick();
+    await tick();
+
+    const kinds = posted.map((m) =>
+      m.type === 'agent.event'
+        ? `${m.event.type}:${(m.event as { toolUseId?: string; messageId?: string }).toolUseId ?? (m.event as { messageId?: string }).messageId ?? ''}`
+        : m.type,
+    );
+    const at = kinds.indexOf('session.history');
+    expect(at).toBeGreaterThanOrEqual(0);
+    const after = kinds.slice(at + 1).filter((k) => /^(text|tool)/.test(k));
+    expect(after).toEqual(['text.delta:m0', 'text.delta:m0', 'text.delta:m2', 'tool.start:t2']);
+    const m0 = posted
+      .filter(
+        (m): m is Extract<ToWebview, { type: 'agent.event' }> =>
+          m.type === 'agent.event' && m.event.type === 'text.delta' && m.event.messageId === 'm0',
+      )
+      .map((m) => (m.event as { text: string }).text)
+      .join('');
+    expect(m0).toBe('Начинаю работу');
+
+    // после пересева — снова напрямую
+    posted.length = 0;
+    s.emit({ type: 'tool.result', toolUseId: 't2', isError: false, content: 'ok' });
+    expect(kinds.length).toBeGreaterThan(0);
+    expect(posted.map((m) => m.type)).toEqual(['agent.event']);
+  });
+
+  it('два пересева подряд: первый, дочитавший позже, не затирает второй; события обоих не теряются', async () => {
+    const { controller, sessions, posted, loadHistory } = setupResume();
+    controller.start();
+    await controller.handle({ type: 'ready' });
+    await tick();
+    const s = sessions[0]!;
+    s.id = 'live-1';
+    s.emit({
+      type: 'session.init',
+      sessionId: 'live-1',
+      model: 'sonnet',
+      cwd: '/p',
+      permissionMode: 'default',
+      tools: [],
+      slashCommands: [],
+      skills: [],
+      agents: [],
+      apiKeySource: 'none',
+      engineVersion: '2.1.285',
+    });
+    s.emit({ type: 'turn.start', at: 100, prompt: 'сделай' });
+    await tick();
+    const gates: (() => void)[] = [];
+    loadHistory.mockImplementation(async () => {
+      await new Promise<void>((r) => gates.push(r));
+      return { events: [{ type: 'turn.start', prompt: 'сделай', at: 100 }], turns: 1, skippedTurns: 0 };
+    });
+    posted.length = 0;
+    await controller.handle({ type: 'ready' }); // пересев A
+    await tick();
+    s.emit({ type: 'tool.start', toolUseId: 'a1', name: 'Bash', input: {} });
+    await controller.handle({ type: 'ready' }); // пересев B, пока A читает
+    await tick();
+    s.emit({ type: 'tool.start', toolUseId: 'b1', name: 'Bash', input: {} });
+    expect(gates).toHaveLength(2);
+    gates[1]!(); // B дочитал первым
+    await tick();
+    await tick();
+    gates[0]!(); // A — позже
+    await tick();
+    await tick();
+    const kinds = posted.map((m) =>
+      m.type === 'agent.event'
+        ? `${m.event.type}:${(m.event as { toolUseId?: string }).toolUseId ?? ''}`
+        : m.type,
+    );
+    expect(kinds.filter((k) => k === 'session.history')).toHaveLength(1);
+    const at = kinds.indexOf('session.history');
+    expect(kinds.slice(at + 1).filter((k) => k.startsWith('tool.start'))).toEqual([
+      'tool.start:a1',
+      'tool.start:b1',
+    ]);
+  });
+
   it('ready в первый раз у новой сессии ничего не пересевает', async () => {
     const { controller, posted } = setupResume();
     controller.start();
