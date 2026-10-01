@@ -27,7 +27,12 @@ export function renderWebview(
     cspSource: webview.cspSource,
     nonce: makeNonce(),
     scriptUri: uri('dist', 'webview', `${surface}.js`),
-    styleUris: [uri('media', 'tokens.css'), uri('media', 'hud.css'), uri('media', 'webview.css')],
+    styleUris: [
+      uri('media', 'tokens.css'),
+      uri('media', 'hud.css'),
+      uri('media', 'agents.css'),
+      uri('media', 'webview.css'),
+    ],
   });
 }
 

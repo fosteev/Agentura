@@ -143,6 +143,7 @@ export function handleHostMessage(m: ToWebview): void {
       extra.value = [];
       const now = Date.now();
       chat.value = seedHistory(chat.value, m, m.events, now);
+      selectedAgent.value = undefined;
       let hud = resetHud(hudState.value);
       for (const e of m.events) hud = applyHud(hud, e, now);
       hudState.value = hud;
@@ -197,6 +198,7 @@ export function handleHostMessage(m: ToWebview): void {
       replyTarget.value = undefined;
       chat.value = resetSession(chat.value);
       hudState.value = resetHud(hudState.value);
+      selectedAgent.value = undefined;
       extra.value = [];
       break;
     default:
@@ -232,6 +234,19 @@ export function compact(): void {
 
 export function stopAgent(taskId: string): void {
   send({ type: 'agent.stop', sessionId: chat.value.sessionId, taskId });
+}
+
+/** Агент, открытый в деталях вкладки «агенты» (`agentId` — id вызова `Agent`). */
+export const selectedAgent = signal<string | undefined>(undefined);
+
+/** «stop all» в живой строке, пока основной ждёт агентов: `stopTask` по каждому живому. */
+export function stopAgents(taskIds: readonly string[]): void {
+  for (const taskId of taskIds) stopAgent(taskId);
+}
+
+/** Транскрипт субагента — документом только для чтения в редакторе (хост читает его с диска). */
+export function openAgentTranscript(agentId: string, taskId: string): void {
+  send({ type: 'agent.transcript', sessionId: chat.value.sessionId, agentId, taskId });
 }
 
 export function addExtra(a: Attachment): void {

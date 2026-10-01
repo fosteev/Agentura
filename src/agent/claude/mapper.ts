@@ -346,7 +346,11 @@ export class ClaudeEventMapper {
   private streamEvent(m: Json, out: AgentEvent[]): void {
     const e = obj(m['event']);
     if (!e) return;
-    if (m['parent_tool_use_id']) return; // субагенты без потока; на всякий случай не смешиваем
+    // Субагенты потока не шлют (живой прогон `scripts/agents-smoke.mjs`, SDK 0.3.285: ни одного
+    // `stream_event` с `parent_tool_use_id`): их сообщения приходят целыми `assistant`/`user` и
+    // разбираются ниже с `agentId` — вызовы, результаты, текст, рассуждение. Поток субагента, если
+    // появится, нельзя смешивать с `currentMessageId` основного — поэтому здесь он пропускается.
+    if (m['parent_tool_use_id']) return;
     this.ensureTurn(out, m);
     switch (e['type']) {
       case 'message_start': {

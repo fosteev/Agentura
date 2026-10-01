@@ -9,7 +9,6 @@ import {
   cacheHitRatio,
   cacheTtl,
   contextMax,
-  type AgentNode,
   type HudState,
   type TimelineSeg,
   type TurnTimeline,
@@ -17,7 +16,7 @@ import {
 import { clock, resetLabel } from './chatState';
 
 export { resetLabel };
-import { formatCost, formatDuration, formatInt, shortModel, splitPath, toolView } from './toolView';
+import { formatCost, formatDuration, formatInt, splitPath, toolView } from './toolView';
 import { ui } from './strings';
 
 export type Zone = 'ok' | 'warn' | 'hot' | 'full';
@@ -265,7 +264,7 @@ export interface TimelineView {
   rows: TimelineRowView[];
 }
 
-function segClass(g: TimelineSeg): string | undefined {
+export function segClass(g: TimelineSeg): string | undefined {
   if (g.kind === 'think') return 'th';
   if (g.kind === 'text') return 'tx';
   const op = toolView(g.name ?? '', g.input ?? {}).op;
@@ -283,16 +282,49 @@ function segLabel(g: TimelineSeg, cwd?: string): string {
   return `${v.op} ${what}`.trim();
 }
 
+/** Вызовы `Agent`/`Task` подряд (параллельные в одном ответе) — одной строкой «agent ×N параллельно». */
+function mergeAgentSegs(segs: readonly TimelineSeg[]): TimelineSeg[] {
+  const out: TimelineSeg[] = [];
+  let run: TimelineSeg[] = [];
+  const flush = () => {
+    if (run.length === 1) out.push(run[0]!);
+    else if (run.length > 1) {
+      const open = run.some((g) => g.endAt === undefined);
+      const first = run[0]!;
+      out.push({
+        id: first.id,
+        kind: 'tool',
+        name: first.name!,
+        input: { description: ui.agents.group.parallel(run.length) },
+        at: first.at,
+        ...(open ? {} : { endAt: Math.max(...run.map((g) => g.endAt ?? g.at)) }),
+        state: open ? 'run' : run.some((g) => g.state === 'err') ? 'err' : 'ok',
+      });
+    }
+    run = [];
+  };
+  for (const g of segs) {
+    if (g.kind === 'tool' && (g.name === 'Agent' || g.name === 'Task')) run.push(g);
+    else {
+      flush();
+      out.push(g);
+    }
+  }
+  flush();
+  return out;
+}
+
 export function timelineView(t: TurnTimeline, now: number, cwd?: string): TimelineView {
   const live = t.endedAt === undefined;
   const end = t.endedAt ?? now;
   const heading = `${ui.turn.turn} · ${clock(t.startedAt)} · ${live ? `${ui.turn.running} ${formatDuration(end - t.startedAt)}` : formatDuration(end - t.startedAt)}`;
-  const strip = t.segs.map((g) => {
+  const segs = mergeAgentSegs(t.segs);
+  const strip = segs.map((g) => {
     const cls = segClass(g);
     const dur = Math.max(0, (g.endAt ?? now) - g.at);
     return { ...(cls ? { cls } : {}), flex: Math.max(1, Math.round(dur / 100)) };
   });
-  const rows = t.segs.map((g): TimelineRowView => {
+  const rows = segs.map((g): TimelineRowView => {
     const running = g.endAt === undefined;
     const dur = formatDuration((g.endAt ?? now) - g.at);
     if (running && g.waiting) {
@@ -334,90 +366,9 @@ export function turnBadge(s: HudState): { count: number; live: boolean } | undef
 
 // ——— панель «агенты» ———
 
-export interface AgentRowView {
-  kind: 'main' | 'sub';
-  busy?: boolean;
-  mark: string;
-  name: string;
-  meta: string;
-  tokens: string;
-  stoppable?: boolean;
-  /** Для кнопки ■ → `stopTask`. */
-  taskId?: string;
-  depth: number;
-}
-
 export function compactTokens(n: number): string {
   if (n < 1000) return String(n);
   return n < 100_000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k` : `${Math.round(n / 1000)}k`;
-}
-
-function agentMark(a: AgentNode): string {
-  switch (a.status) {
-    case 'running':
-      return a.background ? '◐' : '●';
-    case 'failed':
-      return '✕';
-    case 'stopped':
-      return '■';
-    default:
-      return '○';
-  }
-}
-
-function agentMeta(a: AgentNode, now: number): string {
-  const kind = a.background ? ui.agents.background : (a.subagentType ?? a.taskType);
-  const run = a.durationMs ?? now - a.startedAt;
-  switch (a.status) {
-    case 'running':
-      return `${kind} · ${formatDuration(run)}`;
-    case 'failed':
-      return `${kind} · ${ui.agents.failed} ${clock(a.endedAt ?? now)}`;
-    case 'stopped':
-      return `${kind} · ${ui.agents.stopped} ${clock(a.endedAt ?? now)}`;
-    default:
-      return `${kind} · ${ui.agents.done} ${clock(a.endedAt ?? now)}`;
-  }
-}
-
-/** Дерево «основной → субагенты → фоновые задачи» плоским списком с глубиной. */
-export function agentRows(
-  s: HudState,
-  o: { working: boolean; model?: string; now: number },
-): AgentRowView[] {
-  const used = s.context?.used;
-  const rows: AgentRowView[] = [
-    {
-      kind: 'main',
-      mark: o.working ? '●' : '○',
-      name: ui.agents.main,
-      meta: `${o.model ? shortModel(o.model) : '—'} · ${o.working ? ui.agents.answering : ui.agents.waitingTask}`,
-      tokens: used !== undefined ? compactTokens(used) : '—',
-      depth: 0,
-    },
-  ];
-  const known = new Set(s.agents.map((a) => a.agentId));
-  const walk = (parent: string | undefined, depth: number, seen: Set<string>) => {
-    for (const a of s.agents) {
-      const p = a.parentAgentId && known.has(a.parentAgentId) ? a.parentAgentId : undefined;
-      if (p !== parent || seen.has(a.agentId)) continue;
-      seen.add(a.agentId);
-      const running = a.status === 'running';
-      rows.push({
-        kind: 'sub',
-        ...(running ? { busy: true } : {}),
-        mark: agentMark(a),
-        name: a.description || a.agentId,
-        meta: agentMeta(a, o.now),
-        tokens: a.tokens !== undefined ? compactTokens(a.tokens) : '—',
-        ...(running && a.taskId ? { stoppable: true, taskId: a.taskId } : {}),
-        depth: depth + 1,
-      });
-      walk(a.agentId, depth + 1, seen);
-    }
-  };
-  walk(undefined, 0, new Set());
-  return rows;
 }
 
 export function sessionTotals(s: HudState): { label: string; value: string }[] {

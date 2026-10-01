@@ -4,7 +4,6 @@ import { describe, expect, it } from 'vitest';
 import { applyHud, initialHud, type HudState } from './hudState';
 import type { AgentEvent } from '../agent/types';
 import {
-  agentRows,
   cacheView,
   compactTokens,
   contextBlocks,
@@ -21,6 +20,7 @@ import {
   turnBadge,
   turnsView,
 } from './hudView';
+import { agentMapView } from './agentsView';
 
 const TH = [120_000, 150_000];
 const ev = (e: Record<string, unknown>) => e as unknown as AgentEvent;
@@ -189,7 +189,7 @@ describe('итоги сессии и агенты', () => {
     ]);
   });
 
-  it('дерево: основной, субагент, его фоновая задача глубже; ■ только у бегущих', () => {
+  it('карта: основной и субагент деревом, фоновая задача отдельно; ■ только у бегущих', () => {
     let s = initialHud();
     s = applyHud(
       s,
@@ -228,15 +228,21 @@ describe('итоги сессии и агенты', () => {
       }),
       0,
     );
-    const rows = agentRows(s, { working: true, model: 'claude-opus-5-5', now: 3200 });
-    expect(rows.map((r) => [r.depth, r.mark, r.stoppable ?? false])).toEqual([
+    const view = agentMapView(s, {
+      working: true,
+      waiting: false,
+      model: 'claude-opus-5-5',
+      now: 3200,
+    });
+    expect(view.rows.map((r) => [r.depth, r.mark, r.stopTaskId ?? false])).toEqual([
       [0, '●', false],
-      [1, '○', false],
-      [2, '◐', true],
+      [1, '✓', false],
     ]);
-    expect(rows[2]).toMatchObject({ taskId: 'k2', meta: 'фоновая задача · 3.2s' });
-    expect(rows[1]!.tokens).toBe('8.1k');
-    expect(rows[0]!.meta).toBe('opus-5.5 · отвечает');
+    expect(view.tasks.map((r) => [r.mark, r.stopTaskId ?? false, r.meta])).toEqual([
+      ['◐', 'k2', 'shell · 3.2s'],
+    ]);
+    expect(view.rows[1]!.tokens).toBe('8.1k');
+    expect(view.rows[0]!.meta).toBe('opus-5.5 · отвечает');
   });
 });
 

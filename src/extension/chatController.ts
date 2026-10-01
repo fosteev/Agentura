@@ -49,6 +49,8 @@ export interface ChatDeps {
   readText?(path: string): Promise<string | undefined>;
   /** Нативный дифф VS Code (`vscode.diff` над `agentura-diff:`). */
   openDiff?(d: OpenDiff): Promise<void>;
+  /** Текст документом только для чтения (транскрипт субагента, этап 2 roadmap 0.2). */
+  openText?(d: { key: string; name: string; text: string }): Promise<void>;
   /** Превью `.html` в соседней вкладке (абсолютный путь). */
   openPreview?(path: string): Promise<void>;
   /** Открыть ссылку в браузере (только https://claude.ai/). */
@@ -278,7 +280,11 @@ export class ChatController {
     let history = this.resumed?.history;
     if (!this.seedPending || !history) {
       try {
-        history = await this.deps.adapter.loadHistory(id, this.deps.cwd, { live: this.inTurn });
+        // сессия зарегистрирована живой — процесс движка жив, его фоновые задачи ещё идут
+        history = await this.deps.adapter.loadHistory(id, this.deps.cwd, {
+          live: this.inTurn,
+          tasksAlive: this.registeredId !== undefined,
+        });
       } catch (e) {
         // новая сессия без единого сообщения: транскрипта ещё нет — пересеивать нечего, кроме снимка
         this.log.debug(`пересев: история ${id}: ${String(e)}`);
@@ -406,6 +412,17 @@ export class ChatController {
       case 'diff.open':
         await this.openDiff(m.toolUseId);
         return;
+      case 'agent.transcript': {
+        const id = m.sessionId || this.current?.id;
+        if (!id || !deps.adapter.agentTranscript || !deps.openText) return;
+        const text = await deps.adapter.agentTranscript(id, deps.cwd, m.taskId, '');
+        if (text === undefined) {
+          this.log.warn(`транскрипт субагента ${m.taskId}: файла нет`);
+          return;
+        }
+        await deps.openText({ key: `agent-${m.taskId}`, name: `agent-${m.taskId}.md`, text });
+        return;
+      }
       case 'preview.open':
         if (!isAbsolute(m.path) || !/\.html?$/i.test(m.path)) {
           this.log.warn(`превью: не абсолютный путь к .html — ${m.path}`);

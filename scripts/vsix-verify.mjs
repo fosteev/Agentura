@@ -88,6 +88,7 @@ for (const f of [
   'dist/webview/chat.js',
   'dist/webview/sidebar.js',
   'media/icon.svg',
+  'media/agents.css',
   'package.json',
 ]) {
   check(existsSync(join(ext, f)), `есть ${f}`, `нет ${f}`);

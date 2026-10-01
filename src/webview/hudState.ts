@@ -42,9 +42,11 @@ export interface TurnTimeline {
 }
 
 export interface AgentNode {
+  /** Id вызова инструмента, запустившего задачу (`Agent`/`Task` или фоновый `Bash`). */
   agentId: string;
   taskId: string;
   description: string;
+  /** `local_agent` — субагент; `local_bash`, `monitor`… — фоновая задача. */
   taskType: string;
   subagentType?: string;
   background: boolean;
@@ -56,7 +58,24 @@ export interface AgentNode {
   toolUses?: number;
   durationMs?: number;
   lastTool?: string;
+  /** Ход пользователя, в котором задача запущена (`HudState.turnNo`): «за ход» — бейдж, карта, группа. */
+  turnNo: number;
+  /** Промпт от основного (`task_started.prompt`). */
+  prompt?: string;
+  /** Модель субагента — из его `usage.message`. */
+  model?: string;
+  /** Итог, возвращённый основному (`task_notification.summary`); у упавшего — текст ошибки. */
+  summary?: string;
+  /**
+   * Ход агента: его вызовы инструментов, рассуждение и текст (события с `agentId`) — как панель
+   * «ход». Последние `MAX_AGENT_SEGS`; `calls` — сколько вызовов было всего.
+   */
+  segs: TimelineSeg[];
+  calls: number;
 }
+
+/** Сколько строк хода агента держать (длинные агенты делают сотни вызовов). */
+export const MAX_AGENT_SEGS = 200;
 
 export interface HudState {
   thresholds: number[];
@@ -79,6 +98,8 @@ export interface HudState {
   /** Последние ходы, старый первым; у активного нет `endedAt`. */
   turns: TurnTimeline[];
   agents: AgentNode[];
+  /** Номер хода пользователя: `turn.start` с промптом (ход-пробуждение после фоновой задачи — не новый). */
+  turnNo: number;
 }
 
 const KEEP_TURNS = 3;
@@ -90,6 +111,7 @@ export function initialHud(thresholds: readonly number[] = DEFAULT_THRESHOLDS): 
     totals: { costUsd: 0, turns: 0, durationMs: 0, input: 0, cacheRead: 0, cacheWrite: 0 },
     turns: [],
     agents: [],
+    turnNo: 0,
   };
 }
 
@@ -183,19 +205,28 @@ function updateAgent(
 }
 
 export function applyHud(s: HudState, e: AgentEvent, now = Date.now()): HudState {
+  const blank = (agentId: string, taskId: string, description: string): AgentNode => ({
+    agentId,
+    taskId,
+    description,
+    taskType: 'agent',
+    background: false,
+    status: 'running',
+    startedAt: now,
+    turnNo: s.turnNo,
+    segs: [],
+    calls: 0,
+  });
   switch (e.type) {
     case 'agent.start':
       return updateAgent(
         s,
         e.agentId,
         () => ({
-          agentId: e.agentId,
-          taskId: e.taskId,
-          description: e.description,
+          ...blank(e.agentId, e.taskId, e.description),
           taskType: e.taskType,
           background: e.background,
-          status: 'running',
-          startedAt: now,
+          startedAt: e.at ?? now,
         }),
         (a) => ({
           ...a,
@@ -205,24 +236,17 @@ export function applyHud(s: HudState, e: AgentEvent, now = Date.now()): HudState
           background: e.background,
           ...(e.subagentType ? { subagentType: e.subagentType } : {}),
           ...(e.parentAgentId ? { parentAgentId: e.parentAgentId } : {}),
+          ...(e.prompt ? { prompt: e.prompt } : {}),
         }),
       );
     case 'agent.progress':
       return updateAgent(
         s,
         e.agentId,
-        () => ({
-          agentId: e.agentId,
-          taskId: e.taskId,
-          description: e.description ?? '',
-          taskType: 'agent',
-          background: false,
-          status: 'running',
-          startedAt: now,
-        }),
+        () => blank(e.agentId, e.taskId, e.description ?? ''),
         (a) => ({
           ...a,
-          ...(e.description ? { description: e.description } : {}),
+          // `description` прогресса — «Reading alpha/notes.md»: что агент делает сейчас, не его задача
           ...(e.totalTokens !== undefined ? { tokens: e.totalTokens } : {}),
           ...(e.toolUses !== undefined ? { toolUses: e.toolUses } : {}),
           ...(e.durationMs !== undefined ? { durationMs: e.durationMs } : {}),
@@ -230,32 +254,29 @@ export function applyHud(s: HudState, e: AgentEvent, now = Date.now()): HudState
         }),
       );
     case 'agent.end':
+      // конец задачи, начала которой нет (старт отрезан `maxTurns`, старый транскрипт): узел без
+      // типа и описания стал бы фантомным «субагентом» в карте и бейдже — пропускаем
+      if (!s.agents.some((a) => a.agentId === e.agentId)) return s;
       return updateAgent(
         s,
         e.agentId,
-        () => ({
-          agentId: e.agentId,
-          taskId: e.taskId,
-          description: e.summary ?? '',
-          taskType: 'agent',
-          background: false,
-          status: e.status,
-          startedAt: now,
-        }),
+        () => blank(e.agentId, e.taskId, e.summary ?? ''),
         (a) => ({
           ...a,
           status: e.status,
-          endedAt: now,
+          endedAt: e.at ?? now,
+          ...(e.summary ? { summary: e.summary } : {}),
           ...(e.totalTokens !== undefined ? { tokens: e.totalTokens } : {}),
           ...(e.toolUses !== undefined ? { toolUses: e.toolUses } : {}),
           ...(e.durationMs !== undefined ? { durationMs: e.durationMs } : {}),
+          segs: closeSegs(a.segs, e.at ?? now, e.status !== 'completed'),
         }),
       );
     default:
       break;
   }
-  // дальше — только основной агент (события субагентов контекст, кэш и ход не трогают)
-  if (e.agentId) return s;
+  // события субагента — в его ход (строки «ход агента» и «текущий вызов»), основной не трогают
+  if (e.agentId) return applySubagent(s, e.agentId, e, now);
 
   switch (e.type) {
     case 'session.init':
@@ -313,7 +334,12 @@ export function applyHud(s: HudState, e: AgentEvent, now = Date.now()): HudState
       const closed = s.turns.map((t) =>
         t.endedAt === undefined ? { ...closeAll(t, e.at, true), endedAt: e.at } : t,
       );
-      return { ...s, turns: [...closed, { startedAt: e.at, segs: [] }].slice(-KEEP_TURNS) };
+      return {
+        ...s,
+        turns: [...closed, { startedAt: e.at, segs: [] }].slice(-KEEP_TURNS),
+        // ход-пробуждение (без промпта) продолжает ход пользователя: его агенты — те же «за ход»
+        ...(e.prompt !== undefined || e.prompts ? { turnNo: s.turnNo + 1 } : {}),
+      };
     }
     case 'thinking.start': {
       const { state, turn } = ensureTurn(s, e.at);
@@ -378,13 +404,27 @@ export function applyHud(s: HudState, e: AgentEvent, now = Date.now()): HudState
     case 'turn.result': {
       const turn = activeTurn(s);
       let out = s;
+      let at = now;
       if (turn) {
         const endedAt = turn.startedAt + e.durationMs;
         const closeAt = Math.max(endedAt, ...turn.segs.map((g) => g.endAt ?? g.at));
+        at = Math.max(endedAt, closeAt);
         out = withTurn(s, {
           ...closeAll(turn, closeAt, e.interrupted),
-          endedAt: Math.max(endedAt, closeAt),
+          endedAt: at,
         });
+      }
+      // Ход основного кончился — агенты переднего плана кончились с ним (он ждёт их результата). Без
+      // их уведомления (Esc посреди работы агентов) они «бежали» бы вечно; позднее `agent.end` поправит итог.
+      if (out.agents.some((a) => a.status === 'running' && !a.background)) {
+        out = {
+          ...out,
+          agents: out.agents.map((a) =>
+            a.status === 'running' && !a.background
+              ? { ...a, status: 'stopped' as const, endedAt: at, segs: closeSegs(a.segs, at, true) }
+              : a,
+          ),
+        };
       }
       const u = e.usage;
       const t = out.totals;
@@ -407,7 +447,9 @@ export function applyHud(s: HudState, e: AgentEvent, now = Date.now()): HudState
     case 'session.closed': {
       // процесс движка ушёл — его задачи тоже: не «бегут» (тик, кнопка ■ в никуда)
       const agents = s.agents.map((a) =>
-        a.status === 'running' ? { ...a, status: 'stopped' as const, endedAt: now } : a,
+        a.status === 'running'
+          ? { ...a, status: 'stopped' as const, endedAt: now, segs: closeSegs(a.segs, now, true) }
+          : a,
       );
       const { compacting: _c, ...calm } = s;
       void _c;
@@ -415,6 +457,87 @@ export function applyHud(s: HudState, e: AgentEvent, now = Date.now()): HudState
       const turn = activeTurn(out);
       if (!turn) return out;
       return withTurn(out, { ...closeAll(turn, now, true), endedAt: now });
+    }
+    default:
+      return s;
+  }
+}
+
+/** Незакрытые строки хода агента — закрыть: агент закончился или остановлен. */
+function closeSegs(segs: TimelineSeg[], at: number, stopped: boolean): TimelineSeg[] {
+  if (!segs.some((g) => g.endAt === undefined)) return segs;
+  return segs.map((g) =>
+    g.endAt !== undefined
+      ? g
+      : { ...g, endAt: Math.max(at, g.at), state: g.kind === 'tool' && stopped ? 'stopped' : 'ok' },
+  );
+}
+
+/**
+ * Событие субагента → его ход. Агента ещё нет (`agent.start` не пришёл) — событие теряется: без
+ * задачи его некуда приписать (живой движок шлёт `task_started` раньше сообщений агента).
+ */
+function applySubagent(s: HudState, agentId: string, e: AgentEvent, now: number): HudState {
+  const i = s.agents.findIndex((a) => a.agentId === agentId);
+  if (i < 0) return s;
+  const a = s.agents[i]!;
+  const put = (next: AgentNode): HudState => {
+    const agents = s.agents.slice();
+    agents[i] = next;
+    return { ...s, agents };
+  };
+  const add = (seg: TimelineSeg, call = false): HudState => {
+    const segs = closeText({ startedAt: a.startedAt, segs: a.segs }, seg.at).segs;
+    return put({
+      ...a,
+      segs: [...segs, seg].slice(-MAX_AGENT_SEGS),
+      calls: a.calls + (call ? 1 : 0),
+    });
+  };
+  switch (e.type) {
+    case 'usage.message':
+      return a.model || !e.model ? s : put({ ...a, model: e.model });
+    case 'tool.start':
+      // повторная доставка или поздний вызов уже закончившегося агента — его ход не трогаем
+      if (a.status !== 'running' || a.segs.some((g) => g.id === e.toolUseId)) return s;
+      return add(
+        {
+          id: e.toolUseId,
+          kind: 'tool',
+          name: e.name,
+          input: e.input,
+          at: e.at ?? now,
+          state: 'run',
+        },
+        true,
+      );
+    case 'tool.result': {
+      const seg = a.segs.find((g) => g.kind === 'tool' && g.id === e.toolUseId);
+      if (!seg) return s;
+      const endAt =
+        e.durationMs !== undefined ? seg.at + e.durationMs : (e.at ?? Math.max(now, seg.at));
+      const detail = toolDetail(seg.name ?? '', seg.input ?? {}, e.result);
+      const t = patchSeg({ startedAt: a.startedAt, segs: a.segs }, (g) => g === seg, {
+        endAt,
+        state: e.isError ? 'err' : 'ok',
+        ...(detail ? { detail } : {}),
+      });
+      return put({ ...a, segs: t.segs });
+    }
+    case 'thinking.start':
+      return add({ id: e.messageId, kind: 'think', at: e.at, state: 'run' });
+    case 'thinking.stop': {
+      const t = patchSeg(
+        { startedAt: a.startedAt, segs: a.segs },
+        (g) => g.kind === 'think' && g.id === e.messageId && g.endAt === undefined,
+        { endAt: e.at, state: 'ok' },
+      );
+      return put({ ...a, segs: t.segs });
+    }
+    case 'text.delta': {
+      const last = a.segs[a.segs.length - 1];
+      if (last && last.kind === 'text' && last.id === e.messageId) return s;
+      return add({ id: e.messageId, kind: 'text', at: now, state: 'run' });
     }
     default:
       return s;

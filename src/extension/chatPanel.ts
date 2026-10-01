@@ -256,6 +256,7 @@ export class ChatPanel {
       },
       // дифф и превью — в группу редактора, не поверх вкладки чата
       openDiff: (d) => services.diffs.open(d, editorColumn()),
+      openText: (d) => services.diffs.openText(d, editorColumn()),
       openPreview: (p) => services.previews.open(p, editorColumn()),
       openExternal: (u) => void vscode.env.openExternal(vscode.Uri.parse(u)),
       ...(open.resumeId ? { resumeId: open.resumeId } : {}),

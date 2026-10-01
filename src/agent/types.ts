@@ -219,6 +219,8 @@ export type AgentEvent =
       prompt?: string;
       /** Задачу запустил субагент (например, его фоновый Bash) — id этого субагента. */
       parentAgentId?: string;
+      /** Время запуска, мс: есть у восстановленной истории (живой `task_started` без времени). */
+      at?: number;
     })
   | (Base & {
       type: 'agent.progress';
@@ -240,6 +242,8 @@ export type AgentEvent =
       totalTokens?: number;
       toolUses?: number;
       durationMs?: number;
+      /** Время конца, мс: есть у восстановленной истории. */
+      at?: number;
     })
   | (Base & {
       type: 'limit.update';
@@ -398,9 +402,20 @@ export interface AgentAdapter {
   loadHistory(
     sessionId: string,
     cwd: string,
-    options?: { live?: boolean; maxTurns?: number },
+    /** `tasksAlive` — процесс движка жив: незакрытые фоновые задачи из транскрипта ещё идут. */
+    options?: { live?: boolean; tasksAlive?: boolean; maxTurns?: number },
   ): Promise<SessionHistory>;
   /** Переименование (`customTitle` в транскрипте). */
   renameSession(sessionId: string, title: string, cwd: string): Promise<void>;
+  /**
+   * Транскрипт субагента (`taskId` — id задачи движка) текстом Markdown для документа только для
+   * чтения; нет — `undefined`. Необязателен: у адаптера без субагентов кнопки «транскрипт» нет.
+   */
+  agentTranscript?(
+    sessionId: string,
+    cwd: string,
+    taskId: string,
+    title: string,
+  ): Promise<string | undefined>;
   accountInfo(cwd: string): Promise<AccountInfo>;
 }

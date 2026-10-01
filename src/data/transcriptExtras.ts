@@ -16,7 +16,10 @@ export interface TranscriptExtras {
   totalCostUsd?: number;
 }
 
-/** Результат, нужный ленте: правка (диф) или счётчик поиска. Остальное (Bash, Read…) не храним. */
+/**
+ * Результат, нужный ленте: правка (диф), счётчик поиска, итог субагента (`agentId`, токены, время —
+ * карта агентов) или id фоновой задачи `Bash` (`backgroundTaskId`). Остальное (Read…) не храним.
+ */
 function interesting(result: unknown): boolean {
   if (typeof result !== 'object' || result === null) return false;
   const r = result as Record<string, unknown>;
@@ -24,7 +27,9 @@ function interesting(result: unknown): boolean {
     'structuredPatch' in r ||
     'originalFile' in r ||
     typeof r['numFiles'] === 'number' ||
-    Array.isArray(r['filenames'])
+    Array.isArray(r['filenames']) ||
+    typeof r['agentId'] === 'string' ||
+    typeof r['backgroundTaskId'] === 'string'
   );
 }
 
