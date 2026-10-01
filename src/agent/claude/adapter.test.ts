@@ -123,6 +123,40 @@ describe('userContent (картинки в сообщении, этап 4 roadma
   });
 });
 
+describe('userContent (файлы-вложения, этап 8 roadmap 0.2)', () => {
+  const png = { mediaType: 'image/png' as const, data: 'iVBORw0KGgo=' };
+  const txt = { kind: 'text' as const, path: 'notes/a.txt', data: 'секрет', size: 12 };
+  const pdf = { kind: 'pdf' as const, path: '/abs/b.pdf', data: 'JVBERi0x', size: 6, pages: 1 };
+
+  it('картинки, затем документы с путём в title, текст последним; размер и страницы в API не уходят', () => {
+    expect(userContent('что в файлах?', [png], [txt, pdf])).toEqual([
+      { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'iVBORw0KGgo=' } },
+      {
+        type: 'document',
+        source: { type: 'text', media_type: 'text/plain', data: 'секрет' },
+        title: 'notes/a.txt',
+      },
+      {
+        type: 'document',
+        source: { type: 'base64', media_type: 'application/pdf', data: 'JVBERi0x' },
+        title: '/abs/b.pdf',
+      },
+      { type: 'text', text: 'что в файлах?' },
+    ]);
+  });
+
+  it('только файл без текста — один document-блок; пустые списки — строка', () => {
+    expect(userContent('', undefined, [txt])).toEqual([
+      {
+        type: 'document',
+        source: { type: 'text', media_type: 'text/plain', data: 'секрет' },
+        title: 'notes/a.txt',
+      },
+    ]);
+    expect(userContent('привет', [], [])).toBe('привет');
+  });
+});
+
 describe('ClaudeAdapter', () => {
   it('send с картинками: content блоками, turn.start несёт картинки (миниатюры в ленте)', async () => {
     const fake = fakeSdk();

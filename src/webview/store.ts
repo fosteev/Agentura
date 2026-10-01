@@ -4,18 +4,22 @@ import type {
   AgentEvent,
   CommandOption,
   EffortLevel,
+  FileRef,
   ImageRef,
   ModelOption,
   PermissionDecision,
   PermissionMode,
+  PromptFile,
   PromptImage,
 } from '../agent/types';
 import { attachmentKey, type Attachment, type FileHit } from '../shared/prompt';
+import { MAX_IMAGES_PER_MESSAGE, type ImageProblem } from '../shared/images';
 import {
-  MAX_IMAGES_PER_MESSAGE,
-  MAX_MESSAGE_IMAGES_BASE64,
-  type ImageProblem,
-} from '../shared/images';
+  fileName,
+  MAX_FILES_PER_MESSAGE,
+  MAX_MESSAGE_ATTACH_CHARS,
+  type FileProblem,
+} from '../shared/files';
 import {
   baseName,
   extOf,
@@ -27,6 +31,7 @@ import {
 import type {
   EditorContext,
   LimitWindowSummary,
+  PickedFile,
   PlanChoice,
   SessionSummary,
   ToWebview,
@@ -81,6 +86,15 @@ export const dismissed = signal<ReadonlySet<string>>(new Set());
 export const extra = signal<Attachment[]>([]);
 /** Картинки в поле ввода (этап 4 roadmap 0.2): ⌘V, перетаскивание, «+». */
 export const draftImages = signal<DraftImage[]>([]);
+/** Файл в поле ввода (этап 8 roadmap 0.2): готов к отправке (`file`) или красная плашка (`problem`). */
+export interface DraftFile {
+  id: number;
+  name: string;
+  file?: PromptFile;
+  problem?: FileProblem;
+}
+/** Текстовые файлы и pdf в поле ввода: «+», перетаскивание из проводника VS Code. */
+export const draftFiles = signal<DraftFile[]>([]);
 export const autoFile = signal(true);
 export const autoSelection = signal(true);
 export const showThinking = signal(true);
@@ -209,6 +223,9 @@ export function handleHostMessage(m: ToWebview): void {
       break;
     case 'attach.picked':
       for (const hit of m.items) addExtra({ kind: hit.isDir ? 'folder' : 'file', path: hit.path });
+      break;
+    case 'file.picked':
+      addFiles(m.items);
       break;
     case 'image.picked':
       void addImages(
@@ -365,11 +382,12 @@ export async function addImages(
       prepareImage(src, codec).then((r) => {
         // убрали, пока уменьшалась, — не воскрешать
         if (!draftImages.value.some((d) => d.id === id)) return;
-        const others = draftImages.value.reduce(
-          (sum, d) => sum + (d.id !== id && d.image ? d.image.data.length : 0),
-          0,
-        );
-        if (!('problem' in r) && others + r.image.data.length > MAX_MESSAGE_IMAGES_BASE64) {
+        const others =
+          draftImages.value.reduce(
+            (sum, d) => sum + (d.id !== id && d.image ? d.image.data.length : 0),
+            0,
+          ) + filesChars();
+        if (!('problem' in r) && others + r.image.data.length > MAX_MESSAGE_ATTACH_CHARS) {
           r = { problem: 'total' };
         }
         const next: DraftImage =
@@ -400,6 +418,75 @@ export function readyImages(): PromptImage[] {
 /** Картинка ещё уменьшается — отправка подождёт. */
 export const imagesBusy = computed(() => draftImages.value.some((d) => d.busy));
 
+let fileSeq = 0;
+
+/** Символов данных у готовых файлов поля (общий лимит сообщения с картинками). */
+function filesChars(): number {
+  return draftFiles.value.reduce((sum, d) => sum + (d.file?.data.length ?? 0), 0);
+}
+
+/**
+ * Добавить файлы в поле ввода (этап 8 roadmap 0.2): готовый — чип, отказ хоста или сверх лимитов
+ * сообщения (10 файлов, 20 МБ вместе с картинками) — красная плашка. Тот же файл с тем же
+ * содержимым второй раз не добавляется.
+ */
+export function addFiles(items: readonly PickedFile[]): void {
+  for (const it of items) {
+    const id = ++fileSeq;
+    const name = it.name || (it.path ? fileName(it.path) : 'file');
+    if (it.problem || !it.kind || !it.path || typeof it.data !== 'string') {
+      draftFiles.value = [...draftFiles.value, { id, name, problem: it.problem ?? 'read' }];
+      continue;
+    }
+    const same = draftFiles.value.some((d) => d.file?.path === it.path && d.file?.data === it.data);
+    if (same) continue;
+    const ready = draftFiles.value.filter((d) => d.file).length;
+    const images = draftImages.value.reduce((sum, d) => sum + (d.image?.data.length ?? 0), 0);
+    const problem: FileProblem | undefined =
+      ready >= MAX_FILES_PER_MESSAGE
+        ? 'count'
+        : images + filesChars() + it.data.length > MAX_MESSAGE_ATTACH_CHARS
+          ? 'total'
+          : undefined;
+    if (problem) {
+      draftFiles.value = [...draftFiles.value, { id, name, problem }];
+      continue;
+    }
+    const file: PromptFile = {
+      kind: it.kind,
+      path: it.path,
+      data: it.data,
+      size: it.size ?? it.data.length,
+      ...(it.pages !== undefined ? { pages: it.pages } : {}),
+    };
+    draftFiles.value = [...draftFiles.value, { id, name, file }];
+  }
+}
+
+/** Плашки «не взяли» без запроса к хосту (перетащили не картинку не из VS Code). */
+export function rejectFiles(names: readonly string[], problem: FileProblem): void {
+  addFiles(names.map((name) => ({ name, problem })));
+}
+
+export function removeFile(id: number): void {
+  draftFiles.value = draftFiles.value.filter((d) => d.id !== id);
+}
+
+/** Готовые файлы поля ввода (без плашек ошибок). */
+export function readyFiles(): PromptFile[] {
+  return draftFiles.value.flatMap((d) => (d.file ? [d.file] : []));
+}
+
+/** Чип файла в ленте → вкладка редактора: файл рабочей папки или временная копия на хосте. */
+export function openFile(f: FileRef): void {
+  send({
+    type: 'file.open',
+    kind: f.kind,
+    path: f.path,
+    ...(f.data ? { data: f.data } : {}),
+  });
+}
+
 /** Миниатюра в ленте → вкладка редактора (хост пишет временный файл в storage расширения). */
 export function openImage(i: ImageRef): void {
   if (!i.data || !i.mediaType) return;
@@ -410,20 +497,26 @@ export function sendMessage(text: string, withContext = true): boolean {
   const s = chat.value;
   if (s.closed || imagesBusy.value) return false;
   const attachments = withContext ? currentAttachments() : [];
-  // `/команда` картинки не забирает: с content-массивом CLI не распознал бы команду
-  const images = text.startsWith('/') ? [] : readyImages();
-  if (!text && images.length === 0) return false;
-  chat.value = queueUser(s, text, images);
+  // `/команда` картинки и файлы не забирает: с content-массивом CLI не распознал бы команду
+  const command = text.startsWith('/');
+  const images = command ? [] : readyImages();
+  const files = command ? [] : readyFiles();
+  if (!text && images.length === 0 && files.length === 0) return false;
+  chat.value = queueUser(s, text, images, files);
   if (text) history.value = pushHistory(history.value, text);
   extra.value = [];
   // отправленные и плашки ошибок уходят из поля вместе с текстом
-  if (!text.startsWith('/')) draftImages.value = [];
+  if (!command) {
+    draftImages.value = [];
+    draftFiles.value = [];
+  }
   send({
     type: 'send',
     sessionId: s.sessionId,
     text,
     ...(attachments.length ? { attachments } : {}),
     ...(images.length ? { images } : {}),
+    ...(files.length ? { files } : {}),
   });
   return true;
 }

@@ -251,8 +251,11 @@ export function countTurns(path: string): number {
         content.find((b) => (b as { type?: string })?.type === 'text') as
           { text?: string } | undefined
       )?.text;
-      // ход из одной картинки без текста (этап 4 roadmap 0.2) — тоже ход, как в `buildHistory`
-      image = content.some((b) => (b as { type?: string })?.type === 'image');
+      // ход из одной картинки или файла без текста (этапы 4 и 8 roadmap 0.2) — тоже ход, как в `buildHistory`
+      image = content.some((b) => {
+        const type = (b as { type?: string })?.type;
+        return type === 'image' || type === 'document';
+      });
     }
     if (!text) {
       if (image) turns++;

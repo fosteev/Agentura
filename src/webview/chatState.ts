@@ -8,6 +8,7 @@ import type {
   EffortLevel,
   PermissionAlways,
   PermissionDecision,
+  FileRef,
   ImageRef,
   PermissionMode,
   Question,
@@ -39,6 +40,8 @@ export type FeedRow =
       context?: string;
       /** Картинки сообщения (этап 4 roadmap 0.2); без `data` — плашка «скриншот». */
       images?: ImageRef[];
+      /** Файлы сообщения (этап 8): чип с именем и размером, содержимое в ленту не выводится. */
+      files?: FileRef[];
     }
   | {
       id: number;
@@ -226,12 +229,18 @@ function queuedRow(s: ChatState, prompt: string): number {
 }
 
 /** Сообщение пользователя отправлено, `turn.start` ещё не пришёл — «в очереди». */
-export function queueUser(s: ChatState, text: string, images?: readonly ImageRef[]): ChatState {
+export function queueUser(
+  s: ChatState,
+  text: string,
+  images?: readonly ImageRef[],
+  files?: readonly FileRef[],
+): ChatState {
   return push(retireFails(s), {
     kind: 'user',
     text,
     queued: true,
     ...(images?.length ? { images: [...images] } : {}),
+    ...(files?.length ? { files: [...files] } : {}),
   });
 }
 
@@ -269,6 +278,7 @@ function deliverUser(
   prompt: string,
   atMs: number,
   images?: readonly ImageRef[],
+  files?: readonly FileRef[],
 ): ChatState {
   const { text, context } = splitPrompt(prompt);
   const at = clock(atMs);
@@ -284,12 +294,15 @@ function deliverUser(
       at,
       ...(context ? { context } : {}),
       ...(images?.length ? { images: [...images] } : {}),
+      ...(files?.length ? { files: [...files] } : {}),
     });
   const row = s.rows[idx] as Extract<FeedRow, { kind: 'user' }>;
   const updated: Extract<FeedRow, { kind: 'user' }> = { ...row, queued: false, at };
   if (context) updated.context = context;
   // своя строка «в очереди» уже держит картинки (из поля ввода) — событие их не заменяет
   if (!row.images?.length && images?.length) updated.images = [...images];
+  // файлы — так же: у строки из поля ввода они с содержимым (копия для просмотра), у события — без
+  if (!row.files?.length && files?.length) updated.files = [...files];
   return replaceAt(s, idx, updated);
 }
 
@@ -400,13 +413,17 @@ function reduce(s: ChatState, e: AgentEvent, now: number): ChatState {
       // (иначе скрин A повис бы и под B)
       const own = prompts.some((p) => queuedRow(out, p) >= 0);
       const images = own ? undefined : e.images;
+      const files = own ? undefined : e.files;
       return prompts.reduce(
-        (acc, p, i) => deliverUser(acc, p, e.at, i === prompts.length - 1 ? images : undefined),
+        (acc, p, i) =>
+          i === prompts.length - 1
+            ? deliverUser(acc, p, e.at, images, files)
+            : deliverUser(acc, p, e.at),
         out,
       );
     }
     case 'turn.input':
-      return deliverUser(s, e.prompt, e.at, e.images);
+      return deliverUser(s, e.prompt, e.at, e.images, e.files);
     case 'thinking.start':
       return push(s, { kind: 'think', messageId: e.messageId, text: '', startedAt: e.at });
     case 'thinking.delta': {

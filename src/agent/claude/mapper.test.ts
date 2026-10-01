@@ -414,3 +414,57 @@ describe('картинки в сообщении (этап 4 roadmap 0.2, фик
     });
   });
 });
+
+describe('файлы в сообщении (этап 8 roadmap 0.2, фикстура attach-smoke)', () => {
+  it('живой поток: turn.start несёт файлы без содержимого; модель ответила по тексту и pdf', async () => {
+    const lines = readFileSync(
+      join(__dirname, '..', '..', '..', 'test', 'fixtures', 'claude', 'attach-basic.sdk.ndjson'),
+      'utf8',
+    )
+      .split('\n')
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as Record<string, unknown>);
+    const { events } = await replayProbeLog(lines);
+    const start = events.find((e): e is AgentEventOf<'turn.start'> => e.type === 'turn.start');
+    expect(start?.files).toEqual([
+      { kind: 'text', path: 'notes/secret.txt', size: 48 },
+      { kind: 'pdf', path: '/tmp/outside/probe.pdf', size: 599, pages: 1 },
+    ]);
+    const result = events.find((e): e is AgentEventOf<'turn.result'> => e.type === 'turn.result');
+    expect(result?.ok).toBe(true);
+    expect(result?.text).toContain('PELICAN-7342');
+    expect(result?.text).toContain('ZEBRA 42');
+  });
+
+  it('notePrompt с файлами: содержимое в событие не попадает; turn.input тоже несёт файлы', () => {
+    const m = new ClaudeEventMapper({ now: () => 1 });
+    m.notePrompt('первое', 'u1', undefined, [
+      { kind: 'text', path: 'a.txt', data: 'секрет', size: 12 },
+    ]);
+    m.notePrompt('второе', 'u2', undefined, [
+      { kind: 'pdf', path: 'b.pdf', data: 'JVBERi0x', size: 6, pages: 2 },
+    ]);
+    const start = m.map({
+      type: 'stream_event',
+      parent_tool_use_id: null,
+      user_message_uuid: 'u1',
+      event: { type: 'message_start', message: { id: 'm1', model: 'x', usage: {} } },
+    });
+    expect(start.find((e) => e.type === 'turn.start')).toMatchObject({
+      files: [{ kind: 'text', path: 'a.txt', size: 12 }],
+    });
+    expect(JSON.stringify(start)).not.toContain('секрет');
+    const input = m.map({
+      type: 'stream_event',
+      parent_tool_use_id: null,
+      user_message_uuid: 'u2',
+      event: { type: 'message_start', message: { id: 'm2', model: 'x', usage: {} } },
+    });
+    expect(input.find((e) => e.type === 'turn.input')).toEqual({
+      type: 'turn.input',
+      prompt: 'второе',
+      files: [{ kind: 'pdf', path: 'b.pdf', size: 6, pages: 2 }],
+      at: 1,
+    });
+  });
+});

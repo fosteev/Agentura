@@ -89,6 +89,20 @@ describe('итоги сессии по транскрипту', () => {
     expect(countTurns(file)).toBe(2);
   });
 
+  it('ход из одной картинки или одного файла без текста — тоже ход (этапы 4 и 8 roadmap 0.2)', () => {
+    const file = join(tmp(), 'd.jsonl');
+    writeFileSync(
+      file,
+      [
+        user([
+          { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'AAAA' } },
+        ]),
+        user([{ type: 'document', source: { type: 'text', media_type: 'text/plain', data: 'x' } }]),
+      ].join('\n') + '\n',
+    );
+    expect(countTurns(file)).toBe(2);
+  });
+
   it('модель без цены: сумма по известным + costPartial; все без цены — стоимости нет, не $0', () => {
     const usage = {
       input_tokens: 1_000_000,

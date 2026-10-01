@@ -39,6 +39,37 @@ export interface ImageRef {
   name?: string;
 }
 
+/** Файл-вложение (этап 8 roadmap 0.2): текстовый (UTF-8) или pdf. */
+export type FileKind = 'text' | 'pdf';
+
+/**
+ * Файл в сообщении пользователя: уходит движку `document`-блоком с `title` = `path`.
+ * `path` — относительно рабочей папки сессии (с `/`), для файла вне её — абсолютный.
+ */
+export interface PromptFile {
+  kind: FileKind;
+  path: string;
+  /** `text` — содержимое строкой, `pdf` — base64 без `data:`-префикса. */
+  data: string;
+  /** Размер файла, байт. */
+  size: number;
+  /** Страниц pdf, если удалось посчитать (оценка токенов). */
+  pages?: number;
+}
+
+/**
+ * Файл реплики в ленте (`turn.start`/`turn.input`): чип с именем и размером. `data` есть у
+ * строки из поля ввода и у истории (в пределах лимита) — из неё хост делает временную копию для
+ * просмотра файла вне рабочей папки.
+ */
+export interface FileRef {
+  kind: FileKind;
+  path: string;
+  size?: number;
+  pages?: number;
+  data?: string;
+}
+
 /** Что сделает «всегда» — сводка подсказок движка для подписи кнопки (этап 5). */
 export interface PermissionAlways {
   /** Правила в форме настроек: `Bash(npm test:*)`, `Edit`. */
@@ -128,13 +159,21 @@ export type AgentEvent =
       prompts?: string[];
       /** Картинки сообщения (этап 4 roadmap 0.2), в порядке отправки. */
       images?: ImageRef[];
+      /** Файлы сообщения (этап 8 roadmap 0.2); живой ход — без `data`, она у строки поля ввода. */
+      files?: FileRef[];
       at: number;
     })
   /**
    * Сообщение пользователя, которое движок влил в уже идущий ход (эхо uuid посреди хода).
    * Своего `turn.start` у него не будет. Добавлено на приёмке этапа 3.
    */
-  | (Base & { type: 'turn.input'; prompt: string; images?: ImageRef[]; at: number })
+  | (Base & {
+      type: 'turn.input';
+      prompt: string;
+      images?: ImageRef[];
+      files?: FileRef[];
+      at: number;
+    })
   | (Base & { type: 'text.delta'; messageId: string; text: string })
   | (Base & { type: 'thinking.start'; messageId: string; at: number })
   | (Base & { type: 'thinking.delta'; messageId: string; text: string; estimatedTokens?: number })
@@ -367,8 +406,9 @@ export interface AgentSession {
   /**
    * `false` — сессия закрыта, сообщение не принято. `images` уходят движку image-блоками перед
    * текстом (этап 4 roadmap 0.2); формат и размер проверяет вызывающий (`src/shared/images.ts`).
+   * `files` — `document`-блоками после картинок (этап 8, проверка — `src/shared/files.ts`).
    */
-  send(text: string, images?: readonly PromptImage[]): boolean;
+  send(text: string, images?: readonly PromptImage[], files?: readonly PromptFile[]): boolean;
   respondPermission(toolUseId: string, decision: PermissionDecision, message?: string): boolean;
   answerQuestion(toolUseId: string, answers: Record<string, string>): boolean;
   decidePlan(toolUseId: string, decision: PlanDecision): boolean;

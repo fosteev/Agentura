@@ -1,11 +1,12 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, realpath } from 'node:fs/promises';
+import { isAbsolute } from 'node:path';
 import * as vscode from 'vscode';
 import { resolveExecutable } from '../agent/claude/executable';
 import { ClaudeAdapter } from '../agent/claude/adapter';
 import type { AgentAdapter } from '../agent/types';
 import type { LimitsSource } from '../data/limits';
 import type { LiveSessions, TranscriptCache } from '../data/sessions';
-import { postToWebview, type PickedImage } from '../protocol';
+import { postToWebview } from '../protocol';
 import { DEFAULT_THRESHOLDS, thresholdsError } from '../settings';
 import type { AccountService } from './account';
 import { ChatController } from './chatController';
@@ -26,8 +27,20 @@ import type { UsageService } from './usage';
 import type { Logger } from './logger';
 import { attachMessaging, renderWebview, webviewOptions } from './webviewHost';
 import { WorkspaceFiles } from './workspaceFiles';
-import { pickedImage, writeImageTemp } from './imageFiles';
-import { IMAGE_EXTENSION_LIST, MAX_IMAGES_PER_MESSAGE } from '../shared/images';
+import { writeImageTemp } from './imageFiles';
+import { fileName } from '../shared/files';
+import {
+  dropAllowed,
+  MAX_DROPPED,
+  MAX_PICK_BYTES,
+  mergePicked,
+  parseUriList,
+  readAttachment,
+  rejected,
+  workspaceTarget,
+  writeAttachmentTemp,
+  type Picked,
+} from './attachFiles';
 
 export const CHAT_VIEW_TYPE = 'agentura.chat';
 
@@ -250,37 +263,75 @@ export class ChatPanel {
       observeLimits: (windows) => services.limits.observeEngine(windows),
       findFiles: (q) => files.find(q),
       pickFiles: () => files.pick(),
-      pickImages: async () => {
+      // «+» (этапы 4 и 8): любые файлы — картинки, текст, pdf; тип решает содержимое
+      pickAttachments: async () => {
         const picked = await vscode.window.showOpenDialog({
           defaultUri: folder.uri,
           canSelectFiles: true,
+          canSelectFolders: false,
           canSelectMany: true,
           openLabel: 'Добавить',
-          filters: { Изображения: [...IMAGE_EXTENSION_LIST] },
         });
-        const out: PickedImage[] = [];
-        for (const uri of (picked ?? []).slice(0, MAX_IMAGES_PER_MESSAGE)) {
-          const name = uri.path.split('/').pop() ?? 'image';
-          const size = await Promise.resolve(vscode.workspace.fs.stat(uri)).then(
-            (st) => st.size,
-            () => undefined,
-          );
-          // размер неизвестен — не читаем вслепую (лимит 30 МБ не проверить)
-          if (size === undefined) {
-            out.push({ name, problem: 'read' });
+        return readAttachments(folder.uri.fsPath, (picked ?? []).slice(0, MAX_DROPPED));
+      },
+      // перетаскивание из проводника и вкладок VS Code (этап 8): uri из webview читает хост
+      readUris: async (raw) => {
+        const uris: vscode.Uri[] = [];
+        const outside: Picked[] = [];
+        for (const u of parseUriList(raw)) {
+          let uri: vscode.Uri;
+          try {
+            uri = vscode.Uri.parse(u, true);
+          } catch {
+            log.warn('перетаскивание: не uri');
             continue;
           }
-          out.push(
-            await pickedImage(name, size, () => Promise.resolve(vscode.workspace.fs.readFile(uri))),
-          );
+          // только файлы диска (в удалённом окне — схема папки)
+          if (uri.scheme !== 'file' && uri.scheme !== folder.uri.scheme) {
+            log.warn(`перетаскивание: схема ${uri.scheme} не поддержана`);
+            outside.push(rejected(fileName(uri.path) || 'file', 'read'));
+            continue;
+          }
+          // webview недоверенный: строку uri он может прислать и без жеста — читаем только файлы
+          // папок воркспейса и открытых вкладок (симлинк — по тому, куда он ведёт)
+          if (await dropReadable(uri)) uris.push(uri);
+          else {
+            log.warn(`перетаскивание: ${uri.scheme} вне рабочей папки и не во вкладке — не читаю`);
+            outside.push(rejected(fileName(uri.path) || 'file', 'outside'));
+          }
         }
-        return out;
+        const read = await readAttachments(folder.uri.fsPath, uris);
+        return mergePicked([read, ...outside]);
       },
       // просмотр миниатюры: временный файл в storage расширения (не в рабочей папке), вкладка редактора
       openImage: async (img) => {
         const dir = vscode.Uri.joinPath(context.globalStorageUri, 'images').fsPath;
         const path = await writeImageTemp(dir, img);
         await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(path), editorColumn());
+      },
+      // чип файла в ленте (этап 8): из рабочей папки — сам файл, иначе — копия в storage расширения
+      openFile: async (f) => {
+        const inside = workspaceTarget(folder.uri.fsPath, f.path);
+        let target: vscode.Uri | undefined;
+        if (inside) {
+          const exists = await Promise.resolve(
+            vscode.workspace.fs.stat(vscode.Uri.file(inside)),
+          ).then(
+            () => true,
+            () => false,
+          );
+          if (exists) target = vscode.Uri.file(inside);
+        }
+        if (!target && f.data) {
+          const dir = vscode.Uri.joinPath(context.globalStorageUri, 'attachments').fsPath;
+          target = vscode.Uri.file(await writeAttachmentTemp(dir, { ...f, data: f.data }));
+        }
+        if (!target && isAbsolute(f.path)) target = vscode.Uri.file(f.path);
+        if (!target) {
+          log.warn(`файл не открыт: ${f.path} — нет ни файла, ни копии`);
+          return;
+        }
+        await vscode.commands.executeCommand('vscode.open', target, editorColumn());
       },
       readSelection: (a) => files.readSelection(a),
       listRecent: async () => (await services.sessions.summaries()).slice(0, CHAT_SESSIONS),
@@ -399,4 +450,76 @@ export class ChatPanel {
     this.disposables.forEach((d) => d.dispose());
     ChatPanel.sessionsChanged(this.services);
   }
+}
+
+/** Ключ uri для сравнения с вкладками: путь диска или `scheme://authority/path`. */
+function uriKey(uri: vscode.Uri): string {
+  return uri.scheme === 'file' ? uri.fsPath : uri.with({ query: '', fragment: '' }).toString();
+}
+
+/** Uri открытых вкладок редактора (текст, diff, custom editor, notebook). */
+function openTabKeys(): Set<string> {
+  const out = new Set<string>();
+  for (const tab of vscode.window.tabGroups.all.flatMap((g) => g.tabs)) {
+    const input = tab.input as { uri?: unknown; original?: unknown; modified?: unknown } | undefined;
+    for (const u of [input?.uri, input?.original, input?.modified]) {
+      if (u instanceof vscode.Uri) out.add(uriKey(u));
+    }
+  }
+  return out;
+}
+
+/**
+ * Перетащенный uri можно читать (этап 8, приёмка): внутри папки воркспейса той же схемы или файл
+ * открытой вкладки. У файла диска то же проверяется и для цели симлинка — ссылка в проекте на
+ * `~/.ssh/id_rsa` не читается.
+ */
+async function dropReadable(uri: vscode.Uri): Promise<boolean> {
+  if (openTabKeys().has(uriKey(uri))) return true;
+  const remote = uri.scheme !== 'file';
+  const roots = (vscode.workspace.workspaceFolders ?? [])
+    .filter((f) => f.uri.scheme === uri.scheme && f.uri.authority === uri.authority)
+    .map((f) => (remote ? f.uri.path : f.uri.fsPath));
+  const path = remote ? uri.path : uri.fsPath;
+  if (!dropAllowed(path, roots, remote)) return false;
+  if (remote) return true;
+  const real = await realpath(path).catch(() => undefined);
+  // нет файла — дальше `stat` даст «не прочитать»
+  if (real === undefined || real === path) return true;
+  const realRoots = await Promise.all(roots.map((r) => realpath(r).catch(() => r)));
+  return dropAllowed(real, realRoots);
+}
+
+/** Прочитать выбранные или перетащенные файлы через `workspace.fs` (этап 8 roadmap 0.2). */
+async function readAttachments(cwd: string, uris: readonly vscode.Uri[]): Promise<Picked> {
+  const out: Picked[] = [];
+  let budget = MAX_PICK_BYTES;
+  for (const uri of uris) {
+    const st = await Promise.resolve(vscode.workspace.fs.stat(uri)).then(
+      (x) => x,
+      () => undefined,
+    );
+    const name = fileName(uri.path) || 'file';
+    const isDir = st ? (st.type & vscode.FileType.Directory) !== 0 : false;
+    // только обычные файлы: у `/dev/zero` размер 0, а чтение бесконечно, FIFO вешает хост
+    if (st && !isDir && (st.type & vscode.FileType.File) === 0) {
+      out.push(rejected(name, 'read'));
+      continue;
+    }
+    // всё «+»/перетаскивание читается в память и уходит одним сообщением — общий потолок до чтения
+    if (st && !isDir && st.size > budget) {
+      out.push(rejected(name, 'total'));
+      continue;
+    }
+    if (st && !isDir) budget -= st.size;
+    out.push(
+      await readAttachment(cwd, {
+        fsPath: uri.scheme === 'file' ? uri.fsPath : uri.path,
+        ...(st ? { size: st.size } : {}),
+        isDir,
+        read: () => Promise.resolve(vscode.workspace.fs.readFile(uri)),
+      }),
+    );
+  }
+  return mergePicked(out);
 }
