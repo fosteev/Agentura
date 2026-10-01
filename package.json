@@ -138,7 +138,6 @@
             "Без подтверждений (только если включён agentura.allowBypassPermissions, иначе — как manual)"
           ],
           "default": "manual",
-          "scope": "machine",
           "description": "С каким режимом разрешений открывается новая сессия. В открытой сессии режим меняется в меню под полем ввода."
         },
         "agentura.defaultEffort": {

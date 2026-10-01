@@ -31,12 +31,12 @@
 - [ ] [архитектура] этап 2: история читает `<сессия>/subagents/agent-*.jsonl` при `loadHistory` (до 30 последних агентов) —
       ход агента и итоги после resume; файлы `subagents/` движка стали входом расширения (формат не публичный) —
       откат: убрать вызов `withSubagentTimelines` в `adapter.ts` (останутся список и итоги из основного транскрипта).
-- [ ] [скоуп] этап 3: ⚙ настроек — только кнопка в webview боковой панели (как в прототипе); нативная кнопка
+- [x] [скоуп] (подтверждено владельцем 2026-10-01: одна, в панели) этап 3: ⚙ настроек — только кнопка в webview боковой панели (как в прототипе); нативная кнопка
       `menus.view/title` из чекбокса этапа снята — две шестерёнки в шапке, а нативную VS Code показывает лишь при
       наведении; команда «Agentura: Настройки» осталась в палитре — откат: вернуть в `package.json` блок
       `"menus": {"view/title": [{"command": "agentura.openSettings", "when": "view == agentura.sidebar", "group": "navigation"}]}`
       (и, если нужна одна, убрать `.gear` из `Sidebar.tsx` и сверку `.head` в `sessionsDom.test.ts`).
-- [ ] [скоуп] этап 3: `agentura.defaultPermissionMode` — `scope: machine` (только пользовательские настройки, не
+- [x] [скоуп] (владелец 2026-10-01: ОТКАЗ — разрешить по проекту; scope machine снят в начале этапа 4) этап 3: `agentura.defaultPermissionMode` — `scope: machine` (только пользовательские настройки, не
       по проекту) — иначе `.vscode/settings.json` чужого репозитория молча включал бы новым сессиям `acceptEdits` —
       откат: убрать `"scope": "machine"` у ключа в `package.json` и `'defaultPermissionMode'` из `MACHINE_KEYS` (`src/settings.ts`).
 - [ ] [архитектура] этап 3: протокол — хост → webview `settings.state/error/engine`, webview → хост
