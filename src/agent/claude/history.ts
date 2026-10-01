@@ -6,7 +6,8 @@
  * редьюсер, хост — через тот же разбор правок (`ChatController`), поэтому `diff` в восстановленной
  * истории работает так же, как в живой. Чистая функция, без ввода-вывода.
  */
-import type { AgentEvent, PermissionMode, SessionHistory, TokenUsage } from '../types';
+import type { AgentEvent, ImageRef, PermissionMode, SessionHistory, TokenUsage } from '../types';
+import { imageSize } from '../../shared/images';
 import { cost } from '../../data/pricing';
 import { arr, isObj, num, obj, str, timestamp, type Json } from './json';
 import { usageFrom } from './mapper';
@@ -32,6 +33,8 @@ export interface BuildOptions {
   tasksAlive?: boolean;
   /** Сколько последних ходов показать. */
   maxTurns?: number;
+  /** Сколько последних картинок отдать с данными (по умолчанию `MAX_HISTORY_IMAGES`). */
+  maxImages?: number;
 }
 
 export const DEFAULT_MAX_TURNS = 200;
@@ -67,6 +70,60 @@ function textOf(content: unknown): string | undefined {
     .filter((b) => b['type'] === 'text')
     .map((b) => str(b['text']) ?? '');
   return parts.length ? parts.join('\n') : undefined;
+}
+
+/**
+ * Картинки реплики пользователя (этап 4 roadmap 0.2). CLI хранит base64 в транскрипте целиком
+ * (живой прогон `scripts/image-smoke.mjs`); блок без данных (ссылка, url) — плашка «скриншот».
+ */
+function imagesOf(content: unknown): ImageRef[] {
+  const out: ImageRef[] = [];
+  for (const b of arr(content).filter(isObj)) {
+    if (b['type'] !== 'image') continue;
+    const source = obj(b['source']);
+    const mediaType = str(source?.['media_type']);
+    const data = source?.['type'] === 'base64' ? str(source['data']) : undefined;
+    const size = data ? imageSize(mediaType, data) : undefined;
+    out.push({
+      ...(mediaType ? { mediaType } : {}),
+      ...(data ? { data } : {}),
+      ...(size ?? {}),
+    });
+  }
+  return out;
+}
+
+/** Сколько картинок истории уходит в webview с данными; более ранние — плашкой без миниатюры. */
+export const MAX_HISTORY_IMAGES = 12;
+/** И не больше этого base64 суммарно (сообщение `session.history` идёт в webview целиком). */
+export const MAX_HISTORY_IMAGE_CHARS = 24 * 1024 * 1024;
+
+function withoutData(i: ImageRef): ImageRef {
+  const out: ImageRef = { ...i };
+  delete out.data;
+  return out;
+}
+
+/** С конца истории: последние картинки — с данными, остальные — без (плашка «скриншот»). */
+function limitHistoryImages(events: AgentEvent[], maxImages: number): void {
+  let count = 0;
+  let chars = 0;
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i];
+    if (!e || e.type !== 'turn.start' || !e.images) continue;
+    const images = [...e.images];
+    for (let j = images.length - 1; j >= 0; j--) {
+      const img = images[j];
+      if (!img?.data) continue;
+      if (count < maxImages && chars + img.data.length <= MAX_HISTORY_IMAGE_CHARS) {
+        count++;
+        chars += img.data.length;
+        continue;
+      }
+      images[j] = withoutData(img);
+    }
+    events[i] = { ...e, images };
+  }
 }
 
 function resultText(content: unknown): string {
@@ -220,13 +277,13 @@ export function buildHistory(
     assistantMessages: 0,
   });
 
-  const startTurn = (prompt: string, at: number): void => {
+  const startTurn = (prompt: string, at: number, images: ImageRef[] = []): void => {
     closeTurn(false);
     if (events.length) perTurn.push(events);
     events = [];
     turns++;
     turn = newTurn(at);
-    events.push({ type: 'turn.start', prompt, at });
+    events.push({ type: 'turn.start', prompt, ...(images.length ? { images } : {}), at });
   };
 
   /**
@@ -349,8 +406,9 @@ export function buildHistory(
         }
         continue;
       }
-      const text = textOf(content);
-      if (text === undefined || text.trim() === '') continue;
+      const images = imagesOf(content);
+      const text = textOf(content) ?? '';
+      if (text.trim() === '' && images.length === 0) continue;
       const t = text.trimStart();
       if (COMPACT_SUMMARY.test(t)) {
         events.push({ type: 'compaction.end', ok: true });
@@ -365,7 +423,7 @@ export function buildHistory(
         wake(t, at);
         continue;
       }
-      startTurn(text, at);
+      startTurn(text, at, images);
       continue;
     }
 
@@ -454,8 +512,10 @@ export function buildHistory(
   const skipped = Math.max(0, turns - max);
   const kept = perTurn.slice((hasPreamble ? 1 : 0) + skipped);
   const head = hasPreamble && skipped === 0 ? (perTurn[0] ?? []) : [];
+  const out = [...head, ...kept.flat()];
+  limitHistoryImages(out, options.maxImages ?? MAX_HISTORY_IMAGES);
   return {
-    events: [...head, ...kept.flat()],
+    events: out,
     turns,
     skippedTurns: skipped,
     ...(lastModel ? { model: lastModel } : {}),

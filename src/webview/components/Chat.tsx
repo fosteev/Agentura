@@ -13,6 +13,7 @@ import {
   releaseLimit,
   replyTarget,
   openAgentTranscript,
+  openImage,
   respondPermission,
   selectedAgent,
   showThinking,
@@ -213,6 +214,7 @@ export function Chat() {
               onDiff={(toolUseId) => send({ type: 'diff.open', sessionId: s.sessionId, toolUseId })}
               onPreview={(path) => send({ type: 'preview.open', path })}
               onOpenUrl={(url) => send({ type: 'link.open', url })}
+              onOpenImage={openImage}
               hud={h}
               onStopAgent={stopAgent}
               onOpenAgent={openAgent}

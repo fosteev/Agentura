@@ -1,4 +1,4 @@
-import type { AgentEvent } from '../types';
+import type { AgentEvent, ImageRef } from '../types';
 import { arr, isObj, obj, str, timestamp, type Json } from './json';
 import { ClaudeEventMapper } from './mapper';
 import { optionsFromProbe, PermissionBroker, type ToolPermissionResult } from './permissions';
@@ -44,7 +44,12 @@ export async function replayProbeLog(lines: unknown[], baselineCostUsd = 0): Pro
     switch (line['kind']) {
       case 'send':
         // `uuid` пишет agents-smoke (живой движок отвечает эхом uuid); у логов пробы его нет — по очереди
-        mapper.notePrompt(str(line['text']) ?? '', str(line['uuid']));
+        // `images` пишет image-smoke (этап 4 roadmap 0.2): картинки сообщения → `turn.start.images`
+        mapper.notePrompt(
+          str(line['text']) ?? '',
+          str(line['uuid']),
+          arr(line['images']).filter(isObj) as ImageRef[],
+        );
         break;
       case 'canUseTool': {
         const options = optionsFromProbe(line['options']);

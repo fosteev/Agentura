@@ -10,8 +10,10 @@ import type {
   ModelOption,
   PermissionDecision,
   PermissionMode,
+  PromptImage,
 } from './agent/types';
 import type { Attachment, FileHit } from './shared/prompt';
+import type { ImageProblem } from './shared/images';
 import type { EngineCheck, SettingKey, SettingsValues } from './settings';
 
 export type {
@@ -124,6 +126,11 @@ export type ToWebview =
   | ({ type: 'editor.context' } & EditorContext)
   | { type: 'files.result'; requestId: number; items: FileHit[] }
   | { type: 'attach.picked'; items: FileHit[] }
+  /**
+   * Этап 4 roadmap 0.2: картинки, выбранные через «+» (`showOpenDialog`). Данные — исходный файл
+   * (base64); уменьшает webview тем же путём, что и вставку. `problem` — файл не прочитан или велик.
+   */
+  | { type: 'image.picked'; items: PickedImage[] }
   /** Начата новая сессия (команда, `/clear`, `new`): очистить ленту. */
   | { type: 'session.reset' }
   /**
@@ -172,9 +179,20 @@ export type ToWebview =
  */
 export type FromWebview =
   | { type: 'ready' }
-  | { type: 'send'; sessionId: string; text: string; attachments?: Attachment[] }
+  /** `images` — картинки сообщения (этап 4 roadmap 0.2), уже уменьшенные webview. */
+  | {
+      type: 'send';
+      sessionId: string;
+      text: string;
+      attachments?: Attachment[];
+      images?: PromptImage[];
+    }
   | { type: 'files.find'; requestId: number; query: string }
   | { type: 'attach.pick' }
+  /** Этап 4 roadmap 0.2: «Изображение…» в меню «+» — диалог выбора картинок на хосте. */
+  | { type: 'image.pick' }
+  /** Клик по миниатюре: хост пишет временный файл в storage расширения и открывает его во вкладке. */
+  | { type: 'image.open'; mediaType: string; data: string }
   | { type: 'sessions.show' }
   | { type: 'diff.open'; sessionId: string; toolUseId: string }
   | { type: 'preview.open'; path: string }
@@ -232,6 +250,14 @@ export type FromWebview =
   /** «в настройках VS Code» / «settings.json». */
   | { type: 'settings.reveal'; target: 'ui' | 'json' };
 
+/** Картинка из диалога «+»: исходный файл или причина, почему не прочитан. */
+export interface PickedImage {
+  name: string;
+  mediaType?: string;
+  data?: string;
+  problem?: ImageProblem;
+}
+
 /** Аккаунт для секции «Аккаунт и лимиты» (этап 6); поля, которых нет, — «—». */
 export interface AccountSummary {
   email?: string;
@@ -267,6 +293,8 @@ const FROM_WEBVIEW_TYPES: ReadonlySet<string> = new Set<FromWebview['type']>([
   'send',
   'files.find',
   'attach.pick',
+  'image.pick',
+  'image.open',
   'sessions.show',
   'diff.open',
   'preview.open',

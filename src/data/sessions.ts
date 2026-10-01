@@ -243,6 +243,7 @@ export function countTurns(path: string): number {
     if (rec['isCompactSummary'] === true) continue;
     const content = (rec['message'] as { content?: unknown } | undefined)?.content;
     let text: string | undefined;
+    let image = false;
     if (typeof content === 'string') text = content;
     else if (Array.isArray(content)) {
       if (content.some((b) => (b as { type?: string })?.type === 'tool_result')) continue;
@@ -250,8 +251,13 @@ export function countTurns(path: string): number {
         content.find((b) => (b as { type?: string })?.type === 'text') as
           { text?: string } | undefined
       )?.text;
+      // ход из одной картинки без текста (этап 4 roadmap 0.2) — тоже ход, как в `buildHistory`
+      image = content.some((b) => (b as { type?: string })?.type === 'image');
     }
-    if (!text) continue;
+    if (!text) {
+      if (image) turns++;
+      continue;
+    }
     const t = text.trimStart();
     if (
       t.startsWith('<command-') ||

@@ -172,6 +172,12 @@ export function formatDuration(ms: number): string {
 }
 
 /** `1 204`, как в прототипе (пробел — разделитель тысяч). */
+/** `850`, `2.1k`, `143k` — токены коротко. */
+export function compactTokens(n: number): string {
+  if (n < 1000) return String(n);
+  return n < 100_000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k` : `${Math.round(n / 1000)}k`;
+}
+
 export function formatInt(n: number): string {
   return Math.round(n)
     .toString()
@@ -192,7 +198,9 @@ export function shortModel(id: string): string {
 const HTML_RE = /\.html?$/i;
 
 function rec(v: unknown): Record<string, unknown> | undefined {
-  return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined;
+  return v && typeof v === 'object' && !Array.isArray(v)
+    ? (v as Record<string, unknown>)
+    : undefined;
 }
 
 /** Ссылки строки инструмента: превью записанного `.html` и адрес артефакта на claude.ai (только при успехе). */

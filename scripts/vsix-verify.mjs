@@ -90,6 +90,7 @@ for (const f of [
   'dist/webview/settings.js',
   'media/icon.svg',
   'media/agents.css',
+  'media/attach.css',
   'media/settings.css',
   'package.json',
 ]) {

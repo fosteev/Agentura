@@ -3,8 +3,11 @@ import type { Seg } from '../fixtures/chat';
 import type { FeedRow } from '../chatState';
 import { onCodeCopyClick, renderMarkdown, withCursor } from '../markdown';
 import { ui } from '../strings';
+import type { ImageRef } from '../../agent/types';
+import { imageTokens } from '../../shared/images';
 import {
   artifactStatus,
+  compactTokens,
   editStats,
   formatDuration,
   matchCount,
@@ -27,13 +30,70 @@ export function Segs({ s }: { s: Seg[] }) {
 }
 
 /** Текст пользователя: `код` в обратных кавычках — как `<code>` в прототипе, переводы строк сохраняются. */
-function UserText({ text }: { text: string }) {
+function UserText({
+  text,
+  images,
+  onOpenImage,
+}: {
+  text: string;
+  images?: ImageRef[] | undefined;
+  onOpenImage?: ((i: ImageRef) => void) | undefined;
+}) {
   const parts = text.split(/(`[^`\n]+`)/g);
   return (
     <span>
       {parts.map((p) =>
         p.length > 2 && p.startsWith('`') && p.endsWith('`') ? <code>{p.slice(1, -1)}</code> : p,
       )}
+      {images?.length ? <UserImages images={images} onOpen={onOpenImage} /> : null}
+    </span>
+  );
+}
+
+/** Миниатюры в реплике пользователя (этап 4 roadmap 0.2); без данных — плашка «скриншот». */
+function UserImages({
+  images,
+  onOpen,
+}: {
+  images: ImageRef[];
+  onOpen?: ((i: ImageRef) => void) | undefined;
+}) {
+  return (
+    <span class="att">
+      {images.map((i, n) => {
+        const caption = [
+          i.name ?? `${ui.log.screenshot} ${n + 1}`,
+          ...(i.width && i.height
+            ? [`${i.width}×${i.height}`, `~${compactTokens(imageTokens(i.width, i.height))}`]
+            : []),
+        ].join(' · ');
+        return (
+          <figure key={n}>
+            {i.data && i.mediaType ? (
+              <img
+                class="mock"
+                src={`data:${i.mediaType};base64,${i.data}`}
+                alt={caption}
+                title={ui.log.openImage}
+                role="button"
+                tabIndex={0}
+                onClick={() => onOpen?.(i)}
+                onKeyDown={(e: KeyboardEvent) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onOpen?.(i);
+                  }
+                }}
+              />
+            ) : (
+              <span class="mock ph" title={ui.log.noImageData}>
+                {ui.log.screenshot}
+              </span>
+            )}
+            <figcaption>{caption}</figcaption>
+          </figure>
+        );
+      })}
     </span>
   );
 }
@@ -245,6 +305,7 @@ export function Log({
   onDiff,
   onPreview,
   onOpenUrl,
+  onOpenImage,
   hud,
   onStopAgent,
   onOpenAgent,
@@ -261,6 +322,8 @@ export function Log({
   onDiff: (toolUseId: string) => void;
   onPreview: (path: string) => void;
   onOpenUrl: (url: string) => void;
+  /** Клик по миниатюре в реплике — картинка во вкладке редактора. */
+  onOpenImage?: (i: ImageRef) => void;
   /** Агенты (A6): вызовы `Agent`/`Task` рисуются группой со статусами из приборов. */
   hud?: HudState;
   onStopAgent?: (taskId: string) => void;
@@ -296,7 +359,7 @@ export function Log({
             return (
               <div class="u" key={it.id}>
                 <span class="p">&gt;</span>
-                <UserText text={it.text} />
+                <UserText text={it.text} images={it.images} onOpenImage={onOpenImage} />
                 <span class="at">{it.queued ? ui.log.queued : it.at}</span>
               </div>
             );

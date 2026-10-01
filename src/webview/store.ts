@@ -4,11 +4,26 @@ import type {
   AgentEvent,
   CommandOption,
   EffortLevel,
+  ImageRef,
   ModelOption,
   PermissionDecision,
   PermissionMode,
+  PromptImage,
 } from '../agent/types';
 import { attachmentKey, type Attachment, type FileHit } from '../shared/prompt';
+import {
+  MAX_IMAGES_PER_MESSAGE,
+  MAX_MESSAGE_IMAGES_BASE64,
+  type ImageProblem,
+} from '../shared/images';
+import {
+  baseName,
+  extOf,
+  prepareImage,
+  type DraftImage,
+  type ImageCodec,
+  type ImageSource,
+} from './imageDraft';
 import type {
   EditorContext,
   LimitWindowSummary,
@@ -64,6 +79,8 @@ export const currentSession = signal<string | undefined>(undefined);
 export const dismissed = signal<ReadonlySet<string>>(new Set());
 /** Чипы, добавленные через «@»/«+». */
 export const extra = signal<Attachment[]>([]);
+/** Картинки в поле ввода (этап 4 roadmap 0.2): ⌘V, перетаскивание, «+». */
+export const draftImages = signal<DraftImage[]>([]);
 export const autoFile = signal(true);
 export const autoSelection = signal(true);
 export const showThinking = signal(true);
@@ -193,6 +210,23 @@ export function handleHostMessage(m: ToWebview): void {
     case 'attach.picked':
       for (const hit of m.items) addExtra({ kind: hit.isDir ? 'folder' : 'file', path: hit.path });
       break;
+    case 'image.picked':
+      void addImages(
+        m.items.map((i) =>
+          i.problem
+            ? {
+                name: i.name,
+                ...(i.mediaType ? { mediaType: i.mediaType } : {}),
+                problem: i.problem,
+              }
+            : {
+                name: i.name,
+                ...(i.mediaType ? { mediaType: i.mediaType } : {}),
+                data: i.data ?? '',
+              },
+        ),
+      );
+      break;
     case 'sessions.update':
       recent.value = m.sessions;
       currentSession.value = m.current;
@@ -299,18 +333,97 @@ export function currentAttachments(): Attachment[] {
   return [...auto, ...extra.value.filter((x) => !autoKeys.has(attachmentKey(x)))];
 }
 
+let imageSeq = 0;
+/** Сквозной номер «скриншот N» в пределах вкладки (как в прототипе: 1, 2 в ленте, 3 в поле). */
+let screenshotNo = 0;
+
+/**
+ * Добавить картинки в поле ввода: плашка «уменьшаю…» сразу, затем готовая миниатюра или ошибка.
+ * Сверх `MAX_IMAGES_PER_MESSAGE` — плашка ошибки «не больше 10».
+ */
+export async function addImages(
+  sources: readonly (ImageSource & { problem?: ImageProblem })[],
+  codec?: ImageCodec,
+): Promise<void> {
+  const jobs: Promise<void>[] = [];
+  for (const src of sources) {
+    const id = ++imageSeq;
+    const clip = !src.name || /^image\.(png|jpe?g|gif|webp)$/i.test(src.name);
+    const name = clip ? ui.compose.imageName(++screenshotNo) : baseName(src.name);
+    const ready = draftImages.value.filter((d) => !d.problem).length;
+    const problem: ImageProblem | undefined =
+      src.problem ?? (ready >= MAX_IMAGES_PER_MESSAGE ? 'count' : undefined);
+    if (problem) {
+      draftImages.value = [
+        ...draftImages.value,
+        { id, name, problem, ext: extOf(src.name, src.mediaType) },
+      ];
+      continue;
+    }
+    draftImages.value = [...draftImages.value, { id, name, busy: true }];
+    jobs.push(
+      prepareImage(src, codec).then((r) => {
+        // убрали, пока уменьшалась, — не воскрешать
+        if (!draftImages.value.some((d) => d.id === id)) return;
+        const others = draftImages.value.reduce(
+          (sum, d) => sum + (d.id !== id && d.image ? d.image.data.length : 0),
+          0,
+        );
+        if (!('problem' in r) && others + r.image.data.length > MAX_MESSAGE_IMAGES_BASE64) {
+          r = { problem: 'total' };
+        }
+        const next: DraftImage =
+          'problem' in r
+            ? { id, name, problem: r.problem, ext: extOf(src.name, src.mediaType) }
+            : {
+                id,
+                name,
+                image: { ...r.image, name },
+                ...(r.original ? { original: r.original } : {}),
+              };
+        draftImages.value = draftImages.value.map((d) => (d.id === id ? next : d));
+      }),
+    );
+  }
+  await Promise.all(jobs);
+}
+
+export function removeImage(id: number): void {
+  draftImages.value = draftImages.value.filter((d) => d.id !== id);
+}
+
+/** Готовые картинки поля ввода (без плашек ошибок и ещё уменьшающихся). */
+export function readyImages(): PromptImage[] {
+  return draftImages.value.flatMap((d) => (d.image ? [d.image] : []));
+}
+
+/** Картинка ещё уменьшается — отправка подождёт. */
+export const imagesBusy = computed(() => draftImages.value.some((d) => d.busy));
+
+/** Миниатюра в ленте → вкладка редактора (хост пишет временный файл в storage расширения). */
+export function openImage(i: ImageRef): void {
+  if (!i.data || !i.mediaType) return;
+  send({ type: 'image.open', mediaType: i.mediaType, data: i.data });
+}
+
 export function sendMessage(text: string, withContext = true): boolean {
   const s = chat.value;
-  if (s.closed) return false;
+  if (s.closed || imagesBusy.value) return false;
   const attachments = withContext ? currentAttachments() : [];
-  chat.value = queueUser(s, text);
-  history.value = pushHistory(history.value, text);
+  // `/команда` картинки не забирает: с content-массивом CLI не распознал бы команду
+  const images = text.startsWith('/') ? [] : readyImages();
+  if (!text && images.length === 0) return false;
+  chat.value = queueUser(s, text, images);
+  if (text) history.value = pushHistory(history.value, text);
   extra.value = [];
+  // отправленные и плашки ошибок уходят из поля вместе с текстом
+  if (!text.startsWith('/')) draftImages.value = [];
   send({
     type: 'send',
     sessionId: s.sessionId,
     text,
     ...(attachments.length ? { attachments } : {}),
+    ...(images.length ? { images } : {}),
   });
   return true;
 }
