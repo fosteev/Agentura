@@ -368,10 +368,39 @@ export interface AccountInfo {
   tokenSource?: string;
 }
 
+/**
+ * Восстановленная история сессии (этап 6): события, которыми её видела лента, — те же `AgentEvent`,
+ * что у живой сессии (`turn.start`, `text.delta`, `tool.start/result`, `usage.message`, `turn.result`…).
+ */
+export interface SessionHistory {
+  events: AgentEvent[];
+  /** Ходов в сессии всего (промпты пользователя). */
+  turns: number;
+  /** Сколько ранних ходов не вошло в `events` (показываются последние). */
+  skippedTurns: number;
+  /** Режим разрешений на конец сессии (из транскрипта); нет — неизвестен. */
+  mode?: PermissionMode;
+  /** Модель последнего ответа — с ней продолжаем (движок при `resume` берёт модель из опций, не из сессии). */
+  model?: string;
+  /** Последний `total_cost_usd` движка (запись `cost-state` транскрипта) — база стоимости после `resume`. */
+  totalCostUsd?: number;
+}
+
 export interface AgentAdapter {
   readonly id: string;
   createSession(options: SessionOptions): Promise<AgentSession>;
   resumeSession(sessionId: string, options: ResumeOptions): Promise<AgentSession>;
   listSessions(dir: string): Promise<SessionInfo[]>;
+  /**
+   * История сессии для ленты: сообщения транскрипта → события. `live: true` — сессия сейчас идёт
+   * (пересев webview), последний ход остаётся открытым.
+   */
+  loadHistory(
+    sessionId: string,
+    cwd: string,
+    options?: { live?: boolean; maxTurns?: number },
+  ): Promise<SessionHistory>;
+  /** Переименование (`customTitle` в транскрипте). */
+  renameSession(sessionId: string, title: string, cwd: string): Promise<void>;
   accountInfo(cwd: string): Promise<AccountInfo>;
 }

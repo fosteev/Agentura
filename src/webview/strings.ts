@@ -41,6 +41,8 @@ export const ui = {
     status: (model: string, mode: string, cwd: string) =>
       `/status · модель ${model} · режим ${mode} · ${cwd}`,
     planOn: 'режим plan включён',
+    historyTrimmed: (n: number) =>
+      `показаны последние ходы; ранее — ещё ${n} ${plural(n, 'ход', 'хода', 'ходов')}`,
     sendFailed: 'сообщение не отправлено: сессия завершена',
     modeChanged: (mode: string) => `режим: ${mode}`,
     turnNotStarted: (message: string) => `ход не начат: ${message}`,
@@ -273,6 +275,32 @@ export const ui = {
     newSessionKey: '⌘⇧N',
     search: 'Поиск по названию — скоро',
     filterTitle: 'Фильтр',
+    accountLabels: { account: 'Аккаунт', plan: 'План', login: 'Вход', agent: 'Агент' },
+    agentName: 'Claude',
+    unknown: '—',
+    loadError: 'не удалось получить',
+    limitFive: 'Окно 5 часов',
+    limitWeek: 'Неделя',
+    limitWeekModel: (model: string) => `Неделя · ${model}`,
+    resetAt: (when: string) => `сброс ${when}`,
+    resetIn: (when: string) => `через ${when}`,
+    noSessions: 'В этом проекте пока нет сессий.',
+    renameTitle: 'Двойной клик — переименовать',
+    renameHint: 'Enter — сохранить, Esc — отмена',
+    days: { today: 'Сегодня', yesterday: 'Вчера' },
+    now: 'сейчас',
+    partialCost: '≈ не все модели',
+    stateTag: {
+      waiting: 'ждёт ответа',
+      error: 'ошибка движка',
+      limit: 'лимит исчерпан',
+    },
+  },
+  sessionsPopup: {
+    heading: (project: string) => `сессии ${project} · возобновить`,
+    all: 'Все сессии в боковой панели',
+    newSession: 'Новая сессия',
+    empty: 'пока нет сессий',
   },
 } as const;
 

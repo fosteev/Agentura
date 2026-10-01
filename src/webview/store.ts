@@ -17,6 +17,7 @@ import type {
   ToWebview,
 } from '../protocol';
 import {
+  addSys,
   answersOf,
   applyEvent,
   attachPreview,
@@ -28,6 +29,7 @@ import {
   queueUser,
   questionReady,
   resetSession,
+  seedHistory,
   setCustomAnswer,
   type ChatState,
   type QuestionCard,
@@ -35,7 +37,9 @@ import {
 import { pushHistory } from './composer';
 import { applyHud, initialHud, resetHud, type HudState } from './hudState';
 import { cacheView, contextView, limitsView } from './hudView';
-import { send } from './vscode';
+import { ui } from './strings';
+import { shortModel } from './toolView';
+import { forgetSession, persistSession, send } from './vscode';
 
 export const chat = signal<ChatState>(initialState());
 /** Агрегаты приборов: контекст, кэш, итоги сессии, таймлайн хода, агенты (`hudState.ts`). */
@@ -52,6 +56,8 @@ export const capabilities = signal<{ models: ModelOption[]; commands: CommandOpt
 });
 export const editor = signal<EditorContext>({});
 export const recent = signal<SessionSummary[]>([]);
+/** Сессия активной вкладки (`sessions.update.current`) — строка `cur` в списках. */
+export const currentSession = signal<string | undefined>(undefined);
 /** Ключи автоконтекста, снятые крестиком. */
 export const dismissed = signal<ReadonlySet<string>>(new Set());
 /** Чипы, добавленные через «@»/«+». */
@@ -94,15 +100,36 @@ let abandonedSessionId: string | undefined;
 
 function abandonSession(): void {
   if (chat.value.sessionId) abandonedSessionId = chat.value.sessionId;
+  forgetSession();
 }
 
 export function handleHostMessage(m: ToWebview): void {
   switch (m.type) {
     case 'agent.event':
       if (abandonedSessionId !== undefined && m.sessionId === abandonedSessionId) break;
-      // новая сессия поднялась — фильтр больше не нужен (возобновление этапа 6 должно его снять само)
-      if (m.event.type === 'session.init') abandonedSessionId = undefined;
+      // новая сессия поднялась — фильтр больше не нужен; возобновление той же сессии снимает его на
+      // `session.history` (иначе её `init` отфильтровался бы как событие брошенной)
+      if (m.event.type === 'session.init') {
+        abandonedSessionId = undefined;
+        persistSession(m.event.sessionId);
+      }
       dispatchEvent(m.event);
+      break;
+    case 'session.history': {
+      // хост шлёт историю строго после всех событий прежней сессии: брошенных «хвостов» больше не будет
+      abandonedSessionId = undefined;
+      replyTarget.value = undefined;
+      extra.value = [];
+      const now = Date.now();
+      chat.value = seedHistory(chat.value, m, m.events, now);
+      let hud = resetHud(hudState.value);
+      for (const e of m.events) hud = applyHud(hud, e, now);
+      hudState.value = hud;
+      persistSession(m.sessionId);
+      break;
+    }
+    case 'chat.command':
+      if (m.name === 'status') showStatus();
       break;
     case 'chat.info':
       chat.value = { ...chat.value, project: m.project, cwd: m.cwd, allowBypass: m.allowBypass };
@@ -138,6 +165,7 @@ export function handleHostMessage(m: ToWebview): void {
       break;
     case 'sessions.update':
       recent.value = m.sessions;
+      currentSession.value = m.current;
       break;
     case 'diff.preview':
       if (abandonedSessionId !== undefined && m.sessionId === abandonedSessionId) break;
@@ -167,6 +195,14 @@ export function dispatchEvent(event: AgentEvent, now = Date.now()): void {
   if (event.type === 'limit.update' && !event.agentId && limits.value.updatedAt === 0) {
     limits.value = { windows: event.windows, updatedAt: now };
   }
+}
+
+/** `/status` — строка в ленту: модель, режим, папка (из поля ввода и из боковой панели). */
+export function showStatus(): void {
+  const st = chat.value;
+  chat.value = addSys(st, [
+    ui.sys.status(st.model ? shortModel(st.model) : '—', ui.modes[st.mode]?.[0] ?? st.mode, st.cwd),
+  ]);
 }
 
 export function compact(): void {

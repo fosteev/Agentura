@@ -204,6 +204,41 @@ function deliverUser(s: ChatState, prompt: string, atMs: number): ChatState {
   return replaceAt(s, idx, updated);
 }
 
+/** Заголовок `session.history`: что хост знает о сессии помимо событий. */
+export interface HistorySeed {
+  sessionId: string;
+  title?: string;
+  model?: string;
+  mode?: PermissionMode;
+  skippedTurns: number;
+}
+
+/**
+ * Лента восстановленной сессии: сброс, сведения о сессии, события истории тем же редьюсером, что и
+ * живые. Незакрытые строки (обрыв посреди хода при закрытии окна) закрываются как прерванные,
+ * состояние — покой, если ход не открыт (история не должна оставлять «ошибку» от давней записи).
+ */
+export function seedHistory(
+  s: ChatState,
+  seed: HistorySeed,
+  events: readonly AgentEvent[],
+  now = Date.now(),
+): ChatState {
+  let out: ChatState = {
+    ...resetSession(s),
+    sessionId: seed.sessionId,
+    ...(seed.title ? { title: seed.title } : {}),
+    ...(seed.model ? { model: seed.model } : {}),
+    ...(seed.mode ? { mode: seed.mode } : {}),
+  };
+  if (seed.skippedTurns > 0) out = addSys(out, [ui.sys.historyTrimmed(seed.skippedTurns)]);
+  for (const e of events) out = applyEvent(out, e, now);
+  out = closeOpenRows(out, true, now);
+  const { limitResetsAt: _l, ...rest } = out;
+  void _l;
+  return { ...rest, status: rest.inTurn ? 'working' : 'idle', pending: [] };
+}
+
 export function applyEvent(s: ChatState, event: AgentEvent, now = Date.now()): ChatState {
   const pending = updatePending(s.pending, event);
   const inTurn = updateInTurn(!!s.inTurn, event);

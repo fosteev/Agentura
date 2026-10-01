@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { LimitWindow } from '../agent/types';
@@ -188,6 +189,26 @@ export class LimitsSource {
     return windows;
   }
 
+  /**
+   * План подписки из учётных данных Claude Code (`claudeAiOauth.subscriptionType` и `rateLimitTier`):
+   * токен не читается и никуда не отдаётся. Файл, затем Keychain — тот же порядок и та же настройка,
+   * что у токена; нет записи — пустой ответ, не ошибка.
+   */
+  async readPlan(): Promise<{ subscriptionType?: string; rateLimitTier?: string }> {
+    const claudeHome = this.options.claudeHome ?? join(homedir(), '.claude');
+    const platform = this.options.platform ?? process.platform;
+    let raw: string | undefined;
+    try {
+      raw = readFileSync(join(claudeHome, '.credentials.json'), 'utf8');
+    } catch {
+      raw = undefined;
+    }
+    if (raw === undefined && (this.options.readKeychain?.() ?? true)) {
+      raw = await (this.options.keychain ?? defaultKeychainAsync(platform))();
+    }
+    return raw === undefined ? {} : parsePlan(raw);
+  }
+
   /** Токен: `.credentials.json` всегда, Keychain — если разрешено настройкой. Нет токена — ошибка с причиной. */
   private async token(): Promise<string> {
     const claudeHome = this.options.claudeHome ?? join(homedir(), '.claude');
@@ -203,6 +224,20 @@ export class LimitsSource {
     const token = readToken({ claudeHome, platform, keychain: () => raw }).token;
     if (!token) throw new Error('нет токена Claude Code (войдите в claude)');
     return token;
+  }
+}
+
+/** `subscriptionType` и `rateLimitTier` из JSON учётных данных; токен не трогаем. */
+export function parsePlan(raw: string): { subscriptionType?: string; rateLimitTier?: string } {
+  try {
+    const oauth = (JSON.parse(raw) as { claudeAiOauth?: Record<string, unknown> }).claudeAiOauth;
+    const out: { subscriptionType?: string; rateLimitTier?: string } = {};
+    if (typeof oauth?.['subscriptionType'] === 'string')
+      out.subscriptionType = oauth['subscriptionType'];
+    if (typeof oauth?.['rateLimitTier'] === 'string') out.rateLimitTier = oauth['rateLimitTier'];
+    return out;
+  } catch {
+    return {};
   }
 }
 

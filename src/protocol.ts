@@ -120,7 +120,29 @@ export type ToWebview =
   | { type: 'session.reset' }
   /** Этап 5: превью правки к `permission.request` с `diff` — приходит вдогонку, по `toolUseId`. */
   | { type: 'diff.preview'; sessionId: string; toolUseId: string; preview: EditPreview }
-  | { type: 'sessions.update'; sessions: SessionSummary[] }
+  /**
+   * Список сессий проекта (этап 6). Боковая панель получает все, вкладка чата — короткий хвост для
+   * попапа и экрана empty; `current` — сессия активной вкладки (строка `cur` в списке), `project` — имя папки.
+   */
+  | { type: 'sessions.update'; sessions: SessionSummary[]; current?: string; project?: string }
+  /**
+   * Этап 6: история возобновлённой (или пересеянной после пересоздания webview) сессии. Webview
+   * сбрасывает ленту и приборы, снимает фильтр брошенной сессии и прогоняет `events` тем же
+   * редьюсером, что и живые события. `skippedTurns` — сколько ранних ходов не показано.
+   */
+  | {
+      type: 'session.history';
+      sessionId: string;
+      events: AgentEvent[];
+      skippedTurns: number;
+      title?: string;
+      model?: string;
+      mode?: PermissionMode;
+    }
+  /** Этап 6: аккаунт для боковой панели. */
+  | ({ type: 'account.info' } & AccountSummary)
+  /** Этап 6: команда из боковой панели (`/status`) — выполнить в этой вкладке. */
+  | { type: 'chat.command'; name: 'status' }
   | {
       type: 'limits.update';
       windows: LimitWindowSummary[];
@@ -169,7 +191,24 @@ export type FromWebview =
   | { type: 'agent.stop'; sessionId: string; taskId: string }
   | { type: 'session.new' }
   | { type: 'limits.refresh' }
-  | { type: 'session.resume'; sessionId: string };
+  | { type: 'session.resume'; sessionId: string }
+  /** Этап 6: переименование по двойному клику в списке (B9). */
+  | { type: 'session.rename'; sessionId: string; title: string }
+  /** Этап 6: кнопка `/status` боковой панели. */
+  | { type: 'status.show' };
+
+/** Аккаунт для секции «Аккаунт и лимиты» (этап 6); поля, которых нет, — «—». */
+export interface AccountSummary {
+  email?: string;
+  /** `Max 5×`, `Pro` — из `subscriptionType` и `rateLimitTier`. */
+  plan?: string;
+  /** `через CLI · ок` / `ключ API` / причина ошибки. */
+  login?: string;
+  /** Ошибка получения (`accountInfo` не ответил). */
+  error?: string;
+  /** `claude 2.1.285` — из `session.init.claude_code_version`; нет, пока ни одна сессия не стартовала. */
+  engine?: string;
+}
 
 export interface SessionSummary {
   id: string;
@@ -181,6 +220,8 @@ export interface SessionSummary {
   costPartial?: boolean;
   state: 'idle' | 'live' | 'waiting' | 'error' | 'limit';
   updatedAt: number;
+  /** Контекст последнего запроса, токены — «131k» в строке списка. */
+  contextTokens?: number;
 }
 
 /** Окно лимита: `kind`, проценты 0…100, сброс в мс. */
@@ -205,6 +246,8 @@ const FROM_WEBVIEW_TYPES: ReadonlySet<string> = new Set<FromWebview['type']>([
   'session.new',
   'limits.refresh',
   'session.resume',
+  'session.rename',
+  'status.show',
 ]);
 
 /** Проверка входящего от webview сообщения: снаружи приходит `unknown`. */
@@ -226,6 +269,9 @@ export function postToWebview(webview: WebviewLike, message: ToWebview): void {
 /** Минимум от `acquireVsCodeApi()`. */
 export interface VsCodeApiLike {
   postMessage(message: unknown): void;
+  /** Состояние webview, переживающее перезагрузку окна (сериализатор панели, этап 6). */
+  setState?(state: unknown): void;
+  getState?(): unknown;
 }
 
 export function postToHost(api: VsCodeApiLike, message: FromWebview): void {

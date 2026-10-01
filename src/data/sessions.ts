@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { AgentAdapter, SessionInfo, TokenUsage } from '../agent/types';
@@ -50,14 +50,27 @@ interface LiveEntry {
 /** Реестр запущенных в этом окне сессий: статус для списка и последний `total_cost_usd` движка. */
 export class LiveSessions {
   private readonly entries = new Map<string, LiveEntry>();
+  private readonly listeners = new Set<() => void>();
 
   set(id: string, state: SessionState, totalCostUsd?: number): void {
     const prev = this.entries.get(id);
     this.entries.set(id, { state, totalCostUsd: totalCostUsd ?? prev?.totalCostUsd });
+    // статус строки списка (идёт ход, ждёт ответа) сменился — список пересобрать
+    if (prev?.state !== state || totalCostUsd !== undefined) this.notify();
   }
 
   delete(id: string): void {
-    this.entries.delete(id);
+    if (this.entries.delete(id)) this.notify();
+  }
+
+  /** Подписка на изменения реестра (список сессий в боковой панели). */
+  onChange(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  private notify(): void {
+    for (const l of this.listeners) l();
   }
 
   get(id: string): LiveEntry | undefined {
@@ -96,8 +109,19 @@ export function transcriptPath(
   claudeHome = defaultClaudeHome(),
 ): string {
   const direct = join(projectDir(cwd, claudeHome), `${sessionId}.jsonl`);
+  if (existsSync(direct)) return direct;
+  // CLI называет каталог по реальному пути: папка воркспейса может быть симлинком (`/var` → `/private/var`)
+  try {
+    const real = realpathSync(cwd);
+    if (real !== cwd) {
+      const viaReal = join(projectDir(real, claudeHome), `${sessionId}.jsonl`);
+      if (existsSync(viaReal)) return viaReal;
+    }
+  } catch {
+    // папки нет — остаётся прямой путь
+  }
   const name = cwd.replace(/[^a-zA-Z0-9]/g, '-');
-  if (existsSync(direct) || name.length <= MAX_PROJECT_DIR) return direct;
+  if (name.length <= MAX_PROJECT_DIR) return direct;
   const projects = join(claudeHome, 'projects');
   const prefix = `${name.slice(0, MAX_PROJECT_DIR)}-`;
   try {
@@ -314,5 +338,6 @@ export function toSummary(row: SessionRow): SessionSummary {
     ...(row.costPartial ? { costPartial: true } : {}),
     state: row.state,
     updatedAt: row.updatedAt,
+    ...(row.contextTokens !== undefined ? { contextTokens: row.contextTokens } : {}),
   };
 }
