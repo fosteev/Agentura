@@ -154,9 +154,6 @@ export function Sidebar() {
         <h3>
           <span class="tri" />
           {ui.sidebar.account}
-          <button class="r" onClick={() => send({ type: 'status.show' })}>
-            {ui.sidebar.status}
-          </button>
           <button
             class={u.pending ? 'refresh busy' : 'refresh'}
             title={refreshTitle()}

@@ -1,9 +1,14 @@
 import type { AgentRowView, TimelineView } from '../hudView';
 import { ui } from '../strings';
+import { useStickToBottom } from '../useStickToBottom';
 
 export function TurnPane({ turns, hidden }: { turns: TimelineView[]; hidden?: boolean }) {
+  // в широкой вёрстке панель скроллится сама (hud.css) и во время хода липнет к низу, как лента
+  const { ref, onScroll } = useStickToBottom<HTMLElement>([turns]);
   return (
     <section
+      ref={ref}
+      onScroll={onScroll}
       class="tabpane"
       id="pane-turn"
       role="tabpanel"

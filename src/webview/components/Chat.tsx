@@ -1,5 +1,5 @@
 import { signal, useSignalEffect } from '@preact/signals';
-import { useEffect, useLayoutEffect, useRef } from 'preact/hooks';
+import { useEffect } from 'preact/hooks';
 import {
   chat,
   chooseOption,
@@ -26,6 +26,7 @@ import { Composer } from './Composer';
 import { Empty } from './Empty';
 import { Hud, type Tab } from './Hud';
 import { Log } from './Log';
+import { useStickToBottom } from '../useStickToBottom';
 import { AgentsPane, TurnPane } from './SidePanes';
 import type { FeedRow } from '../chatState';
 import { formatDuration, toolView } from '../toolView';
@@ -33,8 +34,6 @@ import { formatDuration, toolView } from '../toolView';
 const tab = signal<Tab>('chat');
 /** Широкая вёрстка (ход и агенты панелью справа) включается с этой ширины вкладки. */
 const WIDE_PX = 700;
-/** Насколько близко к низу лента считается «прилипшей». */
-const STICK_PX = 32;
 
 export function Chat() {
   // hud.css переключает вёрстку по html[data-width="900"]; в реальном webview ширину меряем сами
@@ -108,16 +107,7 @@ export function Chat() {
   }, []);
 
   // автопрокрутка с «прилипанием»: если пользователь ушёл вверх — не дёргаем
-  const paneRef = useRef<HTMLElement>(null);
-  const stick = useRef(true);
-  const onScroll = () => {
-    const el = paneRef.current;
-    if (el) stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < STICK_PX;
-  };
-  useLayoutEffect(() => {
-    const el = paneRef.current;
-    if (el && stick.current) el.scrollTop = el.scrollHeight;
-  }, [s.rows, tab.value]);
+  const { ref: paneRef, onScroll } = useStickToBottom<HTMLElement>([s.rows, tab.value]);
 
   const empty = s.rows.length === 0;
   // в пустой сессии вкладки «ход»/«агенты» отключены — после «new» возвращаемся в чат

@@ -61,8 +61,11 @@ html[data-width="900"] .tabs, html[data-width="full"] .tabs { display: none; }
 .pane { overflow: auto; min-width: 0; }
 .pane[hidden] { display: none; }
 html[data-width="900"] .body, html[data-width="full"] .body { grid-template-columns: 1fr 300px; }
-html[data-width="900"] .pane.side, html[data-width="full"] .pane.side { display: block !important; border-left: 1px solid var(--line); background: var(--bg-side); }
+html[data-width="900"] .pane.side, html[data-width="full"] .pane.side { display: flex !important; flex-direction: column; overflow: hidden; border-left: 1px solid var(--line); background: var(--bg-side); }
 html[data-width="900"] .pane.side .tabpane, html[data-width="full"] .pane.side .tabpane { display: block !important; }
+/* ширина ≥ 700: «ход» занимает остаток и скроллится сам, «агенты» + «за сессию» прижаты к низу */
+html[data-width="900"] .pane.side #pane-turn, html[data-width="full"] .pane.side #pane-turn { flex: 1; min-height: 0; overflow: auto; }
+html[data-width="900"] .pane.side #pane-agents, html[data-width="full"] .pane.side #pane-agents { flex: none; max-height: 50%; overflow: auto; }
 html[data-width="900"] .pane.side .tabpane + .tabpane, html[data-width="full"] .pane.side .tabpane + .tabpane { border-top: 1px solid var(--line); }
 .side { display: none; }
 .side h4 { margin: 0; padding: 12px 14px 6px; font-size: 11px; font-weight: 600; color: var(--fg-mute); }
@@ -273,7 +276,7 @@ html[data-width="900"] .pane.side .tabpane + .tabpane, html[data-width="full"] .
 .sidebar .sec h3 { margin: 0; padding: 8px 14px 6px; font-size: 11px; font-weight: 700; color: var(--fg-mute); text-transform: uppercase; letter-spacing: .04em; display: flex; gap: 8px; align-items: center; }
 .sidebar .sec h3 .tri { display: inline-block; border: 4px solid transparent; border-top: 5px solid var(--fg-mute); margin-top: 3px; }
 .sidebar .sec h3 .r { margin-left: auto; font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--link); }
-.sidebar .sec h3 .refresh { color: var(--fg-mute); font-size: 13px; line-height: 1; padding: 0 2px; }
+.sidebar .sec h3 .refresh { margin-left: auto; color: var(--fg-mute); font-size: 13px; line-height: 1; padding: 0 2px; }
 .sidebar .sec h3 .refresh:hover:not(:disabled) { color: var(--fg); }
 .sidebar .sec h3 .refresh.busy { animation: spin .8s linear infinite; cursor: progress; }
 .sidebar .kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; padding: 2px 14px 10px; }

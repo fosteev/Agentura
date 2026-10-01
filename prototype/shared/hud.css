@@ -61,8 +61,11 @@ html[data-width="900"] .tabs, html[data-width="full"] .tabs { display: none; }
 .pane { overflow: auto; min-width: 0; }
 .pane[hidden] { display: none; }
 html[data-width="900"] .body, html[data-width="full"] .body { grid-template-columns: 1fr 300px; }
-html[data-width="900"] .pane.side, html[data-width="full"] .pane.side { display: block !important; border-left: 1px solid var(--line); background: var(--bg-side); }
+html[data-width="900"] .pane.side, html[data-width="full"] .pane.side { display: flex !important; flex-direction: column; overflow: hidden; border-left: 1px solid var(--line); background: var(--bg-side); }
 html[data-width="900"] .pane.side .tabpane, html[data-width="full"] .pane.side .tabpane { display: block !important; }
+/* ширина ≥ 700: «ход» занимает остаток и скроллится сам, «агенты» + «за сессию» прижаты к низу */
+html[data-width="900"] .pane.side #pane-turn, html[data-width="full"] .pane.side #pane-turn { flex: 1; min-height: 0; overflow: auto; }
+html[data-width="900"] .pane.side #pane-agents, html[data-width="full"] .pane.side #pane-agents { flex: none; max-height: 50%; overflow: auto; }
 html[data-width="900"] .pane.side .tabpane + .tabpane, html[data-width="full"] .pane.side .tabpane + .tabpane { border-top: 1px solid var(--line); }
 .side { display: none; }
 .side h4 { margin: 0; padding: 12px 14px 6px; font-size: 11px; font-weight: 600; color: var(--fg-mute); }

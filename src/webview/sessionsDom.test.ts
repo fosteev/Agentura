@@ -126,6 +126,8 @@ describe('боковая панель (sessions.html)', () => {
     });
     await flush();
     const proto = screen('sessions').querySelector('.sidebar')!;
+    // ⚙ настроек в прототипе уже есть (d5e6c13), в расширении появится на этапе 3 roadmap 04 — тогда убрать строку
+    if (proto.querySelector('.head .gear')) proto.querySelector('.head')!.textContent = 'Agentura';
     const part = (root: Element, sel: string) => skeleton(root.querySelector(sel)!);
     for (const sel of [
       '.head',
@@ -210,8 +212,8 @@ describe('боковая панель (sessions.html)', () => {
     await flush();
     expect(posted.some((m) => m.type === 'session.rename')).toBe(false);
     (host.querySelector('.new') as HTMLElement).click();
-    (host.querySelector('h3 .r') as HTMLElement).click();
-    expect(posted.map((m) => m.type)).toEqual(['session.new', 'status.show']);
+    expect(host.querySelector('h3 button.r')).toBeNull();
+    expect(posted.map((m) => m.type)).toEqual(['session.new']);
   });
 
   it('пустой проект и неактивное окно: подпись и «0 %» без сброса', async () => {
