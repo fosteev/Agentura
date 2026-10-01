@@ -142,7 +142,15 @@ export class PermissionBroker {
       (s) => !(isObj(s) && s['type'] === 'setMode' && s['mode'] === 'bypassPermissions'),
     );
     if (decision === 'allow-always' && always.length > 0) result.updatedPermissions = always;
-    if (decision === 'allow-edits') result.updatedPermissions = [setMode('acceptEdits')];
+    if (decision === 'allow-edits') {
+      // файл вне рабочих папок: без `addDirectories` из подсказок движка режим acceptEdits
+      // не покрывает его, и следующая правка там спросит снова. Только папки из подсказки и только на
+      // сессию: кнопка обещает «до конца сессии», в настройки (`localSettings`) ничего не пишется
+      const dirs = p.suggestions
+        .filter((s) => isObj(s) && s['type'] === 'addDirectories')
+        .map((s) => ({ ...(s as Record<string, unknown>), destination: 'session' }));
+      result.updatedPermissions = [setMode('acceptEdits'), ...dirs];
+    }
     return this.finish(toolUseId, result);
   }
 

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { SessionSummary } from '../../protocol';
+import { menuKeys, tabStep } from '../a11y';
 import { costLabel, tokensLabel, whenLabel } from '../sessionsView';
 import { ui } from '../strings';
 
@@ -62,11 +63,34 @@ export function Hud({
   ];
   return (
     <header class="hud" aria-label={ui.hud.aria}>
-      <nav class="tabs" role="tablist">
+      <nav
+        class="tabs"
+        role="tablist"
+        aria-label={ui.hud.aria}
+        onKeyDown={(e) => {
+          const enabled = tabs.map(([k]) => k === 'chat' || sidePanesEnabled);
+          const next = tabStep(
+            e.key,
+            tabs.findIndex(([k]) => k === tab),
+            enabled,
+          );
+          if (next === undefined) return;
+          e.preventDefault();
+          onTab(tabs[next]![0]);
+          const list = e.currentTarget as HTMLElement | null;
+          requestAnimationFrame(() => {
+            const buttons = list?.querySelectorAll<HTMLElement>('[role=tab]');
+            buttons?.[next]?.focus();
+          });
+        }}
+      >
         {tabs.map(([k, label]) => (
           <button
             role="tab"
+            id={`tab-${k}`}
+            aria-controls={`pane-${k}`}
             aria-selected={tab === k}
+            tabIndex={tab === k ? 0 : -1}
             disabled={k !== 'chat' && !sidePanesEnabled}
             onClick={() => onTab(k)}
           >
@@ -83,11 +107,12 @@ export function Hud({
       <span class="sess">
         {project} · <b>{title || ui.hud.untitled}</b>
       </span>
-      <span class="acts" ref={pop}>
+      <span class="acts" ref={pop} onKeyDown={menuKeys}>
         <button
           title={ui.hud.sessionsTitle}
           style={open ? { color: 'var(--fg)' } : undefined}
-          aria-expanded={open ? true : undefined}
+          aria-haspopup="menu"
+          aria-expanded={open}
           onClick={() => setOpen(!open)}
         >
           {ui.hud.sessions}

@@ -1,6 +1,6 @@
 /** Карточки `.ask` (этап 5): разрешение (команда, правка), вопрос агента, план. Экраны permission, diff, plan. */
 import { useMemo } from 'preact/hooks';
-import type { PermCard, PlanCard, QuestionCard } from '../chatState';
+import type { FailCard, PermCard, PlanCard, QuestionCard } from '../chatState';
 import { alwaysButton, planView } from '../cardView';
 import { onCodeCopyClick, renderMarkdown } from '../markdown';
 import {
@@ -10,6 +10,8 @@ import {
   replyTarget,
   replyToQuestion,
   respondPermission,
+  retryTurn,
+  showLog,
   submitQuestion,
 } from '../store';
 import { ui } from '../strings';
@@ -154,6 +156,69 @@ export function PermissionCard({
             <span class="hint">{edit ? ui.cards.editsHint : always?.hint}</span>
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+/** Похоже на сетевую ошибку — подсказка про обрыв связи (как в прототипе error.html). */
+export const NETWORK_ERROR =
+  /ECONN|ENOTFOUND|ETIMEDOUT|EAI_AGAIN|ENETUNREACH|EPIPE|socket|network|fetch failed|connection (reset|refused|closed|error)|timed? ?out|offline/i;
+
+/** Карточка «Движок остановился» (экран error): текст ошибки, «Повторить ход», «Открыть журнал». */
+export function FailCardView({ c }: { c: FailCard }) {
+  const retrying = c.state === 'retrying';
+  const hint = NETWORK_ERROR.test(`${c.message} ${c.code ?? ''}`)
+    ? ui.fail.hintNetwork
+    : c.turn
+      ? ui.fail.hintTurn
+      : ui.fail.hintIdle;
+  return (
+    <div class="ask danger" role="alert">
+      <div class="h">
+        {c.fatal ? ui.fail.titleFatal : ui.fail.titleTurn}
+        <span class="tag">{ui.fail.tag(c.at)}</span>
+      </div>
+      <div class="bd">
+        <pre>{c.message}</pre>
+        {c.code && <p class="dim">{ui.fail.codeLine(c.code)}</p>}
+        <p class="dim">{hint}</p>
+      </div>
+      <div class="acts">
+        {retrying ? (
+          <span class="hint" style={{ marginLeft: 0 }}>
+            {ui.fail.retrying}
+          </span>
+        ) : (
+          <>
+            <button class="btn pri" onClick={retryTurn}>
+              {c.turn ? ui.fail.retryTurn : ui.fail.retryResume}
+            </button>
+            <button class="btn ghost" onClick={showLog}>
+              {ui.fail.openLog}
+            </button>
+            <span class="hint">{ui.fail.logHint}</span>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Вывод упавшего инструмента — раскрывается кликом по красной строке (экран error: «Упали 3 теста»). */
+export function ToolOutput({ content }: { content: string }) {
+  const MAX = 4000;
+  const text = content.length > MAX ? content.slice(0, MAX) : content;
+  return (
+    <div class="ask danger" style={{ marginTop: '4px' }}>
+      <div class="h">
+        {ui.fail.toolOutputTitle}
+        <span class="tag">{ui.fail.toolFailTag}</span>
+      </div>
+      <div class="bd">
+        <pre>{text.trimEnd() || '—'}</pre>
+        {content.length > MAX && <p class="dim">{ui.fail.truncated(content.length - MAX)}</p>}
+        <p class="dim">{ui.fail.toolOutputHint}</p>
       </div>
     </div>
   );

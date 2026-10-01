@@ -7,6 +7,7 @@
 //   node scripts/permissions-smoke.mjs ask      — AskUserQuestion: ответ вариантом
 //   node scripts/permissions-smoke.mjs plan     — plan mode: «доработать» с текстом, затем «выполнять» (default) и правка с карточкой
 //   node scripts/permissions-smoke.mjs reject   — plan mode: «отклонить» (deny + interrupt), режим остаётся plan
+//   node scripts/permissions-smoke.mjs outside — Edit файла вне рабочей папки: «принимать правки до конца сессии» добавляет папку (addDirectories), вторая правка там без запроса (этап 7)
 //   --model <id> (по умолчанию claude-sonnet-5-5), --keep — не удалять временную папку
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs';
@@ -250,6 +251,35 @@ try {
       /Bash\(/.test(settings),
       '«всегда» для Bash записал правило в .claude/settings.local.json',
     );
+  } else if (scenario === 'outside') {
+    // две правки в файлах вне рабочей папки: без `addDirectories` из подсказок вторая снова спросит
+    const outside = mkdtempSync(join(tmpdir(), 'agentura-smoke-outside-'));
+    writeFileSync(join(outside, 'a.txt'), 'one\n');
+    writeFileSync(join(outside, 'b.txt'), 'one\n');
+    const seen = [];
+    try {
+      await runTurn(
+        `Замени слово one на two сначала в файле ${join(outside, 'a.txt')}, затем в ${join(outside, 'b.txt')} — инструментом Edit, по одному вызову на файл. Ответь одним словом.`,
+        async (e) => {
+          seen.push(e.toolName ?? e.type);
+          if (e.type !== 'permission.request')
+            return { type: 'permission.respond', decision: 'deny' };
+          console.log(
+            `  always: ${JSON.stringify(e.always ?? null)} · blockedPath=${e.blockedPath ?? '—'}`,
+          );
+          return { type: 'permission.respond', decision: 'allow-edits' };
+        },
+      );
+      console.log(`  запросы: ${seen.join(', ')}`);
+      check(
+        seen.filter((n) => n === 'Edit').length === 1,
+        'после «принимать правки» (addDirectories) вторая правка вне папки без запроса',
+      );
+      check(readFileSync(join(outside, 'a.txt'), 'utf8').includes('two'), 'a.txt изменён');
+      check(readFileSync(join(outside, 'b.txt'), 'utf8').includes('two'), 'b.txt изменён');
+    } finally {
+      if (!args.includes('--keep')) rmSync(outside, { recursive: true, force: true });
+    }
   } else if (scenario === 'ask') {
     let q;
     const r = await runTurn(

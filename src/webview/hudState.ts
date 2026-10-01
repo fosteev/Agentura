@@ -29,6 +29,8 @@ export interface TimelineSeg {
   at: number;
   endAt?: number;
   state: 'run' | 'ok' | 'err' | 'stopped';
+  /** Инструмент ждёт человека: разрешение, ответ на вопрос, решение по плану (до `permission.resolved`). */
+  waiting?: 'permission' | 'question' | 'plan';
   /** `+6 −2`, `3` (совпадения) — то, что ставится перед временем. */
   detail?: string;
 }
@@ -72,6 +74,8 @@ export interface HudState {
     cacheRead: number;
     cacheWrite: number;
   };
+  /** Идёт сжатие контекста (`compaction.start` → `compaction.end`): индикатор «сжимаю» у шкалы. */
+  compacting?: boolean;
   /** Последние ходы, старый первым; у активного нет `endedAt`. */
   turns: TurnTimeline[];
   agents: AgentNode[];
@@ -269,11 +273,29 @@ export function applyHud(s: HudState, e: AgentEvent, now = Date.now()): HudState
         },
       };
     }
+    case 'compaction.start':
+      return { ...s, compacting: true };
     case 'compaction.end': {
-      if (!e.ok || e.postTokens === undefined) return s;
+      const { compacting: _c, ...rest } = s;
+      void _c;
+      if (!e.ok || e.postTokens === undefined) return rest;
       const prev = s.context;
-      return { ...s, context: { ...prev, used: e.postTokens } };
+      return { ...rest, context: { ...prev, used: e.postTokens } };
     }
+    case 'permission.request':
+    case 'question.request':
+    case 'plan.request':
+      return setWaiting(
+        s,
+        e.toolUseId,
+        e.type === 'permission.request'
+          ? 'permission'
+          : e.type === 'question.request'
+            ? 'question'
+            : 'plan',
+      );
+    case 'permission.resolved':
+      return setWaiting(s, e.toolUseId, undefined);
     case 'usage.message': {
       const u = e.usage;
       let out = s;
@@ -366,8 +388,10 @@ export function applyHud(s: HudState, e: AgentEvent, now = Date.now()): HudState
       }
       const u = e.usage;
       const t = out.totals;
+      const { compacting: _c, ...calm } = out;
+      void _c;
       return {
-        ...out,
+        ...calm,
         ...(e.contextWindow !== undefined ? { contextWindow: e.contextWindow } : {}),
         totals: {
           // `total_cost_usd` движка — накопленная стоимость сессии (с базой при resume)
@@ -385,7 +409,9 @@ export function applyHud(s: HudState, e: AgentEvent, now = Date.now()): HudState
       const agents = s.agents.map((a) =>
         a.status === 'running' ? { ...a, status: 'stopped' as const, endedAt: now } : a,
       );
-      const out = { ...s, agents };
+      const { compacting: _c, ...calm } = s;
+      void _c;
+      const out = { ...calm, agents };
       const turn = activeTurn(out);
       if (!turn) return out;
       return withTurn(out, { ...closeAll(turn, now, true), endedAt: now });
@@ -393,6 +419,19 @@ export function applyHud(s: HudState, e: AgentEvent, now = Date.now()): HudState
     default:
       return s;
   }
+}
+
+/** Пометить строку инструмента «ждёт человека» (или снять пометку). */
+function setWaiting(s: HudState, toolUseId: string, waiting: TimelineSeg['waiting']): HudState {
+  const turn = activeTurn(s);
+  if (!turn) return s;
+  const i = turn.segs.findIndex((g) => g.kind === 'tool' && g.id === toolUseId);
+  if (i < 0) return s;
+  const segs = turn.segs.slice();
+  const { waiting: _w, ...seg } = segs[i]!;
+  void _w;
+  segs[i] = waiting ? { ...seg, waiting } : seg;
+  return withTurn(s, { ...turn, segs });
 }
 
 function toolDetail(name: string, input: Record<string, unknown>, result: unknown): string {

@@ -58,6 +58,8 @@ export interface ChatDeps {
   onSession?(id: string | undefined): void;
   /** Версия движка из `session.init` — секция «Аккаунт» боковой панели. */
   onEngineVersion?(version: string): void;
+  /** Показать канал журнала расширения (карточка ошибки, этап 7). */
+  showLogs?(): void;
 }
 
 export interface OpenDiff {
@@ -131,9 +133,33 @@ export class ChatController {
   private readonly previews = new Map<string, Extract<ToWebview, { type: 'diff.preview' }>>();
   /** Вкладка закрыта или расширение выгружается: никаких новых процессов движка после этого. */
   private disposed = false;
+  /**
+   * Последний известный id сессии вкладки. `sessionId` после `session.closed` у новой сессии пуст
+   * (`registeredId` снят), а «Повторить ход» должен знать, какую сессию возобновлять (этап 7).
+   */
+  private lastSessionId: string | undefined;
+  /** Последний отправленный и ещё не завершённый успешно промпт: его повторяет «Повторить ход». */
+  private inflight: Extract<FromWebview, { type: 'send' }> | undefined;
+  /** Сессия, помеченная в списке как `error`/`limit` после закрытия: снять при возобновлении. */
+  private stickyLive: string | undefined;
+  /** Журнал с префиксом — первые 8 символов id сессии: канал один на окно, вкладок несколько. */
+  private readonly log: ChatDeps['log'];
 
   constructor(private readonly deps: ChatDeps) {
     this.resumeId = deps.resumeId;
+    this.lastSessionId = deps.resumeId;
+    const tag = (m: string) => `[${this.logTag()}] ${m}`;
+    this.log = {
+      debug: (m) => deps.log.debug(tag(m)),
+      info: (m) => deps.log.info(tag(m)),
+      warn: (m) => deps.log.warn(tag(m)),
+      error: (m) => deps.log.error(tag(m)),
+    };
+  }
+
+  private logTag(): string {
+    const id = this.sessionId ?? this.lastSessionId;
+    return id ? id.slice(0, 8) : 'новая';
   }
 
   /** Id сессии вкладки: живой или возобновляемой; нет — новая ещё не стартовала. */
@@ -156,7 +182,7 @@ export class ChatController {
   wake(): void {
     void this.ensureSession()
       .then((s) => this.postCapabilities(s))
-      .catch((e) => this.deps.log.warn(`возможности движка: ${String(e)}`));
+      .catch((e) => this.log.warn(`возможности движка: ${String(e)}`));
   }
 
   /**
@@ -176,6 +202,9 @@ export class ChatController {
     this.teardown();
     const token = ++this.resumeToken;
     this.resumeId = id;
+    this.lastSessionId = id;
+    // другая сессия во вкладке — её неотвеченный промпт сюда не относится (кроме «Повторить ход»)
+    if (!this.retrying) this.inflight = undefined;
     this.resumed = undefined;
     this.status = 'idle';
     this.touched = true;
@@ -184,7 +213,7 @@ export class ChatController {
       history = await deps.adapter.loadHistory(id, deps.cwd);
     } catch (e) {
       if (token !== this.resumeToken) return;
-      deps.log.warn(`история сессии ${id} не прочитана: ${String(e)}`);
+      this.log.warn(`история сессии ${id} не прочитана: ${String(e)}`);
       this.resumeId = undefined;
       this.resumed = undefined;
       this.touched = false;
@@ -214,7 +243,7 @@ export class ChatController {
     if (!engine) return;
     void this.ensureSession()
       .then((s) => this.postCapabilities(s))
-      .catch((e) => deps.log.warn(`возможности движка: ${String(e)}`));
+      .catch((e) => this.log.warn(`возможности движка: ${String(e)}`));
   }
 
   /** `session.history` для webview: события без тяжёлых результатов (файлы целиком остались у хоста). */
@@ -247,7 +276,7 @@ export class ChatController {
         history = await this.deps.adapter.loadHistory(id, this.deps.cwd, { live: this.inTurn });
       } catch (e) {
         // новая сессия без единого сообщения: транскрипта ещё нет — пересеивать нечего, кроме снимка
-        this.deps.log.debug(`пересев: история ${id}: ${String(e)}`);
+        this.log.debug(`пересев: история ${id}: ${String(e)}`);
         history = undefined;
       }
     }
@@ -307,12 +336,12 @@ export class ChatController {
           ...(this.sessionId ? { current: this.sessionId } : {}),
         }),
       )
-      .catch((e) => deps.log.warn(`список сессий не получен: ${String(e)}`));
+      .catch((e) => this.log.warn(`список сессий не получен: ${String(e)}`));
     if (reseed) void this.reseed();
     else
       void this.ensureSession()
         .then((s) => this.postCapabilities(s))
-        .catch((e) => deps.log.warn(`возможности движка: ${String(e)}`));
+        .catch((e) => this.log.warn(`возможности движка: ${String(e)}`));
     if (this.queuedCommand) {
       deps.post({ type: 'chat.command', name: this.queuedCommand });
       this.queuedCommand = undefined;
@@ -329,6 +358,9 @@ export class ChatController {
     this.teardown();
     this.resumeToken++;
     this.resumeId = undefined;
+    this.lastSessionId = undefined;
+    // «Повторить ход» уже начатой новой сессии (retry без id) сохраняет промпт: его сбрасывает только человек
+    if (!this.retrying) this.inflight = undefined;
     this.resumed = undefined;
     this.seedPending = false;
     this.touched = false;
@@ -339,7 +371,7 @@ export class ChatController {
     if (notify) this.deps.post({ type: 'session.reset' });
     void this.ensureSession()
       .then((s) => this.postCapabilities(s))
-      .catch((e) => this.deps.log.warn(`возможности движка: ${String(e)}`));
+      .catch((e) => this.log.warn(`возможности движка: ${String(e)}`));
   }
 
   dispose(): void {
@@ -377,7 +409,7 @@ export class ChatController {
             items: await deps.findFiles(m.query),
           });
         } catch (e) {
-          deps.log.warn(`поиск файлов: ${String(e)}`);
+          this.log.warn(`поиск файлов: ${String(e)}`);
           deps.post({ type: 'files.result', requestId: m.requestId, items: [] });
         }
         return;
@@ -389,6 +421,12 @@ export class ChatController {
       case 'limits.refresh':
         await this.refreshLimits();
         return;
+      case 'log.show':
+        deps.showLogs?.();
+        return;
+      case 'turn.retry':
+        await this.retry(m.turn);
+        return;
       default:
         break;
     }
@@ -398,6 +436,7 @@ export class ChatController {
       switch (m.type) {
         case 'send': {
           this.touched = true;
+          this.inflight = m;
           // по очереди: сообщение с выделением (ждёт чтения файла) не обгоняется следующим
           const run = this.sendQueue.then(() => this.sendNow(session, m));
           this.sendQueue = run.catch(() => undefined);
@@ -409,7 +448,7 @@ export class ChatController {
           return;
         case 'mode.set':
           if (m.mode === 'bypassPermissions' && !deps.settings().allowBypass) {
-            deps.log.warn(
+            this.log.warn(
               'mode.set bypassPermissions: выключено настройкой agentura.allowBypassPermissions',
             );
             return;
@@ -446,13 +485,51 @@ export class ChatController {
           return;
       }
     } catch (e) {
-      deps.log.error(`${m.type}: ${String(e)}`);
+      this.log.error(`${m.type}: ${String(e)}`);
+    }
+  }
+
+  private retrying = false;
+
+  /**
+   * «Повторить ход» (карточка ошибки): сессия возобновляется (`resume`: движок поднимается заново, лента
+   * пересобирается из транскрипта), затем уходит тот же промпт, если ход был оборван. Без промпта
+   * (ошибка между ходами) — просто возобновление. Новая сессия, не дожившая до `session.init`, —
+   * заново с тем же промптом.
+   */
+  private async retry(withPrompt: boolean): Promise<void> {
+    if (this.retrying || this.disposed) return;
+    // идёт ход (кнопка на устаревшей карточке): `resume` убил бы процесс посреди него и повторил промпт
+    if (this.inTurn) {
+      this.log.warn('повтор хода: идёт ход — повтор пропущен');
+      return;
+    }
+    this.retrying = true;
+    try {
+      // промпт — только если карточка видела оборванный ход: иначе ушёл бы промпт давно законченного
+      // неудачного хода (`turn.result ok:false` не сбрасывает `inflight`)
+      const prompt = withPrompt ? this.inflight : undefined;
+      const id = this.lastSessionId;
+      this.log.info(
+        `повтор хода: ${id ? `resume ${id}` : 'новая сессия'}${prompt ? ', промпт будет отправлен снова' : ', без промпта'}`,
+      );
+      if (id) await this.resume(id);
+      else this.newSession(true);
+      if (!prompt) return;
+      const session = await this.ensureSession();
+      if (!session) return;
+      this.touched = true;
+      this.inflight = prompt;
+      const run = this.sendQueue.then(() => this.sendNow(session, prompt));
+      this.sendQueue = run.catch(() => undefined);
+      await run;
+    } finally {
+      this.retrying = false;
     }
   }
 
   private answered(type: string, ok: boolean): void {
-    if (!ok)
-      this.deps.log.warn(`${type}: запрос уже закрыт или не из этой сессии — ответ отброшен`);
+    if (!ok) this.log.warn(`${type}: запрос уже закрыт или не из этой сессии — ответ отброшен`);
   }
 
   /** «открыть дифф» на карточке правки и «diff» в строке ленты. */
@@ -460,7 +537,7 @@ export class ChatController {
     const { deps } = this;
     const edit = this.edits.get(toolUseId);
     if (!edit) {
-      deps.log.warn(`diff.open ${toolUseId}: правка не найдена (старая сессия или не Edit/Write)`);
+      this.log.warn(`diff.open ${toolUseId}: правка не найдена (старая сессия или не Edit/Write)`);
       return;
     }
     if (!deps.openDiff) return;
@@ -473,7 +550,7 @@ export class ChatController {
         stage: edit.stage,
       });
     } catch (e) {
-      deps.log.error(`diff.open: ${String(e)}`);
+      this.log.error(`diff.open: ${String(e)}`);
     }
   }
 
@@ -536,13 +613,13 @@ export class ChatController {
       if (a.kind !== 'selection') continue;
       // файл закрыт/удалён — сообщение всё равно уходит, просто без текста выделения
       const t = await deps.readSelection(a).catch((e: unknown) => {
-        deps.log.warn(`выделение ${a.path}: ${String(e)}`);
+        this.log.warn(`выделение ${a.path}: ${String(e)}`);
         return undefined;
       });
       if (t) texts[attachmentKey(a)] = t;
     }
     if (!session.send(buildPrompt(m.text, m.attachments ?? [], texts))) {
-      deps.log.warn('send: сессия закрыта, сообщение не принято');
+      this.log.warn('send: сессия закрыта, сообщение не принято');
     }
   }
 
@@ -554,7 +631,7 @@ export class ChatController {
       const snap = await usage.refresh();
       post({ type: 'limits.update', ...snap });
     } catch (e) {
-      this.deps.log.warn(`лимиты для чата: ${String(e)}`);
+      this.log.warn(`лимиты для чата: ${String(e)}`);
     }
   }
 
@@ -609,17 +686,19 @@ export class ChatController {
         }
         this.current = session;
         this.unsubscribe = session.events.on((e) => this.onEvent(session, e));
-        deps.log.info('Сессия агента создана');
+        this.log.info('Сессия агента создана');
         return session;
       });
       this.session.catch((e: unknown) => {
         // сессию уже заменили (`/clear`, новая) — падение старой не касается ни новой, ни ленты
         if (gen !== this.generation) return;
         const message = e instanceof Error ? e.message : String(e);
-        deps.log.error(`сессия не создана: ${message}`);
+        this.log.error(`сессия не создана: ${message}`);
         this.session = undefined;
         this.forward('', { type: 'error', message, fatal: true });
         this.forward('', { type: 'session.closed', reason: 'error', message });
+        this.status = 'error';
+        deps.setTitle(tabTitle(this.status, this.title));
       });
     }
     return this.session.catch(() => undefined);
@@ -627,6 +706,8 @@ export class ChatController {
 
   private onEvent(session: AgentSession, e: AgentEvent): void {
     if (session !== this.current) return;
+    if (e.type === 'session.init' && session.id) this.lastSessionId = session.id;
+    this.log.debug(`← ${describeEvent(e)}`);
     this.forward(session.id, e);
 
     const prev = this.status;
@@ -640,13 +721,13 @@ export class ChatController {
 
     switch (e.type) {
       case 'permission.request':
-        this.deps.log.info(`permission.request ${e.toolName}: ${e.description ?? ''}`);
+        this.log.info(`permission.request ${e.toolName}: ${e.description ?? ''}`);
         this.pendingRequests.set(e.toolUseId, e);
         if (e.diff) void this.preparePreview(session, e);
         break;
       case 'question.request':
       case 'plan.request':
-        this.deps.log.info(e.type);
+        this.log.info(e.type);
         this.pendingRequests.set(e.toolUseId, e);
         break;
       case 'permission.resolved':
@@ -662,15 +743,18 @@ export class ChatController {
         break;
       case 'session.init':
         this.register(session.id);
+        this.lastSessionId = session.id || this.lastSessionId;
         this.lastInit = e;
         this.deps.onEngineVersion?.(e.engineVersion);
-        this.deps.log.info(`session.init: ${e.model}, режим ${e.permissionMode}`);
+        this.log.info(`session.init: ${e.model}, режим ${e.permissionMode}`);
         break;
       case 'context.usage':
         if (e.source === 'engine' && !e.agentId) this.lastContext = e;
         break;
       case 'turn.result':
-        this.deps.log.info(
+        // успешный (или остановленный человеком) ход закрыт — повторять нечего
+        if (!e.agentId && (e.ok || e.interrupted)) this.inflight = undefined;
+        this.log.info(
           `ход завершён: ${e.ok ? 'ok' : 'ошибка'}, $${(e.costUsd ?? 0).toFixed(4)}, ${e.durationMs} мс`,
         );
         if (session.id) {
@@ -686,14 +770,25 @@ export class ChatController {
         }
         break;
       case 'error':
-        this.deps.log.warn(`error: ${e.message}`);
+        if (e.fatal) this.log.error(`error (fatal): ${e.message}`);
+        else if (e.code === 'api_retry') this.log.info(`error: ${e.message}`);
+        else this.log.warn(`error${e.code ? ` ${e.code}` : ''}: ${e.message}`);
         break;
-      case 'session.closed':
-        this.deps.log.info(`session.closed: ${e.reason}${e.message ? ` — ${e.message}` : ''}`);
+      case 'session.closed': {
+        const text = `session.closed: ${e.reason}${e.message ? ` — ${e.message}` : ''}`;
+        if (e.reason === 'error') this.log.error(text);
+        else this.log.info(text);
         if (this.registeredId) this.deps.live?.delete(this.registeredId);
-        // закрытая сессия больше не «живая»: не возвращать её в список ниже
+        // закрытая сессия больше не «живая», но упавшая или упёршаяся в лимит остаётся в списке
+        // строкой `err`/`limit` — до «Повторить ход», возобновления или закрытия вкладки
+        const id = session.id || this.registeredId;
+        if (id && (this.status === 'error' || this.status === 'limited')) {
+          this.deps.live?.set(id, this.liveState());
+          this.stickyLive = id;
+        }
         this.registeredId = undefined;
         return;
+      }
       default:
         break;
     }
@@ -731,6 +826,8 @@ export class ChatController {
     this.unsubscribe?.();
     this.unsubscribe = undefined;
     if (this.registeredId) this.deps.live?.delete(this.registeredId);
+    if (this.stickyLive) this.deps.live?.delete(this.stickyLive);
+    this.stickyLive = undefined;
     this.registeredId = undefined;
     this.current?.dispose();
     this.current = undefined;
@@ -783,4 +880,54 @@ export function slimHistory(events: readonly AgentEvent[]): AgentEvent[] {
     void _c;
     return { ...e, result: rest };
   });
+}
+
+/** Одна строка журнала на событие адаптера (уровень debug): тип и ключевые поля, без текстов и результатов. */
+export function describeEvent(e: AgentEvent): string {
+  const who = e.agentId ? ` [агент ${e.agentId.slice(0, 8)}]` : '';
+  let extra = '';
+  switch (e.type) {
+    case 'text.delta':
+    case 'thinking.delta':
+      extra = `${e.text.length} симв.`;
+      break;
+    case 'tool.start':
+    case 'tool.progress':
+      extra = e.name;
+      break;
+    case 'tool.result':
+      extra = `${e.toolUseId.slice(-6)} ${e.isError ? 'ошибка' : 'ok'}`;
+      break;
+    case 'permission.request':
+      extra = e.toolName;
+      break;
+    case 'permission.resolved':
+      extra = `${e.decision} (${e.by})`;
+      break;
+    case 'context.usage':
+      extra = `${e.usedTokens}${e.maxTokens ? `/${e.maxTokens}` : ''} (${e.source})`;
+      break;
+    case 'turn.result':
+      extra = `${e.ok ? 'ok' : 'ошибка'} ${e.subtype}${e.interrupted ? ' interrupted' : ''}`;
+      break;
+    case 'limit.update':
+      extra =
+        `${e.source} ${e.status ?? ''} ${e.windows.map((w) => `${w.kind} ${w.percent}%`).join(', ')}`.trim();
+      break;
+    case 'error':
+      extra = `${e.code ?? ''}${e.fatal ? ' fatal' : ''} ${e.message}`.trim();
+      break;
+    case 'session.closed':
+      extra = `${e.reason}${e.message ? ` ${e.message}` : ''}`;
+      break;
+    case 'compaction.end':
+      extra = e.ok ? `${e.preTokens ?? '?'} → ${e.postTokens ?? '?'}` : `ошибка ${e.error ?? ''}`;
+      break;
+    case 'mode.changed':
+      extra = e.mode;
+      break;
+    default:
+      break;
+  }
+  return `${e.type}${who}${extra ? ` ${extra}` : ''}`;
 }

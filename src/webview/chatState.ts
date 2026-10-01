@@ -19,7 +19,15 @@ import { formatCost, formatDuration, formatInt } from './toolView';
 import { ui } from './strings';
 
 export type FeedRow =
-  | { id: number; kind: 'sys'; tone?: 'ok' | 'bad'; text: Seg[]; at?: string }
+  | {
+      id: number;
+      kind: 'sys';
+      tone?: 'ok' | 'bad';
+      text: Seg[];
+      at?: string;
+      /** `limit` — строка «ход не начат» (одна на упор в лимит), `retry` — повтор запроса к API (схлопываются). */
+      tag?: 'limit' | 'retry';
+    }
   | { id: number; kind: 'user'; text: string; at?: string; queued?: boolean; context?: string }
   | {
       id: number;
@@ -46,7 +54,25 @@ export type FeedRow =
   | { id: number; kind: 'sum'; parts: string[]; cost?: string; time: string }
   | PermCard
   | QuestionCard
-  | PlanCard;
+  | PlanCard
+  | FailCard;
+
+/**
+ * Карточка ошибки движка (этап 7, экран error): «Движок остановился» с текстом ошибки и кнопками
+ * «Повторить ход» / «Открыть журнал расширения». `retrying` — кнопка нажата, ждём `session.history`.
+ */
+export interface FailCard {
+  id: number;
+  kind: 'fail';
+  /** Движок упал (`fatal`) или ход не удался при живой сессии. */
+  fatal: boolean;
+  message: string;
+  code?: string;
+  at: string;
+  /** Ход был оборван посреди работы: «Повторить ход», иначе «Возобновить сессию». */
+  turn: boolean;
+  state: 'open' | 'retrying';
+}
 
 /**
  * Карточки `.ask` (этап 5). Живут строками ленты там, где пришёл запрос. `sent` — кнопка нажата,
@@ -149,6 +175,15 @@ export function clock(ms: number): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
+const WEEKDAYS = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
+
+/** Время сброса: сегодня — `17:00`, иначе `пт 09:00`. */
+export function resetLabel(resetsAt: number, now: number): string {
+  const d = new Date(resetsAt);
+  const sameDay = d.toDateString() === new Date(now).toDateString();
+  return sameDay ? clock(resetsAt) : `${WEEKDAYS[d.getDay()]} ${clock(resetsAt)}`;
+}
+
 function push(s: ChatState, row: DistributiveOmit<FeedRow, 'id'>): ChatState {
   return { ...s, rows: [...s.rows, { ...row, id: s.nextId } as FeedRow], nextId: s.nextId + 1 };
 }
@@ -173,7 +208,21 @@ export function addSys(s: ChatState, text: Seg[], tone?: 'ok' | 'bad'): ChatStat
 
 /** Сообщение пользователя отправлено, `turn.start` ещё не пришёл — «в очереди». */
 export function queueUser(s: ChatState, text: string): ChatState {
-  return push(s, { kind: 'user', text, queued: true });
+  return push(retireFails(s), { kind: 'user', text, queued: true });
+}
+
+/**
+ * Карточки ошибки → красные строки: человек пошёл дальше (новое сообщение, начался ход) или это история.
+ * Кнопка «Повторить» на старой карточке иначе перезапустила бы движок посреди нового хода.
+ */
+function retireFails(s: ChatState): ChatState {
+  if (!s.rows.some((r) => r.kind === 'fail')) return s;
+  return {
+    ...s,
+    rows: s.rows.map((r): FeedRow =>
+      r.kind === 'fail' ? { id: r.id, kind: 'sys', tone: 'bad', text: [r.message], at: r.at } : r,
+    ),
+  };
 }
 
 function closeOpenRows(s: ChatState, interrupted: boolean, at: number): ChatState {
@@ -234,8 +283,11 @@ export function seedHistory(
   if (seed.skippedTurns > 0) out = addSys(out, [ui.sys.historyTrimmed(seed.skippedTurns)]);
   for (const e of events) out = applyEvent(out, e, now);
   out = closeOpenRows(out, true, now);
-  const { limitResetsAt: _l, ...rest } = out;
+  // давняя ошибка из транскрипта — строка, а не карточка с кнопкой «Повторить»: повторять уже нечего
+  out = retireFails(out);
+  const { limitResetsAt: _l, closed: _c, ...rest } = out;
   void _l;
+  void _c;
   return { ...rest, status: rest.inTurn ? 'working' : 'idle', pending: [] };
 }
 
@@ -289,11 +341,16 @@ function reduce(s: ChatState, e: AgentEvent, now: number): ChatState {
     }
     case 'limit.update':
       if (e.status !== 'rejected') return s;
-      return e.resetsAt !== undefined ? { ...s, limitResetsAt: e.resetsAt } : s;
+      return limitRow(
+        e.resetsAt !== undefined ? { ...s, limitResetsAt: e.resetsAt } : s,
+        undefined,
+        now,
+      );
     case 'turn.start': {
       const { limitResetsAt: _l, ...base } = s;
       void _l;
-      const out: ChatState = { ...base, turnStartedAt: e.at };
+      // начался ход — старые карточки ошибки больше не повторяются
+      const out: ChatState = retireFails({ ...base, turnStartedAt: e.at });
       // склеенные движком сообщения — каждое своей строкой
       const prompts = e.prompts ?? (e.prompt !== undefined ? [e.prompt] : []);
       return prompts.reduce((acc, p) => deliverUser(acc, p, e.at), out);
@@ -435,30 +492,103 @@ function reduce(s: ChatState, e: AgentEvent, now: number): ChatState {
       return out;
     }
     case 'error': {
-      if (e.code !== 'limit') return push(s, { kind: 'sys', tone: 'bad', text: [e.message] });
-      const reset =
-        s.limitResetsAt !== undefined ? ` · ${ui.sys.resetAt(clock(s.limitResetsAt))}` : '';
-      return push(s, {
-        kind: 'sys',
-        tone: 'bad',
-        at: clock(now),
-        text: [ui.sys.turnNotStarted(e.message) + reset],
-      });
+      if (e.code === 'limit') return limitRow(s, e.message, now);
+      if (e.code === 'api_retry') return retryRow(s, e.message);
+      return failRow(
+        s,
+        { fatal: e.fatal, message: e.message, ...(e.code ? { code: e.code } : {}) },
+        now,
+      );
     }
     case 'session.closed': {
+      // оборвало ход или упало с ошибкой — карточка; тихое закрытие в покое — строка
+      const wasTurn = openTurn(s.rows);
       const out = closeOpenRows(s, true, now);
-      return push(
-        { ...out, closed: { reason: e.reason, ...(e.message ? { message: e.message } : {}) } },
-        {
-          kind: 'sys',
-          tone: e.reason === 'error' ? 'bad' : undefined,
-          text: [ui.sys.closed(e.reason, e.message)],
-        },
-      );
+      const closed = { reason: e.reason, ...(e.message ? { message: e.message } : {}) };
+      if (e.reason === 'error' || (e.reason === 'exit' && wasTurn)) {
+        const last = out.rows[out.rows.length - 1];
+        // `error fatal` и `session.closed` приходят парой — одна карточка
+        if (last?.kind === 'fail') return { ...out, closed };
+        return failRow(
+          { ...out, closed },
+          { fatal: true, message: e.message ?? ui.sys.closed(e.reason) },
+          now,
+        );
+      }
+      return push({ ...out, closed }, { kind: 'sys', text: [ui.sys.closed(e.reason, e.message)] });
     }
     default:
       return s;
   }
+}
+
+/** Ход открыт: после последней строки `sum` есть сообщение пользователя (ответ не дописан). */
+function openTurn(rows: readonly FeedRow[]): boolean {
+  const user = lastIndex(rows as FeedRow[], (r) => r.kind === 'user' && !r.queued);
+  return user > lastIndex(rows as FeedRow[], (r) => r.kind === 'sum');
+}
+
+/** «ход не начат»: одна строка на упор в лимит; повторное событие уточняет текст, а не дублирует. */
+function limitRow(s: ChatState, message: string | undefined, now: number): ChatState {
+  // недельный сброс через несколько дней — с днём недели, как в баннере
+  const reset =
+    s.limitResetsAt !== undefined ? ` · ${ui.sys.resetAt(resetLabel(s.limitResetsAt, now))}` : '';
+  const row: DistributiveOmit<FeedRow, 'id'> = {
+    kind: 'sys',
+    tone: 'bad',
+    tag: 'limit',
+    at: clock(now),
+    text: [ui.sys.turnNotStarted(message ?? ui.sys.limitDefault) + reset],
+  };
+  const i = s.rows.length - 1;
+  const last = s.rows[i];
+  if (last?.kind === 'sys' && last.tag === 'limit') {
+    // событие без текста не затирает уже известную причину
+    if (message === undefined)
+      return replaceAt(s, i, { ...row, id: last.id, text: last.text } as FeedRow);
+    return replaceAt(s, i, { ...row, id: last.id } as FeedRow);
+  }
+  return push(s, row);
+}
+
+/** Повтор запроса движком — не ошибка: подряд идущие попытки сливаются в одну строку. */
+function retryRow(s: ChatState, message: string): ChatState {
+  const i = s.rows.length - 1;
+  const last = s.rows[i];
+  if (last?.kind === 'sys' && last.tag === 'retry') {
+    return replaceAt(s, i, { ...last, text: [message] });
+  }
+  return push(s, { kind: 'sys', tag: 'retry', text: [message] });
+}
+
+function failRow(
+  s: ChatState,
+  f: { fatal: boolean; message: string; code?: string },
+  now: number,
+): ChatState {
+  const turn = openTurn(s.rows);
+  // упавший повтор: прежняя карточка («повторяю…») заменяется новой
+  const closed = closeOpenRows(s, f.fatal, now);
+  const base: ChatState = {
+    ...closed,
+    rows: closed.rows.filter((r) => !(r.kind === 'fail' && r.state === 'retrying')),
+  };
+  return push(base, {
+    kind: 'fail',
+    fatal: f.fatal,
+    message: f.message,
+    ...(f.code ? { code: f.code } : {}),
+    at: clock(now),
+    turn,
+    state: 'open',
+  });
+}
+
+/** «Повторить ход» нажата: кнопки гаснут до `session.history` (или новой ошибки). */
+export function markRetrying(s: ChatState): ChatState {
+  const i = lastIndex(s.rows, (r) => r.kind === 'fail' && r.state === 'open');
+  if (i < 0) return s;
+  return replaceAt(s, i, { ...(s.rows[i] as FailCard), state: 'retrying' });
 }
 
 function findCard(s: ChatState, toolUseId: string): number {

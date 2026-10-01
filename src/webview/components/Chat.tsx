@@ -7,8 +7,10 @@ import {
   declineQuestion,
   hudState,
   interrupt,
+  limitBlocked,
   newSession,
   recent,
+  releaseLimit,
   replyTarget,
   respondPermission,
   showThinking,
@@ -16,6 +18,7 @@ import {
   tick,
 } from '../store';
 import { activeCard, pendingPlan } from '../chatState';
+import { limitBanner } from '../limitView';
 import { agentRows, cacheLive, sessionTotals, turnBadge, turnsView } from '../hudView';
 import { ui } from '../strings';
 import { send } from '../vscode';
@@ -53,8 +56,13 @@ export function Chat() {
 
   // секундный тик для таймеров ленты и кэша — пока идёт ход, есть живой агент или кэш не истёк
   const h = hudState.value;
+  // блокировка лимитом тоже тикает: по сбросу поле ввода оживает само
+  const blocked = limitBlocked.value;
   const ticking =
-    working || h.agents.some((a) => a.status === 'running') || cacheLive(h, tick.value);
+    working ||
+    !!blocked ||
+    h.agents.some((a) => a.status === 'running') ||
+    cacheLive(h, tick.value);
   useEffect(() => {
     if (!ticking) return;
     tick.value = Date.now();
@@ -117,8 +125,16 @@ export function Chat() {
   const now = tick.value;
   const last = s.rows[s.rows.length - 1];
   const live = working
-    ? liveLabel(last, s.turnStartedAt, now, s.status === 'waiting', !!pendingPlan(s))
+    ? liveLabel(
+        last,
+        s.turnStartedAt,
+        now,
+        s.status === 'waiting',
+        !!pendingPlan(s),
+        !!h.compacting,
+      )
     : undefined;
+  const banner = blocked ? limitBanner(blocked, now) : undefined;
   const active = activeCard(s);
 
   const turnBdg = turnBadge(h);
@@ -138,8 +154,39 @@ export function Chat() {
         onAllSessions={() => send({ type: 'sessions.show' })}
         onNew={newSession}
       />
+      {banner && (
+        <div class="banner" role="alert">
+          <span class="p" aria-hidden="true">
+            ■
+          </span>
+          <span>
+            <b>{banner.title}</b> <span class="d">{banner.detail}</span>
+          </span>
+          <span class="acts">
+            {banner.canRetry && (
+              <button class="btn" title={ui.limit.retryTitle} onClick={releaseLimit}>
+                {ui.limit.retry}
+              </button>
+            )}
+            <button
+              class="btn ghost"
+              title={ui.limit.limitsTitle}
+              onClick={() => send({ type: 'sessions.show' })}
+            >
+              {ui.limit.limits}
+            </button>
+          </span>
+        </div>
+      )}
       <div class="body">
-        <main class="pane" id="pane-chat" hidden={t !== 'chat'} ref={paneRef} onScroll={onScroll}>
+        <main
+          class="pane"
+          id="pane-chat"
+          aria-labelledby="tab-chat"
+          hidden={t !== 'chat'}
+          ref={paneRef}
+          onScroll={onScroll}
+        >
           {empty ? (
             <Empty
               project={s.project}
@@ -157,9 +204,10 @@ export function Chat() {
               onDiff={(toolUseId) => send({ type: 'diff.open', sessionId: s.sessionId, toolUseId })}
             >
               {live && (
-                <div class="live">
+                <div class="live" role="status">
                   <span
                     class="spin"
+                    aria-hidden="true"
                     style={
                       s.status === 'waiting'
                         ? { borderTopColor: pendingPlan(s) ? 'var(--agent)' : 'var(--warn)' }
@@ -203,9 +251,11 @@ function liveLabel(
   now: number,
   waiting: boolean,
   plan: boolean,
+  compacting: boolean,
 ): string {
   let what: string = ui.log.answering;
-  if (waiting) what = plan ? ui.log.waitingPlan : ui.log.waiting;
+  if (compacting) what = ui.log.compacting;
+  else if (waiting) what = plan ? ui.log.waitingPlan : ui.log.waiting;
   else if (last?.kind === 'think' && last.endedAt === undefined) what = ui.log.thinking;
   else if (last?.kind === 'tool' && last.state === 'run')
     what = ui.log.running(toolView(last.name, last.input).op);

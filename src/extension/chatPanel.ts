@@ -217,8 +217,15 @@ export class ChatPanel {
       readSelection: (a) => files.readSelection(a),
       listRecent: async () => (await services.sessions.summaries()).slice(0, CHAT_SESSIONS),
       showSessions: () => void vscode.commands.executeCommand('workbench.view.extension.agentura'),
+      showLogs: () => log.show(),
       live: services.live,
-      readText: (p) => readFile(p, 'utf8').catch(() => undefined),
+      // перед превью правки несохранённые изменения файла в редакторе сохраняются: дифф и сама правка
+      // идут по диску, иначе они разошлись бы с тем, что видит человек (автосохранение, B-таблица features.md)
+      readText: async (p) => {
+        const doc = vscode.workspace.textDocuments.find((d) => d.isDirty && d.uri.fsPath === p);
+        if (doc) await Promise.resolve(doc.save()).catch(() => false);
+        return readFile(p, 'utf8').catch(() => undefined);
+      },
       // дифф — в группу редактора, не поверх вкладки чата
       openDiff: (d) =>
         services.diffs.open(

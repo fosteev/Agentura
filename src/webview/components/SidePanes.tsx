@@ -3,7 +3,13 @@ import { ui } from '../strings';
 
 export function TurnPane({ turns, hidden }: { turns: TimelineView[]; hidden?: boolean }) {
   return (
-    <section class="tabpane" id="pane-turn" hidden={hidden}>
+    <section
+      class="tabpane"
+      id="pane-turn"
+      role="tabpanel"
+      aria-labelledby="tab-turn"
+      hidden={hidden}
+    >
       {turns.length === 0 && (
         <>
           <h4>{ui.tabs.turn}</h4>
@@ -29,7 +35,16 @@ export function TurnPane({ turns, hidden }: { turns: TimelineView[]; hidden?: bo
             {t.rows.map((r) => (
               <div class={r.now ? 'row now' : 'row'}>
                 <span class="at">{r.at}</span>
-                <span class="ev" style={r.mute ? { color: 'var(--fg-mute)' } : undefined}>
+                <span
+                  class="ev"
+                  style={
+                    r.tone
+                      ? { color: r.tone === 'agent' ? 'var(--agent)' : 'var(--warn)' }
+                      : r.mute
+                        ? { color: 'var(--fg-mute)' }
+                        : undefined
+                  }
+                >
                   {r.ev}
                   <span class="d">{r.d}</span>
                 </span>
@@ -54,7 +69,13 @@ export function AgentsPane({
   onStop: (taskId: string) => void;
 }) {
   return (
-    <section class="tabpane" id="pane-agents" hidden={hidden}>
+    <section
+      class="tabpane"
+      id="pane-agents"
+      role="tabpanel"
+      aria-labelledby="tab-agents"
+      hidden={hidden}
+    >
       <h4>{ui.agents.heading}</h4>
       <div class="ag">
         {rows.map((a) => (
@@ -70,7 +91,11 @@ export function AgentsPane({
             <span class="tk">
               {a.tokens}
               {a.stoppable && a.taskId && (
-                <button title={ui.agents.stopTitle} onClick={() => onStop(a.taskId!)}>
+                <button
+                  title={ui.agents.stopTitle}
+                  aria-label={ui.agents.stopTitle}
+                  onClick={() => onStop(a.taskId!)}
+                >
                   ■
                 </button>
               )}

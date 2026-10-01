@@ -24,6 +24,7 @@ import {
   initialState,
   markPermission,
   markPlan,
+  markRetrying,
   markQuestionSent,
   pickOption,
   queueUser,
@@ -37,6 +38,7 @@ import {
 import { pushHistory } from './composer';
 import { applyHud, initialHud, resetHud, type HudState } from './hudState';
 import { cacheView, contextView, limitsView } from './hudView';
+import { limitBlock, type LimitBlock } from './limitView';
 import { ui } from './strings';
 import { shortModel } from './toolView';
 import { forgetSession, persistSession, send } from './vscode';
@@ -80,6 +82,25 @@ export const replyTarget = signal<ReplyTarget | undefined>(undefined);
 
 /** Тик раз в секунду, пока идёт ход: таймеры в ленте. */
 export const tick = signal(Date.now());
+
+/** Сброс окна подписки, блокировку по которому человек снял «Попробовать снова» (данные могли устареть). */
+const limitDismissed = signal<number | undefined>(undefined);
+
+/**
+ * Отправка заблокирована лимитом (этап 7): своя сессия упёрлась или окно подписки на 100 % со сбросом в
+ * будущем — общий на аккаунт `limits.update` доходит до всех вкладок. Пересчитывается секундным тиком.
+ */
+export const limitBlocked = computed<LimitBlock | undefined>(() =>
+  limitBlock(
+    {
+      status: chat.value.status,
+      resetsAt: chat.value.limitResetsAt,
+      windows: limits.value.windows,
+      dismissed: limitDismissed.value,
+    },
+    tick.value,
+  ),
+);
 
 /** Значения приборов у поля ввода: пересчитываются по событиям и по секундному тику. */
 export const meters = computed(() => {
@@ -378,6 +399,32 @@ export function submitReply(text: string): boolean {
   const card = questionCard(t.toolUseId);
   if (card && card.questions.length === 1) submitQuestion(t.toolUseId);
   return true;
+}
+
+/** «Повторить ход» на карточке ошибки: хост возобновляет сессию и отправляет промпт ещё раз. */
+export function retryTurn(): void {
+  const card = [...chat.value.rows].reverse().find((r) => r.kind === 'fail' && r.state === 'open');
+  const turn = card?.kind === 'fail' && card.turn;
+  chat.value = markRetrying(chat.value);
+  send({ type: 'turn.retry', sessionId: chat.value.sessionId, turn });
+}
+
+export function showLog(): void {
+  send({ type: 'log.show' });
+}
+
+/**
+ * «Попробовать снова» в баннере лимита: блокировка по своему ходу снимается (лимит мог сброситься,
+ * время сброса хост не знал), блокировка по данным подписки — для этого сброса окна (данные могли
+ * устареть, или расход докуплен). Не так — движок откажет и блокировка вернётся по его ответу.
+ */
+export function releaseLimit(): void {
+  const b = limitBlocked.value;
+  if (b?.soft && b.until !== undefined) limitDismissed.value = b.until;
+  const { limitResetsAt: _l, ...rest } = chat.value;
+  void _l;
+  chat.value = rest.status === 'limited' ? { ...rest, status: 'idle' } : rest;
+  send({ type: 'limits.refresh' });
 }
 
 export function newSession(): void {
