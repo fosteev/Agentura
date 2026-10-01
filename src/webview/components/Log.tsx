@@ -3,7 +3,14 @@ import type { Seg } from '../fixtures/chat';
 import type { FeedRow } from '../chatState';
 import { onCodeCopyClick, renderMarkdown, withCursor } from '../markdown';
 import { ui } from '../strings';
-import { editStats, formatDuration, matchCount, toolView } from '../toolView';
+import {
+  artifactStatus,
+  editStats,
+  formatDuration,
+  matchCount,
+  toolLinks,
+  toolView,
+} from '../toolView';
 import { FailCardView, PermissionCard, PlanCardView, QuestionCardView, ToolOutput } from './Cards';
 
 type Row<K extends FeedRow['kind']> = Extract<FeedRow, { kind: K }>;
@@ -34,9 +41,41 @@ interface Right {
   del?: string;
   err?: string;
   diff?: boolean;
+  preview?: string;
+  url?: string;
 }
 
-function ToolRight({ r, onDiff }: { r: Right; onDiff?: () => void }) {
+function ToolRight({
+  r,
+  onDiff,
+  onPreview,
+  onOpenUrl,
+}: {
+  r: Right;
+  onDiff?: () => void;
+  onPreview?: (path: string) => void;
+  onOpenUrl?: (url: string) => void;
+}) {
+  // ссылки справа: «diff · превью · открыть» — каждая с разделителем ' · ' перед собой
+  const link = (label: string, run: () => void) => (
+    <a
+      href="#"
+      onClick={(e) => {
+        e.preventDefault();
+        // в красной строке клик по ссылке не раскрывает вывод
+        e.stopPropagation();
+        run();
+      }}
+    >
+      {label}
+    </a>
+  );
+  let before = !!(r.add || r.del || r.text);
+  const sep = () => {
+    const out = before ? ' · ' : '';
+    before = true;
+    return out;
+  };
   return (
     <span class="r">
       {r.err && <span class="del">{r.err}</span>}
@@ -47,20 +86,12 @@ function ToolRight({ r, onDiff }: { r: Right; onDiff?: () => void }) {
       {r.del && ' '}
       {(r.add || r.del) && r.text && '· '}
       {r.text}
-      {r.diff && (r.add || r.del || r.text ? ' · ' : '')}
-      {r.diff && (
-        <a
-          href="#"
-          onClick={(e) => {
-            e.preventDefault();
-            // в красной строке клик по «diff» не раскрывает вывод
-            e.stopPropagation();
-            onDiff?.();
-          }}
-        >
-          {ui.log.diff}
-        </a>
-      )}
+      {r.diff && sep()}
+      {r.diff && link(ui.log.diff, () => onDiff?.())}
+      {r.preview !== undefined && sep()}
+      {r.preview !== undefined && link(ui.log.preview, () => onPreview?.(r.preview as string))}
+      {r.url !== undefined && sep()}
+      {r.url !== undefined && link(ui.log.open, () => onOpenUrl?.(r.url as string))}
     </span>
   );
 }
@@ -73,6 +104,7 @@ export function toolRight(t: Row<'tool'>, now: number): Right {
   if (t.state === 'stopped') return { text: ui.log.toolStopped };
   const dur = t.durationMs !== undefined ? formatDuration(t.durationMs) : undefined;
   if (t.state === 'err') return { err: ui.log.toolError, ...(dur ? { text: dur } : {}) };
+  const links = toolLinks(t.name, t.input, t.result, t.state);
   const stats = editStats(t.name, t.input, t.result);
   if (stats) {
     return {
@@ -80,10 +112,15 @@ export function toolRight(t: Row<'tool'>, now: number): Right {
       ...(stats.del ? { del: `−${stats.del}` } : {}),
       ...(dur ? { text: dur } : {}),
       diff: true,
+      ...links,
     };
   }
+  const status = t.name === 'Artifact' ? artifactStatus(t.result) : undefined;
   const n = matchCount(t.name, t.result);
-  return { text: [n !== undefined ? String(n) : undefined, dur].filter(Boolean).join(' · ') };
+  return {
+    text: [status, n !== undefined ? String(n) : undefined, dur].filter(Boolean).join(' · '),
+    ...links,
+  };
 }
 
 export function Tool({
@@ -91,11 +128,15 @@ export function Tool({
   cwd,
   now,
   onDiff,
+  onPreview,
+  onOpenUrl,
 }: {
   t: Row<'tool'>;
   cwd: string;
   now: number;
   onDiff: (toolUseId: string) => void;
+  onPreview: (path: string) => void;
+  onOpenUrl: (url: string) => void;
 }) {
   const v = toolView(t.name, t.input, cwd);
   const running = t.state === 'run';
@@ -144,7 +185,12 @@ export function Tool({
             </>
           )}
         </span>
-        <ToolRight r={toolRight(t, now)} onDiff={() => onDiff(t.toolUseId)} />
+        <ToolRight
+          r={toolRight(t, now)}
+          onDiff={() => onDiff(t.toolUseId)}
+          onPreview={onPreview}
+          onOpenUrl={onOpenUrl}
+        />
       </div>
       {open && t.content && <ToolOutput content={t.content} />}
     </>
@@ -194,6 +240,8 @@ export function Log({
   mode,
   activeId,
   onDiff,
+  onPreview,
+  onOpenUrl,
   children,
 }: {
   rows: FeedRow[];
@@ -205,6 +253,8 @@ export function Log({
   /** Строка карточки, которой адресованы Enter/Esc (подсказки клавиш только на ней). */
   activeId?: number;
   onDiff: (toolUseId: string) => void;
+  onPreview: (path: string) => void;
+  onOpenUrl: (url: string) => void;
   children?: preact.ComponentChildren;
 }) {
   return (
@@ -232,7 +282,17 @@ export function Log({
           case 'think':
             return showThinking ? <Think key={it.id} t={it} now={now} /> : null;
           case 'tool':
-            return <Tool key={it.id} t={it} cwd={cwd} now={now} onDiff={onDiff} />;
+            return (
+              <Tool
+                key={it.id}
+                t={it}
+                cwd={cwd}
+                now={now}
+                onDiff={onDiff}
+                onPreview={onPreview}
+                onOpenUrl={onOpenUrl}
+              />
+            );
           case 'text':
             return <Text key={it.id} r={it} last={i === rows.length - 1} />;
           case 'perm':

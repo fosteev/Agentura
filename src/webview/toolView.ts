@@ -1,4 +1,5 @@
 /** Как строка инструмента `e` выглядит в ленте: глагол, что, результат справа. Чистые функции. */
+import { ui } from './strings';
 
 export interface ToolView {
   op: string;
@@ -98,6 +99,18 @@ export function toolView(name: string, input: Record<string, unknown>, cwd?: str
     }
     case 'ExitPlanMode':
       return { op: 'plan', what: 'план готов' };
+    case 'Artifact': {
+      const action = str(input['action']);
+      const url = str(input['url']);
+      if (!action || action === 'publish') {
+        const path = str(input['file_path']);
+        return {
+          op: 'artifact',
+          what: path ? splitPath(path).base : (str(input['title']) ?? url ?? ''),
+        };
+      }
+      return { op: 'artifact', what: url ? `${action} · ${clip(url)}` : action };
+    }
     default: {
       const first = Object.values(input).find((v) => typeof v === 'string' && v) as
         string | undefined;
@@ -174,4 +187,47 @@ export function shortModel(id: string): string {
   const m = /^claude-([a-z]+)-(\d+)(?:-(\d+))?(?:-\d{8})?(?:\[.*\])?$/.exec(id);
   if (!m) return id;
   return `${m[1]}-${m[2]}${m[3] && m[3].length < 4 ? `.${m[3]}` : ''}`;
+}
+
+const HTML_RE = /\.html?$/i;
+
+function rec(v: unknown): Record<string, unknown> | undefined {
+  return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined;
+}
+
+/** Ссылки строки инструмента: превью записанного `.html` и адрес артефакта на claude.ai (только при успехе). */
+export function toolLinks(
+  name: string,
+  input: Record<string, unknown>,
+  result: unknown,
+  state: string,
+): { preview?: string; url?: string } {
+  if (state !== 'ok') return {};
+  if (name === 'Write' || name === 'Edit' || name === 'MultiEdit') {
+    const file = str(input['file_path']);
+    return file && HTML_RE.test(file) ? { preview: file } : {};
+  }
+  if (name === 'Artifact') {
+    const r = rec(result);
+    const out: { preview?: string; url?: string } = {};
+    const url = str(r?.['url']);
+    if (url?.startsWith('https://claude.ai/')) out.url = url;
+    const path = str(r?.['path']) ?? str(input['file_path']);
+    if (path && HTML_RE.test(path)) out.preview = path;
+    return out;
+  }
+  return {};
+}
+
+/** Статус публикации артефакта по результату инструмента. */
+export function artifactStatus(result: unknown): string | undefined {
+  const r = rec(result);
+  if (!r) return undefined;
+  if (r['created_from_type'] === true) return ui.log.artifactCreated;
+  if (r['updated'] === true) {
+    const seq = r['seq'];
+    return typeof seq === 'number' ? `${ui.log.artifactUpdated} · v${seq}` : ui.log.artifactUpdated;
+  }
+  if (r['updated'] === false && str(r['url'])) return ui.log.artifactPublished;
+  return undefined;
 }

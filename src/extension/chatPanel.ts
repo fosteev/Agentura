@@ -9,6 +9,7 @@ import { postToWebview } from '../protocol';
 import type { AccountService } from './account';
 import { ChatController } from './chatController';
 import type { DiffDocuments } from './diffDocuments';
+import type { PreviewPanels } from './previewPanels';
 import { EditorContextTracker } from './editorContext';
 import {
   restoredSessionId,
@@ -39,6 +40,8 @@ export interface ChatServices {
   limits: LimitsSource;
   /** Нативный дифф правок агента (`agentura-diff:`), этап 5. */
   diffs: DiffDocuments;
+  /** Превью `.html` в соседней вкладке. */
+  previews: PreviewPanels;
   /** Список сессий проекта (этап 6). */
   sessions: SessionsService;
   account: AccountService;
@@ -217,6 +220,8 @@ export class ChatPanel {
   ) {
     const version = String(context.extension.packageJSON.version);
     const files = new WorkspaceFiles(folder.uri);
+    const editorColumn = (): vscode.ViewColumn =>
+      panel.viewColumn === vscode.ViewColumn.One ? vscode.ViewColumn.Two : vscode.ViewColumn.One;
     panel.webview.options = webviewOptions(context.extensionUri);
     this.controller = new ChatController({
       adapter: services.adapter,
@@ -249,14 +254,10 @@ export class ChatPanel {
         if (doc) await Promise.resolve(doc.save()).catch(() => false);
         return readFile(p, 'utf8').catch(() => undefined);
       },
-      // дифф — в группу редактора, не поверх вкладки чата
-      openDiff: (d) =>
-        services.diffs.open(
-          d,
-          panel.viewColumn === vscode.ViewColumn.One
-            ? vscode.ViewColumn.Two
-            : vscode.ViewColumn.One,
-        ),
+      // дифф и превью — в группу редактора, не поверх вкладки чата
+      openDiff: (d) => services.diffs.open(d, editorColumn()),
+      openPreview: (p) => services.previews.open(p, editorColumn()),
+      openExternal: (u) => void vscode.env.openExternal(vscode.Uri.parse(u)),
       ...(open.resumeId ? { resumeId: open.resumeId } : {}),
       openSession: (id) => ChatPanel.resume(context, log, services, id, this),
       titleOf: async (id) => (await services.sessions.list()).find((r) => r.id === id)?.title,

@@ -113,6 +113,11 @@ export function engineEnv(
   for (const key of ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', ...PARENT_SESSION_VARS]) {
     delete env[key];
   }
+  // Инструмент Artifact (и ArtifactComments/ArtifactData) включается флагом — он недокументирован,
+  // проверен на CC 2.1.285. Автооткрытие ссылки самим CLI выключаем: ссылку открывает наша карточка.
+  // `??=` — пользователь может переопределить значения в своём окружении.
+  env['CLAUDE_CODE_ARTIFACT'] ??= '1';
+  env['CLAUDE_CODE_ARTIFACT_AUTO_OPEN'] ??= '0';
   if (clientApp) env['CLAUDE_AGENT_SDK_CLIENT_APP'] = clientApp;
   return env;
 }

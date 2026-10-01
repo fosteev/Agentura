@@ -202,6 +202,8 @@ export function Chat() {
               mode={ui.modes[s.mode]?.[0] ?? s.mode}
               {...(active ? { activeId: active.id } : {})}
               onDiff={(toolUseId) => send({ type: 'diff.open', sessionId: s.sessionId, toolUseId })}
+              onPreview={(path) => send({ type: 'preview.open', path })}
+              onOpenUrl={(url) => send({ type: 'link.open', url })}
             >
               {live && (
                 <div class="live" role="status">

@@ -371,6 +371,35 @@ describe('ChatController', () => {
     expect(opened).toHaveLength(2);
   });
 
+  it('preview.open: абсолютный .html — в deps, остальное отброшено с warn', async () => {
+    const { controller, deps } = setup();
+    const previews: string[] = [];
+    deps.openPreview = async (p) => void previews.push(p);
+    controller.start();
+    await tick();
+    await controller.handle({ type: 'preview.open', path: '/p/page.html' });
+    await controller.handle({ type: 'preview.open', path: '/p/PAGE.HTM' });
+    expect(previews).toEqual(['/p/page.html', '/p/PAGE.HTM']);
+    await controller.handle({ type: 'preview.open', path: 'rel/page.html' });
+    await controller.handle({ type: 'preview.open', path: '/p/script.ts' });
+    expect(previews).toHaveLength(2);
+    expect(deps.log.warn).toHaveBeenCalledTimes(2);
+  });
+
+  it('link.open: только https://claude.ai/, остальное — warn', async () => {
+    const { controller, deps } = setup();
+    const urls: string[] = [];
+    deps.openExternal = (u) => void urls.push(u);
+    controller.start();
+    await tick();
+    await controller.handle({ type: 'link.open', url: 'https://claude.ai/artifact/abc' });
+    await controller.handle({ type: 'link.open', url: 'https://evil.example/https://claude.ai/' });
+    await controller.handle({ type: 'link.open', url: 'http://claude.ai/x' });
+    await controller.handle({ type: 'link.open', url: 'file:///etc/passwd' });
+    expect(urls).toEqual(['https://claude.ai/artifact/abc']);
+    expect(deps.log.warn).toHaveBeenCalledTimes(3);
+  });
+
   it('interrupt, режим, compact доходят до сессии', async () => {
     const { controller, sessions } = setup();
     controller.start();

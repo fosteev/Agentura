@@ -12,6 +12,11 @@ export const ui = {
   log: {
     aria: 'Лента сессии',
     diff: 'diff',
+    preview: 'превью',
+    open: 'открыть',
+    artifactCreated: 'создан',
+    artifactUpdated: 'обновлён',
+    artifactPublished: 'опубликован',
     stop: 'stop · esc',
     stopOnly: 'stop',
     copy: 'copy',

@@ -163,6 +163,8 @@ export type FromWebview =
   | { type: 'attach.pick' }
   | { type: 'sessions.show' }
   | { type: 'diff.open'; sessionId: string; toolUseId: string }
+  | { type: 'preview.open'; path: string }
+  | { type: 'link.open'; url: string }
   | { type: 'interrupt'; sessionId: string }
   | {
       type: 'permission.respond';
@@ -242,6 +244,8 @@ const FROM_WEBVIEW_TYPES: ReadonlySet<string> = new Set<FromWebview['type']>([
   'attach.pick',
   'sessions.show',
   'diff.open',
+  'preview.open',
+  'link.open',
   'interrupt',
   'permission.respond',
   'question.answer',

@@ -86,8 +86,16 @@ describe('engineEnv', () => {
       CLAUDE_CODE_OAUTH_TOKEN: 'o',
       CLAUDE_CODE_MAX_OUTPUT_TOKENS: '64000',
       CLAUDE_CODE_GIT_BASH_PATH: 'C:/bash.exe',
+      CLAUDE_CODE_ARTIFACT: '1',
+      CLAUDE_CODE_ARTIFACT_AUTO_OPEN: '0',
       CLAUDE_AGENT_SDK_CLIENT_APP: 'agentura/1',
     });
+  });
+
+  it('значения CLAUDE_CODE_ARTIFACT* из base сохраняются', () => {
+    const env = engineEnv({ CLAUDE_CODE_ARTIFACT: '0', CLAUDE_CODE_ARTIFACT_AUTO_OPEN: '1' });
+    expect(env['CLAUDE_CODE_ARTIFACT']).toBe('0');
+    expect(env['CLAUDE_CODE_ARTIFACT_AUTO_OPEN']).toBe('1');
   });
 });
 
@@ -115,7 +123,11 @@ describe('ClaudeAdapter', () => {
       settingSources: ['user', 'project', 'local'],
       systemPrompt: { type: 'preset', preset: 'claude_code' },
     });
-    expect(options['env']).toEqual({ HOME: '/h' });
+    expect(options['env']).toEqual({
+      HOME: '/h',
+      CLAUDE_CODE_ARTIFACT: '1',
+      CLAUDE_CODE_ARTIFACT_AUTO_OPEN: '0',
+    });
     expect(options['resume']).toBeUndefined();
 
     expect(session.send('привет')).toBe(true);

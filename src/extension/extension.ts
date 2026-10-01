@@ -6,6 +6,7 @@ import { LimitsSource, startLimitsPolling } from '../data/limits';
 import { LiveSessions, TranscriptCache } from '../data/sessions';
 import { UsageService } from './usage';
 import { DiffDocuments } from './diffDocuments';
+import { PreviewPanels } from './previewPanels';
 import { AccountService } from './account';
 import { SessionMemory } from './sessionMemory';
 import { SessionsService } from './sessionsService';
@@ -63,6 +64,7 @@ export function activate(context: vscode.ExtensionContext): void {
     usage,
     limits,
     diffs: new DiffDocuments(),
+    previews: new PreviewPanels(),
     sessions,
     account,
     memory,
@@ -91,6 +93,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     services.diffs.register(),
+    services.previews,
     { dispose: () => ChatPanel.stopEngines() },
     vscode.window.registerWebviewViewProvider(SIDEBAR_VIEW_ID, sidebar),
     vscode.window.registerWebviewPanelSerializer(

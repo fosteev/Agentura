@@ -8,6 +8,8 @@ import {
   relPath,
   shortModel,
   toolView,
+  toolLinks,
+  artifactStatus,
 } from './toolView';
 
 const cwd = '/Users/fost/Projects/Agentura';
@@ -93,5 +95,70 @@ describe('форматы', () => {
     expect(shortModel('claude-opus-5-5')).toBe('opus-5.5');
     expect(shortModel('claude-sonnet-4-20250514')).toBe('sonnet-4');
     expect(shortModel('opus')).toBe('opus');
+  });
+});
+
+describe('Artifact', () => {
+  it('toolView: publish — имя файла, иначе title, иначе url; прочие action — action (+ url)', () => {
+    expect(toolView('Artifact', { file_path: `${cwd}/docs/page.html` }, cwd)).toEqual({
+      op: 'artifact',
+      what: 'page.html',
+    });
+    expect(toolView('Artifact', { action: 'publish', title: 'Отчёт' })).toEqual({
+      op: 'artifact',
+      what: 'Отчёт',
+    });
+    expect(toolView('Artifact', { url: 'https://claude.ai/artifact/1' }).what).toBe(
+      'https://claude.ai/artifact/1',
+    );
+    expect(toolView('Artifact', { action: 'quickstart', intent: 'other' })).toEqual({
+      op: 'artifact',
+      what: 'quickstart',
+    });
+    expect(toolView('Artifact', { action: 'read', url: 'https://claude.ai/artifact/1' }).what).toBe(
+      'read · https://claude.ai/artifact/1',
+    );
+  });
+
+  it('toolLinks: html у Write/Edit/MultiEdit, только при ok', () => {
+    for (const name of ['Write', 'Edit', 'MultiEdit']) {
+      expect(toolLinks(name, { file_path: '/a/b/x.HTML' }, undefined, 'ok')).toEqual({
+        preview: '/a/b/x.HTML',
+      });
+    }
+    expect(toolLinks('Write', { file_path: '/a/x.htm' }, undefined, 'ok')).toEqual({
+      preview: '/a/x.htm',
+    });
+    expect(toolLinks('Write', { file_path: '/a/x.ts' }, undefined, 'ok')).toEqual({});
+    expect(toolLinks('Write', { file_path: '/a/x.html' }, undefined, 'err')).toEqual({});
+    expect(toolLinks('Read', { file_path: '/a/x.html' }, undefined, 'ok')).toEqual({});
+  });
+
+  it('toolLinks: Artifact — url только с https://claude.ai/, превью из result.path или input.file_path', () => {
+    const url = 'https://claude.ai/artifact/abc';
+    expect(toolLinks('Artifact', { file_path: '/p/a.html' }, { url, path: '/p/b.html' }, 'ok')).toEqual({
+      url,
+      preview: '/p/b.html',
+    });
+    expect(toolLinks('Artifact', { file_path: '/p/a.html' }, { url }, 'ok')).toEqual({
+      url,
+      preview: '/p/a.html',
+    });
+    expect(toolLinks('Artifact', { file_path: '/p/a.md' }, { url }, 'ok')).toEqual({ url });
+    expect(toolLinks('Artifact', {}, { url: 'https://evil.example/x' }, 'ok')).toEqual({});
+    expect(toolLinks('Artifact', {}, 'Error: x', 'ok')).toEqual({});
+    expect(toolLinks('Artifact', { file_path: '/p/a.html' }, { url }, 'err')).toEqual({});
+  });
+
+  it('artifactStatus: создан / обновлён · vN / опубликован / ничего', () => {
+    expect(artifactStatus({ created_from_type: true, url: 'https://claude.ai/a' })).toBe('создан');
+    expect(artifactStatus({ updated: true, seq: 3, url: 'https://claude.ai/a' })).toBe(
+      'обновлён · v3',
+    );
+    expect(artifactStatus({ updated: false, url: 'https://claude.ai/a' })).toBe('опубликован');
+    expect(artifactStatus({ updated: false })).toBeUndefined();
+    expect(artifactStatus({ quickstart: {} })).toBeUndefined();
+    expect(artifactStatus('Error: x')).toBeUndefined();
+    expect(artifactStatus(undefined)).toBeUndefined();
   });
 });

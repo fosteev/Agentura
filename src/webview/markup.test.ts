@@ -103,6 +103,8 @@ function renderLog(
       showThinking: true,
       mode: 'manual',
       onDiff: () => {},
+      onPreview: () => {},
+      onOpenUrl: () => {},
     }),
     host,
   );

@@ -1,3 +1,4 @@
+import { isAbsolute } from 'node:path';
 import type {
   LimitWindow,
   AgentAdapter,
@@ -48,6 +49,10 @@ export interface ChatDeps {
   readText?(path: string): Promise<string | undefined>;
   /** Нативный дифф VS Code (`vscode.diff` над `agentura-diff:`). */
   openDiff?(d: OpenDiff): Promise<void>;
+  /** Превью `.html` в соседней вкладке (абсолютный путь). */
+  openPreview?(path: string): Promise<void>;
+  /** Открыть ссылку в браузере (только https://claude.ai/). */
+  openExternal?(url: string): void;
   /** Возобновить эту сессию сразу (вкладка восстановлена сериализатором или открыта из списка). */
   resumeId?: string;
   /** Клик по сессии в попапе или на экране empty: вкладку выбирает менеджер вкладок. */
@@ -400,6 +405,20 @@ export class ChatController {
         return;
       case 'diff.open':
         await this.openDiff(m.toolUseId);
+        return;
+      case 'preview.open':
+        if (!isAbsolute(m.path) || !/\.html?$/i.test(m.path)) {
+          this.log.warn(`превью: не абсолютный путь к .html — ${m.path}`);
+          return;
+        }
+        await deps.openPreview?.(m.path);
+        return;
+      case 'link.open':
+        if (!/^https:\/\/claude\.ai\//.test(m.url)) {
+          this.log.warn(`ссылка не открыта: ${m.url}`);
+          return;
+        }
+        deps.openExternal?.(m.url);
         return;
       case 'files.find':
         try {
