@@ -32,6 +32,7 @@ import {
   setEffort,
   setMode,
   setModel,
+  showStatus,
   showThinking,
 } from '../store';
 import type { LimitMeter } from '../hudView';
@@ -256,14 +257,7 @@ export function Composer() {
         return;
       }
       if (name === 'status') {
-        const st = chat.value;
-        chat.value = addSys(st, [
-          ui.sys.status(
-            st.model ? shortModel(st.model) : '—',
-            ui.modes[st.mode]?.[0] ?? st.mode,
-            st.cwd,
-          ),
-        ]);
+        showStatus();
         writeText('');
         return;
       }

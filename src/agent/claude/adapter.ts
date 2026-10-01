@@ -6,6 +6,8 @@ import type {
   SDKUserMessage,
   query as sdkQuery,
   listSessions as sdkListSessions,
+  getSessionMessages as sdkGetSessionMessages,
+  renameSession as sdkRenameSession,
 } from '@anthropic-ai/claude-agent-sdk';
 import type {
   AccountInfo,
@@ -21,12 +23,16 @@ import type {
   PlanDecision,
   ResumeOptions,
   SessionCapabilities,
+  SessionHistory,
   SessionInfo,
   SessionOptions,
 } from '../types';
 import { AsyncQueue, EventHub } from '../stream';
 import { ClaudeEventMapper } from './mapper';
 import { PermissionBroker } from './permissions';
+import { buildHistory, DEFAULT_MAX_TURNS, type HistoryMessage } from './history';
+import { transcriptPath } from '../../data/sessions';
+import { readTranscriptExtras } from '../../data/transcriptExtras';
 
 /**
  * Адаптер Claude Agent SDK. Одна живая `query()` на сессию в streaming input mode: prompt —
@@ -40,6 +46,8 @@ import { PermissionBroker } from './permissions';
 interface SdkModule {
   query: typeof sdkQuery;
   listSessions: typeof sdkListSessions;
+  getSessionMessages: typeof sdkGetSessionMessages;
+  renameSession: typeof sdkRenameSession;
 }
 
 export type LogFn = (level: 'debug' | 'info' | 'warn' | 'error', message: string) => void;
@@ -147,6 +155,40 @@ export class ClaudeAdapter implements AgentAdapter {
   }
 
   /**
+   * История для ленты: `getSessionMessages()` + структурные результаты инструментов и режим из
+   * транскрипта (`SessionMessage` их не несёт). Нет файла или движок не прочитал — ошибка наверх.
+   */
+  async loadHistory(
+    sessionId: string,
+    cwd: string,
+    options: { live?: boolean; maxTurns?: number } = {},
+  ): Promise<SessionHistory> {
+    const sdk = await this.loadSdk();
+    const messages = await sdk.getSessionMessages(sessionId, { dir: cwd });
+    let extras: ReturnType<typeof readTranscriptExtras> = { toolResults: new Map() };
+    try {
+      extras = readTranscriptExtras(transcriptPath(cwd, sessionId));
+    } catch (error) {
+      this.config.log?.('warn', `транскрипт ${sessionId}: ${String(error)}`);
+    }
+    const history = buildHistory(messages as HistoryMessage[], {
+      toolResults: extras.toolResults,
+      live: options.live ?? false,
+      maxTurns: options.maxTurns ?? DEFAULT_MAX_TURNS,
+    });
+    return {
+      ...history,
+      ...(extras.mode ? { mode: extras.mode } : {}),
+      ...(extras.totalCostUsd !== undefined ? { totalCostUsd: extras.totalCostUsd } : {}),
+    };
+  }
+
+  async renameSession(sessionId: string, title: string, cwd: string): Promise<void> {
+    const sdk = await this.loadSdk();
+    await sdk.renameSession(sessionId, title, { dir: cwd });
+  }
+
+  /**
    * Аккаунт без хода: временная `query()` без сообщений — процесс CLI, но не запрос к API.
    * Ответа нет за `timeoutMs` — ошибка; процесс закрывается в любом случае (`close()` и `abort`).
    */
@@ -159,9 +201,12 @@ export class ClaudeAdapter implements AgentAdapter {
       options: { ...this.baseOptions(cwd), abortController: abort },
     });
     let timer: ReturnType<typeof setTimeout> | undefined;
+    // проигравший гонку с таймаутом запрос отклонится на `close()` — без обработчика это unhandled rejection
+    const request = q.accountInfo();
+    request.catch(() => undefined);
     try {
       const a = await Promise.race([
-        q.accountInfo(),
+        request,
         new Promise<never>((_, reject) => {
           timer = setTimeout(
             () => reject(new Error(`движок не ответил на accountInfo за ${timeoutMs} мс`)),

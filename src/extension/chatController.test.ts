@@ -6,6 +6,7 @@ import type {
   AgentSession,
   PlanDecision,
   SessionCapabilities,
+  SessionHistory,
   SessionOptions,
 } from '../agent/types';
 import type { ToWebview } from '../protocol';
@@ -565,5 +566,384 @@ describe('ChatController', () => {
     s.emit({ type: 'session.closed', reason: 'error', message: 'упал' });
     expect(live.delete).toHaveBeenCalledWith('sess-1');
     expect(live.set).not.toHaveBeenCalled();
+  });
+});
+
+// ——— этап 6: возобновление, история, пересев webview ———
+
+describe('ChatController: сессии (этап 6)', () => {
+  const editResult = {
+    filePath: '/p/a.ts',
+    originalFile: 'a\nb\n',
+    structuredPatch: [
+      { oldStart: 1, oldLines: 2, newStart: 1, newLines: 2, lines: [' a', '-b', '+c'] },
+    ],
+  };
+  const historyEvents: AgentEvent[] = [
+    { type: 'turn.start', prompt: 'поправь', at: 1 },
+    {
+      type: 'tool.start',
+      toolUseId: 't1',
+      name: 'Edit',
+      input: { file_path: '/p/a.ts', old_string: 'b', new_string: 'c' },
+      at: 2,
+    },
+    {
+      type: 'tool.result',
+      toolUseId: 't1',
+      isError: false,
+      content: 'ok',
+      result: editResult,
+      at: 3,
+    },
+    { type: 'text.delta', messageId: 'm', text: 'Готово' },
+    {
+      type: 'turn.result',
+      ok: true,
+      subtype: 'success',
+      interrupted: false,
+      durationMs: 2,
+      apiDurationMs: 0,
+      numTurns: 1,
+      usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 },
+      totalCostUsd: 0.1,
+      permissionDenials: [],
+    },
+  ];
+
+  function setupResume(over: Partial<ChatDeps> = {}, history: Partial<SessionHistory> = {}) {
+    const sessions: FakeSession[] = [];
+    const resumed: [string, Record<string, unknown>][] = [];
+    const created: SessionOptions[] = [];
+    const loadHistory = vi.fn(async (): Promise<SessionHistory> => ({
+      events: historyEvents,
+      turns: 1,
+      skippedTurns: 0,
+      model: 'claude-haiku-4-5',
+      mode: 'plan',
+      totalCostUsd: 0.5,
+      ...history,
+    }));
+    const adapter = {
+      id: 'fake',
+      loadHistory,
+      createSession: async (o: SessionOptions) => {
+        created.push(o);
+        const s = new FakeSession();
+        sessions.push(s);
+        return s;
+      },
+      resumeSession: async (id: string, o: Record<string, unknown>) => {
+        resumed.push([id, o]);
+        const s = new FakeSession();
+        s.id = id;
+        sessions.push(s);
+        return s;
+      },
+    } as unknown as AgentAdapter;
+    const posted: ToWebview[] = [];
+    const opened: OpenDiff[] = [];
+    const deps: ChatDeps = {
+      adapter,
+      cwd: '/p',
+      project: 'p',
+      post: (m) => posted.push(m),
+      setTitle: vi.fn(),
+      log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      settings: () => ({ allowBypass: false, defaultModel: 'sonnet' }),
+      findFiles: async () => [],
+      pickFiles: async () => [],
+      readSelection: async () => undefined,
+      listRecent: async () => [],
+      showSessions: vi.fn(),
+      openDiff: async (d) => void opened.push(d),
+      titleOf: async () => 'Мигание табло',
+      ...over,
+    };
+    return {
+      controller: new ChatController(deps),
+      sessions,
+      resumed,
+      created,
+      loadHistory,
+      posted,
+      opened,
+      deps,
+    };
+  }
+
+  const historyMsg = (posted: ToWebview[]) =>
+    posted.find(
+      (m): m is Extract<ToWebview, { type: 'session.history' }> => m.type === 'session.history',
+    );
+
+  it('вкладку закрыли, пока читалась история: процесс движка не поднимается ни resume, ни пересевом', async () => {
+    const { controller, resumed, created, loadHistory } = setupResume({ resumeId: 's-old' });
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    const original = loadHistory.getMockImplementation()!;
+    loadHistory.mockImplementation(async () => {
+      await gate;
+      return original();
+    });
+    controller.start();
+    await controller.handle({ type: 'ready' });
+    await controller.handle({ type: 'ready' }); // пересоздание webview во время чтения
+    controller.dispose();
+    release();
+    await tick();
+    await tick();
+    await tick();
+    expect(resumed).toHaveLength(0);
+    expect(created).toHaveLength(0);
+  });
+
+  it('resumeId: история читается, движок возобновляется с моделью, режимом и базой стоимости из сессии', async () => {
+    const { controller, resumed, created, loadHistory } = setupResume({ resumeId: 's-old' });
+    controller.start();
+    await tick();
+    await tick();
+    expect(loadHistory).toHaveBeenCalledWith('s-old', '/p');
+    expect(created).toHaveLength(0);
+    expect(resumed).toEqual([
+      [
+        's-old',
+        expect.objectContaining({
+          permissionMode: 'plan',
+          model: 'claude-haiku-4-5',
+          baselineCostUsd: 0.5,
+          cwd: '/p',
+        }),
+      ],
+    ]);
+    expect(controller.sessionId).toBe('s-old');
+    expect(controller.pristine).toBe(false);
+  });
+
+  it('база стоимости: нет cost-state в транскрипте — 0 (движок продолжит итог с нуля); bypass без настройки → default', async () => {
+    const { controller, resumed } = setupResume(
+      { resumeId: 's' },
+      { totalCostUsd: undefined, mode: 'bypassPermissions' },
+    );
+    controller.start();
+    await tick();
+    await tick();
+    expect(resumed[0]![1]).toMatchObject({ baselineCostUsd: 0, permissionMode: 'default' });
+  });
+
+  it('восстановление: история уходит на ready, без тяжёлых файлов в событиях; название и режим — в заголовке', async () => {
+    const { controller, posted } = setupResume({ resumeId: 's-old' });
+    controller.start();
+    await tick();
+    await tick();
+    expect(historyMsg(posted)).toBeUndefined(); // webview ещё не готов
+    await controller.handle({ type: 'ready' });
+    await tick();
+    const h = historyMsg(posted)!;
+    expect(h).toMatchObject({
+      sessionId: 's-old',
+      title: 'Мигание табло',
+      model: 'claude-haiku-4-5',
+      mode: 'plan',
+      skippedTurns: 0,
+    });
+    const result = h.events.find((e) => e.type === 'tool.result') as {
+      result: Record<string, unknown>;
+    };
+    expect(result.result['originalFile']).toBeUndefined();
+    expect(result.result['structuredPatch']).toBeDefined();
+  });
+
+  it('ready пришёл раньше, чем прочиталась история: она уходит сразу по готовности, не теряется', async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    const { controller, posted, loadHistory } = setupResume({ resumeId: 's-old' });
+    loadHistory.mockImplementation(async () => {
+      await gate;
+      return { events: historyEvents, turns: 1, skippedTurns: 0 };
+    });
+    controller.start();
+    await controller.handle({ type: 'ready' }); // webview загрузился быстрее транскрипта
+    expect(historyMsg(posted)).toBeUndefined();
+    release();
+    await tick();
+    await tick();
+    expect(posted.filter((m) => m.type === 'session.history')).toHaveLength(1);
+  });
+
+  it('«diff» в восстановленной истории находит правку (стороны — из результата, присланного хосту целиком)', async () => {
+    const { controller, opened, deps } = setupResume({ resumeId: 's-old' });
+    controller.start();
+    await tick();
+    await tick();
+    await controller.handle({ type: 'ready' });
+    await controller.handle({ type: 'diff.open', sessionId: 's-old', toolUseId: 't1' });
+    expect(opened).toHaveLength(1);
+    expect(opened[0]).toMatchObject({
+      filePath: '/p/a.ts',
+      before: 'a\nb\n',
+      after: 'a\nc\n',
+      stage: 'applied',
+    });
+    expect(deps.log.warn).not.toHaveBeenCalled();
+  });
+
+  it('клик по сессии в живой вкладке: без менеджера вкладок возобновляется на месте и сразу шлёт историю', async () => {
+    const { controller, posted, resumed } = setupResume();
+    controller.start();
+    await controller.handle({ type: 'ready' });
+    await tick();
+    posted.length = 0;
+    await controller.handle({ type: 'session.resume', sessionId: 's-2' });
+    await tick();
+    expect(historyMsg(posted)).toMatchObject({ sessionId: 's-2' });
+    expect(resumed.map((r) => r[0])).toEqual(['s-2']);
+    expect(controller.sessionId).toBe('s-2');
+  });
+
+  it('с менеджером вкладок клик отдаётся ему (openSession), сессия не трогается', async () => {
+    const openSession = vi.fn();
+    const { controller, resumed, created } = setupResume({ openSession });
+    controller.start();
+    await tick();
+    await controller.handle({ type: 'session.resume', sessionId: 'other' });
+    expect(openSession).toHaveBeenCalledWith('other');
+    expect(resumed).toHaveLength(0);
+    expect(created).toHaveLength(1);
+  });
+
+  it('транскрипта нет: вкладка остаётся с новой сессией, webview получает сброс', async () => {
+    const { controller, posted, created } = setupResume({ resumeId: 'gone' });
+    (controller as unknown as { deps: ChatDeps }).deps.adapter.loadHistory = async () => {
+      throw new Error('нет файла');
+    };
+    controller.start();
+    await tick();
+    await tick();
+    expect(posted.some((m) => m.type === 'session.reset')).toBe(true);
+    expect(created).toHaveLength(1);
+    expect(controller.sessionId).toBeUndefined();
+  });
+
+  it('фоновая вкладка: историю читаем, процесс движка — по wake()', async () => {
+    const { controller, resumed } = setupResume({ resumeId: 's-old' });
+    controller.start(false);
+    await tick();
+    await tick();
+    expect(resumed).toHaveLength(0);
+    controller.wake();
+    await tick();
+    expect(resumed).toHaveLength(1);
+  });
+
+  it('webview пересоздан при живой сессии: история + init + ждущие запросы с превью диффа уходят на второй ready', async () => {
+    const { controller, sessions, posted } = setupResume({ readText: async () => 'a\nb\n' });
+    controller.start();
+    await controller.handle({ type: 'ready' });
+    await tick();
+    const s = sessions[0]!;
+    s.id = 'live-1';
+    s.emit({
+      type: 'session.init',
+      sessionId: 'live-1',
+      model: 'sonnet',
+      cwd: '/p',
+      permissionMode: 'default',
+      tools: [],
+      slashCommands: [],
+      skills: [],
+      agents: [],
+      apiKeySource: 'none',
+      engineVersion: '2.1.285',
+    });
+    s.emit({ type: 'turn.start', at: 100 });
+    s.emit({
+      type: 'permission.request',
+      toolUseId: 'perm-1',
+      toolName: 'Edit',
+      input: {},
+      canAlwaysAllow: false,
+      diff: { kind: 'edit', filePath: '/p/a.ts', oldText: 'b', newText: 'c', replaceAll: false },
+    });
+    s.emit({
+      type: 'question.request',
+      toolUseId: 'q-1',
+      questions: [{ question: 'Какой?', options: [], multiSelect: false }],
+    });
+    s.emit({
+      type: 'permission.request',
+      toolUseId: 'perm-2',
+      toolName: 'Bash',
+      input: {},
+      canAlwaysAllow: true,
+    });
+    s.emit({ type: 'permission.resolved', toolUseId: 'perm-2', decision: 'allow', by: 'user' });
+    await tick();
+    await tick();
+    posted.length = 0;
+
+    await controller.handle({ type: 'ready' }); // webview пересоздан
+    await tick();
+    await tick();
+    const kinds = posted.map((m) =>
+      m.type === 'agent.event'
+        ? `event:${m.event.type}:${(m.event as { toolUseId?: string }).toolUseId ?? ''}`
+        : m.type,
+    );
+    expect(kinds).toContain('session.history');
+    expect(kinds).toContain('event:session.init:');
+    expect(kinds).toContain('event:turn.start:');
+    expect(kinds).toContain('event:permission.request:perm-1');
+    expect(kinds).toContain('event:question.request:q-1');
+    expect(kinds).not.toContain('event:permission.request:perm-2'); // уже закрыт
+    expect(kinds).toContain('diff.preview');
+    // история — раньше запросов: сброс ленты не должен съесть карточки
+    expect(kinds.indexOf('session.history')).toBeLessThan(
+      kinds.indexOf('event:permission.request:perm-1'),
+    );
+  });
+
+  it('ready в первый раз у новой сессии ничего не пересевает', async () => {
+    const { controller, posted } = setupResume();
+    controller.start();
+    await controller.handle({ type: 'ready' });
+    await tick();
+    expect(posted.some((m) => m.type === 'session.history')).toBe(false);
+  });
+
+  it('runCommand: команда боковой панели ждёт ready', async () => {
+    const { controller, posted } = setupResume();
+    controller.runCommand('status');
+    expect(posted.some((m) => m.type === 'chat.command')).toBe(false);
+    await controller.handle({ type: 'ready' });
+    expect(posted.filter((m) => m.type === 'chat.command')).toHaveLength(1);
+    controller.runCommand('status');
+    expect(posted.filter((m) => m.type === 'chat.command')).toHaveLength(2);
+  });
+
+  it('setTitle меняет заголовок и шлёт session.title', async () => {
+    const { controller, sessions, posted, deps } = setupResume({});
+    controller.start();
+    await tick();
+    const s = sessions[0]!;
+    s.id = 'n1';
+    s.emit({
+      type: 'session.init',
+      sessionId: 'n1',
+      model: 'm',
+      cwd: '/p',
+      permissionMode: 'default',
+      tools: [],
+      slashCommands: [],
+      skills: [],
+      agents: [],
+      apiKeySource: 'none',
+      engineVersion: '1',
+    });
+    controller.setTitle('Новое имя');
+    expect(deps.setTitle).toHaveBeenCalled();
+    expect(posted.some((m) => m.type === 'agent.event' && m.event.type === 'session.title')).toBe(
+      true,
+    );
   });
 });

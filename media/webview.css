@@ -103,3 +103,22 @@ body {
 .ask .opt[disabled]:not(.sel) { opacity: .6; }
 .ask .opt[disabled]:hover { background: none; }
 .ask .diffbox a { cursor: pointer; }
+
+/* ───── боковая панель (этап 6): переименование сессии двойным кликом ───── */
+.sidebar .s.editing { cursor: default; }
+.sidebar .s input.rename {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--bg-input);
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  padding: 1px 6px;
+  font: inherit;
+  color: var(--fg);
+}
+.sidebar .s.err .dot { background: var(--err, var(--full)); }
+
+/* попап sessions в шапке чата (этап 6): прижат к правому краю шапки */
+.hud .acts { position: relative; }
+.hud .acts .menu.down { left: auto; right: 0; min-width: 300px; max-height: 60vh; overflow: auto; }
+.hud .acts .menu .it { cursor: pointer; }

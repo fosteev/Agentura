@@ -14,6 +14,9 @@
     "Chat"
   ],
   "main": "./dist/extension.js",
+  "activationEvents": [
+    "onWebviewPanel:agentura.chat"
+  ],
   "scripts": {
     "build": "node esbuild.mjs",
     "watch": "node esbuild.mjs --watch",

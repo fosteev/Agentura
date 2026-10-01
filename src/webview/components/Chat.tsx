@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useRef } from 'preact/hooks';
 import {
   chat,
   chooseOption,
+  currentSession,
   declineQuestion,
   hudState,
   interrupt,
@@ -131,7 +132,10 @@ export function Chat() {
         onTab={(k) => (tab.value = k)}
         sidePanesEnabled={!empty}
         badges={empty ? {} : { ...(turnBdg ? { turn: turnBdg } : {}), agents: 1 + h.agents.length }}
-        onSessions={() => send({ type: 'sessions.show' })}
+        sessions={recent.value}
+        currentId={currentSession.value ?? (s.sessionId || undefined)}
+        onResume={(id) => send({ type: 'session.resume', sessionId: id })}
+        onAllSessions={() => send({ type: 'sessions.show' })}
         onNew={newSession}
       />
       <div class="body">
