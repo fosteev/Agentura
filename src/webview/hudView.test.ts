@@ -181,6 +181,29 @@ describe('итоги сессии и агенты', () => {
     expect(sessionTotals(initialHud()).map((r) => r.value)).toEqual(['—', '0', '—', '—']);
   });
 
+  it('sessionTotals: итог без части ходов (модель без цены) — с пометкой; точный итог движка её снимает', () => {
+    const result = (extra: Partial<Extract<AgentEvent, { type: 'turn.result' }>>): AgentEvent => ({
+      type: 'turn.result',
+      ok: true,
+      subtype: 'success',
+      interrupted: false,
+      durationMs: 1000,
+      apiDurationMs: 0,
+      numTurns: 1,
+      usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 },
+      totalCostUsd: 0.5,
+      permissionDenials: [],
+      ...extra,
+    });
+    const now = Date.now();
+    let h = applyHud(initialHud(), { type: 'turn.start', at: now, prompt: 'a' }, now);
+    h = applyHud(h, result({ costPartial: true }), now);
+    expect(sessionTotals(h)[0]!.value).toBe('$0.50 ≈ без части ходов');
+    h = applyHud(h, { type: 'turn.start', at: now, prompt: 'b' }, now);
+    h = applyHud(h, result({ totalCostUsd: 0.7 }), now);
+    expect(sessionTotals(h)[0]!.value).toBe('$0.70');
+  });
+
   it('compactTokens', () => {
     expect([compactTokens(950), compactTokens(8100), compactTokens(131_250)]).toEqual([
       '950',

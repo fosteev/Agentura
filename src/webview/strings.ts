@@ -224,6 +224,8 @@ export const ui = {
     failed: 'ошибка',
     stopped: 'остановлено',
     totalCost: 'за сессию',
+    /** Итог без ходов с моделью без цены (этап 5 roadmap 0.2). */
+    costPartial: '≈ без части ходов',
     totalTurns: 'ходов',
     totalTime: 'время',
     totalCache: 'кэш-попадания',

@@ -5,8 +5,9 @@
  * Отсюда — ход агента для восстановленной истории (вызовы с `agentId`) и текст для «транскрипт»
  * (документ только для чтения). Формат транскрипта внутренний — разбор терпимый.
  */
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { access, readdir, readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { streamLines } from '../../data/jsonlStream';
 import type { AgentEvent } from '../types';
 import { arr, isObj, obj, str, timestamp, type Json } from './json';
 
@@ -23,19 +24,19 @@ export function subagentsDir(sessionFile: string, sessionId: string): string | u
  * Файл транскрипта субагента в каталоге `subagents`. У воркфлоу файлы лежат глубже
  * (`subagents/workflows/<wf>/agent-<id>.jsonl`) — ищем на два уровня вниз.
  */
-export function subagentFile(root: string, taskId: string): string | undefined {
+export async function subagentFile(root: string, taskId: string): Promise<string | undefined> {
   if (!TASK_ID.test(taskId)) return undefined;
   const name = `agent-${taskId}.jsonl`;
   const direct = join(root, name);
-  if (existsSync(direct)) return direct;
-  if (!existsSync(root)) return undefined;
-  const walk = (dir: string, depth: number): string | undefined => {
+  if (await exists(direct)) return direct;
+  if (!(await exists(root))) return undefined;
+  const walk = async (dir: string, depth: number): Promise<string | undefined> => {
     if (depth > 2) return undefined;
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    for (const entry of await readdir(dir, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
       const sub = join(dir, entry.name);
-      if (existsSync(join(sub, name))) return join(sub, name);
-      const deeper = walk(sub, depth + 1);
+      if (await exists(join(sub, name))) return join(sub, name);
+      const deeper = await walk(sub, depth + 1);
       if (deeper) return deeper;
     }
     return undefined;
@@ -43,17 +44,32 @@ export function subagentFile(root: string, taskId: string): string | undefined {
   return walk(root, 1);
 }
 
-export function readSubagentRecords(path: string): Json[] {
-  const out: Json[] = [];
-  for (const line of readFileSync(path, 'utf8').split('\n')) {
-    if (!line.trim()) continue;
-    try {
-      const rec: unknown = JSON.parse(line);
-      if (isObj(rec) && (rec['type'] === 'user' || rec['type'] === 'assistant')) out.push(rec);
-    } catch {
-      // оборванная последняя строка идущего агента — пропускаем
-    }
+async function exists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
   }
+}
+
+/** Записи `user`/`assistant` транскрипта субагента — потоком (этап 5 roadmap 0.2), не строкой файла целиком. */
+export async function readSubagentRecords(path: string): Promise<Json[]> {
+  const out: Json[] = [];
+  await streamLines(
+    path,
+    (line) => {
+      if (!line.trim()) return;
+      try {
+        const rec: unknown = JSON.parse(line);
+        if (isObj(rec) && (rec['type'] === 'user' || rec['type'] === 'assistant')) out.push(rec);
+      } catch {
+        // битая строка — пропускаем
+      }
+    },
+    // оборванная последняя строка идущего агента не разберётся — пропускается
+    { acceptTail: () => true },
+  );
   return out;
 }
 
@@ -214,9 +230,13 @@ export function subagentMarkdown(
 }
 
 /** `<файл>.meta.json` рядом с транскриптом субагента: тип и описание. */
-export function readSubagentMeta(file: string): { agentType?: string; description?: string } {
+export async function readSubagentMeta(
+  file: string,
+): Promise<{ agentType?: string; description?: string }> {
   try {
-    const meta: unknown = JSON.parse(readFileSync(file.replace(/\.jsonl$/, '.meta.json'), 'utf8'));
+    const meta: unknown = JSON.parse(
+      await readFile(file.replace(/\.jsonl$/, '.meta.json'), 'utf8'),
+    );
     if (!isObj(meta)) return {};
     const agentType = str(meta['agentType']);
     const description = str(meta['description']);
@@ -233,11 +253,11 @@ const MAX_SUBAGENT_TIMELINES = 30;
  * Ход субагентов для восстановленной истории: события из их транскриптов (`<сессия>/subagents/`)
  * сразу после `agent.start` — карта агентов показывает его так же, как у живого. Нет файла — без хода.
  */
-export function withSubagentTimelines(
+export async function withSubagentTimelines(
   events: AgentEvent[],
   dir: string,
   warn?: (message: string) => void,
-): void {
+): Promise<void> {
   const starts = events
     .map((e, i) => ({ e, i }))
     .filter(
@@ -248,9 +268,9 @@ export function withSubagentTimelines(
   // с конца — вставки не сдвигают ещё не обработанные индексы
   for (const { e, i } of starts.reverse()) {
     try {
-      const file = subagentFile(dir, e.taskId);
+      const file = await subagentFile(dir, e.taskId);
       if (!file) continue;
-      events.splice(i + 1, 0, ...subagentEvents(readSubagentRecords(file), e.agentId));
+      events.splice(i + 1, 0, ...subagentEvents(await readSubagentRecords(file), e.agentId));
     } catch (error) {
       warn?.(`транскрипт субагента ${e.taskId}: ${String(error)}`);
     }

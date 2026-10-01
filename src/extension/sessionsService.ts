@@ -30,6 +30,8 @@ export interface SessionsServiceDeps {
 
 export const DEFAULT_DEBOUNCE_MS = 800;
 export const DEFAULT_MAX_WAIT_MS = 4000;
+/** Сколько раз подряд возвращать своё название сессии, которое перебивает движок. */
+const MAX_TITLE_REAPPLY = 5;
 
 function defaultWatch(dir: string, onChange: () => void, onError: () => void): { close(): void } {
   const w: FSWatcher = fsWatch(dir, { persistent: false }, () => onChange());
@@ -67,6 +69,13 @@ export class SessionsService {
   /** Повторный проход после текущего: пока читали, что-то поменялось (запись хода, переименование). */
   private rerun: Promise<SessionRow[]> | undefined;
   private disposed = false;
+  /**
+   * Названия, данные сессиям с живым процессом движка в этом окне (этап 5 roadmap 0.2). Живой прогон: CLI в конце
+   * хода дописывает в транскрипт своё название из памяти процесса и перебивает переименование, сделанное во время
+   * хода. Пока процесс жив, список показывает наше название и, увидев чужое, переименовывает снова.
+   */
+  private readonly pinned = new Map<string, { title: string; attempts: number }>();
+  private readonly reapplying = new Set<string>();
 
   constructor(private readonly deps: SessionsServiceDeps) {}
 
@@ -132,6 +141,7 @@ export class SessionsService {
       onError: (id, e) => this.deps.log.debug(`транскрипт ${id}: ${String(e)}`),
     })
       .then((rows) => {
+        this.applyPins(rows);
         rows.sort((a, b) => b.updatedAt - a.updatedAt);
         this.rows = rows;
         this.loaded = true;
@@ -179,7 +189,40 @@ export class SessionsService {
 
   async rename(sessionId: string, title: string): Promise<void> {
     await this.deps.adapter.renameSession(sessionId, title, this.cwdOf(sessionId));
+    if (this.deps.live.get(sessionId)) this.pinned.set(sessionId, { title, attempts: 0 });
+    else this.pinned.delete(sessionId);
     await this.refresh();
+  }
+
+  /** Своё название поверх перебитого движком; процесс сессии ушёл и название на месте — больше не следим. */
+  private applyPins(rows: SessionRow[]): void {
+    for (const [id, pin] of this.pinned) {
+      const row = rows.find((r) => r.id === id);
+      if (!row) continue;
+      if (row.title === pin.title) {
+        pin.attempts = 0;
+        if (!this.deps.live.get(id)) this.pinned.delete(id);
+        continue;
+      }
+      row.title = pin.title;
+      if (this.reapplying.has(id)) continue;
+      // на случай, если запись названия не действует (формат CLI сменился), — не крутиться вечно
+      if (++pin.attempts > MAX_TITLE_REAPPLY) {
+        this.deps.log.warn(`название сессии ${id} перебивается движком — оставляю как есть`);
+        this.pinned.delete(id);
+        continue;
+      }
+      this.reapplying.add(id);
+      this.deps.log.debug(`движок перебил название сессии ${id} — переименовываю снова`);
+      void this.deps.adapter
+        .renameSession(id, pin.title, row.cwd ?? this.deps.cwd)
+        .catch((e) => this.deps.log.warn(`повтор переименования ${id}: ${String(e)}`))
+        .finally(() => {
+          this.reapplying.delete(id);
+          // запись в транскрипт поймает fs.watch, но список мог уйти без неё — перепроверить
+          this.schedule();
+        });
+    }
   }
 
   /** `cwd` сессии (у сессий worktree он свой), иначе папка проекта. */

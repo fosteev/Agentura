@@ -35,6 +35,7 @@ import { resolveDefaultEffort, resolveDefaultMode } from '../settings';
 import { appliedSides, previewOf, proposedSides, type EditSides } from './editDiff';
 import { buildPrompt, attachmentKey, type Attachment, type FileHit } from '../shared/prompt';
 import type { LiveSessions } from '../data/sessions';
+import { mergeReplay, StreamTail } from './reseedReplay';
 
 /** Всё, что контроллеру нужно от VS Code, — через этот интерфейс: сам контроллер vscode не импортирует. */
 export interface ChatDeps {
@@ -183,6 +184,14 @@ export class ChatController {
   private readyCount = 0;
   /** История ждёт `ready` (вкладка восстановлена до готовности webview). */
   private seedPending = false;
+  /** Пересев читает транскрипт: события движка копятся здесь и доигрываются после `session.history`. */
+  private reseedBuffer: { sessionId: string; event: AgentEvent }[] | undefined;
+  /** Дельты ответа, который ещё пишется (его нет в транскрипте) — для пересева. */
+  private readonly streamTail = new StreamTail();
+  /** Счётчик `teardown()`: пересев, начатый до смены сессии во вкладке, ничего не шлёт. */
+  private teardowns = 0;
+  /** Номер последнего пересева: два подряд (двойной «Reload Webviews») — шлёт только последний. */
+  private reseedSeq = 0;
   /** Команда боковой панели, пришедшая до готовности webview. */
   private queuedCommand: 'status' | undefined;
   // Снимок для пересева: то, что webview пропустил бы, окажись он пересоздан при живом хосте.
@@ -333,6 +342,15 @@ export class ChatController {
     const id = this.sessionId;
     if (!id) return;
     let history = this.resumed?.history;
+    // события, пришедшие во время чтения, — после истории (иначе она их сотрёт); с хвостом текущего ответа.
+    // Прошлый пересев ещё читает — его накопленное переходит к этому, а сам он ничего не пошлёт.
+    const buffer =
+      this.reseedBuffer !== undefined
+        ? [...this.reseedBuffer]
+        : this.streamTail.snapshot().map((event) => ({ sessionId: id, event }));
+    this.reseedBuffer = buffer;
+    const teardowns = this.teardowns;
+    const seq = ++this.reseedSeq;
     if (!this.seedPending || !history) {
       try {
         // сессия зарегистрирована живой — процесс движка жив, его фоновые задачи ещё идут
@@ -346,9 +364,18 @@ export class ChatController {
         history = undefined;
       }
     }
-    if (this.disposed) return;
-    if (history) this.postHistory(history, this.resumed?.title ?? this.title);
-    else this.deps.post({ type: 'session.reset' });
+    // пересев, начатый позже, — его история новее; этот ничего не шлёт
+    if (seq !== this.reseedSeq) return;
+    if (this.reseedBuffer === buffer) this.reseedBuffer = undefined;
+    // вкладку закрыли или сменили в ней сессию, пока читали, — эта история и события уже не нужны
+    if (this.disposed || this.teardowns !== teardowns) return;
+    const merged = mergeReplay(
+      history?.events ?? [],
+      buffer.map((b) => b.event),
+    );
+    if (history) {
+      this.postHistory({ ...history, events: merged.history }, this.resumed?.title ?? this.title);
+    } else this.deps.post({ type: 'session.reset' });
     if (this.lastInit) this.forward(id, this.lastInit);
     if (this.lastContext) this.forward(id, this.lastContext);
     if (this.title) this.forward(id, { type: 'session.title', title: this.title });
@@ -357,6 +384,8 @@ export class ChatController {
     }
     for (const e of this.pendingRequests.values()) this.forward(id, e);
     for (const p of this.previews.values()) this.deps.post(p);
+    const replay = new Set(merged.replay);
+    for (const b of buffer) if (replay.has(b.event)) this.forward(b.sessionId, b.event);
     void this.ensureSession()
       .then((s) => this.postCapabilities(s))
       .catch(() => undefined);
@@ -920,7 +949,9 @@ export class ChatController {
     if (session !== this.current) return;
     if (e.type === 'session.init' && session.id) this.lastSessionId = session.id;
     this.log.debug(`← ${describeEvent(e)}`);
-    this.forward(session.id, e);
+    this.streamTail.note(e);
+    if (this.reseedBuffer) this.reseedBuffer.push({ sessionId: session.id, event: e });
+    else this.forward(session.id, e);
 
     const prev = this.status;
     this.pending = updatePending(this.pending, e);
@@ -1054,6 +1085,9 @@ export class ChatController {
     this.turnStartedAt = undefined;
     this.pendingRequests.clear();
     this.previews.clear();
+    this.reseedBuffer = undefined;
+    this.streamTail.clear();
+    this.teardowns++;
   }
 }
 

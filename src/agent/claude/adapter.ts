@@ -218,20 +218,21 @@ export class ClaudeAdapter implements AgentAdapter {
   ): Promise<SessionHistory> {
     const sdk = await this.loadSdk();
     const messages = await sdk.getSessionMessages(sessionId, { dir: cwd });
-    let extras: ReturnType<typeof readTranscriptExtras> = { toolResults: new Map() };
+    let extras: Awaited<ReturnType<typeof readTranscriptExtras>> = { toolResults: new Map() };
     try {
-      extras = readTranscriptExtras(transcriptPath(cwd, sessionId));
+      extras = await readTranscriptExtras(transcriptPath(cwd, sessionId));
     } catch (error) {
       this.config.log?.('warn', `транскрипт ${sessionId}: ${String(error)}`);
     }
     const history = buildHistory(messages as HistoryMessage[], {
       toolResults: extras.toolResults,
+      ...(extras.apiErrors ? { apiErrors: extras.apiErrors } : {}),
       live: options.live ?? false,
       ...(options.tasksAlive !== undefined ? { tasksAlive: options.tasksAlive } : {}),
       maxTurns: options.maxTurns ?? DEFAULT_MAX_TURNS,
     });
     const dir = subagentsDir(transcriptPath(cwd, sessionId), sessionId);
-    if (dir) withSubagentTimelines(history.events, dir, (m) => this.config.log?.('warn', m));
+    if (dir) await withSubagentTimelines(history.events, dir, (m) => this.config.log?.('warn', m));
     return {
       ...history,
       ...(extras.mode ? { mode: extras.mode } : {}),
@@ -250,10 +251,10 @@ export class ClaudeAdapter implements AgentAdapter {
     title: string,
   ): Promise<string | undefined> {
     const dir = subagentsDir(transcriptPath(cwd, sessionId), sessionId);
-    const file = dir ? subagentFile(dir, taskId) : undefined;
+    const file = dir ? await subagentFile(dir, taskId) : undefined;
     if (!file) return undefined;
-    const meta = readSubagentMeta(file);
-    return subagentMarkdown(readSubagentRecords(file), {
+    const meta = await readSubagentMeta(file);
+    return subagentMarkdown(await readSubagentRecords(file), {
       title: title || meta.description || taskId,
       ...(meta.agentType ? { agentType: meta.agentType } : {}),
     });

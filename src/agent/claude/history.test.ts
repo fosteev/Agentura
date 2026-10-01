@@ -369,3 +369,67 @@ describe('файлы в реплике пользователя (этап 8 road
     expect(files[0]).toEqual({ kind: 'text', path: 'a.txt', size: 4 });
   });
 });
+
+describe('итог хода в истории: ошибка API и цена (этап 5 roadmap 0.2)', () => {
+  const results = (events: AgentEvent[]) =>
+    events.filter(
+      (e): e is Extract<AgentEvent, { type: 'turn.result' }> => e.type === 'turn.result',
+    );
+  const apiError = (s: number) =>
+    assistant(
+      'syn',
+      [{ type: 'text', text: 'API Error: Overloaded' }],
+      s,
+      undefined,
+      '<synthetic>',
+    );
+
+  it('ход, закончившийся ошибкой API, — ok: false; ошибка с ответом после неё (повтор) — ok: true', () => {
+    const messages = [
+      user('первый', 0),
+      apiError(1),
+      user('второй', 2),
+      apiError(3),
+      assistant('m2', [{ type: 'text', text: 'всё же ответил' }], 4),
+      user('третий', 5),
+      assistant('m3', [{ type: 'text', text: 'ok' }], 6),
+    ];
+    const h = buildHistory(messages, { apiErrors: new Set(['a1', 'a3']) });
+    expect(results(h.events).map((r) => r.ok)).toEqual([false, true, true]);
+    // карточка ошибки — по-прежнему событием `error`, итог её не дублирует
+    expect(results(h.events)[0]!.errors).toBeUndefined();
+    expect(h.events.filter((e) => e.type === 'error')).toHaveLength(2);
+  });
+
+  it('служебный <synthetic> без флага ошибки («No response requested.») ход не роняет', () => {
+    const messages = [
+      user('первый', 0),
+      assistant('m1', [{ type: 'text', text: 'ok' }], 1),
+      assistant(
+        'syn',
+        [{ type: 'text', text: 'No response requested.' }],
+        2,
+        undefined,
+        '<synthetic>',
+      ),
+    ];
+    expect(results(buildHistory(messages, { apiErrors: new Set() }).events)[0]!.ok).toBe(true);
+    // без сведений из транскрипта — как раньше: любой <synthetic> — ошибка
+    expect(results(buildHistory(messages).events)[0]!.ok).toBe(false);
+  });
+
+  it('ход с моделью без цены: итог сессии с пометкой costPartial с этого хода и дальше', () => {
+    const messages = [
+      user('первый', 0),
+      assistant('m1', [{ type: 'text', text: 'a' }], 1),
+      user('второй', 2),
+      assistant('m2', [{ type: 'text', text: 'b' }], 3, undefined, 'unknown-model-x'),
+      user('третий', 4),
+      assistant('m3', [{ type: 'text', text: 'c' }], 5),
+    ];
+    const r = results(buildHistory(messages).events);
+    expect(r.map((x) => x.costPartial)).toEqual([undefined, true, true]);
+    expect(r[1]!.costUsd).toBeUndefined();
+    expect(r[2]!.totalCostUsd).toBeCloseTo(r[0]!.totalCostUsd + r[2]!.costUsd!, 12);
+  });
+});

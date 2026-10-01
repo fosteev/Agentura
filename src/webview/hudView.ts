@@ -379,7 +379,15 @@ export function sessionTotals(s: HudState): { label: string; value: string }[] {
   const t = s.totals;
   const hit = cacheHitRatio(t);
   return [
-    { label: ui.agents.totalCost, value: t.turns > 0 ? formatCost(t.costUsd) : '—' },
+    {
+      label: ui.agents.totalCost,
+      value:
+        t.turns === 0
+          ? '—'
+          : t.costPartial
+            ? `${formatCost(t.costUsd)} ${ui.agents.costPartial}`
+            : formatCost(t.costUsd),
+    },
     { label: ui.agents.totalTurns, value: String(t.turns) },
     { label: ui.agents.totalTime, value: t.turns > 0 ? formatDuration(t.durationMs) : '—' },
     { label: ui.agents.totalCache, value: hit === undefined ? '—' : `${Math.round(hit * 100)}%` },

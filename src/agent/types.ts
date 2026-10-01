@@ -256,6 +256,11 @@ export type AgentEvent =
       /** Стоимость хода: разность `total_cost_usd` соседних ходов. Нет — неизвестна база (resume). */
       costUsd?: number;
       totalCostUsd: number;
+      /**
+       * `totalCostUsd` без части ходов: у модели нет цены в таблице (история по транскрипту, этап 5 roadmap 0.2).
+       * У живого хода не бывает — `total_cost_usd` движка точный.
+       */
+      costPartial?: boolean;
       model?: string;
       contextWindow?: number;
       stopReason?: string;

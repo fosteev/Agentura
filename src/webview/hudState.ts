@@ -87,6 +87,8 @@ export interface HudState {
   cache: { lastAt?: number; ttlMs?: number };
   totals: {
     costUsd: number;
+    /** В `costUsd` нет части ходов: модель без цены (история по транскрипту, этап 5 roadmap 0.2). */
+    costPartial?: boolean;
     turns: number;
     durationMs: number;
     input: number;
@@ -436,6 +438,7 @@ export function applyHud(s: HudState, e: AgentEvent, now = Date.now()): HudState
         totals: {
           // `total_cost_usd` движка — накопленная стоимость сессии (с базой при resume)
           costUsd: e.totalCostUsd,
+          ...(e.costPartial ? { costPartial: true } : {}),
           turns: t.turns + 1,
           durationMs: t.durationMs + e.durationMs,
           input: t.input + u.input,
