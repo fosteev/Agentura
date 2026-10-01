@@ -14,9 +14,23 @@ import {
   updatePending,
   type ChatStatus,
 } from '../agent/status';
-import type { FromWebview, PickedImage, PlanChoice, SessionSummary, ToWebview } from '../protocol';
-import type { ImageMediaType, PromptImage, SessionHistory } from '../agent/types';
-import { hostImage, MAX_IMAGES_PER_MESSAGE, MAX_MESSAGE_IMAGES_BASE64 } from '../shared/images';
+import type {
+  FromWebview,
+  PickedFile,
+  PickedImage,
+  PlanChoice,
+  SessionSummary,
+  ToWebview,
+} from '../protocol';
+import type {
+  FileKind,
+  ImageMediaType,
+  PromptFile,
+  PromptImage,
+  SessionHistory,
+} from '../agent/types';
+import { hostImage, MAX_IMAGES_PER_MESSAGE } from '../shared/images';
+import { hostFile, MAX_FILES_PER_MESSAGE, MAX_MESSAGE_ATTACH_CHARS } from '../shared/files';
 import { resolveDefaultEffort, resolveDefaultMode } from '../settings';
 import { appliedSides, previewOf, proposedSides, type EditSides } from './editDiff';
 import { buildPrompt, attachmentKey, type Attachment, type FileHit } from '../shared/prompt';
@@ -50,10 +64,20 @@ export interface ChatDeps {
   observeLimits?(windows: LimitWindow[]): void;
   findFiles(query: string): Promise<FileHit[]>;
   pickFiles(): Promise<FileHit[]>;
-  /** «Изображение…» в «+» (этап 4 roadmap 0.2): диалог выбора картинок, файлы base64. */
-  pickImages?(): Promise<PickedImage[]>;
+  /**
+   * «Изображение или файл…» в «+» (этапы 4 и 8 roadmap 0.2): диалог выбора без фильтра; картинки
+   * base64, текст и pdf — содержимым или причиной отказа.
+   */
+  pickAttachments?(): Promise<{ images: PickedImage[]; files: PickedFile[] }>;
+  /** Перетаскивание из проводника VS Code (этап 8): прочитать файлы по uri (`workspace.fs`). */
+  readUris?(uris: string[]): Promise<{ images: PickedImage[]; files: PickedFile[] }>;
   /** Картинка во вкладке редактора: временный файл в storage расширения. */
   openImage?(image: { mediaType: ImageMediaType; data: string }): Promise<void>;
+  /**
+   * Чип файла в ленте (этап 8): путь относительно рабочей папки — сам файл, иначе копия из `data`
+   * (без неё — исходный файл, если есть).
+   */
+  openFile?(file: { kind: FileKind; path: string; data?: string }): Promise<void>;
   /** Текст выделения для вложения `selection`. */
   readSelection(a: Attachment): Promise<string | undefined>;
   listRecent(): Promise<SessionSummary[]>;
@@ -477,13 +501,26 @@ export class ChatController {
         if (items.length) deps.post({ type: 'attach.picked', items });
         return;
       }
-      case 'image.pick': {
-        const items = (await deps.pickImages?.()) ?? [];
-        if (items.length) deps.post({ type: 'image.picked', items });
+      case 'image.pick':
+        this.postPicked(await deps.pickAttachments?.());
+        return;
+      case 'attach.uris': {
+        const uris = Array.isArray(m.uris) ? m.uris.filter((u) => typeof u === 'string') : [];
+        if (uris.length === 0) return;
+        this.postPicked(await deps.readUris?.(uris));
         return;
       }
-      case 'image.open':
-      {
+      case 'file.open': {
+        const kind = m.kind === 'pdf' || m.kind === 'text' ? m.kind : undefined;
+        if (!kind || typeof m.path !== 'string' || !m.path) {
+          this.log.warn('файл не открыт: нет пути или типа');
+          return;
+        }
+        const data = typeof m.data === 'string' && m.data ? m.data : undefined;
+        await deps.openFile?.({ kind, path: m.path, ...(data ? { data } : {}) });
+        return;
+      }
+      case 'image.open': {
         const checked =
           typeof m.mediaType === 'string' && typeof m.data === 'string'
             ? hostImage(m)
@@ -701,12 +738,14 @@ export class ChatController {
       if (t) texts[attachmentKey(a)] = t;
     }
     const images = this.checkImages(m.images);
-    // все картинки отброшены, текста нет — пустое сообщение API не примет
-    if (!images && !m.text.trim() && !m.attachments?.length) {
-      this.log.warn('send: пустое сообщение (картинки отброшены) — не отправлено');
+    const used = (images ?? []).reduce((sum, i) => sum + i.data.length, 0);
+    const files = this.checkFiles(m.files, used);
+    // все вложения отброшены, текста нет — пустое сообщение API не примет
+    if (!images && !files && !m.text.trim() && !m.attachments?.length) {
+      this.log.warn('send: пустое сообщение (вложения отброшены) — не отправлено');
       return;
     }
-    if (!session.send(buildPrompt(m.text, m.attachments ?? [], texts), images)) {
+    if (!session.send(buildPrompt(m.text, m.attachments ?? [], texts), images, files)) {
       this.log.warn('send: сессия закрыта, сообщение не принято');
     }
   }
@@ -729,7 +768,7 @@ export class ChatController {
           ? checked.problem
           : out.length >= MAX_IMAGES_PER_MESSAGE
             ? 'count'
-            : total + (i.data as string).length > MAX_MESSAGE_IMAGES_BASE64
+            : total + (i.data as string).length > MAX_MESSAGE_ATTACH_CHARS
               ? 'total'
               : undefined;
       if (problem || 'problem' in checked) {
@@ -746,6 +785,40 @@ export class ChatController {
       });
     }
     return out.length ? out : undefined;
+  }
+
+  /**
+   * Файлы из webview (этап 8) — ещё раз: тип, путь, содержимое (`hostFile`), не больше 10 и общий
+   * лимит сообщения вместе с картинками (`used` — уже занято картинками). Негодные — в журнал.
+   */
+  private checkFiles(files: unknown, used: number): PromptFile[] | undefined {
+    if (!Array.isArray(files) || files.length === 0) return undefined;
+    const out: PromptFile[] = [];
+    let total = used;
+    for (const f of files as unknown[]) {
+      const checked = hostFile(f);
+      const problem =
+        'problem' in checked
+          ? checked.problem
+          : out.length >= MAX_FILES_PER_MESSAGE
+            ? 'count'
+            : total + checked.data.length > MAX_MESSAGE_ATTACH_CHARS
+              ? 'total'
+              : undefined;
+      if (problem || 'problem' in checked) {
+        this.log.warn(`файл отброшен: ${problem}`);
+        continue;
+      }
+      total += checked.data.length;
+      out.push(checked);
+    }
+    return out.length ? out : undefined;
+  }
+
+  /** Результат диалога «+» или перетаскивания: картинки — `image.picked`, файлы — `file.picked`. */
+  private postPicked(p: { images: PickedImage[]; files: PickedFile[] } | undefined): void {
+    if (p?.images.length) this.deps.post({ type: 'image.picked', items: p.images });
+    if (p?.files.length) this.deps.post({ type: 'file.picked', items: p.files });
   }
 
   /** Лимиты подписки → webview (`limits.update`). Не чаще кулдауна `UsageService`. */

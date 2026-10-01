@@ -147,9 +147,54 @@ export function transferImages(dt: DataTransfer | null): ImageSource[] {
   return out;
 }
 
-/** Есть ли в перетаскиваемом файлы (подсветка поля). */
+/**
+ * Не картинки среди файлов перетаскивания (этап 8 roadmap 0.2): имена для плашки — файлы не из VS Code
+ * (Finder) webview не читает, а путей к ним ему не дают.
+ */
+export function transferOthers(dt: DataTransfer | null): string[] {
+  if (!dt) return [];
+  const images = new Set(transferImages(dt).map((i) => i.blob));
+  return Array.from(dt.files ?? [])
+    .filter((f) => !images.has(f))
+    .map((f) => f.name || 'file');
+}
+
+/** Тип данных VS Code со всеми uri перетаскивания (`text/uri-list` у него — только первый). */
+export const CODE_URI_LIST = 'application/vnd.code.uri-list';
+const URI_TYPES = [CODE_URI_LIST, 'text/uri-list'];
+/** Ссылки из браузера и прочее, что файлом не прочитать. */
+const NOT_FILE = /^(https?|data|mailto|javascript|about|blob):/i;
+
+/**
+ * uri файлов из перетаскивания проводника и вкладок VS Code (этап 8 roadmap 0.2). VS Code кладёт
+ * все uri в `application/vnd.code.uri-list`, а в `text/uri-list` — только первый; берём первый
+ * непустой. Строки-комментарии (`#`) и не файловые ссылки отбрасываются.
+ */
+export function transferUris(dt: DataTransfer | null): string[] {
+  if (!dt) return [];
+  for (const type of URI_TYPES) {
+    let raw: string;
+    try {
+      raw = dt.getData(type);
+    } catch {
+      raw = '';
+    }
+    const uris = raw
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter((l) => l && !l.startsWith('#') && !NOT_FILE.test(l));
+    if (uris.length) return uris;
+  }
+  return [];
+}
+
+/**
+ * Есть ли в перетаскиваемом файлы или uri (подсветка поля). Во время `dragover` данные не читаются,
+ * видны только типы.
+ */
 export function hasFiles(dt: DataTransfer | null): boolean {
-  return !!dt && Array.from(dt.types ?? []).includes('Files');
+  const types = Array.from(dt?.types ?? []);
+  return types.includes('Files') || URI_TYPES.some((t) => types.includes(t));
 }
 
 async function blobBase64(blob: Blob): Promise<string> {

@@ -14,6 +14,7 @@ import {
   replyTarget,
   openAgentTranscript,
   openImage,
+  openFile,
   respondPermission,
   selectedAgent,
   showThinking,
@@ -215,6 +216,7 @@ export function Chat() {
               onPreview={(path) => send({ type: 'preview.open', path })}
               onOpenUrl={(url) => send({ type: 'link.open', url })}
               onOpenImage={openImage}
+              onOpenFile={openFile}
               hud={h}
               onStopAgent={stopAgent}
               onOpenAgent={openAgent}

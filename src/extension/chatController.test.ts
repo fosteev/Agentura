@@ -5,6 +5,7 @@ import type {
   AgentEvent,
   AgentSession,
   PlanDecision,
+  PromptFile,
   PromptImage,
   SessionCapabilities,
   SessionHistory,
@@ -32,14 +33,16 @@ class FakeSession implements AgentSession {
   id = 'sess-1';
   sent: string[] = [];
   images: (readonly PromptImage[] | undefined)[] = [];
+  files: (readonly PromptFile[] | undefined)[] = [];
   permissions: [string, string, string | undefined][] = [];
   modes: string[] = [];
   interrupts = 0;
   compacts = 0;
   disposed = false;
-  send(text: string, images?: readonly PromptImage[]) {
+  send(text: string, images?: readonly PromptImage[], files?: readonly PromptFile[]) {
     this.sent.push(text);
     this.images.push(images);
+    this.files.push(files);
     return true;
   }
   respondPermission(id: string, decision: string, message?: string) {
@@ -1207,6 +1210,21 @@ describe('ChatController: ошибки и повтор хода (этап 7)', (
     expect(t.sessions[1]!.images).toEqual([images]);
   });
 
+  it('«Повторить ход» повторяет и файлы сообщения (этап 8)', async () => {
+    const t = build();
+    t.controller.start();
+    await tick();
+    t.sessions[0]!.emit(initEvent);
+    const files = [{ kind: 'text' as const, path: 'a.txt', data: 'abc', size: 3 }];
+    await t.controller.handle({ type: 'send', sessionId: 'sess-1', text: 'глянь', files });
+    t.sessions[0]!.emit({ type: 'error', fatal: true, message: 'ECONNRESET' });
+    t.sessions[0]!.emit({ type: 'session.closed', reason: 'error', message: 'ECONNRESET' });
+    await t.controller.handle({ type: 'turn.retry', sessionId: 'sess-1', turn: true });
+    await tick();
+    expect(t.sessions[1]!.sent).toEqual(['глянь']);
+    expect(t.sessions[1]!.files).toEqual([files]);
+  });
+
   it('«Повторить ход»: resume упавшей сессии по запомненному id и тот же промпт ещё раз', async () => {
     const t = await crashed();
     // у новой сессии, упавшей до resume, `sessionId` после closed пуст — id помнится отдельно
@@ -1376,10 +1394,10 @@ describe('картинки в сообщении (этап 4 roadmap 0.2)', () =
   it('image.pick: диалог хоста → image.picked; пусто — ничего', async () => {
     const t = setup();
     const picked = [{ name: 'a.png', mediaType: 'image/png', data: PNG }];
-    t.deps.pickImages = vi.fn(async () => picked);
+    t.deps.pickAttachments = vi.fn(async () => ({ images: picked, files: [] }));
     await t.controller.handle({ type: 'image.pick' });
     expect(t.posted.at(-1)).toEqual({ type: 'image.picked', items: picked });
-    t.deps.pickImages = vi.fn(async () => []);
+    t.deps.pickAttachments = vi.fn(async () => ({ images: [], files: [] }));
     const before = t.posted.length;
     await t.controller.handle({ type: 'image.pick' });
     expect(t.posted).toHaveLength(before);
@@ -1420,7 +1438,9 @@ describe('картинки в сообщении (этап 4 roadmap 0.2)', () =
     const many = Array.from({ length: 6 }, () => ({ mediaType: 'image/png' as const, data: big }));
     await t.controller.handle({ type: 'send', sessionId: '', text: 'много', images: many });
     expect(t.sessions[0]!.images[0]).toHaveLength(4);
-    expect(t.deps.log.warn).toHaveBeenCalledWith(expect.stringContaining('картинка отброшена: total'));
+    expect(t.deps.log.warn).toHaveBeenCalledWith(
+      expect.stringContaining('картинка отброшена: total'),
+    );
   });
 
   it('все картинки отброшены и текста нет — пустое сообщение не уходит', async () => {
@@ -1432,5 +1452,127 @@ describe('картинки в сообщении (этап 4 roadmap 0.2)', () =
       images: [{ mediaType: 'image/png', data: 'PHNjcmlwdD4=' }],
     });
     expect(t.sessions[0]?.sent ?? []).toEqual([]);
+  });
+});
+
+describe('файлы в сообщении (этап 8 roadmap 0.2)', () => {
+  const PDF = Buffer.from('%PDF-1.4\n1 0 obj << /Type /Page >> endobj\n%%EOF').toString('base64');
+  const txt = { kind: 'text' as const, path: 'docs/a.txt', data: 'секрет', size: 12 };
+
+  it('send: файлы уходят в session.send после проверки; размер и страницы пересчитаны; негодные отброшены', async () => {
+    const t = setup();
+    await t.controller.handle({
+      type: 'send',
+      sessionId: '',
+      text: 'что в файлах?',
+      files: [
+        { ...txt, size: 1 },
+        { kind: 'pdf', path: '/abs/b.pdf', data: PDF, size: 999, pages: 7 },
+        { kind: 'text', path: 'bin.dat', data: 'a\u0000b', size: 3 },
+        { kind: 'pdf', path: 'fake.pdf', data: 'PHNjcmlwdD4=', size: 8 },
+        { kind: 'exe', path: 'x', data: 'x', size: 1 } as never,
+        { kind: 'text', path: '', data: 'x', size: 1 },
+      ],
+    });
+    const s = t.sessions[0]!;
+    expect(s.sent).toEqual(['что в файлах?']);
+    expect(s.images).toEqual([undefined]);
+    expect(s.files).toEqual([
+      [
+        { kind: 'text', path: 'docs/a.txt', data: 'секрет', size: 12 },
+        {
+          kind: 'pdf',
+          path: '/abs/b.pdf',
+          data: PDF,
+          size: Buffer.from(PDF, 'base64').length,
+          pages: 1,
+        },
+      ],
+    ]);
+    expect(t.deps.log.warn).toHaveBeenCalledTimes(4);
+  });
+
+  it('больше 10 файлов и сверх 20 МБ вместе с картинками — лишние отброшены; одни отброшенные — не уходит', async () => {
+    const t = setup();
+    const many = Array.from({ length: 12 }, (_, i) => ({ ...txt, path: `f${i}.txt` }));
+    await t.controller.handle({ type: 'send', sessionId: '', text: 'много', files: many });
+    expect(t.sessions[0]!.files[0]).toHaveLength(10);
+    const big = `iVBORw0KGgo${'A'.repeat(4.5 * 1024 * 1024 - 11)}`;
+    const images = Array.from({ length: 4 }, () => ({
+      mediaType: 'image/png' as const,
+      data: big,
+    }));
+    const text = { ...txt, data: 'x'.repeat(200 * 1024) };
+    await t.controller.handle({
+      type: 'send',
+      sessionId: '',
+      text: 'картинки и файлы',
+      images,
+      files: [text, { ...text, path: 'b.txt' }],
+    });
+    // 18 МБ картинок + 200 КБ текста влезают, второй текст — уже нет
+    expect(t.sessions[0]!.files[1]).toHaveLength(2);
+    expect(t.deps.log.warn).not.toHaveBeenCalledWith(expect.stringContaining('total'));
+    const huge = { ...txt, data: 'x'.repeat(250 * 1024) };
+    const four = Array.from({ length: 9 }, (_, i) => ({ ...huge, path: `h${i}.txt` }));
+    await t.controller.handle({ type: 'send', sessionId: '', text: 'ещё', images, files: four });
+    expect(t.sessions[0]!.files[2]!.length).toBeLessThan(9);
+    expect(t.deps.log.warn).toHaveBeenCalledWith(expect.stringContaining('файл отброшен: total'));
+    await t.controller.handle({
+      type: 'send',
+      sessionId: '',
+      text: '',
+      files: [{ kind: 'text', path: 'e.txt', data: '   ', size: 3 }],
+    });
+    expect(t.sessions[0]!.sent).toHaveLength(3);
+  });
+
+  it('image.pick: картинки — image.picked, файлы — file.picked', async () => {
+    const t = setup();
+    const images = [{ name: 'a.png', mediaType: 'image/png', data: PNG }];
+    const files = [
+      { ...txt, name: 'a.txt' },
+      { name: 'b.bin', problem: 'binary' as const },
+    ];
+    t.deps.pickAttachments = vi.fn(async () => ({ images, files }));
+    await t.controller.handle({ type: 'image.pick' });
+    expect(t.posted.slice(-2)).toEqual([
+      { type: 'image.picked', items: images },
+      { type: 'file.picked', items: files },
+    ]);
+  });
+
+  it('attach.uris: только строки уходят хосту; пустой список — без чтения; ответ — file.picked', async () => {
+    const t = setup();
+    t.deps.readUris = vi.fn(async () => ({
+      images: [],
+      files: [{ name: 'src', problem: 'folder' as const }],
+    }));
+    await t.controller.handle({ type: 'attach.uris', uris: [] });
+    await t.controller.handle({ type: 'attach.uris', uris: 'file:///x' as never });
+    expect(t.deps.readUris).not.toHaveBeenCalled();
+    await t.controller.handle({ type: 'attach.uris', uris: ['file:///p/src', 1 as never] });
+    expect(t.deps.readUris).toHaveBeenCalledWith(['file:///p/src']);
+    expect(t.posted.at(-1)).toEqual({
+      type: 'file.picked',
+      items: [{ name: 'src', problem: 'folder' }],
+    });
+    expect(t.sessions).toHaveLength(0);
+  });
+
+  it('file.open: тип и путь проверены; data передаётся, пустая — нет', async () => {
+    const t = setup();
+    t.deps.openFile = vi.fn(async () => {});
+    await t.controller.handle({ type: 'file.open', kind: 'text', path: 'docs/a.txt', data: 'abc' });
+    await t.controller.handle({ type: 'file.open', kind: 'pdf', path: '/abs/b.pdf', data: '' });
+    await t.controller.handle({ type: 'file.open', kind: 'html', path: 'x.html' });
+    await t.controller.handle({ type: 'file.open', kind: 'text', path: '' });
+    expect(t.deps.openFile).toHaveBeenNthCalledWith(1, {
+      kind: 'text',
+      path: 'docs/a.txt',
+      data: 'abc',
+    });
+    expect(t.deps.openFile).toHaveBeenNthCalledWith(2, { kind: 'pdf', path: '/abs/b.pdf' });
+    expect(t.deps.openFile).toHaveBeenCalledTimes(2);
   });
 });

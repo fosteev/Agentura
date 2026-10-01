@@ -302,3 +302,70 @@ describe('картинки в реплике пользователя (этап 
     expect(images[0]).toEqual({ mediaType: 'image/png' });
   });
 });
+
+describe('файлы в реплике пользователя (этап 8 roadmap 0.2)', () => {
+  const FIXTURES = join(__dirname, '..', '..', '..', 'test', 'fixtures', 'claude');
+  const withDocs = (docs: unknown[], text: string, s: number): HistoryMessage => ({
+    type: 'user',
+    uuid: `d${s}`,
+    message: { role: 'user', content: [...docs, ...(text ? [{ type: 'text', text }] : [])] },
+    parent_tool_use_id: null,
+    timestamp: ts(s),
+  });
+  const txt = (data: string, title?: string) => ({
+    type: 'document',
+    source: { type: 'text', media_type: 'text/plain', data },
+    ...(title ? { title } : {}),
+  });
+
+  it('живой транскрипт (attach-smoke): документы целиком → чипы с путём, размером и содержимым', () => {
+    const messages = JSON.parse(
+      readFileSync(join(FIXTURES, 'attach-basic.messages.json'), 'utf8'),
+    ) as HistoryMessage[];
+    const h = buildHistory(messages);
+    const starts = h.events.filter(
+      (e): e is Extract<AgentEvent, { type: 'turn.start' }> => e.type === 'turn.start',
+    );
+    expect(starts).toHaveLength(1);
+    expect(starts[0]!.prompt).toContain('Two files are attached');
+    expect(starts[0]!.files).toMatchObject([
+      {
+        kind: 'text',
+        path: 'notes/secret.txt',
+        size: 48,
+        data: expect.stringContaining('PELICAN-7342'),
+      },
+      { kind: 'pdf', path: '/tmp/outside/probe.pdf', size: 599, pages: 1 },
+    ]);
+    expect(starts[0]!.files![1]!.data).toMatch(/^JVBERi0/);
+    expect(h.turns).toBe(1);
+  });
+
+  it('только файл без текста — ход; документ по url и без title — пропуск и имя по умолчанию', () => {
+    const h = buildHistory([
+      withDocs([txt('привет')], '', 1),
+      withDocs([{ type: 'document', source: { type: 'url', url: 'https://x/y.pdf' } }], 'и это', 5),
+    ]);
+    const starts = h.events.filter(
+      (e): e is Extract<AgentEvent, { type: 'turn.start' }> => e.type === 'turn.start',
+    );
+    expect(starts.map((e) => e.prompt)).toEqual(['', 'и это']);
+    expect(starts[0]!.files).toEqual([
+      { kind: 'text', path: 'документ.txt', size: 12, data: 'привет' },
+    ]);
+    expect(starts[1]).not.toHaveProperty('files');
+  });
+
+  it('содержимое — только у последних maxFiles файлов, ранние — чип без копии', () => {
+    const h = buildHistory(
+      [
+        withDocs([txt('AAAA', 'a.txt'), txt('BBBB', 'b.txt')], 'раз', 1),
+        withDocs([txt('CCCC', 'c.txt')], 'два', 5),
+      ],
+      { maxFiles: 2 },
+    );
+    const files = h.events.flatMap((e) => (e.type === 'turn.start' ? (e.files ?? []) : []));
+    expect(files.map((f) => f.data)).toEqual([undefined, 'BBBB', 'CCCC']);
+    expect(files[0]).toEqual({ kind: 'text', path: 'a.txt', size: 4 });
+  });
+});

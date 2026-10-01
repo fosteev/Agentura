@@ -6,8 +6,16 @@
  * редьюсер, хост — через тот же разбор правок (`ChatController`), поэтому `diff` в восстановленной
  * истории работает так же, как в живой. Чистая функция, без ввода-вывода.
  */
-import type { AgentEvent, ImageRef, PermissionMode, SessionHistory, TokenUsage } from '../types';
-import { imageSize } from '../../shared/images';
+import type {
+  AgentEvent,
+  FileRef,
+  ImageRef,
+  PermissionMode,
+  SessionHistory,
+  TokenUsage,
+} from '../types';
+import { imageSize, base64Bytes } from '../../shared/images';
+import { documentKind, pdfPages, utf8Bytes } from '../../shared/files';
 import { cost } from '../../data/pricing';
 import { arr, isObj, num, obj, str, timestamp, type Json } from './json';
 import { usageFrom } from './mapper';
@@ -35,6 +43,8 @@ export interface BuildOptions {
   maxTurns?: number;
   /** Сколько последних картинок отдать с данными (по умолчанию `MAX_HISTORY_IMAGES`). */
   maxImages?: number;
+  /** Сколько последних файлов отдать с содержимым (по умолчанию `MAX_HISTORY_FILES`). */
+  maxFiles?: number;
 }
 
 export const DEFAULT_MAX_TURNS = 200;
@@ -93,36 +103,96 @@ function imagesOf(content: unknown): ImageRef[] {
   return out;
 }
 
+function pdfPagesOf(data: string): number | undefined {
+  try {
+    return pdfPages(atob(data));
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Файлы реплики пользователя (этап 8 roadmap 0.2): `document`-блоки с текстом или pdf. CLI хранит их
+ * в транскрипте целиком (живой прогон `scripts/attach-smoke.mjs`); путь — из `title`. Чужие
+ * документы (url, file id) пропускаем: показать нечего и открыть нечего.
+ */
+function filesOf(content: unknown): FileRef[] {
+  const out: FileRef[] = [];
+  for (const b of arr(content).filter(isObj)) {
+    if (b['type'] !== 'document') continue;
+    const source = obj(b['source']);
+    const kind = documentKind(source);
+    const data = str(source?.['data']);
+    if (!kind || data === undefined) continue;
+    const pages = kind === 'pdf' ? pdfPagesOf(data) : undefined;
+    out.push({
+      kind,
+      path: str(b['title']) || (kind === 'pdf' ? 'документ.pdf' : 'документ.txt'),
+      size: kind === 'pdf' ? base64Bytes(data) : utf8Bytes(data),
+      ...(pages !== undefined ? { pages } : {}),
+      data,
+    });
+  }
+  return out;
+}
+
 /** Сколько картинок истории уходит в webview с данными; более ранние — плашкой без миниатюры. */
 export const MAX_HISTORY_IMAGES = 12;
-/** И не больше этого base64 суммарно (сообщение `session.history` идёт в webview целиком). */
+/** Сколько файлов истории уходит с содержимым; более ранние — чипом без копии для просмотра. */
+export const MAX_HISTORY_FILES = 12;
+/**
+ * И не больше этого символов данных суммарно — картинки и файлы вместе (сообщение
+ * `session.history` идёт в webview целиком).
+ */
 export const MAX_HISTORY_IMAGE_CHARS = 24 * 1024 * 1024;
 
-function withoutData(i: ImageRef): ImageRef {
-  const out: ImageRef = { ...i };
+function withoutData<T extends { data?: string }>(i: T): T {
+  const out: T = { ...i };
   delete out.data;
   return out;
 }
 
-/** С конца истории: последние картинки — с данными, остальные — без (плашка «скриншот»). */
-function limitHistoryImages(events: AgentEvent[], maxImages: number): void {
-  let count = 0;
+/**
+ * С конца истории: последние картинки и файлы — с данными, остальные — без (плашка «скриншот»,
+ * чип файла без копии). Бюджет символов общий.
+ */
+function limitHistoryAttachments(events: AgentEvent[], maxImages: number, maxFiles: number): void {
+  let images = 0;
+  let files = 0;
   let chars = 0;
   for (let i = events.length - 1; i >= 0; i--) {
     const e = events[i];
-    if (!e || e.type !== 'turn.start' || !e.images) continue;
-    const images = [...e.images];
-    for (let j = images.length - 1; j >= 0; j--) {
-      const img = images[j];
-      if (!img?.data) continue;
-      if (count < maxImages && chars + img.data.length <= MAX_HISTORY_IMAGE_CHARS) {
-        count++;
-        chars += img.data.length;
-        continue;
+    if (!e || e.type !== 'turn.start' || (!e.images && !e.files)) continue;
+    const next = { ...e };
+    if (e.files) {
+      const list = [...e.files];
+      for (let j = list.length - 1; j >= 0; j--) {
+        const f = list[j];
+        if (!f?.data) continue;
+        if (files < maxFiles && chars + f.data.length <= MAX_HISTORY_IMAGE_CHARS) {
+          files++;
+          chars += f.data.length;
+          continue;
+        }
+        list[j] = withoutData(f);
       }
-      images[j] = withoutData(img);
+      next.files = list;
     }
-    events[i] = { ...e, images };
+    if (e.images) {
+      const list = [...e.images];
+      for (let j = list.length - 1; j >= 0; j--) {
+        const img = list[j];
+        if (!img?.data) continue;
+        if (images < maxImages && chars + img.data.length <= MAX_HISTORY_IMAGE_CHARS) {
+          images++;
+          chars += img.data.length;
+          continue;
+        }
+        list[j] = withoutData(img);
+      }
+      next.images = list;
+    }
+    events[i] = next;
   }
 }
 
@@ -277,13 +347,24 @@ export function buildHistory(
     assistantMessages: 0,
   });
 
-  const startTurn = (prompt: string, at: number, images: ImageRef[] = []): void => {
+  const startTurn = (
+    prompt: string,
+    at: number,
+    images: ImageRef[] = [],
+    files: FileRef[] = [],
+  ): void => {
     closeTurn(false);
     if (events.length) perTurn.push(events);
     events = [];
     turns++;
     turn = newTurn(at);
-    events.push({ type: 'turn.start', prompt, ...(images.length ? { images } : {}), at });
+    events.push({
+      type: 'turn.start',
+      prompt,
+      ...(images.length ? { images } : {}),
+      ...(files.length ? { files } : {}),
+      at,
+    });
   };
 
   /**
@@ -407,8 +488,9 @@ export function buildHistory(
         continue;
       }
       const images = imagesOf(content);
+      const files = filesOf(content);
       const text = textOf(content) ?? '';
-      if (text.trim() === '' && images.length === 0) continue;
+      if (text.trim() === '' && images.length === 0 && files.length === 0) continue;
       const t = text.trimStart();
       if (COMPACT_SUMMARY.test(t)) {
         events.push({ type: 'compaction.end', ok: true });
@@ -423,7 +505,7 @@ export function buildHistory(
         wake(t, at);
         continue;
       }
-      startTurn(text, at, images);
+      startTurn(text, at, images, files);
       continue;
     }
 
@@ -513,7 +595,11 @@ export function buildHistory(
   const kept = perTurn.slice((hasPreamble ? 1 : 0) + skipped);
   const head = hasPreamble && skipped === 0 ? (perTurn[0] ?? []) : [];
   const out = [...head, ...kept.flat()];
-  limitHistoryImages(out, options.maxImages ?? MAX_HISTORY_IMAGES);
+  limitHistoryAttachments(
+    out,
+    options.maxImages ?? MAX_HISTORY_IMAGES,
+    options.maxFiles ?? MAX_HISTORY_FILES,
+  );
   return {
     events: out,
     turns,

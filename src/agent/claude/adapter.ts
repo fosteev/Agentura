@@ -21,6 +21,7 @@ import type {
   PermissionDecision,
   PermissionMode,
   PlanDecision,
+  PromptFile,
   PromptImage,
   ResumeOptions,
   SessionCapabilities,
@@ -132,19 +133,36 @@ export function engineEnv(
 }
 
 /**
- * Содержимое сообщения пользователя: без картинок — строка (как в 0.1), с картинками — image-блоки
- * в порядке отправки и текст последним (этап 4 roadmap 0.2). Пустой текст не шлём: API отвергает
- * пустой text-блок.
+ * Содержимое сообщения пользователя: без вложений — строка (как в 0.1), с вложениями — image-блоки
+ * в порядке отправки (этап 4 roadmap 0.2), затем `document`-блоки файлов (этап 8: текст —
+ * `source.type: 'text'`, pdf — base64; `title` — путь) и текст последним. Пустой текст не шлём:
+ * API отвергает пустой text-блок.
  */
 export function userContent(
   text: string,
   images?: readonly PromptImage[],
+  files?: readonly PromptFile[],
 ): SDKUserMessage['message']['content'] {
-  if (!images?.length) return text;
-  const blocks: Exclude<SDKUserMessage['message']['content'], string> = images.map((i) => ({
+  if (!images?.length && !files?.length) return text;
+  const blocks: Exclude<SDKUserMessage['message']['content'], string> = (images ?? []).map((i) => ({
     type: 'image' as const,
     source: { type: 'base64' as const, media_type: i.mediaType, data: i.data },
   }));
+  for (const f of files ?? []) {
+    blocks.push(
+      f.kind === 'pdf'
+        ? {
+            type: 'document',
+            source: { type: 'base64', media_type: 'application/pdf', data: f.data },
+            title: f.path,
+          }
+        : {
+            type: 'document',
+            source: { type: 'text', media_type: 'text/plain', data: f.data },
+            title: f.path,
+          },
+    );
+  }
   if (text.trim()) blocks.push({ type: 'text', text });
   return blocks;
 }
@@ -370,13 +388,18 @@ class ClaudeSession implements AgentSession {
    * Своё `uuid` у каждого сообщения: движок возвращает его эхом (`user_message_uuid(s)`) на первом
    * ответе хода, и маппер привязывает промпт к ходу по нему, а не по очереди.
    */
-  send(text: string, images?: readonly PromptImage[]): boolean {
+  send(text: string, images?: readonly PromptImage[], files?: readonly PromptFile[]): boolean {
     if (this.closed) return false;
     const uuid = randomUUID();
-    this.mapper.notePrompt(text, uuid, images?.length ? images : undefined);
+    this.mapper.notePrompt(
+      text,
+      uuid,
+      images?.length ? images : undefined,
+      files?.length ? files : undefined,
+    );
     this.input.push({
       type: 'user',
-      message: { role: 'user', content: userContent(text, images) },
+      message: { role: 'user', content: userContent(text, images, files) },
       parent_tool_use_id: null,
       uuid: uuid as SDKUserMessage['uuid'],
     });

@@ -37,3 +37,12 @@
 .compose.drop .prompt .text { color: var(--info); }
 .log .u .att { flex-wrap: wrap; }
 html[data-width="380"] .log .u .att .mock { width: 136px; height: 87px; }
+
+/* файлы-вложения (этап 8 roadmap 0.2): чип файла рядом с миниатюрой — над полем и в реплике */
+.compose .att .im.file { grid-template-columns: 34px auto; }
+.compose .att .im .ic { grid-row: 1 / span 2; width: 34px; height: 42px; display: grid; place-items: center; border: 1px solid var(--line-strong); border-radius: 2px; background: var(--bg); color: var(--fg-mute); font-family: var(--mono); font-size: 9px; letter-spacing: .03em; }
+.compose .att .im.file.err .ph { width: 34px; height: 42px; }
+.log .u .att .fl { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; height: 26px; padding: 0 8px 0 4px; border: 1px solid var(--line-strong); border-radius: 3px; background: var(--bg-input); color: var(--fg); font: inherit; font-size: 11px; cursor: pointer; }
+.log .u .att .fl .ic { width: 24px; height: 18px; display: grid; place-items: center; border-radius: 2px; background: var(--bg); color: var(--fg-mute); font-family: var(--mono); font-size: 8px; letter-spacing: .03em; }
+.log .u .att .fl b { font-weight: 500; }
+.log .u .att .fl small { color: var(--fg-mute); font-size: 10.5px; }

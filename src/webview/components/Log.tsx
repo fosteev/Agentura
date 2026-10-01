@@ -3,8 +3,9 @@ import type { Seg } from '../fixtures/chat';
 import type { FeedRow } from '../chatState';
 import { onCodeCopyClick, renderMarkdown, withCursor } from '../markdown';
 import { ui } from '../strings';
-import type { ImageRef } from '../../agent/types';
+import type { FileRef, ImageRef } from '../../agent/types';
 import { imageTokens } from '../../shared/images';
+import { fileBadge, fileName, formatBytes } from '../../shared/files';
 import {
   artifactStatus,
   compactTokens,
@@ -33,11 +34,15 @@ export function Segs({ s }: { s: Seg[] }) {
 function UserText({
   text,
   images,
+  files,
   onOpenImage,
+  onOpenFile,
 }: {
   text: string;
   images?: ImageRef[] | undefined;
+  files?: FileRef[] | undefined;
   onOpenImage?: ((i: ImageRef) => void) | undefined;
+  onOpenFile?: ((f: FileRef) => void) | undefined;
 }) {
   const parts = text.split(/(`[^`\n]+`)/g);
   return (
@@ -46,6 +51,40 @@ function UserText({
         p.length > 2 && p.startsWith('`') && p.endsWith('`') ? <code>{p.slice(1, -1)}</code> : p,
       )}
       {images?.length ? <UserImages images={images} onOpen={onOpenImage} /> : null}
+      {files?.length ? <UserFiles files={files} onOpen={onOpenFile} /> : null}
+    </span>
+  );
+}
+
+/**
+ * Чипы файлов в реплике пользователя (этап 8 roadmap 0.2): значок типа, имя, размер. Содержимое в
+ * ленту не выводится; клик открывает файл во вкладке редактора.
+ */
+function UserFiles({
+  files,
+  onOpen,
+}: {
+  files: FileRef[];
+  onOpen?: ((f: FileRef) => void) | undefined;
+}) {
+  return (
+    <span class="att files">
+      {files.map((f, n) => {
+        const outside = f.path.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(f.path);
+        return (
+          <button
+            key={n}
+            type="button"
+            class="fl"
+            title={`${f.path}\n${outside && !f.data ? ui.log.fileNoCopy : ui.log.openFile}`}
+            onClick={() => onOpen?.(f)}
+          >
+            <span class="ic">{fileBadge(f)}</span>
+            <b>{fileName(f.path)}</b>
+            {f.size !== undefined && <small>{formatBytes(f.size)}</small>}
+          </button>
+        );
+      })}
     </span>
   );
 }
@@ -306,6 +345,7 @@ export function Log({
   onPreview,
   onOpenUrl,
   onOpenImage,
+  onOpenFile,
   hud,
   onStopAgent,
   onOpenAgent,
@@ -324,6 +364,8 @@ export function Log({
   onOpenUrl: (url: string) => void;
   /** Клик по миниатюре в реплике — картинка во вкладке редактора. */
   onOpenImage?: (i: ImageRef) => void;
+  /** Клик по чипу файла в реплике (этап 8) — файл во вкладке редактора. */
+  onOpenFile?: (f: FileRef) => void;
   /** Агенты (A6): вызовы `Agent`/`Task` рисуются группой со статусами из приборов. */
   hud?: HudState;
   onStopAgent?: (taskId: string) => void;
@@ -359,7 +401,13 @@ export function Log({
             return (
               <div class="u" key={it.id}>
                 <span class="p">&gt;</span>
-                <UserText text={it.text} images={it.images} onOpenImage={onOpenImage} />
+                <UserText
+                  text={it.text}
+                  images={it.images}
+                  files={it.files}
+                  onOpenImage={onOpenImage}
+                  onOpenFile={onOpenFile}
+                />
                 <span class="at">{it.queued ? ui.log.queued : it.at}</span>
               </div>
             );

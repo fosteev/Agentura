@@ -10,10 +10,12 @@ import type {
   ModelOption,
   PermissionDecision,
   PermissionMode,
+  PromptFile,
   PromptImage,
 } from './agent/types';
 import type { Attachment, FileHit } from './shared/prompt';
 import type { ImageProblem } from './shared/images';
+import type { FileProblem } from './shared/files';
 import type { EngineCheck, SettingKey, SettingsValues } from './settings';
 
 export type {
@@ -131,6 +133,11 @@ export type ToWebview =
    * (base64); уменьшает webview тем же путём, что и вставку. `problem` — файл не прочитан или велик.
    */
   | { type: 'image.picked'; items: PickedImage[] }
+  /**
+   * Этап 8 roadmap 0.2: текстовые файлы и pdf из «+» или перетаскивания (`attach.uris`) — содержимое
+   * или причина отказа. Картинки из тех же источников приходят `image.picked`.
+   */
+  | { type: 'file.picked'; items: PickedFile[] }
   /** Начата новая сессия (команда, `/clear`, `new`): очистить ленту. */
   | { type: 'session.reset' }
   /**
@@ -179,20 +186,37 @@ export type ToWebview =
  */
 export type FromWebview =
   | { type: 'ready' }
-  /** `images` — картинки сообщения (этап 4 roadmap 0.2), уже уменьшенные webview. */
+  /**
+   * `images` — картинки сообщения (этап 4 roadmap 0.2), уже уменьшенные webview; `files` — текстовые
+   * файлы и pdf (этап 8), хост проверяет их ещё раз (`hostFile`).
+   */
   | {
       type: 'send';
       sessionId: string;
       text: string;
       attachments?: Attachment[];
       images?: PromptImage[];
+      files?: PromptFile[];
     }
   | { type: 'files.find'; requestId: number; query: string }
   | { type: 'attach.pick' }
-  /** Этап 4 roadmap 0.2: «Изображение…» в меню «+» — диалог выбора картинок на хосте. */
+  /**
+   * Этап 4 roadmap 0.2: «Изображение или файл…» в меню «+» — диалог выбора на хосте. С этапа 8 без
+   * фильтра: картинки приходят `image.picked`, текст и pdf — `file.picked`.
+   */
   | { type: 'image.pick' }
   /** Клик по миниатюре: хост пишет временный файл в storage расширения и открывает его во вкладке. */
   | { type: 'image.open'; mediaType: string; data: string }
+  /**
+   * Этап 8: перетаскивание из проводника и вкладок VS Code — uri из `application/vnd.code.uri-list`
+   * или `text/uri-list`. Хост читает файлы сам (`workspace.fs`) и отвечает `image.picked`/`file.picked`.
+   */
+  | { type: 'attach.uris'; uris: string[] }
+  /**
+   * Клик по чипу файла в ленте: путь относительно рабочей папки — сам файл; иначе — временная копия
+   * из `data` (`globalStorageUri/attachments`), без данных — исходный файл, если он есть.
+   */
+  | { type: 'file.open'; kind: string; path: string; data?: string }
   | { type: 'sessions.show' }
   | { type: 'diff.open'; sessionId: string; toolUseId: string }
   | { type: 'preview.open'; path: string }
@@ -258,6 +282,19 @@ export interface PickedImage {
   problem?: ImageProblem;
 }
 
+/** Файл из «+» или перетаскивания: содержимое для `send.files` или причина, почему не взят. */
+export interface PickedFile {
+  /** Имя для чипа (последний сегмент пути). */
+  name: string;
+  /** Путь для модели: относительно рабочей папки или абсолютный. */
+  path?: string;
+  kind?: PromptFile['kind'];
+  data?: string;
+  size?: number;
+  pages?: number;
+  problem?: FileProblem;
+}
+
 /** Аккаунт для секции «Аккаунт и лимиты» (этап 6); поля, которых нет, — «—». */
 export interface AccountSummary {
   email?: string;
@@ -295,6 +332,8 @@ const FROM_WEBVIEW_TYPES: ReadonlySet<string> = new Set<FromWebview['type']>([
   'attach.pick',
   'image.pick',
   'image.open',
+  'attach.uris',
+  'file.open',
   'sessions.show',
   'diff.open',
   'preview.open',

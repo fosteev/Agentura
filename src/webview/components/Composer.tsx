@@ -23,6 +23,7 @@ import {
   extra,
   fileHits,
   addImages,
+  draftFiles,
   draftImages,
   history,
   imagesBusy,
@@ -30,10 +31,13 @@ import {
   meters,
   newSession,
   removeExtra,
+  removeFile,
   removeImage,
+  rejectFiles,
   replyTarget,
   sendMessage,
   submitReply,
+  type DraftFile,
   setEffort,
   setMode,
   setModel,
@@ -47,7 +51,14 @@ import { menuKeys } from '../a11y';
 import { ui } from '../strings';
 import { compactTokens, shortModel } from '../toolView';
 import { imageTokens, imagesTokens } from '../../shared/images';
-import { hasFiles, transferImages, type DraftImage } from '../imageDraft';
+import { fileBadge, fileTokens, filesTokens, formatBytes } from '../../shared/files';
+import {
+  hasFiles,
+  transferImages,
+  transferOthers,
+  transferUris,
+  type DraftImage,
+} from '../imageDraft';
 import { send } from '../vscode';
 
 type MenuName = 'mode' | 'model' | 'effort' | 'agent' | 'plus';
@@ -187,6 +198,50 @@ function DraftChip({ d }: { d: DraftImage }) {
   );
 }
 
+/** Чип файла над полем (этап 8 roadmap 0.2): значок типа, имя, размер, ~токены, ✕ или плашка ошибки. */
+function FileChip({ d }: { d: DraftFile }) {
+  const remove = (
+    <span
+      class="x"
+      role="button"
+      tabIndex={0}
+      aria-label={ui.compose.imageRemove}
+      title={ui.compose.imageRemove}
+      onClick={() => removeFile(d.id)}
+      onKeyDown={(e: KeyboardEvent) => pressKey(e, () => removeFile(d.id))}
+    >
+      ✕
+    </span>
+  );
+  if (d.problem || !d.file) {
+    const problem = d.problem ?? 'read';
+    const ext = /\.([a-z0-9]{1,5})$/i.exec(d.name)?.[1];
+    return (
+      <span class="im file err">
+        <span class="ph">{problem === 'folder' ? '/' : ext ? ext.toUpperCase() : '!'}</span>
+        <b title={d.name}>{d.name}</b>
+        <small title={ui.compose.fileProblemTitle[problem]}>
+          {ui.compose.fileProblem[problem]}
+        </small>
+        {remove}
+      </span>
+    );
+  }
+  const f = d.file;
+  const tokens = fileTokens(f);
+  return (
+    <span class="im file" title={f.path}>
+      <span class="ic">{fileBadge(f)}</span>
+      <b>{d.name}</b>
+      <small>
+        {formatBytes(f.size)} ·{' '}
+        {tokens !== undefined ? `~${compactTokens(tokens)}` : ui.compose.fileUnknownTokens}
+      </small>
+      {remove}
+    </span>
+  );
+}
+
 function Switch({ on }: { on: boolean }) {
   return <span class={on ? 'sw on' : 'sw'} />;
 }
@@ -311,7 +366,8 @@ export function Composer() {
 
   function submit() {
     const t = text.trim();
-    const withImages = draftImages.value.some((d) => d.image || d.busy);
+    const withImages =
+      draftImages.value.some((d) => d.image || d.busy) || draftFiles.value.some((d) => d.file);
     if ((!t && !withImages) || closed) return;
     // картинка ещё уменьшается — Enter подождёт (текст и картинки уйдут вместе)
     if (imagesBusy.value) return;
@@ -440,10 +496,20 @@ export function Composer() {
     dropDepth.current = 0;
     setDropping(false);
     if (closed) return;
+    // проводник и вкладки VS Code отдают uri, а не файлы: читает хост (этап 8)
+    const uris = transferUris(e.dataTransfer);
+    if (uris.length) {
+      e.preventDefault();
+      send({ type: 'attach.uris', uris });
+      edRef.current?.focus();
+      return;
+    }
     const found = transferImages(e.dataTransfer);
-    if (found.length === 0) return;
+    const others = transferOthers(e.dataTransfer);
+    if (found.length === 0 && others.length === 0) return;
     e.preventDefault();
-    void addImages(found);
+    if (found.length) void addImages(found);
+    if (others.length) rejectFiles(others, 'foreign');
     edRef.current?.focus();
   }
 
@@ -480,6 +546,9 @@ export function Composer() {
 
   const drafts = draftImages.value;
   const draftTokens = imagesTokens(drafts.flatMap((d) => (d.image ? [d.image] : [])));
+  const fileDrafts = draftFiles.value;
+  const fileEstimate = filesTokens(fileDrafts.flatMap((d) => (d.file ? [d.file] : [])));
+  const withFiles = fileDrafts.some((d) => d.file);
   const footerCls = ['compose', (closed || blocked) && 'off', dropping && 'drop']
     .filter(Boolean)
     .join(' ');
@@ -497,15 +566,22 @@ export function Composer() {
           <i class={b.cls} style={b.style} />
         ))}
       </div>
-      {drafts.length > 0 && (
+      {(drafts.length > 0 || fileDrafts.length > 0) && (
         <div class="att">
           {drafts.map((d) => (
             <DraftChip key={d.id} d={d} />
           ))}
+          {fileDrafts.map((d) => (
+            <FileChip key={`f${d.id}`} d={d} />
+          ))}
         </div>
       )}
       <div class="ctx">
-        {drafts.length > 0 && <span class="dim hint">{ui.compose.imagesHint}</span>}
+        {drafts.length > 0 ? (
+          <span class="dim hint">{ui.compose.imagesHint}</span>
+        ) : (
+          fileDrafts.length > 0 && <span class="dim hint">{ui.compose.filesHint}</span>
+        )}
         {auto.map((a) => {
           const l = attachmentLabel(a);
           return (
@@ -552,6 +628,17 @@ export function Composer() {
             <>
               <span class="plus" title={ui.compose.imagesPlusTitle}>
                 {ui.compose.imagesPlus(compactTokens(draftTokens))}
+              </span>{' '}
+            </>
+          )}
+          {withFiles && (
+            <>
+              <span class="plus" title={ui.compose.filesPlusTitle}>
+                {ui.compose.filesPlus(
+                  fileEstimate.tokens > 0
+                    ? `${compactTokens(fileEstimate.tokens)}${fileEstimate.unknown ? '+?' : ''}`
+                    : '?',
+                )}
               </span>{' '}
             </>
           )}

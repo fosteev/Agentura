@@ -1,6 +1,7 @@
 import type {
   AgentEvent,
   AgentEventOf,
+  FileRef,
   ImageRef,
   LimitWindow,
   PermissionMode,
@@ -13,6 +14,20 @@ interface SentPrompt {
   text: string;
   uuid?: string;
   images?: ImageRef[];
+  files?: FileRef[];
+}
+
+/**
+ * Файл для события: без содержимого (этап 8 roadmap 0.2). Строка поля ввода в ленте уже держит
+ * его с данными, а pdf до 15 МБ второй раз через postMessage гонять незачем.
+ */
+function fileRef(f: FileRef): FileRef {
+  return {
+    kind: f.kind,
+    path: f.path,
+    ...(f.size !== undefined ? { size: f.size } : {}),
+    ...(f.pages !== undefined ? { pages: f.pages } : {}),
+  };
 }
 
 /** Копия без лишних полей (в событие уходит только то, что нужно ленте). */
@@ -122,13 +137,19 @@ export class ClaudeEventMapper {
 
   /**
    * Текст, отправленный движку: станет `prompt` ближайшего `turn.start`. Картинки (этап 4 roadmap 0.2)
-   * уходят в `images` того же события — лента рисует миниатюры в реплике.
+   * уходят в `images` того же события — лента рисует миниатюры в реплике; файлы (этап 8) — в `files`.
    */
-  notePrompt(text: string, uuid?: string, images?: readonly ImageRef[]): void {
+  notePrompt(
+    text: string,
+    uuid?: string,
+    images?: readonly ImageRef[],
+    files?: readonly FileRef[],
+  ): void {
     this.prompts.push({
       text,
       ...(uuid !== undefined ? { uuid } : {}),
       ...(images?.length ? { images: images.map(imageRef) } : {}),
+      ...(files?.length ? { files: files.map(fileRef) } : {}),
     });
   }
 
@@ -695,6 +716,7 @@ export class ClaudeEventMapper {
             type: 'turn.input',
             prompt: p.text,
             ...(p.images ? { images: p.images } : {}),
+            ...(p.files ? { files: p.files } : {}),
             at: this.now(),
           });
       }
@@ -712,11 +734,13 @@ export class ClaudeEventMapper {
     }
     this.wakeExpected = false;
     const images = sent.flatMap((p) => p.images ?? []);
+    const files = sent.flatMap((p) => p.files ?? []);
     out.push({
       type: 'turn.start',
       ...(sent.length > 0 ? { prompt: sent.map((p) => p.text).join('\n\n') } : {}),
       ...(sent.length > 1 ? { prompts: sent.map((p) => p.text) } : {}),
       ...(images.length > 0 ? { images } : {}),
+      ...(files.length > 0 ? { files } : {}),
       at: this.now(),
     });
   }

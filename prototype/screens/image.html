@@ -44,6 +44,7 @@
               <div class="mock cons"><div>[ws] close 1006</div><div>[ws] reconnect in 500ms</div><div>[ws] open</div><div class="wa">⚠ ticketSlice/reset</div><div class="er">✕ Uncaught TypeError: cannot read 'items' of undefined</div><div class="er">&nbsp;&nbsp;at useQueue.ts:41</div></div>
               <figcaption>скриншот 2 · 1200×764 · ~1.2k</figcaption>
             </figure>
+            <button class="fl" title="apps/kiosk/logs/ws-2026-10-01.log&#10;Открыть файл во вкладке редактора"><span class="ic">LOG</span><b>ws-2026-10-01.log</b><small>14 КБ</small></button>
           </span></span><span class="at">15:10</span></div>
         <div class="e think"><span class="p">▸</span><span class="op">think</span><span class="what">на первом 000 под плашкой «нет связи», на втором reset() и падение в useQueue:41 — это второе место из отчёта агента</span><span class="r">4s</span></div>
         <div class="e"><span class="p">▸</span><span class="op">read</span><span class="what"><span class="dim">apps/kiosk/src/hooks/</span>useQueue.ts<span class="dim"> 30–55</span></span><span class="r">0.3s</span></div>
@@ -75,8 +76,9 @@
       <span class="im"><span class="mock board"><span class="bar" style="font-size:4px">КИОСК · ЗАЛ 2</span><span class="row"><span class="w" style="font-size:4px">СЕЙЧАС</span><span class="n" style="font-size:12px">042</span></span><span class="off" style="font-size:4px">нет связи</span></span><b>скриншот 3</b><small title="уменьшен с 3024×1928">1568×1000 · ~2.1k</small><span class="x" title="Убрать">✕</span></span>
       <span class="im busy"><span class="mock cons" style="font-size:3.5px"><div>[ws] close 1006</div><div>[ws] open</div><div>[board] snapshot 42</div></span><b>скриншот 4</b><small>уменьшаю…</small><span class="x" title="Убрать">✕</span></span>
       <span class="im err"><span class="ph">HEIC</span><b title="IMG_2041.heic">IMG_2041</b><small title="поддерживаются png, jpeg, gif, webp">HEIC не берём</small><span class="x" title="Убрать">✕</span></span>
+      <span class="im file" title="docs/kiosk-spec.pdf"><span class="ic">PDF</span><b>kiosk-spec.pdf</b><small>212 КБ · ~4.5k</small><span class="x" title="Убрать">✕</span></span>
     </div>
-    <div class="ctx"><span class="dim" style="color:var(--fg-faint)">⌘V — вставить картинку · перетащить с ⇧</span><span class="cn" title="Картинки считаются по размеру: ширина × высота / 750 токенов">контекст <b class="warn">143 180</b> <span class="plus">+2.1k картинки</span> / 200 000 · <button>сжать</button></span></div>
+    <div class="ctx"><span class="dim" style="color:var(--fg-faint)">⌘V — вставить картинку · перетащить с ⇧</span><span class="cn" title="Картинки считаются по размеру: ширина × высота / 750 токенов">контекст <b class="warn">143 180</b> <span class="plus">+2.1k картинки</span> <span class="plus" title="Оценка: текст — символы / 4, pdf — около 1 500 токенов на страницу">+4.5k файлы</span> / 200 000 · <button>сжать</button></span></div>
     <div class="prompt"><span class="p">$</span><span class="typed">После фикса 000 больше нет, но плашка «нет связи» висит секунды три. Это нормально?<span class="cursor"></span></span></div>
     <div class="opts">
       <button class="mode">режим <b>manual</b></button>
