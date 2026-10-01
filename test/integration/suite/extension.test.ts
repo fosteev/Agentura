@@ -88,4 +88,52 @@ export const tests: Record<string, () => Promise<void>> = {
     // ⚙ — кнопка внутри webview боковой панели (как в прототипе); нативной кнопки в заголовке вида нет
     assert.ok(pkg.contributes.commands.some((c) => c.command === 'agentura.openSettings'));
   },
+
+  async 'отладочная команда скрыта из палитры вне разработки (menus.commandPalette → agentura.debug)'() {
+    const pkg = vscode.extensions.getExtension(EXT_ID)!.packageJSON as {
+      contributes: { menus?: { commandPalette?: { command: string; when?: string }[] } };
+    };
+    const entry = pkg.contributes.menus?.commandPalette?.find(
+      (m) => m.command === 'agentura.debug.showState',
+    );
+    assert.equal(entry?.when, 'agentura.debug');
+  },
+
+  async 'WorkspaceFiles.watch: созданный файл появляется в поиске, не дожидаясь TTL кэша'() {
+    const ext = vscode.extensions.getExtension(EXT_ID)!;
+    const api = (await ext.activate()) as
+      { WorkspaceFiles: new (root: vscode.Uri) => WatchedFiles } | undefined;
+    assert.ok(api, 'тестовый API есть только в режиме разработки');
+    const root = vscode.workspace.workspaceFolders![0]!.uri;
+    const files = new api.WorkspaceFiles(root);
+    const watcher = files.watch();
+    const name = 'wf-watch-created.txt';
+    const target = vscode.Uri.joinPath(root, name);
+    try {
+      // список закэширован (TTL 20 с): без события нового файла в нём не будет
+      assert.equal((await files.find('wf-watch')).length, 0);
+      const edit = new vscode.WorkspaceEdit();
+      edit.createFile(target, { ignoreIfExists: true });
+      assert.ok(await vscode.workspace.applyEdit(edit));
+      let found: { path: string }[] = [];
+      const t0 = Date.now();
+      while (Date.now() - t0 < 10000) {
+        found = await files.find('wf-watch');
+        if (found.length) break;
+        await new Promise((r) => setTimeout(r, 200));
+      }
+      assert.ok(
+        found.some((f) => f.path === name),
+        `файл ${name} не найден после создания`,
+      );
+    } finally {
+      watcher.dispose();
+      await vscode.workspace.fs.delete(target).then(undefined, () => undefined);
+    }
+  },
 };
+
+interface WatchedFiles {
+  watch(): vscode.Disposable;
+  find(query: string): Promise<{ path: string }[]>;
+}

@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { AgentEvent, AgentEventOf } from '../types';
 import { ClaudeEventMapper, windowsFromRateLimit } from './mapper';
-import { PermissionBroker } from './permissions';
+import { PermissionBroker, alwaysFrom } from './permissions';
 import { PROBE_BASELINES, projectEvents, replayProbeLog } from './replay';
 import { agentsParallelEvents } from './__fixtures__/agentsParallel';
 
@@ -289,6 +289,32 @@ describe('PermissionBroker', () => {
       behavior: 'allow',
       updatedInput: {},
       updatedPermissions: [{ type: 'setMode', mode: 'acceptEdits', destination: 'session' }],
+    });
+  });
+
+  it('alwaysFrom: правила с разными destination — все места; одно место — без `destinations`', () => {
+    const rule = (c: string, destination: string) => ({
+      type: 'addRules',
+      rules: [{ toolName: 'Bash', ruleContent: c }],
+      behavior: 'allow',
+      destination,
+    });
+    expect(
+      alwaysFrom([
+        rule('a:*', 'localSettings'),
+        rule('b:*', 'userSettings'),
+        rule('c:*', 'localSettings'),
+      ]),
+    ).toEqual({
+      rules: ['Bash(a:*)', 'Bash(b:*)', 'Bash(c:*)'],
+      destination: 'localSettings',
+      destinations: ['localSettings', 'userSettings'],
+      directories: [],
+    });
+    expect(alwaysFrom([rule('a:*', 'localSettings'), rule('b:*', 'localSettings')])).toEqual({
+      rules: ['Bash(a:*)', 'Bash(b:*)'],
+      destination: 'localSettings',
+      directories: [],
     });
   });
 

@@ -245,8 +245,13 @@ export function alwaysFrom(suggestions: unknown[]): PermissionAlways | undefined
         const content = str(r['ruleContent']);
         out.rules.push(content ? `${tool}(${content})` : tool);
       }
-      if (destination && DESTINATIONS.has(destination) && !out.destination)
-        out.destination = destination as NonNullable<PermissionAlways['destination']>;
+      if (destination && DESTINATIONS.has(destination)) {
+        const d = destination as NonNullable<PermissionAlways['destination']>;
+        if (!out.destination) out.destination = d;
+        // правила уходят в разные файлы — подпись кнопки называет все места, а не только первое
+        else if (d !== out.destination && !out.destinations?.includes(d))
+          out.destinations = [...(out.destinations ?? [out.destination]), d];
+      }
     } else if (type === 'setMode') {
       const mode = str(s['mode']);
       if (mode && MODES.has(mode)) out.mode = mode as PermissionMode;

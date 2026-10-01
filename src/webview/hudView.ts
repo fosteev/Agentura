@@ -104,7 +104,7 @@ export function contextBlocks(
   return blocks;
 }
 
-function kilo(n: number): string {
+export function kilo(n: number): string {
   return `${Math.round(n / 1000)}k`;
 }
 

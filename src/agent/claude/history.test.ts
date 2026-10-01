@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { AgentEvent } from '../types';
-import { buildHistory, modeFromTranscript, type HistoryMessage } from './history';
+import { buildHistory, findRetryPoint, modeFromTranscript, type HistoryMessage } from './history';
 
 const T0 = Date.parse('2026-10-01T10:00:00.000Z');
 const ts = (s: number) => new Date(T0 + s * 1000).toISOString();
@@ -46,6 +46,178 @@ const assistant = (
 });
 
 const types = (events: AgentEvent[]) => events.map((e) => e.type);
+
+describe('buildHistory: вложения сессии для лимитов API', () => {
+  const pdfData = Buffer.from(
+    '%PDF-1.4\n1 0 obj << /Type /Pages /Count 60 >> endobj\n%%EOF',
+  ).toString('base64');
+  const attachUser = (text: string, s: number, blocks: unknown[]): HistoryMessage => ({
+    type: 'user',
+    uuid: `u${s}`,
+    message: { role: 'user', content: [...blocks, { type: 'text', text }] },
+    parent_tool_use_id: null,
+    timestamp: ts(s),
+  });
+  const pdfBlock = {
+    type: 'document',
+    title: 'a.pdf',
+    source: { type: 'base64', media_type: 'application/pdf', data: pdfData },
+  };
+  const imgBlock = {
+    type: 'image',
+    source: { type: 'base64', media_type: 'image/png', data: 'iVBORw0KGgo'.repeat(10) },
+  };
+  const reply = (id: string, s: number) => assistant(id, [{ type: 'text', text: 'ок' }], s);
+
+  it('страницы pdf и символы данных суммируются по всем ходам, до обрезки данных', () => {
+    const h = buildHistory([
+      attachUser('первый', 1, [pdfBlock, imgBlock]),
+      reply('m1', 2),
+      attachUser('второй', 3, [pdfBlock]),
+      reply('m2', 4),
+    ]);
+    expect(h.attach).toEqual({
+      pdfPages: 120,
+      chars: 110 + 2 * pdfData.length,
+    });
+  });
+
+  it('после компакции счёт начинается заново; без вложений поля нет', () => {
+    const summary: HistoryMessage = {
+      type: 'user',
+      uuid: 'c1',
+      message: {
+        role: 'user',
+        content:
+          'This session is being continued from a previous conversation that ran out of context.',
+      },
+      parent_tool_use_id: null,
+      timestamp: ts(5),
+    };
+    const h = buildHistory([
+      attachUser('до', 1, [pdfBlock]),
+      reply('m1', 2),
+      summary,
+      attachUser('после', 6, [imgBlock]),
+      reply('m2', 7),
+    ]);
+    expect(h.attach).toEqual({ pdfPages: 0, chars: 110 });
+    expect(buildHistory([user('просто текст', 1), reply('m3', 2)]).attach).toBeUndefined();
+  });
+});
+
+describe('findRetryPoint — точка отката «Повторить ход»', () => {
+  const U = (uuid: string, content: unknown): HistoryMessage => ({
+    type: 'user',
+    uuid,
+    message: { role: 'user', content },
+    parent_tool_use_id: null,
+  });
+  const A = (
+    uuid: string,
+    content: unknown[] = [{ type: 'text', text: 'ок' }],
+  ): HistoryMessage => ({
+    type: 'assistant',
+    uuid,
+    message: { id: uuid, content },
+    parent_tool_use_id: null,
+  });
+  const result = (uuid: string): HistoryMessage =>
+    U(uuid, [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }]);
+
+  it('последний промпт совпал: сохраняется сообщение перед ним; ответы и результаты инструментов после — отбрасываются', () => {
+    const chain = [
+      U('u1', 'раз'),
+      A('a1'),
+      U('u2', 'почини табло'),
+      A('a2', [{ type: 'tool_use', id: 't1', name: 'Read', input: {} }]),
+      result('r1'),
+    ];
+    expect(findRetryPoint(chain, 'почини табло')).toEqual({ keepUuid: 'a1', promptUuid: 'u2' });
+  });
+
+  it('оборванный ход успел что-то изменить (Edit, Bash, субагент) — не отбрасывается', () => {
+    for (const name of ['Edit', 'Bash', 'Task']) {
+      const chain = [
+        U('u1', 'раз'),
+        A('a1'),
+        U('u2', 'почини табло'),
+        A('a2', [{ type: 'tool_use', id: 't1', name, input: {} }]),
+        result('r1'),
+      ];
+      expect(findRetryPoint(chain, 'почини табло')).toBeUndefined();
+    }
+  });
+
+  it('блок контекста и картинки в сообщении не мешают: сравнивается текст пользователя', () => {
+    const chain = [
+      U('u1', 'раз'),
+      A('a1'),
+      U('u2', [
+        { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'x' } },
+        { type: 'text', text: 'что тут?\n\n[Agentura: контекст]\n- файл: a.ts' },
+      ]),
+    ];
+    expect(findRetryPoint(chain, 'что тут?')).toEqual({ keepUuid: 'a1', promptUuid: 'u2' });
+  });
+
+  it('нет точки: промпта нет или он не последний, он первый в сессии, сообщения без uuid, субагент не считается', () => {
+    expect(findRetryPoint([U('u1', 'раз'), A('a1')], 'другое')).toBeUndefined();
+    // после оборванного хода пришло чужое сообщение (влитое, уведомление): SDK бы отказал
+    expect(
+      findRetryPoint([U('u1', 'раз'), A('a1'), U('u2', 'моё'), A('a2'), U('u3', 'чужое')], 'моё'),
+    ).toBeUndefined();
+    expect(findRetryPoint([U('u1', 'первый'), A('a1')], 'первый')).toBeUndefined();
+    const noUuid = { ...U('', 'моё'), uuid: undefined } as HistoryMessage;
+    expect(findRetryPoint([U('u1', 'раз'), A('a1'), noUuid], 'моё')).toBeUndefined();
+    const sub = { ...U('s1', 'моё'), parent_tool_use_id: 'task-1' };
+    expect(findRetryPoint([U('u1', 'раз'), A('a1'), sub], 'моё')).toBeUndefined();
+  });
+});
+
+describe('buildHistory: Read картинки', () => {
+  it('в tool.result нет копии base64 — только плашка и метаданные', () => {
+    const B64 = 'iVBORw0KGgo'.repeat(1000);
+    const messages: HistoryMessage[] = [
+      user('глянь картинку', 1),
+      assistant(
+        'm1',
+        [{ type: 'tool_use', id: 'r1', name: 'Read', input: { file_path: '/i.png' } }],
+        2,
+      ),
+      {
+        type: 'user',
+        uuid: 'r3',
+        message: {
+          role: 'user',
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: 'r1',
+              content: [
+                { type: 'image', source: { type: 'base64', media_type: 'image/png', data: B64 } },
+              ],
+            },
+          ],
+        },
+        parent_tool_use_id: null,
+        timestamp: ts(3),
+      },
+      assistant('m2', [{ type: 'text', text: 'Вижу.' }], 4),
+    ];
+    const structured = {
+      type: 'image',
+      file: { base64: B64, type: 'image/png', originalSize: 8000 },
+    };
+    const h = buildHistory(messages, { toolResults: new Map([['r1', structured]]) });
+    const res = h.events.find((e) => e.type === 'tool.result');
+    expect(res).toMatchObject({
+      content: '[image]',
+      result: { type: 'image', file: { type: 'image/png', dataOmitted: true } },
+    });
+    expect(JSON.stringify(h.events)).not.toContain('iVBORw0KGgo');
+  });
+});
 
 describe('buildHistory', () => {
   const edit = {

@@ -31,6 +31,57 @@ export const MAX_MESSAGE_ATTACH_CHARS = MAX_MESSAGE_IMAGES_BASE64;
 export const MAX_ATTACH_FILE_BYTES = MAX_IMAGE_FILE_BYTES;
 /** Оценка токенов страницы pdf: документация API — 1 500–3 000 на страницу (текст и картинка). */
 export const PDF_PAGE_TOKENS = 1500;
+/**
+ * Вложения всей сессии (второй проход приёмки этапа 8): лимиты API — на запрос, а CLI шлёт в каждом
+ * запросе всю историю с её `image`/`document`-блоками до компакции (живой прогон этапа 6). Поэтому
+ * 100 страниц pdf и тело запроса считаются на сессию. Тело — base64 картинок и pdf и текст файлов:
+ * 24 МБ из 32 МБ запроса, остальное — текст разговора и результаты инструментов.
+ */
+export const MAX_SESSION_PDF_PAGES = MAX_PDF_PAGES;
+export const MAX_SESSION_ATTACH_CHARS = 24 * 1024 * 1024;
+/** Какую долю свободного окна контекста могут занять вложения одного сообщения (остальное — ответ и инструменты). */
+export const ATTACH_WINDOW_SHARE = 0.7;
+/** Окно, если движок его ещё не сообщил (до первого хода): консервативное. */
+export const DEFAULT_CONTEXT_WINDOW = 200_000;
+
+/** Что уже лежит в истории сессии с последней компакции. */
+export interface SessionAttach {
+  pdfPages: number;
+  chars: number;
+}
+
+/** Страниц pdf для счёта сессии: известные, иначе по размеру (≈ 50 КБ на страницу, не меньше одной). */
+export function sessionPdfPages(f: Pick<PromptFile, 'kind' | 'size' | 'pages'>): number {
+  if (f.kind !== 'pdf') return 0;
+  return f.pages ?? Math.max(1, Math.ceil(f.size / 50_000));
+}
+
+/** Токены вложения для бюджета окна: pdf без известного числа страниц — по оценке страниц из размера. */
+export function attachFileTokens(f: Pick<PromptFile, 'kind' | 'data' | 'size' | 'pages'>): number {
+  return fileTokens(f) ?? sessionPdfPages(f) * PDF_PAGE_TOKENS;
+}
+
+/** Сколько токенов окна можно отдать вложениям сообщения: доля свободного места. */
+export function attachTokenBudget(window: number | undefined, used: number | undefined): number {
+  return Math.max(
+    0,
+    Math.floor(((window ?? DEFAULT_CONTEXT_WINDOW) - (used ?? 0)) * ATTACH_WINDOW_SHARE),
+  );
+}
+
+/**
+ * Лимит сессии для ещё одного вложения: `used` — уже в истории (и в этом сообщении до него).
+ * pdf сверх 100 страниц — `sessionPages`, тело запроса сверх 24 МБ — `session`.
+ */
+export function sessionProblem(
+  used: SessionAttach,
+  add: { pages?: number; chars: number },
+): 'sessionPages' | 'session' | undefined {
+  if (add.pages && used.pdfPages + add.pages > MAX_SESSION_PDF_PAGES) return 'sessionPages';
+  if (used.chars + add.chars > MAX_SESSION_ATTACH_CHARS) return 'session';
+  return undefined;
+}
+
 /** Длина пути в `title`: больше — не путь, а мусор из webview. */
 const MAX_PATH_CHARS = 1024;
 
@@ -51,7 +102,10 @@ export type FileProblem =
   | 'count'
   | 'total'
   | 'foreign'
-  | 'pdf';
+  | 'pdf'
+  | 'sessionPages'
+  | 'session'
+  | 'context';
 
 /** Что лежит в файле: картинка (дальше — путь этапа 4), pdf, текст или причина отказа. */
 export type Classified =

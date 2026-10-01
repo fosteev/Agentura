@@ -7,7 +7,7 @@ import type {
   PermissionMode,
   TokenUsage,
 } from '../types';
-import { arr, isObj, num, obj, str, strings, timestamp, type Json } from './json';
+import { arr, isObj, num, obj, str, strings, timestamp, withoutImageData, type Json } from './json';
 
 /** Отправленное сообщение до привязки к ходу. `uuid` — наш `SDKUserMessage.uuid`. */
 interface SentPrompt {
@@ -599,7 +599,7 @@ export class ClaudeEventMapper {
         content: resultText(block['content']),
       };
       if (results.length === 1 && m['tool_use_result'] !== undefined)
-        event.result = m['tool_use_result'];
+        event.result = withoutImageData(m['tool_use_result']);
       if (at !== undefined) {
         event.at = at;
         if (started !== undefined) event.durationMs = Math.max(0, at - started);

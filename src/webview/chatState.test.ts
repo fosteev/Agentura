@@ -265,7 +265,9 @@ describe('редьюсер: очередь и границы хода', () => {
       prompts: ['раз', 'два'],
       images: [img],
     });
-    expect((fresh.rows as Extract<FeedRow, { kind: 'user' }>[]).map((r) => r.images?.length ?? 0)).toEqual([0, 1]);
+    expect(
+      (fresh.rows as Extract<FeedRow, { kind: 'user' }>[]).map((r) => r.images?.length ?? 0),
+    ).toEqual([0, 1]);
     expect(fresh.turnImageTokens).toBe(1000);
   });
 
@@ -680,5 +682,35 @@ describe('ошибки и лимит (этап 7)', () => {
     expect(kindsOf(s)).not.toContain('fail');
     expect(s.rows.at(-1)).toMatchObject({ kind: 'sys', tone: 'bad', text: ['API Error'] });
     expect(s.closed).toBeUndefined();
+  });
+});
+
+describe('повторная доставка запросов на пересеве (этап 6 roadmap 0.2)', () => {
+  const ev = (e: Record<string, unknown>) => e as unknown as AgentEvent;
+
+  it('permission/question/plan.request с тем же toolUseId — одна карточка, а решённая не воскресает', () => {
+    const reqs: AgentEvent[] = [
+      ev({
+        type: 'permission.request',
+        toolUseId: 'p1',
+        toolName: 'Bash',
+        input: {},
+        canAlwaysAllow: false,
+      }),
+      ev({
+        type: 'question.request',
+        toolUseId: 'q1',
+        questions: [{ question: '?', options: [], multiSelect: false }],
+      }),
+      ev({ type: 'plan.request', toolUseId: 'pl1', plan: '# план' }),
+    ];
+    let s = initialState();
+    for (const e of reqs) s = applyEvent(s, e, 1);
+    // хост шлёт ждущие снимком и из буфера пересева — те же события второй раз
+    for (const e of reqs) s = applyEvent(s, e, 2);
+    expect(
+      s.rows.filter((r) => r.kind === 'perm' || r.kind === 'question' || r.kind === 'plan'),
+    ).toHaveLength(3);
+    expect(s.pending).toHaveLength(3);
   });
 });

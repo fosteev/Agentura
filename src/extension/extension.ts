@@ -12,11 +12,23 @@ import { SessionMemory } from './sessionMemory';
 import { SessionsService } from './sessionsService';
 import { showDebugState } from './debugPanel';
 import { SettingsPanel } from './settingsPanel';
+import { WorkspaceFiles } from './workspaceFiles';
 
-export function activate(context: vscode.ExtensionContext): void {
+/** Что активация отдаёт интеграционным тестам (только при запуске из исходников). */
+export interface TestApi {
+  WorkspaceFiles: typeof WorkspaceFiles;
+}
+
+export function activate(context: vscode.ExtensionContext): TestApi | undefined {
   const log = new Logger('Agentura');
   context.subscriptions.push(log);
   log.info(`Agentura ${String(context.extension.packageJSON.version)} активирована`);
+  // отладочные команды видны в палитре только при запуске из исходников (Extension Development Host)
+  void vscode.commands.executeCommand(
+    'setContext',
+    'agentura.debug',
+    context.extensionMode === vscode.ExtensionMode.Development,
+  );
 
   // Лимиты: /api/oauth/usage (токен Claude Code), запас — rate_limit_event движка (этап 2).
   const limits = new LimitsSource({
@@ -132,6 +144,8 @@ export function activate(context: vscode.ExtensionContext): void {
     ),
     vscode.commands.registerCommand('agentura.refreshUsage', () => sidebar.refreshUsage()),
   );
+  // в тестовом режиме (`extensionTestsPath`) — тоже: так запускается интеграционный набор
+  return context.extensionMode !== vscode.ExtensionMode.Production ? { WorkspaceFiles } : undefined;
 }
 
 export function deactivate(): void {}

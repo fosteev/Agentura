@@ -1,4 +1,5 @@
 import { isAbsolute } from 'node:path';
+import { resolveFrom } from './pathKey';
 import type {
   LimitWindow,
   AgentAdapter,
@@ -6,6 +7,7 @@ import type {
   AgentSession,
   EffortLevel,
   PermissionMode,
+  RetryPoint,
 } from '../agent/types';
 import {
   nextStatus,
@@ -29,11 +31,26 @@ import type {
   PromptImage,
   SessionHistory,
 } from '../agent/types';
-import { hostImage, MAX_IMAGES_PER_MESSAGE } from '../shared/images';
-import { hostFile, MAX_FILES_PER_MESSAGE, MAX_MESSAGE_ATTACH_CHARS } from '../shared/files';
+import { hostImage, imageTokens, MAX_IMAGES_PER_MESSAGE } from '../shared/images';
+import {
+  attachFileTokens,
+  attachTokenBudget,
+  hostFile,
+  MAX_FILES_PER_MESSAGE,
+  MAX_MESSAGE_ATTACH_CHARS,
+  sessionPdfPages,
+  sessionProblem,
+  type SessionAttach,
+} from '../shared/files';
 import { resolveDefaultEffort, resolveDefaultMode } from '../settings';
 import { appliedSides, previewOf, proposedSides, type EditSides } from './editDiff';
-import { buildPrompt, attachmentKey, type Attachment, type FileHit } from '../shared/prompt';
+import {
+  buildPrompt,
+  attachmentKey,
+  splitPrompt,
+  type Attachment,
+  type FileHit,
+} from '../shared/prompt';
 import type { LiveSessions } from '../data/sessions';
 import { mergeReplay, StreamTail } from './reseedReplay';
 
@@ -88,6 +105,11 @@ export interface ChatDeps {
   live?: LiveSessions;
   /** Текст файла с диска для превью правки; `undefined` — файла нет или не прочитан. */
   readText?(path: string): Promise<string | undefined>;
+  /**
+   * Сохранить несохранённые изменения файла в редакторе. Зовётся, когда человек разрешил правку:
+   * движок правит диск, и иначе правка разошлась бы с тем, что видит человек.
+   */
+  saveFile?(path: string): Promise<void>;
   /** Нативный дифф VS Code (`vscode.diff` над `agentura-diff:`). */
   openDiff?(d: OpenDiff): Promise<void>;
   /** Текст документом только для чтения (транскрипт субагента, этап 2 roadmap 0.2). */
@@ -200,6 +222,8 @@ export class ChatController {
   private defaults: Extract<ToWebview, { type: 'session.defaults' }> | undefined;
   private lastContext: Extract<AgentEvent, { type: 'context.usage' }> | undefined;
   private turnStartedAt: number | undefined;
+  /** С прошлого итога приходил `turn.start` — иначе итог закрывает самое старое сообщение очереди. */
+  private turnSeen = false;
   private readonly pendingRequests = new Map<string, AgentEvent>();
   private readonly previews = new Map<string, Extract<ToWebview, { type: 'diff.preview' }>>();
   /** Вкладка закрыта или расширение выгружается: никаких новых процессов движка после этого. */
@@ -209,8 +233,17 @@ export class ChatController {
    * (`registeredId` снят), а «Повторить ход» должен знать, какую сессию возобновлять (этап 7).
    */
   private lastSessionId: string | undefined;
-  /** Последний отправленный и ещё не завершённый успешно промпт: его повторяет «Повторить ход». */
-  private inflight: Extract<FromWebview, { type: 'send' }> | undefined;
+  /**
+   * Отправленные и ещё не завершённые успешно промпты по порядку (очередь, а не один — сообщение,
+   * отправленное во время хода, ждёт своего): их повторяет «Повторить ход». `started` — движок начал
+   * ход с этим сообщением (`turn.start`/`turn.input`); успешный итог снимает такие.
+   */
+  private inflight: { m: Extract<FromWebview, { type: 'send' }>; started: boolean }[] = [];
+  /**
+   * Вложения в истории сессии с последней компакции: страницы pdf и символы base64/текста. Лимиты API
+   * — на запрос, а CLI шлёт всю историю с её `image`/`document`-блоками (живой прогон этапа 6).
+   */
+  private attached: SessionAttach = { pdfPages: 0, chars: 0 };
   /** Сессия, помеченная в списке как `error`/`limit` после закрытия: снять при возобновлении. */
   private stickyLive: string | undefined;
   /** Журнал с префиксом — первые 8 символов id сессии: канал один на окно, вкладок несколько. */
@@ -275,13 +308,20 @@ export class ChatController {
     this.resumeId = id;
     this.lastSessionId = id;
     // другая сессия во вкладке — её неотвеченный промпт сюда не относится (кроме «Повторить ход»)
-    if (!this.retrying) this.inflight = undefined;
+    if (!this.retrying) {
+      this.inflight = [];
+      this.dropRefused = false;
+      this.retryAgain = false;
+    }
     this.resumed = undefined;
     this.status = 'idle';
     this.touched = true;
     let history: SessionHistory;
     try {
-      history = await deps.adapter.loadHistory(id, deps.cwd);
+      // оборванный ход «Повторить» отбросит — в ленте его промпта до повтора быть не должно
+      history = this.retryDrop
+        ? await deps.adapter.loadHistory(id, deps.cwd, { stopBefore: this.retryDrop.promptUuid })
+        : await deps.adapter.loadHistory(id, deps.cwd);
     } catch (e) {
       if (token !== this.resumeToken) return;
       this.log.warn(`история сессии ${id} не прочитана: ${String(e)}`);
@@ -302,6 +342,7 @@ export class ChatController {
     // пока читали, вкладку успели переключить (другой resume, /clear) — эта история уже не нужна
     if (token !== this.resumeToken) return;
     this.resumed = { history, ...(title ? { title } : {}) };
+    this.attached = history.attach ?? { pdfPages: 0, chars: 0 };
     this.title = title;
     deps.setTitle(tabTitle(this.status, this.title));
     deps.onSession?.(id);
@@ -331,6 +372,12 @@ export class ChatController {
       ...(history.model ? { model: history.model } : {}),
       ...(history.mode ? { mode: history.mode } : {}),
     });
+    this.postAttach();
+  }
+
+  /** Вложения сессии — webview проверяет по ним новые вложения (плашка «начните новую»). */
+  private postAttach(): void {
+    this.deps.post({ type: 'session.attach', ...this.attached });
   }
 
   /**
@@ -376,6 +423,7 @@ export class ChatController {
     if (history) {
       this.postHistory({ ...history, events: merged.history }, this.resumed?.title ?? this.title);
     } else this.deps.post({ type: 'session.reset' });
+    this.postAttach();
     if (this.lastInit) this.forward(id, this.lastInit);
     if (this.lastContext) this.forward(id, this.lastContext);
     if (this.title) this.forward(id, { type: 'session.title', title: this.title });
@@ -449,7 +497,11 @@ export class ChatController {
     this.resumeId = undefined;
     this.lastSessionId = undefined;
     // «Повторить ход» уже начатой новой сессии (retry без id) сохраняет промпт: его сбрасывает только человек
-    if (!this.retrying) this.inflight = undefined;
+    if (!this.retrying) {
+      this.inflight = [];
+      this.dropRefused = false;
+      this.retryAgain = false;
+    }
     this.resumed = undefined;
     this.seedPending = false;
     this.touched = false;
@@ -579,12 +631,16 @@ export class ChatController {
         break;
     }
     const session = await this.ensureSession();
-    if (!session) return;
+    if (!session) {
+      // сообщение с вложениями не ушло — вернуть webview точный счёт сессии (он прибавил их заранее)
+      if (m.type === 'send' && (m.images?.length || m.files?.length)) this.postAttach();
+      return;
+    }
     try {
       switch (m.type) {
         case 'send': {
           this.touched = true;
-          this.inflight = m;
+          this.noteSent(m);
           // по очереди: сообщение с выделением (ждёт чтения файла) не обгоняется следующим
           const run = this.sendQueue.then(() => this.sendNow(session, m));
           this.sendQueue = run.catch(() => undefined);
@@ -623,6 +679,9 @@ export class ChatController {
         // Ответ на карточку: сессия та же, что прислала запрос, — иначе (после /clear) id не
         // найдётся в брокере новой сессии и ответ просто отбросится (`false` в журнал).
         case 'permission.respond':
+          // правку разрешили — движок сейчас запишет файл: сначала сохранить несохранённое в редакторе
+          // (в `acceptEdits`/`bypass` карточки нет, так что и сохранять нечего — см. «Решения» этапа 6)
+          if (m.decision !== 'deny') await this.saveBeforeEdit(m.toolUseId);
           this.answered(m.type, session.respondPermission(m.toolUseId, m.decision));
           return;
         case 'question.answer':
@@ -643,6 +702,14 @@ export class ChatController {
   }
 
   private retrying = false;
+  /** Точка отката для «Повторить ход» (SDK `resumeSessionAt`): живёт, пока возобновляется сессия. */
+  private retryDrop: RetryPoint | undefined;
+  /** Текущая сессия поднята с отбрасыванием оборванного хода — отказ SDK («Resume rejected») лечится повтором без него. */
+  private usedDrop = false;
+  /** SDK отказал в отбрасывании хода: дальше «Повторить» возобновляет сессию целиком. */
+  private dropRefused = false;
+  /** Отказ SDK пришёл во время `retry`: повторить ещё раз, когда тот закончится. */
+  private retryAgain = false;
 
   /**
    * «Повторить ход» (карточка ошибки): сессия возобновляется (`resume`: движок поднимается заново, лента
@@ -661,23 +728,96 @@ export class ChatController {
     try {
       // промпт — только если карточка видела оборванный ход: иначе ушёл бы промпт давно законченного
       // неудачного хода (`turn.result ok:false` не сбрасывает `inflight`)
-      const prompt = withPrompt ? this.inflight : undefined;
+      const prompts = withPrompt ? this.inflight.map((x) => x.m) : [];
       const id = this.lastSessionId;
       this.log.info(
-        `повтор хода: ${id ? `resume ${id}` : 'новая сессия'}${prompt ? ', промпт будет отправлен снова' : ', без промпта'}`,
+        `повтор хода: ${id ? `resume ${id}` : 'новая сессия'}${prompts.length ? `, промптов к повтору: ${prompts.length}` : ', без промпта'}`,
       );
-      if (id) await this.resume(id);
-      else this.newSession(true);
-      if (!prompt) return;
+      if (id) {
+        // оборванный ход начался и его промпт — последний в транскрипте: возобновляем без него, чтобы
+        // повторный промпт не двоился. Нет точки (первый ход, чужие сообщения после него) — как раньше
+        this.retryDrop =
+          prompts.length && this.inflight[0]?.started && !this.dropRefused
+            ? await this.deps.adapter
+                .retryPoint?.(id, this.deps.cwd, prompts[0]!.text)
+                .catch((e: unknown) => {
+                  this.log.warn(`точка отката хода: ${String(e)}`);
+                  return undefined;
+                })
+            : undefined;
+        if (this.retryDrop)
+          this.log.info('повтор хода: оборванный ход отбрасывается при возобновлении');
+        await this.resume(id);
+      } else this.newSession(true);
+      if (!prompts.length) return;
       const session = await this.ensureSession();
       if (!session) return;
       this.touched = true;
-      this.inflight = prompt;
-      const run = this.sendQueue.then(() => this.sendNow(session, prompt));
-      this.sendQueue = run.catch(() => undefined);
-      await run;
+      this.inflight = prompts.map((m) => ({ m, started: false }));
+      for (const prompt of prompts) {
+        const run = this.sendQueue.then(() => this.sendNow(session, prompt));
+        this.sendQueue = run.catch(() => undefined);
+        await run;
+      }
     } finally {
       this.retrying = false;
+      this.retryDrop = undefined;
+    }
+    // отказ SDK пришёл, пока этот повтор ещё шёл: теперь — возобновление целиком
+    this.kickRetry();
+  }
+
+  /** Отложенный повтор после отказа SDK: когда не идут ни повтор, ни ход (итог, закрытие процесса). */
+  private kickRetry(): void {
+    if (!this.retryAgain || this.retrying || this.inTurn || this.disposed) return;
+    this.retryAgain = false;
+    void this.retry(true);
+  }
+
+  /**
+   * SDK отказал отбросить оборванный ход (`Resume rejected by --resume-drops-turn:` — в диапазоне оказалось
+   * лишнее). Отказ детерминирован: повторяем сразу, но возобновляя сессию целиком (как до этапа 6).
+   */
+  private dropRejected(messages: readonly string[]): boolean {
+    if (!this.usedDrop) return false;
+    const msg = messages.find((x) => x.includes('Resume rejected'));
+    if (!msg) return false;
+    this.log.warn(`SDK отказал в отбрасывании хода: ${msg}`);
+    this.usedDrop = false;
+    this.dropRefused = true;
+    // повтор — в конце `onEvent` (или после идущего `retry`), когда событие обработано целиком
+    this.retryAgain = true;
+    return true;
+  }
+
+  /** Несохранённый файл редактора, который собирается править агент: сохранить до ответа движку. */
+  private async saveBeforeEdit(toolUseId: string): Promise<void> {
+    const req = this.pendingRequests.get(toolUseId);
+    if (req?.type !== 'permission.request' || !req.diff || !this.deps.saveFile) return;
+    const path = resolveFrom(this.deps.cwd, req.diff.filePath);
+    await this.deps.saveFile(path).catch((e: unknown) => {
+      this.log.warn(`сохранение ${path} перед правкой: ${String(e)}`);
+    });
+  }
+
+  /** Новое сообщение человека: завершённые (упавшие) ходы больше не повторяются, это — в очередь. */
+  private noteSent(m: Extract<FromWebview, { type: 'send' }>): void {
+    if (!this.inTurn) this.inflight = this.inflight.filter((x) => !x.started);
+    this.inflight.push({ m, started: false });
+  }
+
+  /** Движок начал ход с этими сообщениями (или влил их в идущий): отметить их в очереди. */
+  private noteStarted(prompts: string[]): void {
+    if (prompts.length === 0) {
+      const first = this.inflight.find((x) => !x.started);
+      if (first) first.started = true;
+      return;
+    }
+    for (const p of prompts) {
+      const text = splitPrompt(p).text;
+      const i = this.inflight.findIndex((x) => !x.started && x.m.text === text);
+      const j = i >= 0 ? i : this.inflight.findIndex((x) => !x.started);
+      if (j >= 0) this.inflight[j]!.started = true;
     }
   }
 
@@ -720,7 +860,12 @@ export class ChatController {
       if (!call) return;
       this.editInputs.delete(e.toolUseId);
       const sides = e.isError ? undefined : appliedSides(call.name, call.input, e.result);
-      if (sides) this.remember(e.toolUseId, sides, 'applied');
+      if (sides)
+        this.remember(
+          e.toolUseId,
+          { ...sides, filePath: resolveFrom(this.deps.cwd, sides.filePath) },
+          'applied',
+        );
     }
   }
 
@@ -735,8 +880,9 @@ export class ChatController {
     session: AgentSession,
     e: Extract<AgentEvent, { type: 'permission.request' }>,
   ): Promise<void> {
-    const diff = e.diff;
-    if (!diff) return;
+    if (!e.diff) return;
+    // `file_path` модели может быть относительным: отсчёт от `cwd` сессии, а не процесса расширения
+    const diff = { ...e.diff, filePath: resolveFrom(this.deps.cwd, e.diff.filePath) };
     const text = await (this.deps.readText?.(diff.filePath) ?? Promise.resolve(undefined)).catch(
       () => undefined,
     );
@@ -760,6 +906,19 @@ export class ChatController {
     session: AgentSession,
     m: Extract<FromWebview, { type: 'send' }>,
   ): Promise<void> {
+    try {
+      await this.sendBody(session, m);
+    } finally {
+      // webview уже прибавил вложения к счёту сессии; точный снимок — и когда хост их отбросил или
+      // сессия не приняла сообщение, иначе завышенный счёт ложно не пустил бы следующие вложения
+      if (m.images?.length || m.files?.length) this.postAttach();
+    }
+  }
+
+  private async sendBody(
+    session: AgentSession,
+    m: Extract<FromWebview, { type: 'send' }>,
+  ): Promise<void> {
     const { deps } = this;
     const texts: Record<string, string> = {};
     for (const a of m.attachments ?? []) {
@@ -771,9 +930,9 @@ export class ChatController {
       });
       if (t) texts[attachmentKey(a)] = t;
     }
-    const images = this.checkImages(m.images);
-    const used = (images ?? []).reduce((sum, i) => sum + i.data.length, 0);
-    const files = this.checkFiles(m.files, used);
+    const images0 = this.checkImages(m.images);
+    const used = (images0 ?? []).reduce((sum, i) => sum + i.data.length, 0);
+    const { images, files, add } = this.fitSession(images0, this.checkFiles(m.files, used));
     // все вложения отброшены, текста нет — пустое сообщение API не примет
     if (!images && !files && !m.text.trim() && !m.attachments?.length) {
       this.log.warn('send: пустое сообщение (вложения отброшены) — не отправлено');
@@ -781,7 +940,64 @@ export class ChatController {
     }
     if (!session.send(buildPrompt(m.text, m.attachments ?? [], texts), images, files)) {
       this.log.warn('send: сессия закрыта, сообщение не принято');
+      return;
     }
+    if (add.chars > 0) {
+      this.attached = {
+        pdfPages: this.attached.pdfPages + add.pdfPages,
+        chars: this.attached.chars + add.chars,
+      };
+    }
+  }
+
+  /**
+   * Лимиты API — на запрос, а в запрос уходит вся история: вложения сверх 100 страниц pdf и 24 МБ на
+   * сессию (с последней компакции), а также сверх 70 % свободного окна модели отбрасываются с
+   * предупреждением в журнал. Webview проверяет то же по снимку `session.attach` до плашки; здесь —
+   * последний рубеж (гонка двух сообщений, устаревший снимок).
+   */
+  private fitSession(
+    images: PromptImage[] | undefined,
+    files: PromptFile[] | undefined,
+  ): {
+    images: PromptImage[] | undefined;
+    files: PromptFile[] | undefined;
+    add: SessionAttach;
+  } {
+    const total: SessionAttach = { ...this.attached };
+    const add: SessionAttach = { pdfPages: 0, chars: 0 };
+    // окно знает только движок (после первого хода); до того — после resume окно сессии может быть 1M, а
+    // счёт по умолчанию (200k) молча выбросил бы то, что webview по HUD истории пропустил: проверка — его
+    const budget = this.lastContext?.maxTokens
+      ? attachTokenBudget(this.lastContext.maxTokens, this.lastContext.usedTokens)
+      : Number.POSITIVE_INFINITY;
+    let tokens = 0;
+    const take = (what: string, chars: number, pages: number, t: number): boolean => {
+      const problem =
+        sessionProblem(total, { pages, chars }) ??
+        (tokens + t > budget ? ('context' as const) : undefined);
+      if (problem) {
+        this.log.warn(`${what} отброшен: ${problem}`);
+        return false;
+      }
+      total.pdfPages += pages;
+      total.chars += chars;
+      add.pdfPages += pages;
+      add.chars += chars;
+      tokens += t;
+      return true;
+    };
+    const keptImages = images?.filter((i) =>
+      take('картинка', i.data.length, 0, i.width && i.height ? imageTokens(i.width, i.height) : 0),
+    );
+    const keptFiles = files?.filter((f) =>
+      take(`файл ${f.path}`, f.data.length, sessionPdfPages(f), attachFileTokens(f)),
+    );
+    return {
+      images: keptImages?.length ? keptImages : undefined,
+      files: keptFiles?.length ? keptFiles : undefined,
+      add,
+    };
   }
 
   /**
@@ -882,6 +1098,7 @@ export class ChatController {
       const { deps } = this;
       const s = deps.settings();
       const resume = this.resumeId;
+      this.usedDrop = !!resume && !!this.retryDrop;
       const base = {
         cwd: deps.cwd,
         allowBypassPermissions: s.allowBypass,
@@ -904,6 +1121,7 @@ export class ChatController {
               permissionMode: mode,
               ...(model ? { model } : {}),
               baselineCostUsd: baseline,
+              ...(this.retryDrop ? { dropTurn: this.retryDrop } : {}),
             });
           })()
         : (() => {
@@ -978,11 +1196,28 @@ export class ChatController {
         this.previews.delete(e.toolUseId);
         break;
       case 'turn.start':
-        if (!e.agentId) this.turnStartedAt = e.at;
+        if (!e.agentId) {
+          this.turnStartedAt = e.at;
+          this.turnSeen = true;
+          // ход без промпта начал сам движок (пробуждение фоновой задачей, отказ resume) — сообщения
+          // очереди он не берёт: иначе успешный итог пробуждения снял бы ещё не отвеченное сообщение
+          const prompts = e.prompts ?? (e.prompt !== undefined ? [e.prompt] : []);
+          if (prompts.length) this.noteStarted(prompts);
+        }
+        break;
+      case 'turn.input':
+        if (!e.agentId) this.noteStarted([e.prompt]);
         break;
       case 'tool.start':
       case 'tool.result':
         this.trackEdit(e);
+        break;
+      case 'compaction.end':
+        // после компакции в истории остаётся сводка: картинки и документы из запросов уходят
+        if (e.ok && !e.agentId) {
+          this.attached = { pdfPages: 0, chars: 0 };
+          this.postAttach();
+        }
         break;
       case 'session.init':
         this.register(session.id);
@@ -995,8 +1230,17 @@ export class ChatController {
         if (e.source === 'engine' && !e.agentId) this.lastContext = e;
         break;
       case 'turn.result':
+        // отказ resume с отбрасыванием приходит итогом `error_during_execution` (и, бывает, ещё `error`)
+        if (!e.agentId && !e.ok) this.dropRejected([...(e.errors ?? []), e.text ?? '']);
         // успешный (или остановленный человеком) ход закрыт — повторять нечего
-        if (!e.agentId && (e.ok || e.interrupted)) this.inflight = undefined;
+        if (!e.agentId && (e.ok || e.interrupted)) {
+          // итог без единого `turn.start` (движок не прислал начало хода) — закрыл самое старое сообщение
+          if (!this.turnSeen) this.noteStarted([]);
+          this.inflight = this.inflight.filter((x) => !x.started);
+          // отказ SDK касался того оборванного хода; следующий «Повторить» снова пробует отбросить
+          this.dropRefused = false;
+        }
+        if (!e.agentId) this.turnSeen = false;
         this.log.info(
           `ход завершён: ${e.ok ? 'ok' : 'ошибка'}, $${(e.costUsd ?? 0).toFixed(4)}, ${e.durationMs} мс`,
         );
@@ -1013,6 +1257,7 @@ export class ChatController {
         }
         break;
       case 'error':
+        if (this.dropRejected([e.message])) break;
         if (e.fatal) this.log.error(`error (fatal): ${e.message}`);
         else if (e.code === 'api_retry') this.log.info(`error: ${e.message}`);
         else this.log.warn(`error${e.code ? ` ${e.code}` : ''}: ${e.message}`);
@@ -1030,12 +1275,14 @@ export class ChatController {
           this.stickyLive = id;
         }
         this.registeredId = undefined;
+        this.kickRetry();
         return;
       }
       default:
         break;
     }
     if (this.status !== prev && session.id) this.deps.live?.set(session.id, this.liveState());
+    this.kickRetry();
   }
 
   private liveState(): 'idle' | 'live' | 'waiting' | 'error' | 'limit' {
@@ -1082,6 +1329,8 @@ export class ChatController {
     this.lastInit = undefined;
     this.defaults = undefined;
     this.lastContext = undefined;
+    this.attached = { pdfPages: 0, chars: 0 };
+    this.usedDrop = false;
     this.turnStartedAt = undefined;
     this.pendingRequests.clear();
     this.previews.clear();
