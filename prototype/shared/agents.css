@@ -1,0 +1,80 @@
+/* Несколько агентов: группа субагентов в ленте и карта агентов «список + детали».
+   Предложение поверх hud.css; в media/ не перенесено, пока экран не принят. */
+
+/* ── группа субагентов в ленте ── */
+.log .grp { margin: 4px 0 6px; border: 1px solid var(--line); border-radius: 3px; background: var(--bg-side); }
+.log .grp .gh { display: grid; grid-template-columns: 14px 44px 1fr auto; gap: 8px; padding: 5px 10px 5px 0; align-items: baseline; border-bottom: 1px solid var(--line); }
+.log .grp .gh .p { color: var(--info); text-align: right; }
+.log .grp .gh .op { color: var(--fg-mute); }
+.log .grp .gh .what { color: var(--fg); }
+.log .grp .gh .what .dim { color: var(--fg-mute); }
+.log .grp .gh .r { color: var(--fg-mute); font-size: 11px; white-space: nowrap; }
+.log .grp .gh .r b { color: var(--fg); font-weight: 500; }
+.log .grp .sa { display: grid; grid-template-columns: 14px 104px 1fr auto; gap: 8px; padding: 4px 10px 4px 22px; align-items: baseline; font-size: 11.5px; }
+.log .grp .sa + .sa { border-top: 1px dashed var(--line); }
+.log .grp .sa .st { color: var(--fg-faint); }
+.log .grp .sa.ok .st { color: var(--ok); }
+.log .grp .sa.busy .st { color: var(--info); }
+.log .grp .sa.err .st { color: var(--full); }
+.log .grp .sa .ty { color: var(--fg-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.log .grp .sa .ds { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); }
+.log .grp .sa .ds small { display: block; color: var(--fg-mute); font-size: 11px; overflow: hidden; text-overflow: ellipsis; }
+.log .grp .sa.busy .ds small { color: var(--info); }
+.log .grp .sa.err .ds small { color: var(--full); }
+.log .grp .sa .ds small .dim { color: var(--fg-mute); }
+.log .grp .sa .r { color: var(--fg-mute); font-size: 11px; white-space: nowrap; text-align: right; }
+.log .grp .sa .r button { color: var(--full); margin-left: 8px; }
+.log .grp .sa .r a { color: var(--link); text-decoration: none; margin-left: 8px; }
+.log .grp .gf { display: flex; gap: 14px; padding: 5px 10px 5px 22px; border-top: 1px solid var(--line); color: var(--fg-mute); font-size: 11px; }
+.log .grp .gf a { color: var(--link); text-decoration: none; }
+.log .grp .gf .sp { margin-left: auto; }
+
+/* ── карта агентов: список слева, выбранный агент справа ── */
+.side .amap { display: grid; grid-template-columns: 1fr; }
+.side .amap > .det { border-top: 1px solid var(--line); }
+/* широкая вкладка: список и детали рядом; в узкой и в панели 300 px — друг под другом */
+html[data-width="vscode"] .side .amap { grid-template-columns: 330px 1fr; min-height: 100%; }
+html[data-width="vscode"] .side .amap > .list { border-right: 1px solid var(--line); }
+html[data-width="vscode"] .side .amap > .det { border-top: 0; }
+.det .hd .acts { flex-wrap: wrap; }
+.side .amap .ag .a { cursor: default; }
+.side .amap .ag .a.sel { background: var(--bg-raise); box-shadow: inset 2px 0 0 var(--accent); margin: 0 -14px; padding-left: 28px; padding-right: 14px; }
+.side .amap .ag .a.sel.main { padding-left: 14px; }
+.ag .a.ok .st { color: var(--ok); }
+.ag .a.err .st { color: var(--full); }
+.ag .a.err .nm small { color: var(--full); }
+.ag .a.busy .nm small { color: var(--info); }
+.ag .a.sub .nm::before { content: "└ "; color: var(--fg-faint); }
+.ag .a .tk { text-align: right; white-space: nowrap; }
+.ag .bar { height: 3px; background: var(--bg-input); margin: 2px 0 0; display: flex; }
+.ag .bar i { background: var(--fg-mute); }
+.ag .bar i.c { background: var(--info); }
+.ag .bar i.o { background: var(--ok); }
+.ag .bar i.e { background: var(--full); }
+.side .amap h5 { margin: 0; padding: 12px 0 4px; font-size: 10.5px; font-weight: 600; color: var(--fg-faint); text-transform: lowercase; letter-spacing: .02em; }
+
+.side .amap .det { padding: 0 18px 14px; min-width: 0; }
+.det .hd { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; padding: 12px 0 10px; border-bottom: 1px solid var(--line); align-items: start; }
+.det .hd .t { font-size: 13px; color: var(--fg); font-weight: 600; }
+.det .hd .t .ty { color: var(--fg-mute); font-weight: 400; }
+.det .hd .meta { grid-column: 1; display: flex; flex-wrap: wrap; gap: 2px 14px; color: var(--fg-mute); font-size: 11px; }
+.det .hd .meta b { color: var(--fg); font-weight: 500; }
+.det .hd .meta .live { color: var(--info); }
+.det .hd .acts { grid-row: 1 / span 2; grid-column: 2; display: flex; gap: 8px; }
+.det .hd .acts button { padding: 3px 10px; border: 1px solid var(--line-strong); border-radius: 3px; color: var(--fg); font-size: 11px; }
+.det .hd .acts button.stop::before { content: "■ "; color: var(--full); }
+.det h6 { margin: 0; padding: 12px 0 6px; font-size: 11px; font-weight: 600; color: var(--fg-mute); }
+.det .prm { font-family: var(--font); font-size: 12.5px; line-height: 1.5; color: var(--fg); background: var(--bg-code); border-left: 2px solid var(--line-strong); padding: 8px 12px; border-radius: 0 3px 3px 0; }
+.det .prm code { font-family: var(--mono); font-size: 11.5px; }
+.det .tl { padding: 0; }
+.det .tl .strip { margin-left: 50px; }
+.det .tl .row { grid-template-columns: 42px 44px 1fr auto; }
+.det .tl .row .op { color: var(--fg-mute); }
+.det .tl .row .d { color: var(--fg-mute); white-space: nowrap; }
+.det .tl .row.now .op, .det .tl .row.now .d { color: var(--info); }
+.det .tl .row .ev .dim { color: var(--fg-mute); }
+.det .note { margin-top: 10px; color: var(--fg-faint); font-size: 11px; }
+html:not([data-width="vscode"]) .det .hd { grid-template-columns: minmax(0, 1fr); }
+html:not([data-width="vscode"]) .det .hd .acts { grid-row: auto; grid-column: 1; }
+.det .tl .row { grid-template-columns: 42px 44px minmax(0, 1fr) auto; }
+.det .tl .row > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
