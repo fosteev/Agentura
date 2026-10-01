@@ -299,6 +299,8 @@ class ClaudeSession implements AgentSession {
   private closed = false;
   private readonly trace: ((message: unknown) => void) | undefined;
   private resumedId: string | undefined;
+  /** Effort, заданный расширением (при создании или из меню): движок его в `init` не сообщает. */
+  private effort: EffortLevel | undefined;
 
   constructor(
     sdk: SdkModule,
@@ -333,7 +335,7 @@ class ClaudeSession implements AgentSession {
     // (у владельца — `auto`, классификатор вместо вопросов), а расширение режимы `auto`/`dontAsk` не ведёт.
     sdkOptions.permissionMode = options.permissionMode ?? 'default';
     if (options.allowBypassPermissions) sdkOptions.allowDangerouslySkipPermissions = true;
-    if (options.effort) sdkOptions.effort = options.effort;
+    if (options.effort) sdkOptions.effort = this.effort = options.effort;
     if (options.title) sdkOptions.title = options.title;
     if (resume) sdkOptions.resume = resume;
 
@@ -385,6 +387,7 @@ class ClaudeSession implements AgentSession {
   /** Подтверждения в потоке нет (docs/spikes/sdk-probe.md, раздел 2) — интерфейс показывает то, что отправили. */
   async setEffort(effort: EffortLevel): Promise<void> {
     await this.q.applyFlagSettings({ effortLevel: effort });
+    this.effort = effort;
   }
 
   async interrupt(): Promise<void> {
@@ -467,7 +470,9 @@ class ClaudeSession implements AgentSession {
         if (this.closed) break;
         this.trace?.(message);
         for (const event of this.mapper.map(message)) {
-          this.emit(event);
+          this.emit(
+            event.type === 'session.init' && this.effort ? { ...event, effort: this.effort } : event,
+          );
           // Окно до первого ответа неизвестно: `getContextUsage()` работает и до хода (раздел 4 пробы).
           if (event.type === 'session.init' && first) {
             first = false;

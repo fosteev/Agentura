@@ -321,3 +321,8 @@ html[data-width="900"] .pane.side .tabpane + .tabpane, html[data-width="full"] .
 .m.lim-warn b.pct, .m.lim-full b.pct { color: var(--lim); }
 .sidebar .lim .row[class*="lim-"] .bar i { background: var(--lim); }
 .sidebar .lim .row.lim-warn .n, .sidebar .lim .row.lim-full .n { color: var(--lim); }
+
+/* кнопка настроек в заголовке боковой панели */
+.sidebar .head { display: flex; align-items: center; }
+.sidebar .head .gear { margin-left: auto; color: var(--fg-mute); font-size: 17px; line-height: 1; padding: 2px 4px; border-radius: 3px; text-transform: none; letter-spacing: 0; }
+.sidebar .head .gear:hover, .sidebar .head .gear.on { color: var(--fg); background: var(--bg-raise); }

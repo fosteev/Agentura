@@ -5,12 +5,14 @@
 import type {
   AgentEvent,
   CommandOption,
+  EffortLevel,
   LimitWindow,
   ModelOption,
   PermissionDecision,
   PermissionMode,
 } from './agent/types';
 import type { Attachment, FileHit } from './shared/prompt';
+import type { EngineCheck, SettingKey, SettingsValues } from './settings';
 
 export type {
   AgentEvent,
@@ -101,7 +103,13 @@ void _allEventTypesListed;
  * текущую сессию вкладки (до первого `session.init` id ещё пуст).
  */
 export type ToWebview =
-  | { type: 'init'; surface: 'chat' | 'sidebar'; version: string }
+  | { type: 'init'; surface: 'chat' | 'sidebar' | 'settings'; version: string }
+  /** Вкладка настроек (этап 3 roadmap 0.2): значения `agentura.*` и ключи, перекрытые настройками рабочей папки. */
+  | { type: 'settings.state'; values: SettingsValues; overridden: SettingKey[] }
+  /** Отказ записи настройки (проверка не прошла или запись не удалась) — текст у поля. */
+  | { type: 'settings.error'; key: SettingKey; message: string }
+  /** Ответ на «проверить» у пути к claude. */
+  | { type: 'settings.engine'; result: EngineCheck }
   | { type: 'agent.event'; sessionId: string; event: AgentEvent }
   | {
       type: 'chat.info';
@@ -118,6 +126,12 @@ export type ToWebview =
   | { type: 'attach.picked'; items: FileHit[] }
   /** Начата новая сессия (команда, `/clear`, `new`): очистить ленту. */
   | { type: 'session.reset' }
+  /**
+   * Этап 3 roadmap 0.2: режим и effort, с которыми хост создал новую сессию (`agentura.defaultPermissionMode`,
+   * `agentura.defaultEffort`). `session.init` приходит только после первого хода — без этого меню режима до
+   * первого сообщения показывало бы «спрашивать», а движок уже шёл бы в `acceptEdits`/`bypassPermissions`.
+   */
+  | { type: 'session.defaults'; mode: PermissionMode; effort?: EffortLevel }
   /** Этап 5: превью правки к `permission.request` с `diff` — приходит вдогонку, по `toolUseId`. */
   | { type: 'diff.preview'; sessionId: string; toolUseId: string; preview: EditPreview }
   /**
@@ -208,7 +222,15 @@ export type FromWebview =
    */
   | { type: 'turn.retry'; sessionId: string; turn: boolean }
   /** Этап 7: «Открыть журнал расширения» — канал Output → Agentura. */
-  | { type: 'log.show' };
+  | { type: 'log.show' }
+  /** Этап 3 roadmap 0.2: ⚙ в боковой панели открывает вкладку настроек. */
+  | { type: 'settings.open' }
+  /** Вкладка настроек: записать настройку (в пользовательские настройки VS Code). */
+  | { type: 'settings.set'; key: SettingKey; value: unknown }
+  /** «проверить»: найти claude по этому пути (пусто — системный) и показать версию и источник. */
+  | { type: 'settings.checkEngine'; path: string }
+  /** «в настройках VS Code» / «settings.json». */
+  | { type: 'settings.reveal'; target: 'ui' | 'json' };
 
 /** Аккаунт для секции «Аккаунт и лимиты» (этап 6); поля, которых нет, — «—». */
 export interface AccountSummary {
@@ -265,6 +287,10 @@ const FROM_WEBVIEW_TYPES: ReadonlySet<string> = new Set<FromWebview['type']>([
   'session.rename',
   'turn.retry',
   'log.show',
+  'settings.open',
+  'settings.set',
+  'settings.checkEngine',
+  'settings.reveal',
 ]);
 
 /** Проверка входящего от webview сообщения: снаружи приходит `unknown`. */

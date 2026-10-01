@@ -19,7 +19,9 @@ const extension = {
 
 const webview = {
   ...common,
-  entryPoints: { chat: 'src/webview/chat/index.tsx', sidebar: 'src/webview/sidebar/index.tsx' },
+  entryPoints: { chat: 'src/webview/chat/index.tsx', sidebar: 'src/webview/sidebar/index.tsx',
+    settings: 'src/webview/settings/index.tsx',
+  },
   outdir: 'dist/webview',
   format: 'esm',
   platform: 'browser',

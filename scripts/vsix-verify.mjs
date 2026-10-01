@@ -87,8 +87,10 @@ check(platform.length === 0, 'платформенных бинарников в
 for (const f of [
   'dist/webview/chat.js',
   'dist/webview/sidebar.js',
+  'dist/webview/settings.js',
   'media/icon.svg',
   'media/agents.css',
+  'media/settings.css',
   'package.json',
 ]) {
   check(existsSync(join(ext, f)), `есть ${f}`, `нет ${f}`);

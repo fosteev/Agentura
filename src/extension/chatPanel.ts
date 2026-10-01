@@ -6,6 +6,7 @@ import type { AgentAdapter } from '../agent/types';
 import type { LimitsSource } from '../data/limits';
 import type { LiveSessions, TranscriptCache } from '../data/sessions';
 import { postToWebview } from '../protocol';
+import { DEFAULT_THRESHOLDS, thresholdsError } from '../settings';
 import type { AccountService } from './account';
 import { ChatController } from './chatController';
 import type { DiffDocuments } from './diffDocuments';
@@ -235,7 +236,12 @@ export class ChatPanel {
         return {
           defaultModel: cfg.get<string>('defaultModel') || undefined,
           allowBypass: cfg.get<boolean>('allowBypassPermissions', false),
-          contextThresholds: cfg.get<number[]>('contextThresholds', [120000, 150000]),
+          // кривые пороги из settings.json (вкладка настроек такие не пишет) — по умолчанию
+          contextThresholds: ((th) => (thresholdsError(th) ? [...DEFAULT_THRESHOLDS] : th))(
+            cfg.get<number[]>('contextThresholds', [...DEFAULT_THRESHOLDS]),
+          ),
+          defaultPermissionMode: cfg.get<string>('defaultPermissionMode'),
+          defaultEffort: cfg.get<string>('defaultEffort'),
         };
       },
       usage: services.usage,
@@ -338,6 +344,11 @@ export class ChatPanel {
    */
   static stopEngines(): void {
     for (const p of ChatPanel.panels) p.controller.dispose();
+  }
+
+  /** Настройки `agentura.*` изменились: открытые вкладки чата получают свежие `chat.info`. */
+  static settingsChanged(): void {
+    for (const p of ChatPanel.panels) p.controller.pushInfo();
   }
 
   /** Название сессии сменили в списке — вкладка, где она открыта, обновляет заголовок. */

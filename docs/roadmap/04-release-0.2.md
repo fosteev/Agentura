@@ -1,6 +1,6 @@
 # Agentura 0.2: правки дегустации, агенты, настройки, скриншоты, долг
 
-> Статус: в работе · создан 2026-10-01 из `docs/roadmap/03-after-0.1.md` · этап 1 принят 2026-10-01 · этап 2 принят 2026-10-01 · следующий — 3.
+> Статус: в работе · создан 2026-10-01 из `docs/roadmap/03-after-0.1.md` · этап 1 принят 2026-10-01 · этап 2 принят 2026-10-01 · этап 3 принят 2026-10-01 · следующий — этап 4.
 > Исполнитель отмечает чекбоксы по ходу работы. Пункты с пометкой «(владелец)» исполнитель и приёмка не
 > отмечают: они уходят в `04-release-0.2.pending.md` → «Проверить руками».
 > Формат — под автопилот `/roadmap-run`: этап → исполнитель → приёмка `/plan-review` → мерж в main.
@@ -78,7 +78,7 @@ v11, прижатый блок «агенты», группу субагенто
 - Проп `onNew` в `Hud` остаётся: им пользуется пункт «Новая сессия» во всплывающем меню сессий. Строки `newChat`/`newChatTitle`
   удалены. `closedPlaceholder` теперь: «сессия завершена — начните новую через «+ Новая сессия» в боковой панели».
 - Тест `sessionsDom.test.ts` («разметка как в прототипе») на базе main падал: прототип получил ⚙ (`d5e6c13`), расширение — нет.
-  В тесте ⚙ вырезается из эталона (комментарий в коде) до этапа 3; на этапе 3 эту строку убрать.
+  В тесте ⚙ вырезается из эталона (комментарий в коде) до этапа 3; на этапе 3 эту строку убрать (убрана на этапе 3).
 - Не проверено: вид в браузере/VS Code (пункт «(владелец)»); `.pane.side` во `full`-ширине проверена только по CSS. В узком режиме
   `TurnPane` скроллится не сам, а через `aside`, поэтому хук там не прилипает (по плану узкий режим не трогали).
 
@@ -227,30 +227,103 @@ Esc — только `interrupt`; `.vsix` фикстуры не тянет (`src
 `prototype/screens/settings.html`, `prototype/shared/settings.css`, кнопка ⚙ — `prototype/shared/sidebar.js`,
 `.gear` — `prototype/shared/hud.css:324`.
 
-- [ ] `package.json`: команда `agentura.openSettings` с иконкой `$(gear)`, `menus.view/title` для вида боковой панели
+- [x] `package.json`: команда `agentura.openSettings` с иконкой `$(gear)`, `menus.view/title` для вида боковой панели
+      (приёмка: нативная кнопка снята, ⚙ — только в webview, см. «Решения приёмки этапа 3»)
       (`when: view == <id вида>`). Раздела `menus` пока нет
-- [ ] Вкладка-webview «Agentura · настройки»: одна на окно, повторный клик даёт фокус. Каркас — как у `chatPanel.ts`,
+- [x] Вкладка-webview «Agentura · настройки»: одна на окно, повторный клик даёт фокус. Каркас — как у `chatPanel.ts`,
       отдельная точка входа webview или режим существующего бандла (выбрать проще и описать в «Решениях»)
-- [ ] Форма читает и пишет `workspace.getConfiguration('agentura')`. Источник правды — настройки VS Code.
+- [x] Форма читает и пишет `workspace.getConfiguration('agentura')`. Источник правды — настройки VS Code.
       `machine`-настройки (`allowBypassPermissions`, `claudeExecutable`) пишутся только в `ConfigurationTarget.Global`,
       остальные — в Global. Ссылки «в настройках VS Code» (`workbench.action.openSettings`, `@ext:<publisher>.agentura`)
       и settings.json
-- [ ] `onDidChangeConfiguration`: правка в settings.json сразу видна во вкладке настроек. Открытые вкладки чата
+- [x] `onDidChangeConfiguration`: правка в settings.json сразу видна во вкладке настроек. Открытые вкладки чата
       получают обновление `settings` (сейчас `settings()` читается по запросу, `chatPanel.ts:233-239`). Пункт «без
       разрешений» в меню режима появляется без переоткрытия
-- [ ] Новые настройки: `agentura.defaultPermissionMode` (manual / acceptEdits / plan; bypass — только если разрешён) и
+- [x] Новые настройки: `agentura.defaultPermissionMode` (manual / acceptEdits / plan; bypass — только если разрешён) и
       `agentura.defaultEffort`. Применяются к новым сессиям (где создаётся сессия — `chatController.ts`)
-- [ ] «Без разрешений»: переключатель с предупреждением, как в прототипе
-- [ ] Пороги контекста: валидация `жёлтый < оранжевый < 200 000`, ошибка у поля. Путь к claude — «проверить»: тот же
+- [x] «Без разрешений»: переключатель с предупреждением, как в прототипе
+- [x] Пороги контекста: валидация `жёлтый < оранжевый < 200 000`, ошибка у поля. Путь к claude — «проверить»: тот же
       поиск, что при старте движка, показать версию и источник
-- [ ] Убрать из `src/webview/sessionsDom.test.ts` временную вырезку `.gear` из эталона (добавлена на этапе 1) и сверить `.head` с прототипом как есть
-- [ ] Тесты: запись в нужный target (мок `vscode`), валидация порогов, применение `defaultPermissionMode` к новой сессии
+- [x] Убрать из `src/webview/sessionsDom.test.ts` временную вырезку `.gear` из эталона (добавлена на этапе 1) и сверить `.head` с прототипом как есть
+- [x] Тесты: запись в нужный target (мок `vscode`), валидация порогов, применение `defaultPermissionMode` к новой сессии
 - [ ] (владелец) F5: ⚙ в заголовке панели, обе темы, 380/900. Включить bypass и увидеть пункт в меню открытой вкладки
 
 **Готово, когда:** `npm run check` зелёный, тесты из последнего пункта есть. Интеграционный тест проверяет, что
 `agentura.openSettings` зарегистрирована и открывает панель. `npm run test:integration` зелёный.
 
 **Сессия:** sonnet, effort high. Прототип есть, API VS Code стандартный. Последовательно после 2. Промт 3.
+
+**Решения (2026-10-01, по итогам сессии 3):**
+- Раскладка. Чистая логика без `vscode`: `src/settings.ts` (ключи, проверка, `readSettings`, `writeSetting`, `resolveDefaultMode/Effort`,
+  `overriddenKeys`; им пользуются и хост, и webview), `src/extension/settingsController.ts` (приём сообщений, запись, «проверить»).
+  Обёртка `vscode`: `src/extension/settingsPanel.ts` (вкладка `agentura.settings`, одна на окно: `current` + `reveal()`; подписка на
+  `onDidChangeConfiguration`). Webview: `src/webview/settings/index.tsx` (**отдельная точка входа** `dist/webview/settings.js`, третья в
+  `esbuild.mjs`, поверхность `settings` в `webviewHost.ts`), `components/Settings.tsx`, `settingsStore.ts`, строки `ui.settings`, CSS
+  `media/settings.css` (копия `prototype/shared/settings.css` + правки под живые поля в конце файла). Отдельный бандл, а не режим чата:
+  чат тянет marked/DOMPurify/diff (360 кБ против 94 кБ), общего у форм с лентой нет. `vsix-verify` проверяет `settings.js` и `settings.css`.
+- Протокол. webview → хост: `settings.open` (⚙ из боковой панели; `sidebarView.ts` выполняет команду), `settings.set {key, value}`,
+  `settings.checkEngine {path}`, `settings.reveal {target: 'ui'|'json'}`. Хост → webview: `settings.state {values, overridden}` (на `ready`,
+  после записи и на каждое изменение `agentura.*`), `settings.error {key, message}`, `settings.engine {result}`. Ключ из `settings.set`
+  сверяется со списком `SETTING_KEYS` (чужой не пишется), значение проверяется на хосте ещё раз; webview проверяет пороги и опрос до отправки.
+- Запись — всегда `ConfigurationTarget.Global` (и `machine`, и обычные: для `machine` другого варианта нет, остальные общие для проектов).
+  Если обычную настройку перекрыли настройками рабочей папки, вкладка показывает пометку (`overridden`): запись в Global эффекта не даст.
+- Смена конфига в открытых вкладках чата: `extension.ts` → `ChatPanel.settingsChanged()` → `ChatController.pushInfo()` шлёт свежий `chat.info`
+  (`allowBypass`, пороги); пункт «без разрешений» появляется без переоткрытия. Прежний `chat.info` на `ready` строится тем же `pushInfo()`.
+- Новые настройки: `agentura.defaultPermissionMode` (enum `manual | acceptEdits | plan | bypassPermissions`, по умолчанию `manual`;
+  `manual` → `default` движка, `bypassPermissions` без `allowBypassPermissions` → `default`; в списке формы пункт «без разрешений» виден,
+  только пока разрешён или уже выбран) и `agentura.defaultEffort` (пусто | low…max). Применяются в `ChatController.ensureSession` при
+  `createSession`; `resume` берёт режим и модель из истории, `effort` при resume не передаётся (сессия не новая).
+- ⚙ в двух местах: в `.head` webview боковой панели (как в прототипе; на нём стоит сверка `sessionsDom.test.ts`) и нативная кнопка
+  `menus.view/title` (`when: view == agentura.sidebar`, иконка `$(gear)`), как в чекбоксе. Визуально это две шестерёнки в шапке панели
+  (нативная — в строке заголовка вида, вторая — внутри webview). Отступление и вопрос скоупа: см. «Скоуп».
+  **Приёмка: оставлена одна — в webview** (см. ниже).
+- Вырезка ⚙ из эталона в `sessionsDom.test.ts` убрана, `.head` сверяется с прототипом как есть (скелет `.head` совпал).
+- Живые поля вместо статичных: `<span class="dd">` оборачивает `<select>`, `.num` — `<input>`, `.tg` — `<button role="switch">`; классы строк
+  `.set`/`.set.on` совпадают с `settings.html` (проверено тестом). «Режим новых сессий» и «effort» — списки, «модель» — текстовое поле
+  (список моделей берётся из движка уже внутри сессии, на вкладке настроек его нет; datalist с алиасами не делал). Предупреждение о bypass
+  видно всегда, подсветка строки (`.set.on`) — когда включено.
+- «Проверить» вызывает `resolveExecutable(<значение поля>)` — тот же поиск, что при старте движка (`createAdapter`), результат: найден/нет,
+  путь, версия, источник (`из настройки`/`system`), текст `problem` (старая версия, не запускается). Вызов синхронный (`claude --version`, до 5 с),
+  как и на старте. Проверяется то, что в поле, даже если оно ещё не записано.
+- Пороги: `thresholdsError` — два целых, `0 < жёлтый < оранжевый < 200 000`; невалидное не пишется, ошибка под полем. Опрос лимитов — целое ≥ 5.
+  Мусор из `settings.json` показывается значением по умолчанию (`readSettings`), кривые, но числовые пороги — как есть (с ошибкой не видны:
+  ошибка показывается при правке; при чтении не пересчитывается).
+- Тесты: `settings.test.ts` (валидация, пороги, режимы, запись в Global), `settingsController.test.ts` (запись в `GLOBAL` через мок конфига,
+  чужой ключ, сбой записи, «проверить», reveal), `chatController.test.ts` +3 (режим и effort к новой сессии, bypass без разрешения,
+  `pushInfo`), `settingsDom.test.ts` (DOM: разметка против прототипа, поля, пороги, опрос, проверка, ссылки, ⚙ шлёт `settings.open`),
+  интеграционные +2 (`agentura.openSettings` открывает одну вкладку при повторном вызове; настройки и меню объявлены).
+- Не проверено: вид в VS Code (оба пункта «(владелец)»), обе темы, 380/900 (CSS перенесён из прототипа + правки для живых полей по коду);
+  реальная запись в `settings.json` и её отражение во вкладке (хост покрыт моком конфига; `onDidChangeConfiguration` в интеграционном тесте
+  не гонял, чтобы не писать в профиль); «проверить» с настоящим `claude` не запускал; вкладка настроек не переживает перезагрузку окна
+  (сериализатора нет — при следующем открытии создаётся заново); подсветка раздела в навигации по скроллу — по коду.
+- Этап 7: карточка «claude не найден» должна открывать настройки — сообщение `settings.open` уже есть в протоколе, но `ChatController.handle`
+  его пока не обрабатывает (обрабатывает только `sidebarView.ts`). Нужно добавить `case 'settings.open'` → `vscode.commands.executeCommand('agentura.openSettings')`
+  (через новую зависимость `openSettings` в `ChatDeps`) — записано в этап 7 и в промт 7.
+
+**Решения приёмки этапа 3 (2026-10-01, opus, два прохода: свой + независимый ревьюер):**
+- ⚙ одна — в webview боковой панели (как в прототипе, видна всегда); нативная `menus.view/title` снята: две шестерёнки
+  в шапке, а кнопки заголовка вида VS Code по умолчанию показывает только при наведении — та же ненаходимость, из-за
+  которой этап и затеян. Команда `agentura.openSettings` (с `$(gear)`) осталась в палитре. Откат — вернуть блок `menus`
+  в `package.json` (pending `[скоуп]`).
+- `media/hud.css` синхронизирован с `prototype/shared/hud.css`: стили `.sidebar .head .gear` (из `d5e6c13`) не были
+  перенесены — ⚙ рисовалась голой кнопкой сразу после текста.
+- Новая сессия: хост шлёт `session.defaults {mode, effort?}` при `createSession` и повторно на `ready`, пока не было
+  `session.init` (`ChatController.defaults`, обновляется по `mode.set`/`effort.set`). Без этого меню режима до первого
+  хода показывало «manual», а движок уже шёл в `acceptEdits`/`bypassPermissions`. `session.init` несёт необязательный
+  `effort` (адаптер помнит заданный при создании и из меню) — effort в меню переживает `init`. Pending `[архитектура]`.
+- `agentura.defaultPermissionMode` — `scope: machine` (в `MACHINE_KEYS`, в форме «только эта машина»): иначе
+  `.vscode/settings.json` чужого репозитория выставлял бы новым сессиям `acceptEdits`. Pending `[скоуп]`.
+- Хост не пишет `defaultPermissionMode = bypassPermissions`, пока `allowBypassPermissions` выключен (ошибка у поля);
+  в форме пункт и так скрыт. Уже записанный bypass при выключенном флаге по-прежнему даёт `default`.
+- `usagePollMinutes` ≤ 1440 (`MAX_POLL_MINUTES`: форма, хост, `package.json` `maximum`, `Math.min` в
+  `startLimitsPolling`): больше 2^31 мс Node превращает `setTimeout` в 1 мс — опрос лимитов без паузы.
+- Пороги в чат (`chatPanel.settings()`) проходят `thresholdsError`, кривые из `settings.json` → по умолчанию.
+- Форма: черновик на каждое поле порога (state после записи жёлтого не стирает набираемый оранжевый); переключатель
+  держит ожидаемое значение до ответа хоста (двойной клик = вкл → выкл, а не две записи «вкл»); `<select>`
+  перерисовывается на отказ записи; ошибка поля снимается, если вернули прежнее значение.
+- Не чинили (известно): синхронный `resolveExecutable` в «проверить» (до 5 с на кандидата на потоке хоста, по кнопке) —
+  этап 7 (дописано в чекбокс и промт 7); Enter в поле шлёт `settings.set` дважды (keydown + change, безвредно);
+  выключение `allowBypassPermissions` не выводит уже идущую bypass-сессию из режима (пропадает только пункт меню).
 
 ### 4. Скриншоты в сообщении (⌘V)
 Эталон — `prototype/screens/image.html`, `prototype/shared/attach.css`, пункт «Изображение или файл…» в меню «+».
@@ -330,11 +403,15 @@ Esc — только `interrupt`; `.vsix` фикстуры не тянет (`src
 Поиск `claude` без блокировки хоста, понятное поведение без `claude`, CI, пакет 0.2.0.
 
 - [ ] Поиск `claude` асинхронный: прогрев при активации (`execFile` с промисом, таймаут на кандидата). Первый
-      запуск движка ждёт результат прогрева, а не блокирует поток
+      запуск движка ждёт результат прогрева, а не блокирует поток. «Проверить» на вкладке настроек
+      (`settingsPanel.ts` → `checkEngine`, этап 3) тоже переводится на async: сейчас синхронный `resolveExecutable`,
+      до 5 с на кандидата на потоке хоста; `SettingsDeps.checkEngine` станет `Promise<EngineCheck>`
 - [ ] Windows: кандидаты `claude.cmd` и `claude.exe`. `.cmd` запускать через `shell: true` или `cmd /c`; тест на
       список кандидатов по платформе (без живого Windows)
 - [ ] `claude` не найден → движок не запускается. В ленте карточка с инструкцией (установить CLI или указать
-      `agentura.claudeExecutable`, ссылка на ⚙ настройки из этапа 3), без ошибки SDK про отсутствующий бинарник
+      `agentura.claudeExecutable`, ссылка на ⚙ настройки из этапа 3), без ошибки SDK про отсутствующий бинарник.
+      Кнопка «Открыть настройки» шлёт `settings.open` (в протокол добавлено на этапе 3; `ChatController` его пока не
+      обрабатывает — добавить `openSettings` в `ChatDeps` и `case 'settings.open'`, вызывает команду `agentura.openSettings`)
 - [ ] CI: `.github/workflows/check.yml` — `npm ci`, `npm run check` на macOS и ubuntu. `test:integration` под `xvfb-run` на
       ubuntu с кэшем `.vscode-test`
 - [ ] `CHANGELOG.md` — раздел 0.2.0 по этапам 1–6. README — ⚙ настройки, ⌘V, агенты, новые настройки
@@ -521,14 +598,15 @@ npm run test:integration, node scripts/permissions-smoke.mjs edit.
 Сессия 7 — упаковка, CI, сборка 0.2.0 · Модель: sonnet, effort: medium
 
 Работаем в /Users/fost/Projects/Agentura. Задача: асинхронный поиск claude, Windows-кандидаты, понятное
-поведение без claude, GitHub Actions, CHANGELOG/README и .vsix 0.2.0.
+поведение без claude, GitHub Actions, CHANGELOG/README и .vsix 0.2.0. Async-поиск касается и «проверить» на
+вкладке настроек (src/extension/settingsPanel.ts, checkEngine — сейчас синхронный).
 
 Читай: docs/roadmap/04-release-0.2.md (этап 7 — твой, все «Решения» этапов 1–6 для CHANGELOG);
 docs/roadmap/03-after-0.1.md («Упаковка и релиз»); docs/roadmap/02-implementation.md (этап 8: поиск claude,
 .vscodeignore, vsix-verify); README.md, CHANGELOG.md, package.json.
 
 Уже решено: .vsix остаётся универсальным без бинарника движка; без claude движок не стартует, в ленте —
-карточка с инструкцией и ссылкой на настройки ⚙ (этап 3); CI — macOS + ubuntu, integration только на ubuntu
+карточка с инструкцией и кнопкой, открывающей настройки ⚙ (этап 3: команда `agentura.openSettings` и сообщение `settings.open` есть, обработчик в `ChatController` — твой); CI — macOS + ubuntu, integration только на ubuntu
 под xvfb-run. Тег, установку в основной VS Code и публикацию не делать — это владелец.
 
 Шаги — чекбоксы этапа 7, отмечай по ходу. DoD — «Готово, когда» этапа 7; npm run check,

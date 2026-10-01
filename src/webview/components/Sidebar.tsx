@@ -149,7 +149,18 @@ export function Sidebar() {
   const limits = limitRows(windows.value, n);
   return (
     <div class="sidebar" aria-label={ui.sidebar.aria}>
-      <div class="head">{ui.sidebar.head}</div>
+      <div class="head">
+        <span>{ui.sidebar.head}</span>
+        <button
+          type="button"
+          class="gear"
+          title={ui.sidebar.settings}
+          aria-label={ui.sidebar.settings}
+          onClick={() => send({ type: 'settings.open' })}
+        >
+          {ui.sidebar.gear}
+        </button>
+      </div>
       <section class="sec">
         <h3>
           <span class="tri" />

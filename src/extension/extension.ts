@@ -11,6 +11,7 @@ import { AccountService } from './account';
 import { SessionMemory } from './sessionMemory';
 import { SessionsService } from './sessionsService';
 import { showDebugState } from './debugPanel';
+import { SettingsPanel } from './settingsPanel';
 
 export function activate(context: vscode.ExtensionContext): void {
   const log = new Logger('Agentura');
@@ -117,6 +118,13 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('agentura.showStatus', () =>
       ChatPanel.runStatus(context, log, services),
     ),
+    vscode.commands.registerCommand('agentura.openSettings', () =>
+      SettingsPanel.show(context, log),
+    ),
+    // правка настроек (UI, settings.json, вкладка настроек) доходит до открытых вкладок чата
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration('agentura')) ChatPanel.settingsChanged();
+    }),
     vscode.commands.registerCommand('agentura.showLogs', () => log.show()),
     // отладка: фикстуры состояний в отдельной вкладке без движка (этап 7)
     vscode.commands.registerCommand('agentura.debug.showState', (name?: unknown) =>

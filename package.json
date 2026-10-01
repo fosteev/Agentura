@@ -74,6 +74,12 @@
         "category": "Agentura"
       },
       {
+        "command": "agentura.openSettings",
+        "title": "Настройки",
+        "category": "Agentura",
+        "icon": "$(gear)"
+      },
+      {
         "command": "agentura.showLogs",
         "title": "Показать журнал",
         "category": "Agentura"
@@ -117,6 +123,45 @@
           "default": false,
           "description": "Разрешить режим bypassPermissions (запуск инструментов без подтверждений)."
         },
+        "agentura.defaultPermissionMode": {
+          "type": "string",
+          "enum": [
+            "manual",
+            "acceptEdits",
+            "plan",
+            "bypassPermissions"
+          ],
+          "enumDescriptions": [
+            "Спрашивать разрешение на правки и команды",
+            "Принимать правки файлов без вопросов",
+            "Сначала план, без правок до одобрения",
+            "Без подтверждений (только если включён agentura.allowBypassPermissions, иначе — как manual)"
+          ],
+          "default": "manual",
+          "scope": "machine",
+          "description": "С каким режимом разрешений открывается новая сессия. В открытой сессии режим меняется в меню под полем ввода."
+        },
+        "agentura.defaultEffort": {
+          "type": "string",
+          "enum": [
+            "",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
+          "enumDescriptions": [
+            "Выбор движка",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
+          "default": "",
+          "description": "Effort новых сессий (сколько думать перед ответом); пусто — выбор движка."
+        },
         "agentura.defaultModel": {
           "type": "string",
           "default": "",
@@ -132,6 +177,7 @@
           "type": "number",
           "default": 15,
           "minimum": 5,
+          "maximum": 1440,
           "description": "Как часто опрашивать лимиты подписки, минут."
         },
         "agentura.limits.readKeychain": {
