@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import * as vscode from 'vscode';
+import { resolveExecutable } from '../agent/claude/executable';
 import { ClaudeAdapter } from '../agent/claude/adapter';
 import type { AgentAdapter } from '../agent/types';
 import type { LimitsSource } from '../data/limits';
@@ -46,8 +47,30 @@ export interface ChatServices {
 
 export function createAdapter(log: Logger): AgentAdapter {
   const cfg = () => vscode.workspace.getConfiguration('agentura');
+  // `.vsix` без бинарника движка: настройка → системный `claude` (с проверкой версии). Найденный путь
+  // кэшируется по значению настройки; «не нашли» не кэшируется (поставил claude — следующая вкладка
+  // его подхватит без перезагрузки окна), предупреждение — один раз на значение настройки.
+  let cached: { setting: string; path: string } | undefined;
+  let warnedFor: string | undefined;
+  const executablePath = (): string | undefined => {
+    const setting = cfg().get<string>('claudeExecutable') ?? '';
+    if (cached?.setting === setting) return cached.path;
+    const r = resolveExecutable(setting);
+    if (r.path) {
+      log.info(`claude: ${r.path} ${r.version ?? ''} (${r.source})`);
+      cached = { setting, path: r.path };
+    } else {
+      log.info('claude: системный не найден, остаётся бинарник SDK');
+    }
+    if (r.problem && warnedFor !== setting) {
+      warnedFor = setting;
+      log.warn(r.problem);
+      void vscode.window.showWarningMessage(`Agentura: ${r.problem}`);
+    }
+    return r.path;
+  };
   return new ClaudeAdapter({
-    executablePath: cfg().get<string>('claudeExecutable') || undefined,
+    executablePath,
     clientApp: 'agentura',
     log: (level, message) => log[level](message),
   });

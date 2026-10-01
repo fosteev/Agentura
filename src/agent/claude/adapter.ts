@@ -53,8 +53,11 @@ interface SdkModule {
 export type LogFn = (level: 'debug' | 'info' | 'warn' | 'error', message: string) => void;
 
 export interface ClaudeAdapterConfig {
-  /** Путь к `claude` (настройка `agentura.claudeExecutable`); пусто — бинарник из пакета SDK. */
-  executablePath?: string;
+  /**
+   * Путь к `claude` (настройка `agentura.claudeExecutable` или найденный системный); пусто — бинарник
+   * из пакета SDK. Функция вычисляется при каждом запуске движка (настройку можно сменить на лету).
+   */
+  executablePath?: string | (() => string | undefined);
   /** Имя клиента для движка (`CLAUDE_AGENT_SDK_CLIENT_APP`). */
   clientApp?: string;
   log?: LogFn;
@@ -241,7 +244,11 @@ export class ClaudeAdapter implements AgentAdapter {
       settingSources: this.config.settingSources ?? ['user', 'project', 'local'],
       stderr: (data) => this.config.log?.('debug', `claude stderr: ${data.trimEnd()}`),
     };
-    if (this.config.executablePath) options.pathToClaudeCodeExecutable = this.config.executablePath;
+    const exe =
+      typeof this.config.executablePath === 'function'
+        ? this.config.executablePath()
+        : this.config.executablePath;
+    if (exe) options.pathToClaudeCodeExecutable = exe;
     return options;
   }
 }

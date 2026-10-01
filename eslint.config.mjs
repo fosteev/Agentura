@@ -2,7 +2,7 @@ import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['dist', 'node_modules', 'prototype', 'docs', 'spikes', '.vscode-test'] },
+  { ignores: ['dist', 'node_modules', 'prototype', 'docs', 'spikes', '.vscode-test', 'test/integration/out'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

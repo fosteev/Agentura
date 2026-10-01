@@ -2,7 +2,7 @@
   "name": "agentura",
   "displayName": "Agentura",
   "description": "Чат с Claude в VS Code: приборы контекста, стоимости, кэша и лимитов",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "private": true,
   "publisher": "fost",
   "license": "UNLICENSED",
@@ -24,7 +24,9 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "test": "vitest run",
-    "check": "npm run typecheck && npm run lint && npm test && npm run build"
+    "check": "npm run typecheck && npm run lint && npm test && npm run build",
+    "package": "npm run build && vsce package --allow-missing-repository --skip-license",
+    "test:integration": "npm run build && tsc -p test/integration/tsconfig.json && node test/integration/out/runTest.js"
   },
   "contributes": {
     "viewsContainers": {
@@ -111,6 +113,7 @@
         },
         "agentura.allowBypassPermissions": {
           "type": "boolean",
+          "scope": "machine",
           "default": false,
           "description": "Разрешить режим bypassPermissions (запуск инструментов без подтверждений)."
         },
@@ -121,8 +124,9 @@
         },
         "agentura.claudeExecutable": {
           "type": "string",
+          "scope": "machine",
           "default": "",
-          "description": "Путь к исполняемому файлу claude (пусто — бандленный)."
+          "description": "Путь к исполняемому файлу claude (пусто — искать системный: PATH, ~/.local/bin, Homebrew). Версия проверяется при первом запуске движка. Только в пользовательских настройках: настройки рабочей папки игнорируются."
         },
         "agentura.usagePollMinutes": {
           "type": "number",
@@ -140,19 +144,24 @@
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.285",
-    "@preact/signals": "^2.11.3",
-    "diff": "^9.0.0",
-    "dompurify": "^3.4.16",
-    "marked": "^18.0.14",
-    "preact": "^11.0.0"
+    "@anthropic-ai/sdk": "^0.130.0",
+    "@modelcontextprotocol/sdk": "^1.31.0",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@preact/signals": "^2.11.3",
     "@types/node": "^24.19.0",
     "@types/vscode": "^1.138.0",
+    "@vscode/test-electron": "^3.1.0",
+    "@vscode/vsce": "^4.0.0",
+    "diff": "^9.0.0",
+    "dompurify": "^3.4.16",
     "esbuild": "^0.28.2",
     "eslint": "^10.11.0",
     "jsdom": "^30.1.1",
+    "marked": "^18.0.14",
+    "preact": "^11.0.0",
     "prettier": "^3.9.9",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.71.0",

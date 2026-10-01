@@ -1,5 +1,29 @@
-**
-!dist/**
-!media/**
-!package.json
-!README.md
+# Всё, что не нужно рантайму. Бинарник движка (claude-agent-sdk-<платформа>, 213+ МБ) не входит:
+# .vsix универсальный, движок — системный `claude` (agentura.claudeExecutable), этап 8.
+.claude/**
+.serena/**
+.vscode/**
+.vscode-test/**
+.github/**
+docs/**
+prototype/**
+scripts/**
+spikes/**
+src/**
+dist/scripts/**
+test/**
+**/*.map
+**/*.ts
+tsconfig.json
+esbuild.mjs
+eslint.config.mjs
+vitest.config.ts
+.prettierrc
+.prettierignore
+.gitignore
+**/.DS_Store
+*.vsix
+node_modules/@anthropic-ai/claude-agent-sdk-*/**
+node_modules/**/*.md
+node_modules/**/test/**
+node_modules/**/*.d.ts
