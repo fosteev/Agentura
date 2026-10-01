@@ -10,7 +10,7 @@
       подсказка `/`) и «скоро» у Codex/Gemini в выборе агента остались — правки галереи v11 касались только шапки и
       поиска, а удаление команды и пометок меняет продукт — откат: убрать `/status` из `store.ts`/`Composer.tsx`/`strings.ts`
       и пометки `agentSoon`/`soon` в `strings.ts`.
-- [ ] [архитектура] этап 1: сообщение `status.show` удалено из протокола (`FromWebview`, whitelist `FROM_WEBVIEW_TYPES`,
+- [x] [архитектура] (подтверждено владельцем 2026-10-01) этап 1: сообщение `status.show` удалено из протокола (`FromWebview`, whitelist `FROM_WEBVIEW_TYPES`,
       обработчик в `sidebarView.ts`) — после снятия кнопки его никто не шлёт; команда VS Code `agentura.showStatus`
       осталась — откат: вернуть три строки из `4f5647e` в `protocol.ts` и `sidebarView.ts`.
 - [x] [скоуп] (подтверждено владельцем 2026-10-01: оставить) этап 2: в истории/resume реплики `<task-notification>…` (итог фоновой задачи) больше не показываются как
@@ -23,12 +23,12 @@
 - [x] [скоуп] (подтверждено владельцем 2026-10-01: оставить) этап 2: «stop all» останавливает только живых субагентов (`stopTask` каждому), фоновые shell-задачи не трогает
       (их ■ — в карте); Esc — `interrupt` хода, как раньше — shell-задача может быть dev-сервером, который пользователь
       оставил намеренно — откат: `liveSubagents` → все живые задачи в `Chat.tsx`.
-- [ ] [архитектура] этап 2: протокол — новое webview→хост `agent.transcript {sessionId, agentId, taskId}`, необязательный
+- [x] [архитектура] (подтверждено владельцем 2026-10-01) этап 2: протокол — новое webview→хост `agent.transcript {sessionId, agentId, taskId}`, необязательный
       `AgentAdapter.agentTranscript?()` (Markdown из `subagents/agent-<taskId>.jsonl`), `DiffDocuments.openText`
       (виртуальный документ только для чтения); `agent.start`/`agent.end` получили необязательный `at` — транскрипт
       субагента открывается документом VS Code, а не внутри webview — откат: убрать сообщение из `protocol.ts`
       (`FromWebview`, whitelist), ветку в `chatController.ts`, метод адаптера и кнопку «транскрипт».
-- [ ] [архитектура] этап 2: история читает `<сессия>/subagents/agent-*.jsonl` при `loadHistory` (до 30 последних агентов) —
+- [x] [архитектура] (подтверждено владельцем 2026-10-01) этап 2: история читает `<сессия>/subagents/agent-*.jsonl` при `loadHistory` (до 30 последних агентов) —
       ход агента и итоги после resume; файлы `subagents/` движка стали входом расширения (формат не публичный) —
       откат: убрать вызов `withSubagentTimelines` в `adapter.ts` (останутся список и итоги из основного транскрипта).
 - [x] [скоуп] (подтверждено владельцем 2026-10-01: одна, в панели) этап 3: ⚙ настроек — только кнопка в webview боковой панели (как в прототипе); нативная кнопка
@@ -39,15 +39,15 @@
 - [x] [скоуп] (владелец 2026-10-01: ОТКАЗ — разрешить по проекту; scope machine снят в начале этапа 4) этап 3: `agentura.defaultPermissionMode` — `scope: machine` (только пользовательские настройки, не
       по проекту) — иначе `.vscode/settings.json` чужого репозитория молча включал бы новым сессиям `acceptEdits` —
       откат: убрать `"scope": "machine"` у ключа в `package.json` и `'defaultPermissionMode'` из `MACHINE_KEYS` (`src/settings.ts`).
-- [ ] [архитектура] этап 3: протокол — хост → webview `settings.state/error/engine`, webview → хост
+- [x] [архитектура] (подтверждено владельцем 2026-10-01) этап 3: протокол — хост → webview `settings.state/error/engine`, webview → хост
       `settings.open/set/checkEngine/reveal`; третья точка входа webview `dist/webview/settings.js` + `media/settings.css`
       (не режим бандла чата: тот тянет marked/DOMPurify/diff) — откат: удалить сообщения из `protocol.ts`, запись
       `settings` в `esbuild.mjs`, `settingsPanel.ts`/`settingsController.ts`/`src/webview/settings/`, строки в `vsix-verify.mjs`.
-- [ ] [архитектура] этап 3: хост → webview `session.defaults {mode, effort?}` для новой сессии (повтор на `ready` до
+- [x] [архитектура] (подтверждено владельцем 2026-10-01) этап 3: хост → webview `session.defaults {mode, effort?}` для новой сессии (повтор на `ready` до
       `session.init`) и необязательный `effort` в событии `session.init` (адаптер помнит заданный) — `session.init` приходит
       только после первого хода, меню режима врало бы до него — откат: убрать сообщение из `protocol.ts`, поле
       `defaults` и пост в `chatController.ts`, ветку в `store.ts`, поле `effort` в `types.ts`/`adapter.ts`/`chatState.ts`.
-- [ ] [архитектура] этап 4: протокол и контракт картинок — `AgentSession.send(text, images?: PromptImage[])`, `ImageRef`;
+- [x] [архитектура] (подтверждено владельцем 2026-10-01) этап 4: протокол и контракт картинок — `AgentSession.send(text, images?: PromptImage[])`, `ImageRef`;
       `turn.start`/`turn.input` получили `images?` (base64 едет в webview и в `session.history`); webview → хост `send.images`,
       `image.pick`, `image.open {mediaType, data}`; хост → webview `image.picked`; хост перепроверяет картинки (формат по
       сигнатуре, base64, 5 МБ, ≤ 10); просмотр — временные файлы `globalStorageUri/images/<sha256>.<ext>` (50 последних) —
@@ -69,7 +69,7 @@
   «субагенты в контекст основного», нет токенов в «итог агенту основному», у shell-задачи нет порта, нет «кэш 5 мин» и
   «продолжить диалог» (по плану), нет заметки про `forwardSubagentText` (всегда включён).
 
-- [ ] [архитектура] этап 8: протокол и контракт файлов — `PromptFile`/`FileRef` (`kind: text|pdf`, `path`, `data`),
+- [x] [архитектура] (подтверждено владельцем 2026-10-01) этап 8: протокол и контракт файлов — `PromptFile`/`FileRef` (`kind: text|pdf`, `path`, `data`),
       `AgentSession.send(text, images?, files?)`, `turn.start`/`turn.input` получили `files?` (живой ход — без `data`);
       webview → хост `send.files`, `attach.uris`, `file.open`; хост → webview `file.picked` (имя `attach.picked` занято
       чипами-ссылками этапа 3); файл уходит движку `document`-блоком с `title` = путь и так лежит в транскрипте (история
@@ -103,12 +103,12 @@
   каждое чужое; 5 подряд без эффекта — сдаёмся) — CLI дописывает своё название из памяти процесса не синхронно с
   `turn.result`, отличить его запись от чужого переименования нельзя — откат: в `sessionsService.ts` убрать
   `applyPins` из `refresh` и `pinned` из `rename` (останется одно переименование, CLI его перебьёт).
-- [архитектура] этап 5: итоги списка сессий считает свой хвостовой счётчик `FileTally` (`src/data/transcriptTally.ts`)
+- [x] [архитектура] (подтверждено владельцем 2026-10-01) этап 5: итоги списка сессий считает свой хвостовой счётчик `FileTally` (`src/data/transcriptTally.ts`)
   — копия правил парсера Agentmeter, vendored `parse.ts` не используется для списка (только эталоном в тестах и
   `transcriptTotals`); обновляя Agentmeter, правила нужно переносить руками, расхождение ловят `transcriptTally.test.ts`
   и `sessions-verify.mjs` — полный разбор на каждом тике держал поток 360 мс на 50 МБ, а `parseLines` не экспортирован —
   откат: `TranscriptCache.load` → `transcriptTotals(path)` (синхронно, как до этапа).
-- [архитектура] этап 5: `getSessionMessages` SDK при resume не заменён своим загрузчиком — память ≈ +170 МБ на
+- [x] [архитектура] (подтверждено владельцем 2026-10-01) этап 5: `getSessionMessages` SDK при resume не заменён своим загрузчиком — память ≈ +170 МБ на
   транскрипт 50 МБ (поток хоста не держит, ~6 мс); свой разбор цепочки `parentUuid`/компакции/веток — повтор логики
   SDK с риском разойтись — откат (если память станет проблемой): свой загрузчик цепочки на `streamLines`.
 - [x] [скоуп] (подтверждено владельцем 2026-10-01) этап 6: вложения считаются на сессию с последней компакции — новые плашки «сессия: вложений больше 24 МБ —
@@ -136,7 +136,7 @@
   подсказкой поставить `claude.exe`) — SDK 0.3.285 спавнит путь без оболочки, а Node отклоняет `.cmd` без `shell` (EINVAL); вариант
   с оболочкой — экранирование аргументов SDK под `cmd.exe`, риск инъекции — откат/расширение: `cli.js` из
   `%APPDATA%\npm\node_modules\@anthropic-ai\claude-code` (SDK запускает `.js` через `node`) — только с проверкой на живом Windows.
-- [архитектура] этап 7: CI закрепляет VS Code интеграционного теста на `1.140.0` (`VSCODE_TEST_VERSION`), integration идёт на
+- [x] [архитектура] (подтверждено владельцем 2026-10-01) этап 7: CI закрепляет VS Code интеграционного теста на `1.140.0` (`VSCODE_TEST_VERSION`), integration идёт на
   каждый push в main и PR с одной повторной попыткой — без закрепа `stable` плавает и ломает кэш; при флаках — снять integration
   с `push`/`pull_request` и оставить `workflow_dispatch` — откат: удалить `VSCODE_TEST_VERSION` из `.github/workflows/check.yml`.
 
