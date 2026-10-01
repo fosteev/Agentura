@@ -1560,6 +1560,17 @@ describe('файлы в сообщении (этап 8 roadmap 0.2)', () => {
     expect(t.sessions).toHaveLength(0);
   });
 
+  it('attach.uris: папка из перетаскивания — чип-ссылка attach.picked (внутри — относительный путь, вне — абсолютный)', async () => {
+    const t = setup();
+    const folders = [
+      { path: 'src', name: 'src', dir: '', isDir: true },
+      { path: '/opt/lib', name: 'lib', dir: '/opt', isDir: true },
+    ];
+    t.deps.readUris = vi.fn(async () => ({ images: [], files: [], folders }));
+    await t.controller.handle({ type: 'attach.uris', uris: ['file:///p/src', 'file:///opt/lib'] });
+    expect(t.posted.at(-1)).toEqual({ type: 'attach.picked', items: folders });
+  });
+
   it('file.open: тип и путь проверены; data передаётся, пустая — нет', async () => {
     const t = setup();
     t.deps.openFile = vi.fn(async () => {});

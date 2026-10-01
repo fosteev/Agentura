@@ -1,4 +1,4 @@
-import { readFile, realpath } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { isAbsolute } from 'node:path';
 import * as vscode from 'vscode';
 import { resolveExecutable } from '../agent/claude/executable';
@@ -29,11 +29,13 @@ import { attachMessaging, renderWebview, webviewOptions } from './webviewHost';
 import { WorkspaceFiles } from './workspaceFiles';
 import { writeImageTemp } from './imageFiles';
 import { fileName } from '../shared/files';
+import type { FileHit } from '../shared/prompt';
+import { toHit } from './fileSearch';
 import {
-  dropAllowed,
   MAX_DROPPED,
   MAX_PICK_BYTES,
   mergePicked,
+  modelPath,
   parseUriList,
   readAttachment,
   rejected,
@@ -274,10 +276,14 @@ export class ChatPanel {
         });
         return readAttachments(folder.uri.fsPath, (picked ?? []).slice(0, MAX_DROPPED));
       },
-      // перетаскивание из проводника и вкладок VS Code (этап 8): uri из webview читает хост
+      // перетаскивание из проводника и вкладок VS Code (этап 8): uri из webview читает хост.
+      // Читаем любой путь — решение владельца 2026-10-01; webview может запросить чтение произвольного
+      // файла. Остаются: схема, только обычные файлы, лимиты размера по stat, 128 МБ на действие.
+      // Папка не читается — уходит чипом-ссылкой (этап 8b).
       readUris: async (raw) => {
         const uris: vscode.Uri[] = [];
-        const outside: Picked[] = [];
+        const folders: FileHit[] = [];
+        const rejects: Picked[] = [];
         for (const u of parseUriList(raw)) {
           let uri: vscode.Uri;
           try {
@@ -289,19 +295,25 @@ export class ChatPanel {
           // только файлы диска (в удалённом окне — схема папки)
           if (uri.scheme !== 'file' && uri.scheme !== folder.uri.scheme) {
             log.warn(`перетаскивание: схема ${uri.scheme} не поддержана`);
-            outside.push(rejected(fileName(uri.path) || 'file', 'read'));
+            rejects.push(rejected(fileName(uri.path) || 'file', 'read'));
             continue;
           }
-          // webview недоверенный: строку uri он может прислать и без жеста — читаем только файлы
-          // папок воркспейса и открытых вкладок (симлинк — по тому, куда он ведёт)
-          if (await dropReadable(uri)) uris.push(uri);
-          else {
-            log.warn(`перетаскивание: ${uri.scheme} вне рабочей папки и не во вкладке — не читаю`);
-            outside.push(rejected(fileName(uri.path) || 'file', 'outside'));
-          }
+          const st = await Promise.resolve(vscode.workspace.fs.stat(uri)).then(
+            (x) => x,
+            () => undefined,
+          );
+          if (st && (st.type & vscode.FileType.Directory) !== 0) {
+            const p = uri.scheme === 'file' ? uri.fsPath : uri.path;
+            folders.push(
+              toHit(
+                modelPath(folder.uri.scheme === 'file' ? folder.uri.fsPath : folder.uri.path, p),
+                true,
+              ),
+            );
+          } else uris.push(uri);
         }
         const read = await readAttachments(folder.uri.fsPath, uris);
-        return mergePicked([read, ...outside]);
+        return { ...mergePicked([read, ...rejects]), ...(folders.length ? { folders } : {}) };
       },
       // просмотр миниатюры: временный файл в storage расширения (не в рабочей папке), вкладка редактора
       openImage: async (img) => {
@@ -450,44 +462,6 @@ export class ChatPanel {
     this.disposables.forEach((d) => d.dispose());
     ChatPanel.sessionsChanged(this.services);
   }
-}
-
-/** Ключ uri для сравнения с вкладками: путь диска или `scheme://authority/path`. */
-function uriKey(uri: vscode.Uri): string {
-  return uri.scheme === 'file' ? uri.fsPath : uri.with({ query: '', fragment: '' }).toString();
-}
-
-/** Uri открытых вкладок редактора (текст, diff, custom editor, notebook). */
-function openTabKeys(): Set<string> {
-  const out = new Set<string>();
-  for (const tab of vscode.window.tabGroups.all.flatMap((g) => g.tabs)) {
-    const input = tab.input as { uri?: unknown; original?: unknown; modified?: unknown } | undefined;
-    for (const u of [input?.uri, input?.original, input?.modified]) {
-      if (u instanceof vscode.Uri) out.add(uriKey(u));
-    }
-  }
-  return out;
-}
-
-/**
- * Перетащенный uri можно читать (этап 8, приёмка): внутри папки воркспейса той же схемы или файл
- * открытой вкладки. У файла диска то же проверяется и для цели симлинка — ссылка в проекте на
- * `~/.ssh/id_rsa` не читается.
- */
-async function dropReadable(uri: vscode.Uri): Promise<boolean> {
-  if (openTabKeys().has(uriKey(uri))) return true;
-  const remote = uri.scheme !== 'file';
-  const roots = (vscode.workspace.workspaceFolders ?? [])
-    .filter((f) => f.uri.scheme === uri.scheme && f.uri.authority === uri.authority)
-    .map((f) => (remote ? f.uri.path : f.uri.fsPath));
-  const path = remote ? uri.path : uri.fsPath;
-  if (!dropAllowed(path, roots, remote)) return false;
-  if (remote) return true;
-  const real = await realpath(path).catch(() => undefined);
-  // нет файла — дальше `stat` даст «не прочитать»
-  if (real === undefined || real === path) return true;
-  const realRoots = await Promise.all(roots.map((r) => realpath(r).catch(() => r)));
-  return dropAllowed(real, realRoots);
 }
 
 /** Прочитать выбранные или перетащенные файлы через `workspace.fs` (этап 8 roadmap 0.2). */

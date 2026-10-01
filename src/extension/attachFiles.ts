@@ -5,7 +5,7 @@
  */
 import { createHash } from 'node:crypto';
 import { mkdir, stat, utimes, writeFile } from 'node:fs/promises';
-import { isAbsolute, join, posix, relative, resolve, sep } from 'node:path';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { inflateSync } from 'node:zlib';
 import type { FileKind } from '../agent/types';
 import type { PickedFile, PickedImage } from '../protocol';
@@ -76,7 +76,7 @@ function imageByName(name: string): boolean {
 }
 
 export function rejected(name: string, problem: FileProblem): Picked {
-  if (imageByName(name) && problem !== 'folder' && problem !== 'outside') {
+  if (imageByName(name) && problem !== 'folder') {
     const imageProblem =
       problem === 'size' || problem === 'read' || problem === 'total' || problem === 'count'
         ? problem
@@ -180,20 +180,6 @@ export function pdfPagesDeep(bytes: Uint8Array): number | undefined {
     objects += s.objects;
   }
   return pagesOf({ count, objects });
-}
-
-/**
- * Перетащенный путь внутри одной из папок воркспейса (webview недоверенный — он присылает строку,
- * а не жест, поэтому хост читает только рабочие папки и открытые вкладки). `remote` — путь uri
- * (`/`-пути удалённого окна), иначе — путь диска.
- */
-export function dropAllowed(path: string, roots: readonly string[], remote = false): boolean {
-  const rel = remote ? posix.relative : relative;
-  const abs = remote ? posix.isAbsolute : isAbsolute;
-  return roots.some((root) => {
-    const r = rel(root, path);
-    return r !== '' && !r.startsWith('..') && !abs(r);
-  });
 }
 
 /** Слить результаты по файлам. */
