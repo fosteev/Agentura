@@ -323,6 +323,14 @@ describe('системные строки этапа 4', () => {
     expect(s.rows).toHaveLength(1);
   });
 
+  it('session.init с effort (agentura.defaultEffort) — меню effort показывает его; без effort — прежний', () => {
+    const init = { type: 'session.init', sessionId: 's', model: 'm', permissionMode: 'default' };
+    let s = applyEvent(initialState(), e({ ...init, effort: 'high' }), 0);
+    expect(s.effort).toBe('high');
+    s = applyEvent(s, e(init), 0);
+    expect(s.effort).toBe('high');
+  });
+
   it('«ход не начат»: ошибка лимита со временем сброса из limit.update', () => {
     let s = initialState();
     const reset = new Date(2026, 9, 1, 17, 0).getTime();

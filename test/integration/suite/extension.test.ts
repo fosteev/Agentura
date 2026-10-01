@@ -19,6 +19,14 @@ const chatTabs = (): vscode.Tab[] =>
         t.input instanceof vscode.TabInputWebview && t.input.viewType.endsWith('agentura.chat'),
     );
 
+const settingsTabs = (): vscode.Tab[] =>
+  vscode.window.tabGroups.all
+    .flatMap((g) => g.tabs)
+    .filter(
+      (t) =>
+        t.input instanceof vscode.TabInputWebview && t.input.viewType.endsWith('agentura.settings'),
+    );
+
 export const tests: Record<string, () => Promise<void>> = {
   async 'расширение найдено и активируется'() {
     const ext = vscode.extensions.getExtension(EXT_ID);
@@ -58,5 +66,26 @@ export const tests: Record<string, () => Promise<void>> = {
     await vscode.commands.executeCommand('agentura.open');
     await new Promise((r) => setTimeout(r, 500));
     assert.equal(chatTabs().length, n);
+  },
+
+  async 'agentura.openSettings открывает вкладку настроек, повторный вызов не плодит вкладки'() {
+    const before = settingsTabs().length;
+    await vscode.commands.executeCommand('agentura.openSettings');
+    await waitFor(() => settingsTabs().length > before, 'вкладка agentura.settings');
+    assert.equal(settingsTabs().length, before + 1);
+    await vscode.commands.executeCommand('agentura.openSettings');
+    await new Promise((r) => setTimeout(r, 500));
+    assert.equal(settingsTabs().length, before + 1);
+  },
+
+  async 'новые настройки объявлены, команда настроек есть в палитре'() {
+    const cfg = vscode.workspace.getConfiguration('agentura');
+    assert.equal(cfg.inspect('defaultPermissionMode')?.defaultValue, 'manual');
+    assert.equal(cfg.inspect('defaultEffort')?.defaultValue, '');
+    const pkg = vscode.extensions.getExtension(EXT_ID)!.packageJSON as {
+      contributes: { commands: { command: string }[] };
+    };
+    // ⚙ — кнопка внутри webview боковой панели (как в прототипе); нативной кнопки в заголовке вида нет
+    assert.ok(pkg.contributes.commands.some((c) => c.command === 'agentura.openSettings'));
   },
 };

@@ -261,6 +261,7 @@ function timeOf(ms: number): string {
 }
 
 export const MIN_POLL_MINUTES = 5;
+export const MAX_POLL_MINUTES = 1440;
 
 /**
  * Автоматический опрос лимитов: сразу и потом раз в `minutes()` минут (не чаще 5).
@@ -281,7 +282,11 @@ export function startLimitsPolling(
       await refresh();
     } finally {
       if (!disposed) {
-        const m = Math.max(MIN_POLL_MINUTES, Number.isFinite(minutes()) ? minutes() : 15);
+        // сверху — сутки: больше 2^31 мс Node превращает таймаут в 1 мс (опрос без паузы)
+        const m = Math.min(
+          MAX_POLL_MINUTES,
+          Math.max(MIN_POLL_MINUTES, Number.isFinite(minutes()) ? minutes() : 15),
+        );
         timer = timers.setTimeout(() => void tick(), m * 60_000);
       }
     }

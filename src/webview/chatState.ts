@@ -323,6 +323,7 @@ function reduce(s: ChatState, e: AgentEvent, now: number): ChatState {
         model: e.model,
         engineVersion: e.engineVersion,
         mode: e.permissionMode,
+        ...(e.effort ? { effort: e.effort } : {}),
         skills: e.skills,
         slashCommands: e.slashCommands,
       };

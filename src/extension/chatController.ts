@@ -16,6 +16,7 @@ import {
 } from '../agent/status';
 import type { FromWebview, PlanChoice, SessionSummary, ToWebview } from '../protocol';
 import type { SessionHistory } from '../agent/types';
+import { resolveDefaultEffort, resolveDefaultMode } from '../settings';
 import { appliedSides, previewOf, proposedSides, type EditSides } from './editDiff';
 import { buildPrompt, attachmentKey, type Attachment, type FileHit } from '../shared/prompt';
 import type { LiveSessions } from '../data/sessions';
@@ -33,7 +34,15 @@ export interface ChatDeps {
     warn(m: string): void;
     error(m: string): void;
   };
-  settings(): { defaultModel?: string; allowBypass: boolean; contextThresholds?: number[] };
+  settings(): {
+    defaultModel?: string;
+    allowBypass: boolean;
+    contextThresholds?: number[];
+    /** `agentura.defaultPermissionMode` как в настройке (`manual` | …): применяется к новым сессиям. */
+    defaultPermissionMode?: string | undefined;
+    /** `agentura.defaultEffort` (пусто — выбор движка): применяется к новым сессиям. */
+    defaultEffort?: string | undefined;
+  };
   /** Лимиты подписки (этап 4): `refresh` ограничен кулдауном сервиса, ответ уходит в webview. */
   usage?: { refresh(): Promise<{ windows: LimitWindow[]; updatedAt: number; error?: string }> };
   /** Окна из `rate_limit_event` движка — запас для `LimitsSource`. */
@@ -126,6 +135,19 @@ export class ChatController {
   private resumed: { history: SessionHistory; title?: string } | undefined;
   /** Кто-то уже писал в сессию или сессия возобновлена: вкладка не «пустая» (`pristine`). */
   private touched = false;
+  /** Сведения о воркспейсе и настройках для webview: на `ready` и при смене `agentura.*` (без переоткрытия). */
+  pushInfo(): void {
+    const { deps } = this;
+    const s = deps.settings();
+    deps.post({
+      type: 'chat.info',
+      project: deps.project,
+      cwd: deps.cwd,
+      allowBypass: s.allowBypass,
+      ...(s.contextThresholds?.length ? { contextThresholds: s.contextThresholds } : {}),
+    });
+  }
+
   /** Webview прислал `ready` столько раз: второй и дальше — webview пересоздан, ленту надо пересеять. */
   private readyCount = 0;
   /** История ждёт `ready` (вкладка восстановлена до готовности webview). */
@@ -134,6 +156,8 @@ export class ChatController {
   private queuedCommand: 'status' | undefined;
   // Снимок для пересева: то, что webview пропустил бы, окажись он пересоздан при живом хосте.
   private lastInit: Extract<AgentEvent, { type: 'session.init' }> | undefined;
+  /** Режим и effort новой сессии из настроек: webview получает их снова, если готов позже создания сессии. */
+  private defaults: Extract<ToWebview, { type: 'session.defaults' }> | undefined;
   private lastContext: Extract<AgentEvent, { type: 'context.usage' }> | undefined;
   private turnStartedAt: number | undefined;
   private readonly pendingRequests = new Map<string, AgentEvent>();
@@ -327,15 +351,9 @@ export class ChatController {
     const { deps } = this;
     this.readyCount++;
     const reseed = this.seedPending || this.readyCount > 1;
-    deps.post({
-      type: 'chat.info',
-      project: deps.project,
-      cwd: deps.cwd,
-      allowBypass: deps.settings().allowBypass,
-      ...(deps.settings().contextThresholds?.length
-        ? { contextThresholds: deps.settings().contextThresholds! }
-        : {}),
-    });
+    this.pushInfo();
+    // сессия создана до готовности webview (`start()`), `session.init` ещё не было — меню режима из настроек
+    if (this.defaults && !this.lastInit) deps.post(this.defaults);
     void this.refreshLimits();
     if (this.editorContext) deps.post(this.editorContext);
     void deps
@@ -490,12 +508,16 @@ export class ChatController {
             return;
           }
           await session.setMode(m.mode as PermissionMode);
+          if (this.defaults) this.defaults = { ...this.defaults, mode: m.mode as PermissionMode };
           return;
         case 'model.set':
           await session.setModel(m.model);
           return;
         case 'effort.set':
-          if (EFFORTS.includes(m.effort)) await session.setEffort(m.effort as EffortLevel);
+          if (EFFORTS.includes(m.effort)) {
+            await session.setEffort(m.effort as EffortLevel);
+            if (this.defaults) this.defaults = { ...this.defaults, effort: m.effort as EffortLevel };
+          }
           return;
         case 'compact':
           session.compact();
@@ -710,11 +732,20 @@ export class ChatController {
               baselineCostUsd: baseline,
             });
           })()
-        : deps.adapter.createSession({
-            ...base,
-            permissionMode: 'default',
-            ...(s.defaultModel ? { model: s.defaultModel } : {}),
-          });
+        : (() => {
+            // настройки «режим» и «effort по умолчанию» — только новым сессиям (resume берёт своё)
+            const mode = resolveDefaultMode(s.defaultPermissionMode, s.allowBypass);
+            const effort = resolveDefaultEffort(s.defaultEffort);
+            // меню под полем ввода — сразу, не дожидаясь `session.init` после первого хода
+            this.defaults = { type: 'session.defaults', mode, ...(effort ? { effort } : {}) };
+            deps.post(this.defaults);
+            return deps.adapter.createSession({
+              ...base,
+              permissionMode: mode,
+              ...(s.defaultModel ? { model: s.defaultModel } : {}),
+              ...(effort ? { effort } : {}),
+            });
+          })();
       this.session = opened.then((session) => {
         if (gen !== this.generation) {
           session.dispose();
@@ -873,6 +904,7 @@ export class ChatController {
     this.edits.clear();
     this.editInputs.clear();
     this.lastInit = undefined;
+    this.defaults = undefined;
     this.lastContext = undefined;
     this.turnStartedAt = undefined;
     this.pendingRequests.clear();

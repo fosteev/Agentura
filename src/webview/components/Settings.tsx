@@ -1,0 +1,452 @@
+import type { ComponentChildren } from 'preact';
+import { useEffect, useRef, useState } from 'preact/hooks';
+import {
+  EFFORT_LEVELS,
+  MAX_POLL_MINUTES,
+  MIN_POLL_MINUTES,
+  thresholdsError,
+  validateSetting,
+  type SettingKey,
+} from '../../settings';
+import {
+  checkEngine,
+  commit,
+  engineCheck,
+  errors,
+  overridden,
+  reveal,
+  setError,
+  settingsValues,
+} from '../settingsStore';
+import { ui } from '../strings';
+
+const T = ui.settings;
+/** Ширина вкладки, с которой слева появляется навигация по разделам (в узком сплите она скрыта). */
+const NAV_PX = 600;
+const SECTIONS = ['perm', 'model', 'ctx', 'lim', 'engine'] as const;
+type Section = (typeof SECTIONS)[number];
+
+/** Черновик поля: пока человек печатает, показываем его; пришло новое значение из хоста — берём его. */
+function useDraft<V>(value: V): [V, (v: V) => void] {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [JSON.stringify(value)]);
+  return [draft, setDraft];
+}
+
+function Row({
+  name,
+  isNew,
+  desc,
+  k,
+  machine,
+  keyNote,
+  on,
+  children,
+  below,
+}: {
+  name: string;
+  isNew?: boolean;
+  desc: string;
+  k: SettingKey;
+  machine?: boolean;
+  keyNote?: string;
+  on?: boolean;
+  children: ComponentChildren;
+  below?: ComponentChildren;
+}) {
+  const err = errors.value[k];
+  return (
+    <div class={on ? 'set on' : 'set'} data-key={`agentura.${k}`}>
+      <span class="nm">
+        {name}
+        {isNew ? <span class="new">{T.isNew}</span> : null}
+      </span>
+      <span class="ds">{desc}</span>
+      <span class="key">
+        agentura.{k}
+        {keyNote ? ` · ${keyNote}` : ''}
+        {machine ? ` · ${T.machineOnly}` : ''}
+      </span>
+      <span class="ctl">{children}</span>
+      {overridden.value.includes(k) ? <div class="note">{T.overridden}</div> : null}
+      {err ? (
+        <div class="err" role="alert">
+          {err}
+        </div>
+      ) : null}
+      {below}
+    </div>
+  );
+}
+
+function Toggle({ k, value, danger }: { k: SettingKey; value: boolean; danger?: boolean }) {
+  // ожидаемое значение до ответа хоста: двойной клик даёт «вкл → выкл», а не две записи «вкл»
+  const [want, setWant] = useState<boolean | undefined>(undefined);
+  const err = errors.value[k];
+  useEffect(() => setWant(undefined), [value, err]);
+  const shown = want ?? value;
+  return (
+    <button
+      type="button"
+      class={`tg${shown ? ' on' : ''}${danger ? ' danger' : ''}`}
+      role="switch"
+      aria-checked={shown}
+      aria-label={k}
+      onClick={() => {
+        setWant(!shown);
+        commit(k, !shown);
+      }}
+    />
+  );
+}
+
+function Select({
+  k,
+  value,
+  options,
+}: {
+  k: SettingKey;
+  value: string;
+  options: readonly (readonly [string, string])[];
+}) {
+  // отказ записи: перерисовать, чтобы <select> вернулся к значению из настроек
+  void errors.value[k];
+  return (
+    <span class="dd">
+      <select
+        aria-label={k}
+        value={value}
+        onChange={(e) => commit(k, (e.currentTarget as HTMLSelectElement).value)}
+      >
+        {options.map(([v, label]) => (
+          <option key={v} value={v}>
+            {label}
+          </option>
+        ))}
+      </select>
+    </span>
+  );
+}
+
+function TextField({
+  k,
+  value,
+  placeholder,
+  wide,
+}: {
+  k: SettingKey;
+  value: string;
+  placeholder?: string;
+  wide?: boolean;
+}) {
+  const [draft, setDraft] = useDraft(value);
+  const send = (text: string) => {
+    if (text.trim() !== value) commit(k, text);
+    else setError(k, undefined);
+  };
+  return (
+    <input
+      class={wide ? 'num wide' : 'num'}
+      type="text"
+      aria-label={k}
+      value={draft}
+      placeholder={placeholder}
+      spellcheck={false}
+      onInput={(e) => setDraft((e.currentTarget as HTMLInputElement).value)}
+      onChange={(e) => send((e.currentTarget as HTMLInputElement).value)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') send((e.currentTarget as HTMLInputElement).value);
+      }}
+    />
+  );
+}
+
+function PollField({ value }: { value: number }) {
+  const [draft, setDraft] = useDraft(String(value));
+  const send = (text: string) => {
+    const n = text.trim() === '' ? NaN : Number(text);
+    if (n === value) {
+      setError('usagePollMinutes', undefined); // вернули прежнее значение — ошибка неактуальна
+      return;
+    }
+    // проверка до отправки (та же, что на хосте; хост проверит ещё раз)
+    const checked = validateSetting('usagePollMinutes', n);
+    if (!checked.ok) {
+      setError('usagePollMinutes', checked.error);
+      return;
+    }
+    commit('usagePollMinutes', n);
+  };
+  return (
+    <input
+      class="num"
+      type="number"
+      min={MIN_POLL_MINUTES}
+      max={MAX_POLL_MINUTES}
+      step={1}
+      aria-label="usagePollMinutes"
+      value={draft}
+      onInput={(e) => setDraft((e.currentTarget as HTMLInputElement).value)}
+      onChange={(e) => send((e.currentTarget as HTMLInputElement).value)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') send((e.currentTarget as HTMLInputElement).value);
+      }}
+    />
+  );
+}
+
+function Thresholds({ value }: { value: [number, number] }) {
+  // черновик на поле: state после записи жёлтого не стирает недонабранный оранжевый
+  const [y, setY] = useDraft(String(value[0]));
+  const [o, setO] = useDraft(String(value[1]));
+  const send = (i: 0 | 1, text: string) => {
+    const d = i === 0 ? [text, o] : [y, text];
+    const nums = d.map((t) => (t.trim() === '' ? NaN : Number(t)));
+    const err = thresholdsError(nums);
+    if (err) {
+      setError('contextThresholds', err);
+      return;
+    }
+    if (nums[0] !== value[0] || nums[1] !== value[1]) commit('contextThresholds', nums);
+    else setError('contextThresholds', undefined);
+  };
+  const field = (i: 0 | 1, label: string) => (
+    <>
+      <span class="u">{label}</span>
+      <input
+        class="num"
+        type="number"
+        min={1}
+        step={1000}
+        aria-label={`${label}`}
+        value={i === 0 ? y : o}
+        onInput={(e) => (i === 0 ? setY : setO)((e.currentTarget as HTMLInputElement).value)}
+        onChange={(e) => send(i, (e.currentTarget as HTMLInputElement).value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') send(i, (e.currentTarget as HTMLInputElement).value);
+        }}
+      />
+    </>
+  );
+  return (
+    <>
+      {field(0, T.thresholds.yellow)}
+      {field(1, T.thresholds.orange)}
+    </>
+  );
+}
+
+function ThresholdScale({ value }: { value: [number, number] }) {
+  const [y, o] = value;
+  const ok = thresholdsError(value) === undefined;
+  const cells = Array.from({ length: 20 }, (_, i) => {
+    const from = i * 10_000;
+    const cls = i === 19 ? 'f' : ok && from >= o ? 'h' : ok && from >= y ? 'w' : '';
+    return <i key={i} class={cls} />;
+  });
+  return (
+    <>
+      <div class="th" aria-hidden="true">
+        {cells}
+      </div>
+      <div class="thl">
+        <span>0</span>
+        <span>{Math.round(y / 1000)}k</span>
+        <span style="display:flex;justify-content:space-between">
+          <span>{Math.round(o / 1000)}k</span>
+          <span>{T.thresholds.compress}</span>
+        </span>
+      </div>
+    </>
+  );
+}
+
+function EngineRow({ value }: { value: string }) {
+  const [draft, setDraft] = useDraft(value);
+  const c = engineCheck.value;
+  const r = c.result;
+  const save = (text: string) => {
+    if (text.trim() !== value) commit('claudeExecutable', text);
+    else setError('claudeExecutable', undefined);
+  };
+  return (
+    <Row name={T.exe.name} desc={T.exe.desc} k="claudeExecutable" machine below={checkLine()}>
+      <input
+        class="num wide"
+        type="text"
+        aria-label="claudeExecutable"
+        value={draft}
+        placeholder={T.exe.placeholder}
+        spellcheck={false}
+        onInput={(e) => setDraft((e.currentTarget as HTMLInputElement).value)}
+        onChange={(e) => save((e.currentTarget as HTMLInputElement).value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') save((e.currentTarget as HTMLInputElement).value);
+        }}
+      />
+      <button type="button" class="btn" disabled={c.pending} onClick={() => checkEngine(draft)}>
+        {c.pending ? T.exe.checking : T.exe.check}
+      </button>
+    </Row>
+  );
+
+  function checkLine() {
+    if (!r) return null;
+    const src = T.exe.source[r.source];
+    return (
+      <div class={r.ok ? 'ok' : 'ok bad'} role="status">
+        {r.ok ? '✓ ' : '✗ '}
+        {r.ok ? T.exe.found : T.exe.notFound}
+        {r.path ? <span class="dim"> {r.path}</span> : null}
+        {r.version ? ` · ${r.version}` : ''}
+        {src ? ` · ${src}` : ''}
+        {r.problem ? <div class="dim">{r.problem}</div> : null}
+      </div>
+    );
+  }
+}
+
+export function Settings() {
+  const v = settingsValues.value;
+  const [active, setActive] = useState<Section>('perm');
+  const body = useRef<HTMLDivElement>(null);
+
+  // hud.css переключает вёрстку по html[data-width]; в узком сплите навигация скрыта (как в прототипе)
+  useEffect(() => {
+    const apply = () =>
+      document.documentElement.setAttribute(
+        'data-width',
+        window.innerWidth < NAV_PX ? '380' : '900',
+      );
+    apply();
+    window.addEventListener('resize', apply);
+    return () => window.removeEventListener('resize', apply);
+  }, []);
+
+  const go = (id: Section) => {
+    setActive(id);
+    document.getElementById(id)?.scrollIntoView({ block: 'start' });
+  };
+  const onScroll = () => {
+    const top = (body.current?.getBoundingClientRect().top ?? 0) + 40;
+    let cur: Section = SECTIONS[0];
+    for (const id of SECTIONS) {
+      if ((document.getElementById(id)?.getBoundingClientRect().top ?? Infinity) <= top) cur = id;
+    }
+    setActive(cur);
+  };
+
+  if (!v) return <div class="webview settings" aria-busy="true" />;
+
+  const modes: [string, string][] = ['manual', 'acceptEdits', 'plan']
+    .concat(
+      v.allowBypassPermissions || v.defaultPermissionMode === 'bypassPermissions'
+        ? ['bypassPermissions']
+        : [],
+    )
+    .map((m) => [m, T.mode.options[m] ?? m]);
+  const efforts: [string, string][] = [
+    ['', T.effort.engine],
+    ...EFFORT_LEVELS.map((e): [string, string] => [e, e]),
+  ];
+
+  return (
+    <div class="webview settings">
+      <header class="hud" aria-label={T.aria}>
+        <span class="sess" style="display:block;padding-left:8px">
+          Agentura · <b>{T.title.toLowerCase()}</b>
+        </span>
+        <span class="acts">
+          <button type="button" title={T.openUiTitle} onClick={() => reveal('ui')}>
+            {T.openUi}
+          </button>
+          <button type="button" title={T.openJsonTitle} onClick={() => reveal('json')}>
+            {T.openJson}
+          </button>
+        </span>
+      </header>
+
+      <div class="st-wrap">
+        <nav class="st-nav" aria-label={T.navAria}>
+          {SECTIONS.map((id) => (
+            <a
+              key={id}
+              href={`#${id}`}
+              class={active === id ? 'on' : ''}
+              onClick={(e) => {
+                e.preventDefault();
+                go(id);
+              }}
+            >
+              {T.navShort[id]}
+            </a>
+          ))}
+          <div class="src">
+            {T.source}
+            <a
+              href="#"
+              onClick={(e) => {
+                e.preventDefault();
+                reveal('json');
+              }}
+            >
+              {T.openJsonLink}
+            </a>
+          </div>
+        </nav>
+
+        <div class="st-body" ref={body} onScroll={onScroll}>
+          <h2 id="perm">{T.sections.perm}</h2>
+          <Row name={T.mode.name} isNew desc={T.mode.desc} k="defaultPermissionMode" machine>
+            <Select k="defaultPermissionMode" value={v.defaultPermissionMode} options={modes} />
+          </Row>
+          <Row
+            name={T.bypass.name}
+            desc={T.bypass.desc}
+            k="allowBypassPermissions"
+            machine
+            on={v.allowBypassPermissions}
+            below={
+              <div class="warn">
+                <b>{T.bypass.warnTitle}</b>
+                {T.bypass.warn}
+              </div>
+            }
+          >
+            <Toggle k="allowBypassPermissions" value={v.allowBypassPermissions} danger />
+          </Row>
+
+          <h2 id="model">{T.sections.model}</h2>
+          <Row name={T.model.name} desc={T.model.desc} k="defaultModel">
+            <TextField k="defaultModel" value={v.defaultModel} placeholder={T.model.placeholder} />
+          </Row>
+          <Row name={T.effort.name} isNew desc={T.effort.desc} k="defaultEffort">
+            <Select k="defaultEffort" value={v.defaultEffort} options={efforts} />
+          </Row>
+
+          <h2 id="ctx">{T.sections.ctx}</h2>
+          <Row
+            name={T.thresholds.name}
+            desc={T.thresholds.desc}
+            k="contextThresholds"
+            below={<ThresholdScale value={v.contextThresholds} />}
+          >
+            <Thresholds value={v.contextThresholds} />
+          </Row>
+
+          <h2 id="lim">{T.sections.lim}</h2>
+          <Row name={T.poll.name} desc={T.poll.desc} k="usagePollMinutes" keyNote={T.poll.noLess}>
+            <PollField value={v.usagePollMinutes} />
+            <span class="u">{T.poll.unit}</span>
+          </Row>
+          <Row name={T.keychain.name} desc={T.keychain.desc} k="limits.readKeychain">
+            <Toggle k="limits.readKeychain" value={v['limits.readKeychain']} />
+          </Row>
+
+          <h2 id="engine">{T.sections.engine}</h2>
+          <EngineRow value={v.claudeExecutable} />
+        </div>
+      </div>
+    </div>
+  );
+}

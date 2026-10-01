@@ -119,6 +119,77 @@ describe('ChatController', () => {
     expect(created[0]).toMatchObject({ cwd: '/p', permissionMode: 'default', model: 'sonnet' });
   });
 
+  it('defaultPermissionMode и defaultEffort применяются к новой сессии', async () => {
+    const { controller, created, deps } = setup();
+    deps.settings = () => ({
+      allowBypass: false,
+      defaultPermissionMode: 'acceptEdits',
+      defaultEffort: 'high',
+    });
+    controller.start();
+    await tick();
+    expect(created[0]).toMatchObject({ permissionMode: 'acceptEdits', effort: 'high' });
+  });
+
+  it('session.defaults: webview, готовый позже создания сессии, получает режим и effort из настроек', async () => {
+    const { controller, posted, deps } = setup();
+    deps.settings = () => ({
+      allowBypass: false,
+      defaultPermissionMode: 'plan',
+      defaultEffort: 'low',
+    });
+    controller.start();
+    await tick();
+    posted.length = 0;
+    await controller.handle({ type: 'ready' });
+    expect(posted).toContainEqual({ type: 'session.defaults', mode: 'plan', effort: 'low' });
+  });
+
+  it('defaultPermissionMode: manual — обычный режим; bypass без разрешения — тоже; мусорный effort не передаётся', async () => {
+    const m = setup();
+    m.deps.settings = () => ({
+      allowBypass: false,
+      defaultPermissionMode: 'manual',
+      defaultEffort: '',
+    });
+    m.controller.start();
+    await tick();
+    expect(m.created[0]).toMatchObject({ permissionMode: 'default' });
+    expect(m.created[0]).not.toHaveProperty('effort');
+
+    const b = setup();
+    b.deps.settings = () => ({
+      allowBypass: false,
+      defaultPermissionMode: 'bypassPermissions',
+      defaultEffort: 'ultra',
+    });
+    b.controller.start();
+    await tick();
+    expect(b.created[0]).toMatchObject({ permissionMode: 'default' });
+    expect(b.created[0]).not.toHaveProperty('effort');
+
+    const c = setup();
+    c.deps.settings = () => ({ allowBypass: true, defaultPermissionMode: 'bypassPermissions' });
+    c.controller.start();
+    await tick();
+    expect(c.created[0]).toMatchObject({ permissionMode: 'bypassPermissions' });
+  });
+
+  it('pushInfo: после смены настроек вкладка получает свежие allowBypass и пороги', async () => {
+    const { controller, posted, deps } = setup();
+    await controller.handle({ type: 'ready' });
+    posted.length = 0;
+    deps.settings = () => ({ allowBypass: true, contextThresholds: [10, 20] });
+    controller.pushInfo();
+    expect(posted).toEqual([
+      expect.objectContaining({
+        type: 'chat.info',
+        allowBypass: true,
+        contextThresholds: [10, 20],
+      }),
+    ]);
+  });
+
   it('ready: отдаёт chat.info, список недавних и возможности движка', async () => {
     const { controller, posted } = setup();
     controller.start();
@@ -781,6 +852,23 @@ describe('ChatController: сессии (этап 6)', () => {
     ]);
     expect(controller.sessionId).toBe('s-old');
     expect(controller.pristine).toBe(false);
+  });
+
+  it('resume: defaultPermissionMode и defaultEffort не применяются (режим — из истории, effort — движка)', async () => {
+    const { controller, resumed, posted } = setupResume({
+      resumeId: 's-old',
+      settings: () => ({
+        allowBypass: false,
+        defaultPermissionMode: 'acceptEdits',
+        defaultEffort: 'high',
+      }),
+    });
+    controller.start();
+    await tick();
+    await tick();
+    expect(resumed[0]![1]).toMatchObject({ permissionMode: 'plan' });
+    expect(resumed[0]![1]).not.toHaveProperty('effort');
+    expect(posted.some((m) => m.type === 'session.defaults')).toBe(false);
   });
 
   it('база стоимости: нет cost-state в транскрипте — 0 (движок продолжит итог с нуля); bypass без настройки → default', async () => {

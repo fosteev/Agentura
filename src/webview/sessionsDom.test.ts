@@ -126,8 +126,6 @@ describe('боковая панель (sessions.html)', () => {
     });
     await flush();
     const proto = screen('sessions').querySelector('.sidebar')!;
-    // ⚙ настроек в прототипе уже есть (d5e6c13), в расширении появится на этапе 3 roadmap 04 — тогда убрать строку
-    if (proto.querySelector('.head .gear')) proto.querySelector('.head')!.textContent = 'Agentura';
     const part = (root: Element, sel: string) => skeleton(root.querySelector(sel)!);
     for (const sel of [
       '.head',

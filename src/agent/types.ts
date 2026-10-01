@@ -87,6 +87,8 @@ export type AgentEvent =
       /** `none` — вход CLI (подписка), иначе источник ключа API. */
       apiKeySource: string;
       engineVersion: string;
+      /** Effort, с которым расширение открыло сессию или выбрало в меню (движок его не сообщает). */
+      effort?: EffortLevel;
     })
   | (Base & { type: 'session.title'; title: string })
   | (Base & {

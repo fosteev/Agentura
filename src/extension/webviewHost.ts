@@ -17,7 +17,7 @@ export function webviewOptions(extensionUri: vscode.Uri): vscode.WebviewOptions 
 export function renderWebview(
   webview: vscode.Webview,
   extensionUri: vscode.Uri,
-  surface: 'chat' | 'sidebar',
+  surface: 'chat' | 'sidebar' | 'settings',
   title: string,
 ): string {
   const uri = (...p: string[]) =>
@@ -32,13 +32,14 @@ export function renderWebview(
       uri('media', 'hud.css'),
       uri('media', 'agents.css'),
       uri('media', 'webview.css'),
+      ...(surface === 'settings' ? [uri('media', 'settings.css')] : []),
     ],
   });
 }
 
 export function attachMessaging(
   webview: vscode.Webview,
-  surface: 'chat' | 'sidebar',
+  surface: 'chat' | 'sidebar' | 'settings',
   version: string,
   log: Logger,
   onMessage?: (m: FromWebview) => void,

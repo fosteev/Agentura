@@ -1,0 +1,151 @@
+import { describe, expect, it } from 'vitest';
+import {
+  overriddenKeys,
+  readSettings,
+  resolveDefaultEffort,
+  resolveDefaultMode,
+  thresholdsError,
+  validateSetting,
+  writeSetting,
+  type ConfigLike,
+} from './settings';
+
+const cfgOf = (values: Record<string, unknown>) => ({ get: <T>(k: string) => values[k] as T });
+
+describe('thresholdsError', () => {
+  it('жёлтый < оранжевый < 200 000', () => {
+    expect(thresholdsError([120_000, 150_000])).toBeUndefined();
+    expect(thresholdsError([1, 199_999])).toBeUndefined();
+  });
+  it('жёлтый не ниже оранжевого — ошибка', () => {
+    expect(thresholdsError([150_000, 150_000])).toMatch(/ниже оранжевого/);
+    expect(thresholdsError([160_000, 150_000])).toMatch(/ниже оранжевого/);
+  });
+  it('оранжевый на 200 000 и выше — ошибка', () => {
+    expect(thresholdsError([120_000, 200_000])).toMatch(/200/);
+    expect(thresholdsError([120_000, 250_000])).toMatch(/200/);
+  });
+  it('нечисла, дроби, нули и не пара', () => {
+    expect(thresholdsError([NaN, 10])).toBeDefined();
+    expect(thresholdsError(['1', 2])).toBeDefined();
+    expect(thresholdsError([1.5, 3])).toBeDefined();
+    expect(thresholdsError([0, 3])).toBeDefined();
+    expect(thresholdsError([1, 2, 3])).toBeDefined();
+    expect(thresholdsError(undefined)).toBeDefined();
+  });
+});
+
+describe('validateSetting', () => {
+  it('режим и effort — только из списка', () => {
+    expect(validateSetting('defaultPermissionMode', 'plan')).toEqual({ ok: true, value: 'plan' });
+    expect(validateSetting('defaultPermissionMode', 'default').ok).toBe(false);
+    expect(validateSetting('defaultEffort', '')).toEqual({ ok: true, value: '' });
+    expect(validateSetting('defaultEffort', 'xhigh').ok).toBe(true);
+    expect(validateSetting('defaultEffort', 'ultra').ok).toBe(false);
+  });
+  it('строки обрезаются, булевы — только булевы', () => {
+    expect(validateSetting('claudeExecutable', '  /bin/claude ')).toEqual({
+      ok: true,
+      value: '/bin/claude',
+    });
+    expect(validateSetting('allowBypassPermissions', 'true').ok).toBe(false);
+  });
+  it('опрос лимитов — целое не меньше 5', () => {
+    expect(validateSetting('usagePollMinutes', 5).ok).toBe(true);
+    expect(validateSetting('usagePollMinutes', 4).ok).toBe(false);
+    expect(validateSetting('usagePollMinutes', 1440).ok).toBe(true);
+    // больше суток: setTimeout в Node переполняется (2^31 мс) и опрос шёл бы без паузы
+    expect(validateSetting('usagePollMinutes', 40_000).ok).toBe(false);
+    expect(validateSetting('usagePollMinutes', 7.5).ok).toBe(false);
+    expect(validateSetting('usagePollMinutes', '10').ok).toBe(false);
+  });
+  it('пороги проверяются целиком', () => {
+    expect(validateSetting('contextThresholds', [100, 200]).ok).toBe(true);
+    expect(validateSetting('contextThresholds', [200, 100]).ok).toBe(false);
+  });
+});
+
+describe('resolveDefaultMode / resolveDefaultEffort', () => {
+  it('manual → default, acceptEdits и plan как есть', () => {
+    expect(resolveDefaultMode('manual', false)).toBe('default');
+    expect(resolveDefaultMode('acceptEdits', false)).toBe('acceptEdits');
+    expect(resolveDefaultMode('plan', true)).toBe('plan');
+    expect(resolveDefaultMode(undefined, false)).toBe('default');
+  });
+  it('bypass — только при allowBypassPermissions', () => {
+    expect(resolveDefaultMode('bypassPermissions', false)).toBe('default');
+    expect(resolveDefaultMode('bypassPermissions', true)).toBe('bypassPermissions');
+  });
+  it('effort: пусто и мусор — не задавать', () => {
+    expect(resolveDefaultEffort('')).toBeUndefined();
+    expect(resolveDefaultEffort('x')).toBeUndefined();
+    expect(resolveDefaultEffort('max')).toBe('max');
+  });
+});
+
+describe('readSettings', () => {
+  it('мусор из settings.json заменяется значениями по умолчанию', () => {
+    const v = readSettings(
+      cfgOf({
+        defaultPermissionMode: 'x',
+        defaultEffort: 5,
+        contextThresholds: 'a',
+        usagePollMinutes: 'z',
+      }),
+    );
+    expect(v).toMatchObject({
+      defaultPermissionMode: 'manual',
+      defaultEffort: '',
+      contextThresholds: [120_000, 150_000],
+      usagePollMinutes: 15,
+      allowBypassPermissions: false,
+      'limits.readKeychain': true,
+    });
+  });
+  it('кривые, но числовые пороги показываются как есть (ошибку покажет поле)', () => {
+    expect(readSettings(cfgOf({ contextThresholds: [300, 100] })).contextThresholds).toEqual([
+      300, 100,
+    ]);
+  });
+});
+
+describe('overriddenKeys', () => {
+  it('значение рабочей области перекрывает пользовательское; machine-ключи не считаются', () => {
+    const cfg = {
+      inspect: (k: string) =>
+        k === 'defaultModel' || k === 'claudeExecutable' ? { workspaceValue: 'x' } : {},
+    };
+    expect(overriddenKeys(cfg)).toEqual(['defaultModel']);
+  });
+});
+
+describe('writeSetting', () => {
+  const GLOBAL = Symbol('global');
+  const mock = () => {
+    const calls: [string, unknown, unknown][] = [];
+    const cfg: ConfigLike = {
+      get: () => undefined,
+      update: async (k, v, t) => void calls.push([k, v, t]),
+    };
+    return { cfg, calls };
+  };
+
+  it('пишет в Global — и обычные, и machine-настройки', async () => {
+    const { cfg, calls } = mock();
+    await writeSetting(cfg, 'defaultModel', ' opus ', GLOBAL);
+    await writeSetting(cfg, 'allowBypassPermissions', true, GLOBAL);
+    await writeSetting(cfg, 'claudeExecutable', '/x/claude', GLOBAL);
+    expect(calls).toEqual([
+      ['defaultModel', 'opus', GLOBAL],
+      ['allowBypassPermissions', true, GLOBAL],
+      ['claudeExecutable', '/x/claude', GLOBAL],
+    ]);
+  });
+
+  it('невалидное значение не пишется', async () => {
+    const { cfg, calls } = mock();
+    const r = await writeSetting(cfg, 'contextThresholds', [150_000, 120_000], GLOBAL);
+    expect(r.ok).toBe(false);
+    expect(calls).toEqual([]);
+  });
+});

@@ -153,6 +153,14 @@ export function handleHostMessage(m: ToWebview): void {
     case 'chat.command':
       if (m.name === 'status') showStatus();
       break;
+    case 'session.defaults': {
+      // новая сессия: режим и effort из настроек (до `session.init`, который придёт после первого хода)
+      const next = { ...chat.value, mode: m.mode };
+      if (m.effort) next.effort = m.effort;
+      else delete next.effort;
+      chat.value = next;
+      break;
+    }
     case 'chat.info':
       chat.value = { ...chat.value, project: m.project, cwd: m.cwd, allowBypass: m.allowBypass };
       if (m.contextThresholds?.length) {
