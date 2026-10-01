@@ -370,3 +370,47 @@ describe('несколько агентов: живой прогон agents-para
     ]);
   });
 });
+
+describe('картинки в сообщении (этап 4 roadmap 0.2, фикстура image-smoke)', () => {
+  it('живой поток: turn.start несёт картинку отправленного сообщения; ход закончился ответом по ней', async () => {
+    const lines = readFileSync(
+      join(__dirname, '..', '..', '..', 'test', 'fixtures', 'claude', 'image-basic.sdk.ndjson'),
+      'utf8',
+    )
+      .split('\n')
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as Record<string, unknown>);
+    const { events } = await replayProbeLog(lines);
+    const start = events.find((e): e is AgentEventOf<'turn.start'> => e.type === 'turn.start');
+    expect(start?.prompt).toContain('two halves');
+    expect(start?.images).toHaveLength(1);
+    expect(start?.images?.[0]).toMatchObject({ mediaType: 'image/png', width: 48, height: 32 });
+    expect(start?.images?.[0]?.data).toMatch(/^iVBORw0KGgo/);
+    const result = events.find((e): e is AgentEventOf<'turn.result'> => e.type === 'turn.result');
+    expect(result?.ok).toBe(true);
+    expect(result?.text?.toLowerCase()).toContain('red');
+  });
+
+  it('notePrompt с картинками: turn.input (влитое в ход сообщение) тоже несёт картинки', () => {
+    const m = new ClaudeEventMapper({ now: () => 1 });
+    m.notePrompt('первое', 'u1');
+    m.notePrompt('второе', 'u2', [{ mediaType: 'image/png', data: 'AAAA', width: 10, height: 10 }]);
+    const start = m.map({
+      type: 'stream_event',
+      parent_tool_use_id: null,
+      user_message_uuid: 'u1',
+      event: { type: 'message_start', message: { id: 'm1', model: 'x', usage: {} } },
+    });
+    expect(start.find((e) => e.type === 'turn.start')).not.toHaveProperty('images');
+    const input = m.map({
+      type: 'stream_event',
+      parent_tool_use_id: null,
+      user_message_uuid: 'u2',
+      event: { type: 'message_start', message: { id: 'm2', model: 'x', usage: {} } },
+    });
+    expect(input.find((e) => e.type === 'turn.input')).toMatchObject({
+      prompt: 'второе',
+      images: [{ mediaType: 'image/png', data: 'AAAA', width: 10, height: 10 }],
+    });
+  });
+});

@@ -22,8 +22,9 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { homedir, tmpdir } from 'node:os';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fixtureCleaner } from './lib/fixture-clean.mjs';
 import { loadTs, repoRoot } from './lib/load-ts.mjs';
 
 const args = process.argv.slice(2);
@@ -240,45 +241,8 @@ for (const x of subs) {
 const sessionId = session.id;
 const dir = projectDir(cwd);
 if (record && sessionId) {
-  const home = homedir();
   // каталог транскриптов и задач CLI назван по пути папки: `-private-var-folders-…-agentura-agents-XXXX`
-  const encoded = projectDirName(cwd);
-  const clean = (text) =>
-    text
-      .split(cwd)
-      .join('/tmp/agentura-agents')
-      .split(cwd.replace(/^\/private/, ''))
-      .join('/tmp/agentura-agents')
-      .split(encoded)
-      .join('-tmp-agentura-agents')
-      .split(home)
-      .join('/home/user')
-      .replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, 'user@example.com');
-  // транскрипт: вложения движка (окружение, организация, список скиллов, контекст сессии) — не нужны
-  // разбору и личные; остальное как есть
-  const cleanJsonl = (text) =>
-    text
-      .split('\n')
-      .filter(Boolean)
-      .map((l) => {
-        try {
-          const r = JSON.parse(l);
-          return r.type === 'attachment' ? undefined : clean(l);
-        } catch {
-          return undefined;
-        }
-      })
-      .filter(Boolean)
-      .join('\n') + '\n';
-  const scrub = (m) => {
-    if (m.type === 'system' && m.subtype === 'init') {
-      // MCP-инструменты и команды выдают подключённые коннекторы пользователя — в фикстуру не кладём.
-      const tools = (m.tools ?? []).filter((t) => !String(t).startsWith('mcp__'));
-      return { ...m, tools, slash_commands: [], skills: [], plugins: [], mcp_servers: [] };
-    }
-    if (m.type === 'system' && m.subtype === 'commands_changed') return { ...m, commands: [] };
-    return m;
-  };
+  const { clean, cleanJsonl, scrub } = fixtureCleaner(cwd, projectDirName(cwd), '/tmp/agentura-agents');
   const out = join(repoRoot, 'test', 'fixtures', 'claude');
   writeFileSync(
     join(out, `${record}.sdk.ndjson`),

@@ -13,6 +13,32 @@ export type EffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
  */
 export type PermissionDecision = 'allow' | 'allow-always' | 'allow-edits' | 'deny';
 
+/** Форматы картинок, которые принимает API (этап 4 roadmap 0.2). */
+export type ImageMediaType = 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp';
+
+/** Картинка в сообщении пользователя: base64 без `data:`-префикса. */
+export interface PromptImage {
+  mediaType: ImageMediaType;
+  data: string;
+  /** Размер после уменьшения, px — для оценки токенов (ш×в/750) и подписи. */
+  width?: number;
+  height?: number;
+  /** Имя для подписи («скриншот 1», имя файла). */
+  name?: string;
+}
+
+/**
+ * Картинка реплики в ленте (`turn.start`/`turn.input`). `data` нет — транскрипт её не сохранил или
+ * история отдала только плашку «скриншот» (слишком много картинок в истории).
+ */
+export interface ImageRef {
+  mediaType?: string;
+  data?: string;
+  width?: number;
+  height?: number;
+  name?: string;
+}
+
 /** Что сделает «всегда» — сводка подсказок движка для подписи кнопки (этап 5). */
 export interface PermissionAlways {
   /** Правила в форме настроек: `Bash(npm test:*)`, `Edit`. */
@@ -100,13 +126,15 @@ export type AgentEvent =
        * пустую строку). Добавлено на приёмке этапа 3: лента сопоставляет каждое со своей строкой.
        */
       prompts?: string[];
+      /** Картинки сообщения (этап 4 roadmap 0.2), в порядке отправки. */
+      images?: ImageRef[];
       at: number;
     })
   /**
    * Сообщение пользователя, которое движок влил в уже идущий ход (эхо uuid посреди хода).
    * Своего `turn.start` у него не будет. Добавлено на приёмке этапа 3.
    */
-  | (Base & { type: 'turn.input'; prompt: string; at: number })
+  | (Base & { type: 'turn.input'; prompt: string; images?: ImageRef[]; at: number })
   | (Base & { type: 'text.delta'; messageId: string; text: string })
   | (Base & { type: 'thinking.start'; messageId: string; at: number })
   | (Base & { type: 'thinking.delta'; messageId: string; text: string; estimatedTokens?: number })
@@ -336,8 +364,11 @@ export interface AgentSession {
   /** Id сессии движка; до первого `session.init` — пусто для новой, id для возобновлённой. */
   readonly id: string;
   readonly events: EventStream<AgentEvent>;
-  /** `false` — сессия закрыта, сообщение не принято. */
-  send(text: string): boolean;
+  /**
+   * `false` — сессия закрыта, сообщение не принято. `images` уходят движку image-блоками перед
+   * текстом (этап 4 roadmap 0.2); формат и размер проверяет вызывающий (`src/shared/images.ts`).
+   */
+  send(text: string, images?: readonly PromptImage[]): boolean;
   respondPermission(toolUseId: string, decision: PermissionDecision, message?: string): boolean;
   answerQuestion(toolUseId: string, answers: Record<string, string>): boolean;
   decidePlan(toolUseId: string, decision: PlanDecision): boolean;

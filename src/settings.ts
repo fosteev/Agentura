@@ -41,10 +41,10 @@ export const SETTING_KEYS: readonly SettingKey[] = [
 
 /**
  * `scope: machine` в package.json: пишутся только в пользовательские настройки машины. Режим по умолчанию —
- * тоже: иначе `.vscode/settings.json` чужого репозитория выставил бы новым сессиям `acceptEdits`.
+ * не machine (решение владельца 2026-10-01): его можно задать на проект; bypass из него всё равно требует
+ * machine-настройки `allowBypassPermissions`.
  */
 export const MACHINE_KEYS: readonly SettingKey[] = [
-  'defaultPermissionMode',
   'allowBypassPermissions',
   'claudeExecutable',
 ];

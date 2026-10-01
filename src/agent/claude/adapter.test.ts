@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { AgentEvent } from '../types';
 import { AsyncQueue } from '../stream';
-import { ClaudeAdapter, engineEnv } from './adapter';
+import { ClaudeAdapter, engineEnv, userContent } from './adapter';
 
 /** Поддельный SDK: запоминает опции `query()`, отдаёт входящие сообщения и выдаёт заданный поток. */
 function fakeSdk(extra: Record<string, unknown> = {}) {
@@ -99,7 +99,70 @@ describe('engineEnv', () => {
   });
 });
 
+describe('userContent (картинки в сообщении, этап 4 roadmap 0.2)', () => {
+  const png = { mediaType: 'image/png' as const, data: 'iVBORw0KGgo=', width: 48, height: 32 };
+  const jpg = { mediaType: 'image/jpeg' as const, data: '/9j/4AAQ' };
+
+  it('без картинок — строка, как в 0.1', () => {
+    expect(userContent('привет')).toBe('привет');
+    expect(userContent('привет', [])).toBe('привет');
+  });
+
+  it('картинки по порядку, текст последним; размер и имя в API не уходят', () => {
+    expect(userContent('что тут?', [png, jpg])).toEqual([
+      { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'iVBORw0KGgo=' } },
+      { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: '/9j/4AAQ' } },
+      { type: 'text', text: 'что тут?' },
+    ]);
+  });
+
+  it('пустой текст не шлётся пустым text-блоком', () => {
+    expect(userContent('  ', [png])).toEqual([
+      { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'iVBORw0KGgo=' } },
+    ]);
+  });
+});
+
 describe('ClaudeAdapter', () => {
+  it('send с картинками: content блоками, turn.start несёт картинки (миниатюры в ленте)', async () => {
+    const fake = fakeSdk();
+    const adapter = new ClaudeAdapter({ loadSdk: async () => fake.sdk });
+    const session = await adapter.createSession({ cwd: '/w' });
+    const events: AgentEvent[] = [];
+    session.events.on((e) => events.push(e));
+    const image = {
+      mediaType: 'image/png' as const,
+      data: 'AAAA',
+      width: 1568,
+      height: 1000,
+      name: 'скриншот 1',
+    };
+    session.send('что на скриншоте?', [image]);
+    const sent = (await fake.calls[0]!.prompt[Symbol.asyncIterator]().next()).value as {
+      uuid: string;
+      message: { content: unknown };
+    };
+    expect(sent.message.content).toEqual([
+      { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'AAAA' } },
+      { type: 'text', text: 'что на скриншоте?' },
+    ]);
+    fake.push(init, {
+      type: 'stream_event',
+      parent_tool_use_id: null,
+      user_message_uuid: sent.uuid,
+      event: {
+        type: 'message_start',
+        message: { id: 'm1', model: 'claude-sonnet-5-5', usage: {} },
+      },
+    });
+    await tick();
+    expect(events.find((e) => e.type === 'turn.start')).toMatchObject({
+      prompt: 'что на скриншоте?',
+      images: [image],
+    });
+    session.dispose();
+  });
+
   it('опции query(): streaming input, частичные сообщения, thinking, все источники настроек, режим default', async () => {
     const fake = fakeSdk();
     const adapter = new ClaudeAdapter({

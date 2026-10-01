@@ -88,8 +88,8 @@ describe('вкладка настроек', () => {
       'engine',
     ]);
     expect([...host.querySelectorAll('.set .key')].map((e) => e.textContent)).toEqual([
-      // отличие от прототипа: режим по умолчанию — machine-настройка (приёмка этапа 3)
-      'agentura.defaultPermissionMode · только эта машина',
+      // режим по умолчанию можно задать на проект (решение владельца 2026-10-01)
+      'agentura.defaultPermissionMode',
       'agentura.allowBypassPermissions · только эта машина',
       'agentura.defaultModel',
       'agentura.defaultEffort',

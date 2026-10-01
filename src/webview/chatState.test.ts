@@ -244,6 +244,31 @@ describe('редьюсер: очередь и границы хода', () => {
     expect((s.rows[0] as Extract<FeedRow, { kind: 'user' }>).context).toContain('src/a.ts');
   });
 
+  it('склеенные сообщения с картинкой: скрин остаётся у своей строки, не дублируется под чужой; итог считает его раз', () => {
+    const img = { mediaType: 'image/png', data: 'iVBOR', width: 750, height: 1000 };
+    let s = queueUser(queueUser(initialState(), 'раз', [img]), 'два');
+    s = applyEvent(s, {
+      type: 'turn.start',
+      at: 1,
+      prompt: 'раз\n\nдва',
+      prompts: ['раз', 'два'],
+      images: [img],
+    });
+    const rows = s.rows as Extract<FeedRow, { kind: 'user' }>[];
+    expect(rows.map((r) => r.images?.length ?? 0)).toEqual([1, 0]);
+    expect(s.turnImageTokens).toBe(1000);
+    // без своих строк (вкладку перезагрузили) — картинки события у последнего сообщения
+    const fresh = applyEvent(initialState(), {
+      type: 'turn.start',
+      at: 1,
+      prompt: 'раз\n\nдва',
+      prompts: ['раз', 'два'],
+      images: [img],
+    });
+    expect((fresh.rows as Extract<FeedRow, { kind: 'user' }>[]).map((r) => r.images?.length ?? 0)).toEqual([0, 1]);
+    expect(fresh.turnImageTokens).toBe(1000);
+  });
+
   it('сообщение, влитое в идущий ход (turn.input), перестаёт быть «в очереди»', () => {
     let s = applyEvent(queueUser(initialState(), 'первое'), start('первое'));
     s = queueUser(s, 'добавка');

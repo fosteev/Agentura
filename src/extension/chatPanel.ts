@@ -5,7 +5,7 @@ import { ClaudeAdapter } from '../agent/claude/adapter';
 import type { AgentAdapter } from '../agent/types';
 import type { LimitsSource } from '../data/limits';
 import type { LiveSessions, TranscriptCache } from '../data/sessions';
-import { postToWebview } from '../protocol';
+import { postToWebview, type PickedImage } from '../protocol';
 import { DEFAULT_THRESHOLDS, thresholdsError } from '../settings';
 import type { AccountService } from './account';
 import { ChatController } from './chatController';
@@ -26,6 +26,8 @@ import type { UsageService } from './usage';
 import type { Logger } from './logger';
 import { attachMessaging, renderWebview, webviewOptions } from './webviewHost';
 import { WorkspaceFiles } from './workspaceFiles';
+import { pickedImage, writeImageTemp } from './imageFiles';
+import { IMAGE_EXTENSION_LIST, MAX_IMAGES_PER_MESSAGE } from '../shared/images';
 
 export const CHAT_VIEW_TYPE = 'agentura.chat';
 
@@ -248,6 +250,38 @@ export class ChatPanel {
       observeLimits: (windows) => services.limits.observeEngine(windows),
       findFiles: (q) => files.find(q),
       pickFiles: () => files.pick(),
+      pickImages: async () => {
+        const picked = await vscode.window.showOpenDialog({
+          defaultUri: folder.uri,
+          canSelectFiles: true,
+          canSelectMany: true,
+          openLabel: 'Добавить',
+          filters: { Изображения: [...IMAGE_EXTENSION_LIST] },
+        });
+        const out: PickedImage[] = [];
+        for (const uri of (picked ?? []).slice(0, MAX_IMAGES_PER_MESSAGE)) {
+          const name = uri.path.split('/').pop() ?? 'image';
+          const size = await Promise.resolve(vscode.workspace.fs.stat(uri)).then(
+            (st) => st.size,
+            () => undefined,
+          );
+          // размер неизвестен — не читаем вслепую (лимит 30 МБ не проверить)
+          if (size === undefined) {
+            out.push({ name, problem: 'read' });
+            continue;
+          }
+          out.push(
+            await pickedImage(name, size, () => Promise.resolve(vscode.workspace.fs.readFile(uri))),
+          );
+        }
+        return out;
+      },
+      // просмотр миниатюры: временный файл в storage расширения (не в рабочей папке), вкладка редактора
+      openImage: async (img) => {
+        const dir = vscode.Uri.joinPath(context.globalStorageUri, 'images').fsPath;
+        const path = await writeImageTemp(dir, img);
+        await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(path), editorColumn());
+      },
       readSelection: (a) => files.readSelection(a),
       listRecent: async () => (await services.sessions.summaries()).slice(0, CHAT_SESSIONS),
       showSessions: () => void vscode.commands.executeCommand('workbench.view.extension.agentura'),

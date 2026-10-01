@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { AgentEvent } from '../types';
 import { buildHistory, modeFromTranscript, type HistoryMessage } from './history';
@@ -240,5 +242,63 @@ describe('modeFromTranscript', () => {
     expect(modeFromTranscript('auto')).toBe('default');
     expect(modeFromTranscript('dontAsk')).toBe('default');
     expect(modeFromTranscript(undefined)).toBeUndefined();
+  });
+});
+
+describe('картинки в реплике пользователя (этап 4 roadmap 0.2)', () => {
+  const FIXTURES = join(__dirname, '..', '..', '..', 'test', 'fixtures', 'claude');
+  const fixture = (): HistoryMessage[] =>
+    JSON.parse(
+      readFileSync(join(FIXTURES, 'image-basic.messages.json'), 'utf8'),
+    ) as HistoryMessage[];
+  const withImages = (images: unknown[], text: string, s: number): HistoryMessage => ({
+    type: 'user',
+    uuid: `i${s}`,
+    message: { role: 'user', content: [...images, ...(text ? [{ type: 'text', text }] : [])] },
+    parent_tool_use_id: null,
+    timestamp: ts(s),
+  });
+  const png = (data: string) => ({
+    type: 'image',
+    source: { type: 'base64', media_type: 'image/png', data },
+  });
+
+  it('живой транскрипт (image-smoke): base64 целиком → миниатюра с размером из заголовка png', () => {
+    const messages = fixture();
+    const sent = (messages[0]!.message as { content: { source?: { data?: string } }[] }).content[0]!
+      .source!.data!;
+    const h = buildHistory(messages);
+    const starts = h.events.filter((e) => e.type === 'turn.start');
+    expect(starts).toHaveLength(1);
+    expect(starts[0]).toMatchObject({
+      prompt: expect.stringContaining('two halves'),
+      images: [{ mediaType: 'image/png', data: sent, width: 48, height: 32 }],
+    });
+    // картинка в результате Read (модель перечитала файл CLI) — не реплика пользователя
+    expect(h.events.filter((e) => e.type === 'tool.result')).toHaveLength(1);
+    expect(h.turns).toBe(1);
+  });
+
+  it('только картинка без текста — тоже ход; блок без base64 (ссылка) — плашка без данных', () => {
+    const h = buildHistory([
+      withImages([png('AAAA')], '', 1),
+      withImages([{ type: 'image', source: { type: 'url', url: 'https://x/y.png' } }], 'и это', 5),
+    ]);
+    const starts = h.events.filter(
+      (e): e is Extract<AgentEvent, { type: 'turn.start' }> => e.type === 'turn.start',
+    );
+    expect(starts.map((e) => e.prompt)).toEqual(['', 'и это']);
+    expect(starts[0]!.images).toEqual([{ mediaType: 'image/png', data: 'AAAA' }]);
+    expect(starts[1]!.images).toEqual([{}]);
+  });
+
+  it('данные — только у последних maxImages картинок, ранние — плашкой', () => {
+    const h = buildHistory(
+      [withImages([png('AAAA'), png('BBBB')], 'раз', 1), withImages([png('CCCC')], 'два', 5)],
+      { maxImages: 2 },
+    );
+    const images = h.events.flatMap((e) => (e.type === 'turn.start' ? (e.images ?? []) : []));
+    expect(images.map((i) => i.data)).toEqual([undefined, 'BBBB', 'CCCC']);
+    expect(images[0]).toEqual({ mediaType: 'image/png' });
   });
 });

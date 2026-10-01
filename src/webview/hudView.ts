@@ -16,7 +16,14 @@ import {
 import { clock, resetLabel } from './chatState';
 
 export { resetLabel };
-import { formatCost, formatDuration, formatInt, splitPath, toolView } from './toolView';
+import {
+  compactTokens,
+  formatCost,
+  formatDuration,
+  formatInt,
+  splitPath,
+  toolView,
+} from './toolView';
 import { ui } from './strings';
 
 export type Zone = 'ok' | 'warn' | 'hot' | 'full';
@@ -366,10 +373,7 @@ export function turnBadge(s: HudState): { count: number; live: boolean } | undef
 
 // ——— панель «агенты» ———
 
-export function compactTokens(n: number): string {
-  if (n < 1000) return String(n);
-  return n < 100_000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k` : `${Math.round(n / 1000)}k`;
-}
+export { compactTokens };
 
 export function sessionTotals(s: HudState): { label: string; value: string }[] {
   const t = s.totals;

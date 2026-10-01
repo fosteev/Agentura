@@ -14,8 +14,9 @@ import {
   updatePending,
   type ChatStatus,
 } from '../agent/status';
-import type { FromWebview, PlanChoice, SessionSummary, ToWebview } from '../protocol';
-import type { SessionHistory } from '../agent/types';
+import type { FromWebview, PickedImage, PlanChoice, SessionSummary, ToWebview } from '../protocol';
+import type { ImageMediaType, PromptImage, SessionHistory } from '../agent/types';
+import { hostImage, MAX_IMAGES_PER_MESSAGE, MAX_MESSAGE_IMAGES_BASE64 } from '../shared/images';
 import { resolveDefaultEffort, resolveDefaultMode } from '../settings';
 import { appliedSides, previewOf, proposedSides, type EditSides } from './editDiff';
 import { buildPrompt, attachmentKey, type Attachment, type FileHit } from '../shared/prompt';
@@ -49,6 +50,10 @@ export interface ChatDeps {
   observeLimits?(windows: LimitWindow[]): void;
   findFiles(query: string): Promise<FileHit[]>;
   pickFiles(): Promise<FileHit[]>;
+  /** «Изображение…» в «+» (этап 4 roadmap 0.2): диалог выбора картинок, файлы base64. */
+  pickImages?(): Promise<PickedImage[]>;
+  /** Картинка во вкладке редактора: временный файл в storage расширения. */
+  openImage?(image: { mediaType: ImageMediaType; data: string }): Promise<void>;
   /** Текст выделения для вложения `selection`. */
   readSelection(a: Attachment): Promise<string | undefined>;
   listRecent(): Promise<SessionSummary[]>;
@@ -472,6 +477,24 @@ export class ChatController {
         if (items.length) deps.post({ type: 'attach.picked', items });
         return;
       }
+      case 'image.pick': {
+        const items = (await deps.pickImages?.()) ?? [];
+        if (items.length) deps.post({ type: 'image.picked', items });
+        return;
+      }
+      case 'image.open':
+      {
+        const checked =
+          typeof m.mediaType === 'string' && typeof m.data === 'string'
+            ? hostImage(m)
+            : ({ problem: 'format' } as const);
+        if ('problem' in checked) {
+          this.log.warn(`картинка не открыта: ${String(m.mediaType)}, ${checked.problem}`);
+          return;
+        }
+        await deps.openImage?.({ mediaType: checked.mediaType, data: m.data });
+        return;
+      }
       case 'limits.refresh':
         await this.refreshLimits();
         return;
@@ -516,7 +539,8 @@ export class ChatController {
         case 'effort.set':
           if (EFFORTS.includes(m.effort)) {
             await session.setEffort(m.effort as EffortLevel);
-            if (this.defaults) this.defaults = { ...this.defaults, effort: m.effort as EffortLevel };
+            if (this.defaults)
+              this.defaults = { ...this.defaults, effort: m.effort as EffortLevel };
           }
           return;
         case 'compact':
@@ -676,9 +700,52 @@ export class ChatController {
       });
       if (t) texts[attachmentKey(a)] = t;
     }
-    if (!session.send(buildPrompt(m.text, m.attachments ?? [], texts))) {
+    const images = this.checkImages(m.images);
+    // все картинки отброшены, текста нет — пустое сообщение API не примет
+    if (!images && !m.text.trim() && !m.attachments?.length) {
+      this.log.warn('send: пустое сообщение (картинки отброшены) — не отправлено');
+      return;
+    }
+    if (!session.send(buildPrompt(m.text, m.attachments ?? [], texts), images)) {
       this.log.warn('send: сессия закрыта, сообщение не принято');
     }
+  }
+
+  /**
+   * Картинки из webview — ещё раз по лимитам (формат, 5 МБ base64, число): webview проверяет до
+   * плашки, но сообщение пришло снаружи. Негодные отбрасываются с предупреждением в журнал.
+   */
+  private checkImages(images: unknown): PromptImage[] | undefined {
+    if (!Array.isArray(images) || images.length === 0) return undefined;
+    const out: PromptImage[] = [];
+    let total = 0;
+    for (const i of images as Partial<PromptImage>[]) {
+      const checked =
+        typeof i?.data !== 'string' || typeof i.mediaType !== 'string'
+          ? ({ problem: 'format' } as const)
+          : hostImage({ mediaType: i.mediaType, data: i.data });
+      const problem =
+        'problem' in checked
+          ? checked.problem
+          : out.length >= MAX_IMAGES_PER_MESSAGE
+            ? 'count'
+            : total + (i.data as string).length > MAX_MESSAGE_IMAGES_BASE64
+              ? 'total'
+              : undefined;
+      if (problem || 'problem' in checked) {
+        this.log.warn(`картинка отброшена: ${problem}`);
+        continue;
+      }
+      total += (i.data as string).length;
+      out.push({
+        mediaType: checked.mediaType,
+        data: i.data as string,
+        ...(typeof i.width === 'number' ? { width: i.width } : {}),
+        ...(typeof i.height === 'number' ? { height: i.height } : {}),
+        ...(typeof i.name === 'string' ? { name: i.name.slice(0, 200) } : {}),
+      });
+    }
+    return out.length ? out : undefined;
   }
 
   /** Лимиты подписки → webview (`limits.update`). Не чаще кулдауна `UsageService`. */

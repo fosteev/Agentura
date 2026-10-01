@@ -5,11 +5,17 @@ import type {
   AgentEvent,
   AgentSession,
   PlanDecision,
+  PromptImage,
   SessionCapabilities,
   SessionHistory,
   SessionOptions,
 } from '../agent/types';
 import type { ToWebview } from '../protocol';
+import { MAX_IMAGE_BASE64, MAX_IMAGES_PER_MESSAGE } from '../shared/images';
+
+/** png 1×1 — хост сверяет формат по сигнатуре. */
+const PNG =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
 import {
   ChatController,
   describeEvent,
@@ -25,13 +31,15 @@ class FakeSession implements AgentSession {
   readonly events = new EventHub<AgentEvent>();
   id = 'sess-1';
   sent: string[] = [];
+  images: (readonly PromptImage[] | undefined)[] = [];
   permissions: [string, string, string | undefined][] = [];
   modes: string[] = [];
   interrupts = 0;
   compacts = 0;
   disposed = false;
-  send(text: string) {
+  send(text: string, images?: readonly PromptImage[]) {
     this.sent.push(text);
+    this.images.push(images);
     return true;
   }
   respondPermission(id: string, decision: string, message?: string) {
@@ -1184,6 +1192,21 @@ describe('ChatController: ошибки и повтор хода (этап 7)', (
     return t;
   }
 
+  it('«Повторить ход» повторяет и картинки сообщения', async () => {
+    const t = build();
+    t.controller.start();
+    await tick();
+    t.sessions[0]!.emit(initEvent);
+    const images = [{ mediaType: 'image/png' as const, data: PNG, width: 10, height: 10 }];
+    await t.controller.handle({ type: 'send', sessionId: 'sess-1', text: 'что тут?', images });
+    t.sessions[0]!.emit({ type: 'error', fatal: true, message: 'ECONNRESET' });
+    t.sessions[0]!.emit({ type: 'session.closed', reason: 'error', message: 'ECONNRESET' });
+    await t.controller.handle({ type: 'turn.retry', sessionId: 'sess-1', turn: true });
+    await tick();
+    expect(t.sessions[1]!.sent).toEqual(['что тут?']);
+    expect(t.sessions[1]!.images).toEqual([images]);
+  });
+
   it('«Повторить ход»: resume упавшей сессии по запомненному id и тот же промпт ещё раз', async () => {
     const t = await crashed();
     // у новой сессии, упавшей до resume, `sessionId` после closed пуст — id помнится отдельно
@@ -1308,5 +1331,106 @@ describe('ChatController: ошибки и повтор хода (этап 7)', (
     expect(
       describeEvent({ type: 'text.delta', agentId: 'agent-12345678', messageId: 'm', text: 'abc' }),
     ).toBe('text.delta [агент agent-12] 3 симв.');
+  });
+});
+
+describe('картинки в сообщении (этап 4 roadmap 0.2)', () => {
+  it('send: картинки уходят в session.send рядом с текстом; негодные отброшены с предупреждением', async () => {
+    const t = setup();
+    const ok = {
+      mediaType: 'image/png' as const,
+      data: PNG,
+      width: 1568,
+      height: 1000,
+      name: 'скриншот 1',
+    };
+    await t.controller.handle({
+      type: 'send',
+      sessionId: '',
+      text: 'что на скриншоте?',
+      images: [
+        ok,
+        { mediaType: 'image/heic', data: PNG } as never,
+        { mediaType: 'image/png', data: 'A'.repeat(MAX_IMAGE_BASE64 + 4) },
+        { mediaType: 'image/png' } as never,
+      ],
+    });
+    const s = t.sessions[0]!;
+    expect(s.sent).toEqual(['что на скриншоте?']);
+    expect(s.images).toEqual([[ok]]);
+    expect(t.deps.log.warn).toHaveBeenCalledTimes(3);
+  });
+
+  it('send без картинок — как раньше (images не передаются); больше 10 — лишние отброшены', async () => {
+    const t = setup();
+    await t.controller.handle({ type: 'send', sessionId: '', text: 'привет' });
+    const many = Array.from({ length: 12 }, () => ({
+      mediaType: 'image/png' as const,
+      data: PNG,
+    }));
+    await t.controller.handle({ type: 'send', sessionId: '', text: 'много', images: many });
+    expect(t.sessions[0]!.images[0]).toBeUndefined();
+    expect(t.sessions[0]!.images[1]).toHaveLength(MAX_IMAGES_PER_MESSAGE);
+  });
+
+  it('image.pick: диалог хоста → image.picked; пусто — ничего', async () => {
+    const t = setup();
+    const picked = [{ name: 'a.png', mediaType: 'image/png', data: PNG }];
+    t.deps.pickImages = vi.fn(async () => picked);
+    await t.controller.handle({ type: 'image.pick' });
+    expect(t.posted.at(-1)).toEqual({ type: 'image.picked', items: picked });
+    t.deps.pickImages = vi.fn(async () => []);
+    const before = t.posted.length;
+    await t.controller.handle({ type: 'image.pick' });
+    expect(t.posted).toHaveLength(before);
+    expect(t.sessions).toHaveLength(0); // сессию не поднимает
+  });
+
+  it('image.open: только картинка нашего формата и размера уходит во временный файл', async () => {
+    const t = setup();
+    t.deps.openImage = vi.fn(async () => {});
+    await t.controller.handle({ type: 'image.open', mediaType: 'image/png', data: PNG });
+    await t.controller.handle({ type: 'image.open', mediaType: 'text/html', data: 'PHNjcmlwdD4=' });
+    await t.controller.handle({ type: 'image.open', mediaType: 'image/png', data: '' });
+    expect(t.deps.openImage).toHaveBeenCalledTimes(1);
+    expect(t.deps.openImage).toHaveBeenCalledWith({ mediaType: 'image/png', data: PNG });
+  });
+
+  it('хост сверяет содержимое: тип по сигнатуре, не base64 и не картинка — отброшены', async () => {
+    const t = setup();
+    await t.controller.handle({
+      type: 'send',
+      sessionId: '',
+      text: 'что тут?',
+      images: [
+        // png под видом jpeg (файл с неверным расширением): API отверг бы media_type
+        { mediaType: 'image/jpeg', data: PNG },
+        { mediaType: 'image/png', data: `data:image/png;base64,${PNG}` },
+        { mediaType: 'image/png', data: 'PHNjcmlwdD4=' },
+      ],
+    });
+    expect(t.sessions[0]!.images).toEqual([[{ mediaType: 'image/png', data: PNG }]]);
+    expect(t.deps.log.warn).toHaveBeenCalledTimes(2);
+  });
+
+  it('картинки одного сообщения вместе — не больше 20 МБ base64: лишние отброшены', async () => {
+    const t = setup();
+    // 4.5 МБ: валидный base64 с сигнатурой png
+    const big = `iVBORw0KGgo${'A'.repeat(4.5 * 1024 * 1024 - 11)}`;
+    const many = Array.from({ length: 6 }, () => ({ mediaType: 'image/png' as const, data: big }));
+    await t.controller.handle({ type: 'send', sessionId: '', text: 'много', images: many });
+    expect(t.sessions[0]!.images[0]).toHaveLength(4);
+    expect(t.deps.log.warn).toHaveBeenCalledWith(expect.stringContaining('картинка отброшена: total'));
+  });
+
+  it('все картинки отброшены и текста нет — пустое сообщение не уходит', async () => {
+    const t = setup();
+    await t.controller.handle({
+      type: 'send',
+      sessionId: '',
+      text: '',
+      images: [{ mediaType: 'image/png', data: 'PHNjcmlwdD4=' }],
+    });
+    expect(t.sessions[0]?.sent ?? []).toEqual([]);
   });
 });

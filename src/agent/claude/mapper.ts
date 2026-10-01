@@ -1,5 +1,30 @@
-import type { AgentEvent, AgentEventOf, LimitWindow, PermissionMode, TokenUsage } from '../types';
+import type {
+  AgentEvent,
+  AgentEventOf,
+  ImageRef,
+  LimitWindow,
+  PermissionMode,
+  TokenUsage,
+} from '../types';
 import { arr, isObj, num, obj, str, strings, timestamp, type Json } from './json';
+
+/** Отправленное сообщение до привязки к ходу. `uuid` — наш `SDKUserMessage.uuid`. */
+interface SentPrompt {
+  text: string;
+  uuid?: string;
+  images?: ImageRef[];
+}
+
+/** Копия без лишних полей (в событие уходит только то, что нужно ленте). */
+function imageRef(i: ImageRef): ImageRef {
+  return {
+    ...(i.mediaType !== undefined ? { mediaType: i.mediaType } : {}),
+    ...(i.data !== undefined ? { data: i.data } : {}),
+    ...(i.width !== undefined ? { width: i.width } : {}),
+    ...(i.height !== undefined ? { height: i.height } : {}),
+    ...(i.name !== undefined ? { name: i.name } : {}),
+  };
+}
 
 /**
  * Сообщения Claude Agent SDK → `AgentEvent`. Чистое состояние без ввода-вывода: адаптер кормит
@@ -40,13 +65,13 @@ export class ClaudeEventMapper {
   private readonly now: () => number;
   private turnActive = false;
   /** Отправленные тексты, ещё не привязанные к ходу. `uuid` — наш `SDKUserMessage.uuid`. */
-  private readonly prompts: { text: string; uuid?: string }[] = [];
+  private readonly prompts: SentPrompt[] = [];
   /** `init` / `requesting` открыли ход, `turn.start` ждёт первого сообщения с эхом `user_message_uuid`. */
   private turnStartPending = false;
   /** Между ходами закончилась фоновая задача — следующий ход, скорее всего, пробуждение движка. */
   private wakeExpected = false;
   /** Промпт, приписанный ходу по очереди (без эха): вернуть, если ход окажется пробуждением. */
-  private fifoPrompt: { text: string; uuid?: string } | undefined;
+  private fifoPrompt: SentPrompt | undefined;
   private lastInitKey: string | undefined;
   private mode: PermissionMode | undefined;
   private model: string | undefined;
@@ -95,9 +120,16 @@ export class ClaudeEventMapper {
     return model ? this.contextWindows.get(model) : undefined;
   }
 
-  /** Текст, отправленный движку: станет `prompt` ближайшего `turn.start`. */
-  notePrompt(text: string, uuid?: string): void {
-    this.prompts.push(uuid !== undefined ? { text, uuid } : { text });
+  /**
+   * Текст, отправленный движку: станет `prompt` ближайшего `turn.start`. Картинки (этап 4 roadmap 0.2)
+   * уходят в `images` того же события — лента рисует миниатюры в реплике.
+   */
+  notePrompt(text: string, uuid?: string, images?: readonly ImageRef[]): void {
+    this.prompts.push({
+      text,
+      ...(uuid !== undefined ? { uuid } : {}),
+      ...(images?.length ? { images: images.map(imageRef) } : {}),
+    });
   }
 
   /** `agentID` из `canUseTool` (id задачи) → id субагента в событиях (id вызова `Agent`). */
@@ -657,39 +689,42 @@ export class ClaudeEventMapper {
     const uuids = uuidsOf(m);
     if (this.turnActive && !this.turnStartPending) {
       for (const uuid of uuids) {
-        const text = this.takePrompt(uuid);
-        if (text !== undefined) out.push({ type: 'turn.input', prompt: text, at: this.now() });
+        const p = this.takePrompt(uuid);
+        if (p !== undefined)
+          out.push({
+            type: 'turn.input',
+            prompt: p.text,
+            ...(p.images ? { images: p.images } : {}),
+            at: this.now(),
+          });
       }
       return;
     }
     if (!this.turnActive) this.turnUsage = emptyUsage();
     this.turnActive = true;
     this.turnStartPending = false;
-    let prompt: string | undefined;
-    let prompts: string[] | undefined;
+    let sent: SentPrompt[] = [];
     if (uuids.length > 0) {
-      const texts = uuids
-        .map((u) => this.takePrompt(u))
-        .filter((t): t is string => t !== undefined);
-      if (texts.length > 0) prompt = texts.join('\n\n');
-      if (texts.length > 1) prompts = texts;
+      sent = uuids.map((u) => this.takePrompt(u)).filter((p): p is SentPrompt => p !== undefined);
     } else if (!this.wakeExpected) {
       this.fifoPrompt = this.prompts.shift();
-      prompt = this.fifoPrompt?.text;
+      if (this.fifoPrompt) sent = [this.fifoPrompt];
     }
     this.wakeExpected = false;
+    const images = sent.flatMap((p) => p.images ?? []);
     out.push({
       type: 'turn.start',
-      ...(prompt !== undefined ? { prompt } : {}),
-      ...(prompts ? { prompts } : {}),
+      ...(sent.length > 0 ? { prompt: sent.map((p) => p.text).join('\n\n') } : {}),
+      ...(sent.length > 1 ? { prompts: sent.map((p) => p.text) } : {}),
+      ...(images.length > 0 ? { images } : {}),
       at: this.now(),
     });
   }
 
-  private takePrompt(uuid: string): string | undefined {
+  private takePrompt(uuid: string): SentPrompt | undefined {
     const i = this.prompts.findIndex((p) => p.uuid === uuid);
     if (i < 0) return undefined;
-    return this.prompts.splice(i, 1)[0]?.text;
+    return this.prompts.splice(i, 1)[0];
   }
 
   private emitUsage(id: string, p: PendingUsage, final: boolean, out: AgentEvent[]): void {

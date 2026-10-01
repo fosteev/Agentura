@@ -21,6 +21,7 @@ import type {
   PermissionDecision,
   PermissionMode,
   PlanDecision,
+  PromptImage,
   ResumeOptions,
   SessionCapabilities,
   SessionHistory,
@@ -128,6 +129,24 @@ export function engineEnv(
   env['CLAUDE_CODE_ARTIFACT_AUTO_OPEN'] ??= '0';
   if (clientApp) env['CLAUDE_AGENT_SDK_CLIENT_APP'] = clientApp;
   return env;
+}
+
+/**
+ * Содержимое сообщения пользователя: без картинок — строка (как в 0.1), с картинками — image-блоки
+ * в порядке отправки и текст последним (этап 4 roadmap 0.2). Пустой текст не шлём: API отвергает
+ * пустой text-блок.
+ */
+export function userContent(
+  text: string,
+  images?: readonly PromptImage[],
+): SDKUserMessage['message']['content'] {
+  if (!images?.length) return text;
+  const blocks: Exclude<SDKUserMessage['message']['content'], string> = images.map((i) => ({
+    type: 'image' as const,
+    source: { type: 'base64' as const, media_type: i.mediaType, data: i.data },
+  }));
+  if (text.trim()) blocks.push({ type: 'text', text });
+  return blocks;
 }
 
 /** Сколько ждать `accountInfo()` от временного процесса CLI. */
@@ -351,13 +370,13 @@ class ClaudeSession implements AgentSession {
    * Своё `uuid` у каждого сообщения: движок возвращает его эхом (`user_message_uuid(s)`) на первом
    * ответе хода, и маппер привязывает промпт к ходу по нему, а не по очереди.
    */
-  send(text: string): boolean {
+  send(text: string, images?: readonly PromptImage[]): boolean {
     if (this.closed) return false;
     const uuid = randomUUID();
-    this.mapper.notePrompt(text, uuid);
+    this.mapper.notePrompt(text, uuid, images?.length ? images : undefined);
     this.input.push({
       type: 'user',
-      message: { role: 'user', content: text },
+      message: { role: 'user', content: userContent(text, images) },
       parent_tool_use_id: null,
       uuid: uuid as SDKUserMessage['uuid'],
     });
@@ -471,7 +490,9 @@ class ClaudeSession implements AgentSession {
         this.trace?.(message);
         for (const event of this.mapper.map(message)) {
           this.emit(
-            event.type === 'session.init' && this.effort ? { ...event, effort: this.effort } : event,
+            event.type === 'session.init' && this.effort
+              ? { ...event, effort: this.effort }
+              : event,
           );
           // Окно до первого ответа неизвестно: `getContextUsage()` работает и до хода (раздел 4 пробы).
           if (event.type === 'session.init' && first) {

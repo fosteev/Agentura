@@ -8,6 +8,7 @@ import type {
   EffortLevel,
   PermissionAlways,
   PermissionDecision,
+  ImageRef,
   PermissionMode,
   Question,
 } from '../agent/types';
@@ -15,7 +16,8 @@ import { nextStatus, updateInTurn, updatePending, type ChatStatus } from '../age
 import type { EditPreview, PlanChoice } from '../protocol';
 import { splitPrompt } from '../shared/prompt';
 import type { Seg } from './fixtures/chat';
-import { formatCost, formatDuration, formatInt } from './toolView';
+import { compactTokens, formatCost, formatDuration, formatInt } from './toolView';
+import { imagesTokens } from '../shared/images';
 import { ui } from './strings';
 
 export type FeedRow =
@@ -28,7 +30,16 @@ export type FeedRow =
       /** `limit` — строка «ход не начат» (одна на упор в лимит), `retry` — повтор запроса к API (схлопываются). */
       tag?: 'limit' | 'retry';
     }
-  | { id: number; kind: 'user'; text: string; at?: string; queued?: boolean; context?: string }
+  | {
+      id: number;
+      kind: 'user';
+      text: string;
+      at?: string;
+      queued?: boolean;
+      context?: string;
+      /** Картинки сообщения (этап 4 roadmap 0.2); без `data` — плашка «скриншот». */
+      images?: ImageRef[];
+    }
   | {
       id: number;
       kind: 'think';
@@ -139,6 +150,8 @@ export interface ChatState {
   skills: string[];
   slashCommands: string[];
   turnStartedAt?: number;
+  /** Оценка токенов картинок текущего хода (этап 4 roadmap 0.2) — в итог хода. */
+  turnImageTokens?: number;
   /** Сброс окна, упёршегося в лимит (`limit.update` со статусом `rejected`) — для строки «ход не начат». */
   limitResetsAt?: number;
   compactingRow?: number;
@@ -206,9 +219,20 @@ export function addSys(s: ChatState, text: Seg[], tone?: 'ok' | 'bad'): ChatStat
   return push(s, { kind: 'sys', text, ...(tone ? { tone } : {}) });
 }
 
+/** Строка «в очереди» с текстом промпта (без блока контекста); -1 — нет. */
+function queuedRow(s: ChatState, prompt: string): number {
+  const text = splitPrompt(prompt).text.trim();
+  return s.rows.findIndex((r) => r.kind === 'user' && r.queued && r.text.trim() === text);
+}
+
 /** Сообщение пользователя отправлено, `turn.start` ещё не пришёл — «в очереди». */
-export function queueUser(s: ChatState, text: string): ChatState {
-  return push(retireFails(s), { kind: 'user', text, queued: true });
+export function queueUser(s: ChatState, text: string, images?: readonly ImageRef[]): ChatState {
+  return push(retireFails(s), {
+    kind: 'user',
+    text,
+    queued: true,
+    ...(images?.length ? { images: [...images] } : {}),
+  });
 }
 
 /**
@@ -240,16 +264,32 @@ function closeOpenRows(s: ChatState, interrupted: boolean, at: number): ChatStat
  * Сообщение дошло до движка: строка «в очереди» с тем же текстом становится обычной, иначе
  * добавляется новая. Блок контекста отделяется от текста.
  */
-function deliverUser(s: ChatState, prompt: string, atMs: number): ChatState {
+function deliverUser(
+  s: ChatState,
+  prompt: string,
+  atMs: number,
+  images?: readonly ImageRef[],
+): ChatState {
   const { text, context } = splitPrompt(prompt);
   const at = clock(atMs);
-  const idx = s.rows.findIndex(
-    (r) => r.kind === 'user' && r.queued && r.text.trim() === text.trim(),
-  );
-  if (idx < 0) return push(s, { kind: 'user', text, at, ...(context ? { context } : {}) });
+  const idx = queuedRow(s, prompt);
+  const queued = idx >= 0 ? (s.rows[idx] as Extract<FeedRow, { kind: 'user' }>) : undefined;
+  // в итог хода — картинки своей строки «в очереди», если она есть, иначе — из события
+  const tokens = imagesTokens(queued?.images?.length ? queued.images : images);
+  if (tokens > 0) s = { ...s, turnImageTokens: (s.turnImageTokens ?? 0) + tokens };
+  if (idx < 0)
+    return push(s, {
+      kind: 'user',
+      text,
+      at,
+      ...(context ? { context } : {}),
+      ...(images?.length ? { images: [...images] } : {}),
+    });
   const row = s.rows[idx] as Extract<FeedRow, { kind: 'user' }>;
   const updated: Extract<FeedRow, { kind: 'user' }> = { ...row, queued: false, at };
   if (context) updated.context = context;
+  // своя строка «в очереди» уже держит картинки (из поля ввода) — событие их не заменяет
+  if (!row.images?.length && images?.length) updated.images = [...images];
   return replaceAt(s, idx, updated);
 }
 
@@ -348,16 +388,25 @@ function reduce(s: ChatState, e: AgentEvent, now: number): ChatState {
         now,
       );
     case 'turn.start': {
-      const { limitResetsAt: _l, ...base } = s;
+      const { limitResetsAt: _l, turnImageTokens: _i, ...base } = s;
       void _l;
+      void _i;
       // начался ход — старые карточки ошибки больше не повторяются
       const out: ChatState = retireFails({ ...base, turnStartedAt: e.at });
       // склеенные движком сообщения — каждое своей строкой
       const prompts = e.prompts ?? (e.prompt !== undefined ? [e.prompt] : []);
-      return prompts.reduce((acc, p) => deliverUser(acc, p, e.at), out);
+      // картинки склеенных сообщений не разделить по сообщениям — у последнего. Если хоть одно
+      // из них — своя строка «в очереди», картинки уже у своих строк: событие их не дублирует
+      // (иначе скрин A повис бы и под B)
+      const own = prompts.some((p) => queuedRow(out, p) >= 0);
+      const images = own ? undefined : e.images;
+      return prompts.reduce(
+        (acc, p, i) => deliverUser(acc, p, e.at, i === prompts.length - 1 ? images : undefined),
+        out,
+      );
     }
     case 'turn.input':
-      return deliverUser(s, e.prompt, e.at);
+      return deliverUser(s, e.prompt, e.at, e.images);
     case 'thinking.start':
       return push(s, { kind: 'think', messageId: e.messageId, text: '', startedAt: e.at });
     case 'thinking.delta': {
@@ -470,13 +519,15 @@ function reduce(s: ChatState, e: AgentEvent, now: number): ChatState {
     }
     case 'turn.result': {
       let out = closeOpenRows(s, e.interrupted, now);
-      const { turnStartedAt: _t, ...rest } = out;
+      const { turnStartedAt: _t, turnImageTokens: imageTokens, ...rest } = out;
       void _t;
       out = rest;
       const u = e.usage;
       const parts = [
         `in ${formatInt(u.input)}`,
         `out ${formatInt(u.output)}`,
+        // движок не отделяет токены картинок от input — оценка ш×в/750, с «≈»
+        ...(imageTokens ? [ui.log.imagesTokens(compactTokens(imageTokens))] : []),
         `cache r${formatInt(u.cacheRead)} w${formatInt(u.cacheWrite)}`,
       ];
       const sum: DistributiveOmit<FeedRow, 'id'> = {

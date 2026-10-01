@@ -397,7 +397,7 @@ export function Settings() {
 
         <div class="st-body" ref={body} onScroll={onScroll}>
           <h2 id="perm">{T.sections.perm}</h2>
-          <Row name={T.mode.name} isNew desc={T.mode.desc} k="defaultPermissionMode" machine>
+          <Row name={T.mode.name} isNew desc={T.mode.desc} k="defaultPermissionMode">
             <Select k="defaultPermissionMode" value={v.defaultPermissionMode} options={modes} />
           </Row>
           <Row

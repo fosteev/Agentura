@@ -22,11 +22,15 @@ import {
   editor,
   extra,
   fileHits,
+  addImages,
+  draftImages,
   history,
+  imagesBusy,
   limitBlocked,
   meters,
   newSession,
   removeExtra,
+  removeImage,
   replyTarget,
   sendMessage,
   submitReply,
@@ -41,7 +45,9 @@ import type { LimitMeter } from '../hudView';
 import { deferredNote } from '../limitView';
 import { menuKeys } from '../a11y';
 import { ui } from '../strings';
-import { shortModel } from '../toolView';
+import { compactTokens, shortModel } from '../toolView';
+import { imageTokens, imagesTokens } from '../../shared/images';
+import { hasFiles, transferImages, type DraftImage } from '../imageDraft';
 import { send } from '../vscode';
 
 type MenuName = 'mode' | 'model' | 'effort' | 'agent' | 'plus';
@@ -121,6 +127,64 @@ function pressKey(e: KeyboardEvent, act: () => void): void {
     e.preventDefault();
     act();
   }
+}
+
+/** Миниатюра над полем: готовая (размер, ~токены), «уменьшаю…» или красная плашка ошибки. */
+function DraftChip({ d }: { d: DraftImage }) {
+  const remove = (
+    <span
+      class="x"
+      role="button"
+      tabIndex={0}
+      aria-label={ui.compose.imageRemove}
+      title={ui.compose.imageRemove}
+      onClick={() => removeImage(d.id)}
+      onKeyDown={(e: KeyboardEvent) => pressKey(e, () => removeImage(d.id))}
+    >
+      ✕
+    </span>
+  );
+  if (d.problem) {
+    return (
+      <span class="im err">
+        <span class="ph">{d.problem === 'format' ? d.ext || '?' : '!'}</span>
+        <b title={d.name}>{d.name}</b>
+        <small title={ui.compose.imageProblemTitle[d.problem]}>
+          {d.problem === 'format'
+            ? ui.compose.imageProblem.format(d.ext ?? '')
+            : ui.compose.imageProblem[d.problem]}
+        </small>
+        {remove}
+      </span>
+    );
+  }
+  if (d.busy || !d.image) {
+    return (
+      <span class="im busy">
+        <span class="mock" />
+        <b>{d.name}</b>
+        <small>{ui.compose.imageBusy}</small>
+        {remove}
+      </span>
+    );
+  }
+  const i = d.image;
+  const size =
+    i.width && i.height
+      ? `${i.width}×${i.height} · ~${compactTokens(imageTokens(i.width, i.height))}`
+      : '';
+  return (
+    <span class="im">
+      <img class="mock" src={`data:${i.mediaType};base64,${i.data}`} alt="" />
+      <b>{d.name}</b>
+      <small
+        title={d.original ? ui.compose.imageScaled(d.original.width, d.original.height) : undefined}
+      >
+        {size}
+      </small>
+      {remove}
+    </span>
+  );
 }
 
 function Switch({ on }: { on: boolean }) {
@@ -247,10 +311,13 @@ export function Composer() {
 
   function submit() {
     const t = text.trim();
-    if (!t || closed) return;
+    const withImages = draftImages.value.some((d) => d.image || d.busy);
+    if ((!t && !withImages) || closed) return;
+    // картинка ещё уменьшается — Enter подождёт (текст и картинки уйдут вместе)
+    if (imagesBusy.value) return;
     setHistIdx(undefined);
     // ответ карточке (свой вариант, доработка плана) — не сообщение агенту; `/команда` — команда
-    if (replyTarget.value && !t.startsWith('/') && submitReply(t)) {
+    if (t && replyTarget.value && !t.startsWith('/') && submitReply(t)) {
       writeText('');
       return;
     }
@@ -343,6 +410,43 @@ export function Composer() {
     }
   }
 
+  // ⌘V: картинки из буфера — в миниатюры, текст вставляется как обычно
+  function onPaste(e: ClipboardEvent) {
+    const found = transferImages(e.clipboardData);
+    if (found.length === 0) return;
+    e.preventDefault();
+    void addImages(found);
+  }
+
+  // перетаскивание файла (в VS Code — с ⇧): подсветка поля и картинки в миниатюры
+  const [dropping, setDropping] = useState(false);
+  const dropDepth = useRef(0);
+  function onDragEnter(e: DragEvent) {
+    if (closed || !hasFiles(e.dataTransfer)) return;
+    e.preventDefault();
+    dropDepth.current += 1;
+    setDropping(true);
+  }
+  function onDragOver(e: DragEvent) {
+    if (closed || !hasFiles(e.dataTransfer)) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+  }
+  function onDragLeave() {
+    dropDepth.current = Math.max(0, dropDepth.current - 1);
+    if (dropDepth.current === 0) setDropping(false);
+  }
+  function onDrop(e: DragEvent) {
+    dropDepth.current = 0;
+    setDropping(false);
+    if (closed) return;
+    const found = transferImages(e.dataTransfer);
+    if (found.length === 0) return;
+    e.preventDefault();
+    void addImages(found);
+    edRef.current?.focus();
+  }
+
   function onInput() {
     const el = edRef.current!;
     const t = el.textContent ?? '';
@@ -374,14 +478,34 @@ export function Composer() {
   const toggle = (name: MenuName) => setMenu(menu === name ? undefined : name);
   const modeLabel = ui.modes[s.mode]?.[0] ?? s.mode;
 
+  const drafts = draftImages.value;
+  const draftTokens = imagesTokens(drafts.flatMap((d) => (d.image ? [d.image] : [])));
+  const footerCls = ['compose', (closed || blocked) && 'off', dropping && 'drop']
+    .filter(Boolean)
+    .join(' ');
+
   return (
-    <footer class={closed || blocked ? 'compose off' : 'compose'}>
+    <footer
+      class={footerCls}
+      onDragEnter={onDragEnter}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
       <div class="blocks" aria-hidden="true">
         {hv.context.blocks.map((b) => (
           <i class={b.cls} style={b.style} />
         ))}
       </div>
+      {drafts.length > 0 && (
+        <div class="att">
+          {drafts.map((d) => (
+            <DraftChip key={d.id} d={d} />
+          ))}
+        </div>
+      )}
       <div class="ctx">
+        {drafts.length > 0 && <span class="dim hint">{ui.compose.imagesHint}</span>}
         {auto.map((a) => {
           const l = attachmentLabel(a);
           return (
@@ -423,8 +547,15 @@ export function Composer() {
           );
         })}
         <span class="cn" title={hv.context.title}>
-          {ui.compose.context} <b class={hv.context.numCls}>{hv.context.now}</b> / {hv.context.max}{' '}
-          ·{' '}
+          {ui.compose.context} <b class={hv.context.numCls}>{hv.context.now}</b>{' '}
+          {draftTokens > 0 && (
+            <>
+              <span class="plus" title={ui.compose.imagesPlusTitle}>
+                {ui.compose.imagesPlus(compactTokens(draftTokens))}
+              </span>{' '}
+            </>
+          )}
+          / {hv.context.max} ·{' '}
           {hv.context.compacting && (
             <>
               <span class="spin" aria-hidden="true" /> {ui.log.compacting} ·{' '}
@@ -456,6 +587,7 @@ export function Composer() {
             }
             onInput={onInput}
             onKeyDown={onKeyDown}
+            onPaste={onPaste}
           />
         </div>
         {menuOpen && trig && (
@@ -528,7 +660,13 @@ export function Composer() {
                 <Switch on={autoSelection.value} />
               </button>
               <div class="sep" />
-              <ItemButton it={{ label: ui.menus.imageSoon, small: ui.menus.soon, dis: true }} />
+              <ItemButton
+                it={{ label: ui.menus.image, small: ui.menus.imageSmall, hint: ui.menus.imageHint }}
+                onPick={() => {
+                  setMenu(undefined);
+                  send({ type: 'image.pick' });
+                }}
+              />
             </div>
           )}
         </span>
