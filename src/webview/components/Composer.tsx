@@ -23,6 +23,7 @@ import {
   extra,
   fileHits,
   history,
+  limitBlocked,
   meters,
   newSession,
   removeExtra,
@@ -34,8 +35,11 @@ import {
   setModel,
   showStatus,
   showThinking,
+  tick,
 } from '../store';
 import type { LimitMeter } from '../hudView';
+import { deferredNote } from '../limitView';
+import { menuKeys } from '../a11y';
 import { ui } from '../strings';
 import { shortModel } from '../toolView';
 import { send } from '../vscode';
@@ -97,6 +101,8 @@ function ItemButton({
   return (
     <button
       class={cls}
+      role="menuitem"
+      aria-disabled={it.dis ? true : undefined}
       onMouseDown={(e) => e.preventDefault()}
       onClick={it.dis ? undefined : onPick}
     >
@@ -107,6 +113,14 @@ function ItemButton({
       <span class="hint">{it.hint ?? ''}</span>
     </button>
   );
+}
+
+/** Enter/пробел на «кнопке» из `span role=button`. */
+function pressKey(e: KeyboardEvent, act: () => void): void {
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault();
+    act();
+  }
 }
 
 function Switch({ on }: { on: boolean }) {
@@ -125,6 +139,8 @@ export function Composer() {
   const [histIdx, setHistIdx] = useState<number | undefined>();
   const closed = !!s.closed;
   const target = replyTarget.value;
+  // лимит исчерпан: текст набирать можно (сообщение не теряется), отправка — после сброса
+  const blocked = limitBlocked.value;
 
   // «Свой вариант» / «Доработать план» — фокус в поле ввода
   useEffect(() => {
@@ -151,6 +167,7 @@ export function Composer() {
       if (e.key === 'Escape') {
         e.stopPropagation();
         setMenu(undefined);
+        edRef.current?.focus();
       }
     };
     window.addEventListener('click', onClick);
@@ -238,6 +255,8 @@ export function Composer() {
       return;
     }
     const cmd = /^\/([\w:.-]+)(?:\s+([\s\S]*))?$/.exec(t);
+    // лимит: уходит к движку всё, кроме локальных команд
+    if (blocked && !(cmd && ['clear', 'status', 'plan'].includes(cmd[1]!))) return;
     if (cmd) {
       const name = cmd[1]!;
       if (name === 'clear') {
@@ -356,7 +375,7 @@ export function Composer() {
   const modeLabel = ui.modes[s.mode]?.[0] ?? s.mode;
 
   return (
-    <footer class={closed ? 'compose off' : 'compose'}>
+    <footer class={closed || blocked ? 'compose off' : 'compose'}>
       <div class="blocks" aria-hidden="true">
         {hv.context.blocks.map((b) => (
           <i class={b.cls} style={b.style} />
@@ -372,8 +391,11 @@ export function Composer() {
               <span
                 class="x"
                 role="button"
+                tabIndex={0}
+                aria-label={ui.compose.removeChip}
                 title={ui.compose.removeChip}
                 onClick={() => dismiss(attachmentKey(a))}
+                onKeyDown={(e: KeyboardEvent) => pressKey(e, () => dismiss(attachmentKey(a)))}
               >
                 ✕
               </span>
@@ -389,8 +411,11 @@ export function Composer() {
               <span
                 class="x"
                 role="button"
+                tabIndex={0}
+                aria-label={ui.compose.removeChip}
                 title={ui.compose.removeChip}
                 onClick={() => removeExtra(attachmentKey(a))}
+                onKeyDown={(e: KeyboardEvent) => pressKey(e, () => removeExtra(attachmentKey(a)))}
               >
                 ✕
               </span>
@@ -399,7 +424,13 @@ export function Composer() {
         })}
         <span class="cn" title={hv.context.title}>
           {ui.compose.context} <b class={hv.context.numCls}>{hv.context.now}</b> / {hv.context.max}{' '}
-          · {hv.context.note && <>{hv.context.note} · </>}
+          ·{' '}
+          {hv.context.compacting && (
+            <>
+              <span class="spin" aria-hidden="true" /> {ui.log.compacting} ·{' '}
+            </>
+          )}
+          {hv.context.note && <>{hv.context.note} · </>}
           <button onClick={compact}>{ui.compose.compact}</button>
         </span>
       </div>
@@ -415,11 +446,13 @@ export function Composer() {
             data-placeholder={
               closed
                 ? ui.compose.closedPlaceholder
-                : target
-                  ? ui.reply[target.kind]
-                  : s.status === 'waiting'
-                    ? ui.reply.waiting
-                    : ui.compose.placeholder
+                : blocked
+                  ? ui.limit.placeholder
+                  : target
+                    ? ui.reply[target.kind]
+                    : s.status === 'waiting'
+                      ? ui.reply.waiting
+                      : ui.compose.placeholder
             }
             onInput={onInput}
             onKeyDown={onKeyDown}
@@ -446,13 +479,24 @@ export function Composer() {
           <b>{ui.compose.historyPos(histIdx + 1, history.value.length)}</b> {ui.compose.historyNote}
         </div>
       )}
+      {blocked && (
+        <div class="note" role="status">
+          <b>{deferredNote(blocked, tick.value)}</b>
+        </div>
+      )}
       <div class="opts">
-        <span class="pop">
-          <button class="plus" title={ui.compose.plusTitle} onClick={() => toggle('plus')}>
+        <span class="pop" onKeyDown={menuKeys}>
+          <button
+            class="plus"
+            title={ui.compose.plusTitle}
+            aria-haspopup="menu"
+            aria-expanded={menu === 'plus'}
+            onClick={() => toggle('plus')}
+          >
             {ui.compose.plus}
           </button>
           {menu === 'plus' && (
-            <div class="menu up">
+            <div class="menu up" role="menu">
               <div class="hd">{ui.menus.addContext}</div>
               <ItemButton
                 it={{ label: ui.menus.pickFile, hint: ui.menus.pickFileHint }}
@@ -488,12 +532,17 @@ export function Composer() {
             </div>
           )}
         </span>
-        <span class="pop">
-          <button class="mode" onClick={() => toggle('mode')}>
+        <span class="pop" onKeyDown={menuKeys}>
+          <button
+            class="mode"
+            aria-haspopup="menu"
+            aria-expanded={menu === 'mode'}
+            onClick={() => toggle('mode')}
+          >
             {ui.compose.mode} <b>{modeLabel}</b>
           </button>
           {menu === 'mode' && (
-            <div class="menu up">
+            <div class="menu up" role="menu">
               {(['default', 'acceptEdits', 'plan', 'bypassPermissions'] as PermissionMode[]).map(
                 (m) => {
                   const [label, small, hint] = ui.modes[m]!;
@@ -518,12 +567,18 @@ export function Composer() {
             </div>
           )}
         </span>
-        <span class="pop">
-          <button class="agent" title={ui.compose.agentTitle} onClick={() => toggle('agent')}>
+        <span class="pop" onKeyDown={menuKeys}>
+          <button
+            class="agent"
+            title={ui.compose.agentTitle}
+            aria-haspopup="menu"
+            aria-expanded={menu === 'agent'}
+            onClick={() => toggle('agent')}
+          >
             {ui.compose.agent} <b>claude</b>
           </button>
           {menu === 'agent' && (
-            <div class="menu up">
+            <div class="menu up" role="menu">
               <div class="hd">{ui.compose.agentMenu}</div>
               <ItemButton
                 it={{
@@ -553,12 +608,16 @@ export function Composer() {
             </div>
           )}
         </span>
-        <span class="pop">
-          <button onClick={() => toggle('model')}>
+        <span class="pop" onKeyDown={menuKeys}>
+          <button
+            aria-haspopup="menu"
+            aria-expanded={menu === 'model'}
+            onClick={() => toggle('model')}
+          >
             {ui.compose.model} <b>{s.model ? shortModel(s.model) : '—'}</b>
           </button>
           {menu === 'model' && (
-            <div class="menu up">
+            <div class="menu up" role="menu">
               <div class="hd">{ui.menus.model}</div>
               {models.map((m) => (
                 <ItemButton
@@ -573,12 +632,16 @@ export function Composer() {
             </div>
           )}
         </span>
-        <span class="pop">
-          <button onClick={() => toggle('effort')}>
+        <span class="pop" onKeyDown={menuKeys}>
+          <button
+            aria-haspopup="menu"
+            aria-expanded={menu === 'effort'}
+            onClick={() => toggle('effort')}
+          >
             {ui.compose.effort} <b>{s.effort ?? 'auto'}</b>
           </button>
           {menu === 'effort' && (
-            <div class="menu up">
+            <div class="menu up" role="menu">
               <div class="hd">{ui.menus.effort}</div>
               {efforts.map((l) => (
                 <ItemButton
@@ -626,7 +689,13 @@ export function Composer() {
             />
           )}
         </span>
-        <button class="send" title={ui.compose.sendTitle} disabled={closed} onClick={submit}>
+        <button
+          class="send"
+          title={ui.compose.sendTitle}
+          // ответ карточке (вопрос, план) к лимиту не относится: Enter его пропускает — и кнопка тоже
+          disabled={closed || (!!blocked && !target)}
+          onClick={submit}
+        >
           {ui.compose.send}
         </button>
       </div>

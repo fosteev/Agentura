@@ -195,7 +195,15 @@ export type FromWebview =
   /** Этап 6: переименование по двойному клику в списке (B9). */
   | { type: 'session.rename'; sessionId: string; title: string }
   /** Этап 6: кнопка `/status` боковой панели. */
-  | { type: 'status.show' };
+  | { type: 'status.show' }
+  /**
+   * Этап 7: «Повторить ход» на карточке ошибки — хост возобновляет сессию (`resume`) и заново
+   * отправляет последний неотвеченный промпт, если карточка говорит, что ход был оборван (`turn`);
+   * `turn: false` («Возобновить сессию») — только возобновление.
+   */
+  | { type: 'turn.retry'; sessionId: string; turn: boolean }
+  /** Этап 7: «Открыть журнал расширения» — канал Output → Agentura. */
+  | { type: 'log.show' };
 
 /** Аккаунт для секции «Аккаунт и лимиты» (этап 6); поля, которых нет, — «—». */
 export interface AccountSummary {
@@ -248,6 +256,8 @@ const FROM_WEBVIEW_TYPES: ReadonlySet<string> = new Set<FromWebview['type']>([
   'session.resume',
   'session.rename',
   'status.show',
+  'turn.retry',
+  'log.show',
 ]);
 
 /** Проверка входящего от webview сообщения: снаружи приходит `unknown`. */

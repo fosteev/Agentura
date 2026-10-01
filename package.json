@@ -73,7 +73,12 @@
       },
       {
         "command": "agentura.showLogs",
-        "title": "Показать логи",
+        "title": "Показать журнал",
+        "category": "Agentura"
+      },
+      {
+        "command": "agentura.debug.showState",
+        "title": "Показать состояние (отладка)",
         "category": "Agentura"
       }
     ],

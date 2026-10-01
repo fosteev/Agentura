@@ -290,4 +290,24 @@ describe('PermissionBroker', () => {
       updatedPermissions: [{ type: 'setMode', mode: 'acceptEdits', destination: 'session' }],
     });
   });
+
+  it('allow-edits на файле вне рабочих папок добавляет addDirectories из подсказок движка', async () => {
+    const broker = new PermissionBroker(() => undefined);
+    // подсказка движка может звать в `localSettings` — «до конца сессии» в настройки не пишет
+    const dirs = {
+      type: 'addDirectories',
+      directories: ['/other/place'],
+      destination: 'localSettings',
+    };
+    const e = broker.canUseTool('Edit', {}, { toolUseID: 'e3', suggestions: [dirs] });
+    broker.respondPermission('e3', 'allow-edits');
+    await expect(e).resolves.toEqual({
+      behavior: 'allow',
+      updatedInput: {},
+      updatedPermissions: [
+        { type: 'setMode', mode: 'acceptEdits', destination: 'session' },
+        { ...dirs, destination: 'session' },
+      ],
+    });
+  });
 });

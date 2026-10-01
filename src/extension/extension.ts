@@ -9,6 +9,7 @@ import { DiffDocuments } from './diffDocuments';
 import { AccountService } from './account';
 import { SessionMemory } from './sessionMemory';
 import { SessionsService } from './sessionsService';
+import { showDebugState } from './debugPanel';
 
 export function activate(context: vscode.ExtensionContext): void {
   const log = new Logger('Agentura');
@@ -114,6 +115,10 @@ export function activate(context: vscode.ExtensionContext): void {
       ChatPanel.runStatus(context, log, services),
     ),
     vscode.commands.registerCommand('agentura.showLogs', () => log.show()),
+    // отладка: фикстуры состояний в отдельной вкладке без движка (этап 7)
+    vscode.commands.registerCommand('agentura.debug.showState', (name?: unknown) =>
+      showDebugState(context, log, name),
+    ),
     vscode.commands.registerCommand('agentura.refreshUsage', () => sidebar.refreshUsage()),
   );
 }

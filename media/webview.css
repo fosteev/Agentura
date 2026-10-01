@@ -122,3 +122,28 @@ body {
 .hud .acts { position: relative; }
 .hud .acts .menu.down { left: auto; right: 0; min-width: 300px; max-height: 60vh; overflow: auto; }
 .hud .acts .menu .it { cursor: pointer; }
+
+/* ───── этап 7: состояния, ошибки, лимит, доступность ───── */
+.log .e.fail .r .del { color: var(--full); }
+.log .e.fail[role="button"]:hover { background: var(--bg-hover); }
+.compose .cn .spin { margin-right: 2px; }
+.compose.off .note { color: var(--fg-mute); }
+.banner .btn { font-size: 11.5px; }
+/* видимый фокус по кнопкам карточек, вкладок, меню и «кнопкам-спанам» (Tab по карточкам, этап 7) */
+.ask .btn:focus-visible, .ask .opt:focus-visible, .tabs button:focus-visible,
+.menu .it:focus-visible, .banner .btn:focus-visible, .ctx .x:focus-visible,
+.log .e[role="button"]:focus-visible, .opts button:focus-visible, .hud .acts button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+.menu .it:focus-visible { background: var(--bg-hover); }
+/* контрастные темы: границы карточек и кнопок берут цвет темы, цвет-только-статус не несёт смысла */
+body.vscode-high-contrast .ask, body.vscode-high-contrast-light .ask,
+body.vscode-high-contrast .btn, body.vscode-high-contrast-light .btn,
+body.vscode-high-contrast .banner, body.vscode-high-contrast-light .banner {
+  border-color: var(--vscode-contrastBorder, var(--line-strong));
+}
+@media (forced-colors: active) {
+  .ask, .btn, .banner { border: 1px solid CanvasText; }
+  .ask.danger, .banner { border-left: 4px solid Mark; }
+}

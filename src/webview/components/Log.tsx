@@ -4,7 +4,7 @@ import type { FeedRow } from '../chatState';
 import { onCodeCopyClick, renderMarkdown, withCursor } from '../markdown';
 import { ui } from '../strings';
 import { editStats, formatDuration, matchCount, toolView } from '../toolView';
-import { PermissionCard, PlanCardView, QuestionCardView } from './Cards';
+import { FailCardView, PermissionCard, PlanCardView, QuestionCardView, ToolOutput } from './Cards';
 
 type Row<K extends FeedRow['kind']> = Extract<FeedRow, { kind: K }>;
 
@@ -53,6 +53,8 @@ function ToolRight({ r, onDiff }: { r: Right; onDiff?: () => void }) {
           href="#"
           onClick={(e) => {
             e.preventDefault();
+            // в красной строке клик по «diff» не раскрывает вывод
+            e.stopPropagation();
             onDiff?.();
           }}
         >
@@ -97,25 +99,55 @@ export function Tool({
 }) {
   const v = toolView(t.name, t.input, cwd);
   const running = t.state === 'run';
-  const cls = ['e', v.run && 'run', running && 'now'].filter(Boolean).join(' ');
+  const failed = t.state === 'err';
+  // красный результат раскрывается: вывод инструмента как его увидела модель
+  const expandable = failed && !!t.content;
+  const [open, setOpen] = useState(false);
+  const cls = ['e', v.run && 'run', running && 'now', failed && 'fail'].filter(Boolean).join(' ');
+  const toggle = () => expandable && setOpen(!open);
   return (
-    <div class={cls}>
-      <span class="p">{running ? <span class="spin" /> : '▸'}</span>
-      <span class="op">{v.op}</span>
-      <span class="what">
-        {v.dimAfter ? (
-          <>
-            {v.what} {v.dim && <span class="dim">{v.dim}</span>}
-          </>
-        ) : (
-          <>
-            {v.dim && <span class="dim">{v.dim}</span>}
-            {v.what}
-          </>
-        )}
-      </span>
-      <ToolRight r={toolRight(t, now)} onDiff={() => onDiff(t.toolUseId)} />
-    </div>
+    <>
+      <div
+        class={cls}
+        {...(expandable
+          ? {
+              role: 'button',
+              tabIndex: 0,
+              'aria-expanded': open,
+              title: ui.fail.toolToggle,
+              style: { cursor: 'pointer' },
+              onClick: toggle,
+              onKeyDown: (e: KeyboardEvent) => {
+                // Enter на ссылке «diff» внутри строки — её, не раскрытие
+                if (e.target !== e.currentTarget) return;
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  toggle();
+                }
+              },
+            }
+          : {})}
+      >
+        <span class="p">
+          {running ? <span class="spin" /> : expandable ? open ? '▾' : '▸' : '▸'}
+        </span>
+        <span class="op">{v.op}</span>
+        <span class="what">
+          {v.dimAfter ? (
+            <>
+              {v.what} {v.dim && <span class="dim">{v.dim}</span>}
+            </>
+          ) : (
+            <>
+              {v.dim && <span class="dim">{v.dim}</span>}
+              {v.what}
+            </>
+          )}
+        </span>
+        <ToolRight r={toolRight(t, now)} onDiff={() => onDiff(t.toolUseId)} />
+      </div>
+      {open && t.content && <ToolOutput content={t.content} />}
+    </>
   );
 }
 
@@ -176,7 +208,7 @@ export function Log({
   children?: preact.ComponentChildren;
 }) {
   return (
-    <div class="log">
+    <div class="log" role="log" aria-label={ui.log.aria}>
       {rows.map((it, i) => {
         switch (it.kind) {
           case 'sys':
@@ -218,6 +250,8 @@ export function Log({
             return <QuestionCardView key={it.id} c={it} active={it.id === activeId} />;
           case 'plan':
             return <PlanCardView key={it.id} c={it} cwd={cwd} />;
+          case 'fail':
+            return <FailCardView key={it.id} c={it} />;
           case 'sum':
             return (
               <div class="sum" key={it.id}>

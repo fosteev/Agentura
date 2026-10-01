@@ -13,6 +13,7 @@ import {
   attachPreview,
   initialState,
   markPermission,
+  markRetrying,
   markPlan,
   markQuestionSent,
   pendingPlan,
@@ -21,6 +22,7 @@ import {
   queueUser,
   questionReady,
   resetSession,
+  seedHistory,
   setCustomAnswer,
   type ChatState,
   type FeedRow,
@@ -333,12 +335,12 @@ describe('системные строки этапа 4', () => {
         windows: [],
         resetsAt: reset,
       }),
-      0,
+      reset - 3_600_000,
     );
     s = applyEvent(
       s,
       e({ type: 'error', message: 'лимит 5-часового окна исчерпан', fatal: false, code: 'limit' }),
-      0,
+      reset - 3_600_000,
     );
     const row = s.rows[0] as Extract<FeedRow, { kind: 'sys' }>;
     expect(row.tone).toBe('bad');
@@ -348,9 +350,10 @@ describe('системные строки этапа 4', () => {
     expect(s.limitResetsAt).toBeUndefined();
   });
 
-  it('ошибка без кода лимита — как была, без «ход не начат»', () => {
+  it('ошибка без кода лимита — карточка ошибки, а не «ход не начат»', () => {
     const s = applyEvent(initialState(), e({ type: 'error', message: 'сеть', fatal: false }), 0);
-    expect((s.rows[0] as Extract<FeedRow, { kind: 'sys' }>).text).toEqual(['сеть']);
+    expect(s.rows[0]).toMatchObject({ kind: 'fail', message: 'сеть', fatal: false, state: 'open' });
+    expect(s.status).toBe('error');
   });
 });
 
@@ -493,5 +496,156 @@ describe('карточки .ask (этап 5)', () => {
     s = markPlan(s, 'p', 'reject');
     s = applyEvent(s, resolved('p', 'deny'), 1);
     expect(s.rows[1]).toMatchObject({ kind: 'sys', tone: 'bad', text: ['план отклонён'] });
+  });
+});
+
+describe('ошибки и лимит (этап 7)', () => {
+  const ev = (e: Record<string, unknown>) => e as unknown as AgentEvent;
+  const kindsOf = (s: ChatState) => s.rows.map((r) => r.kind);
+  const turn = (s: ChatState) =>
+    applyEvent(s, ev({ type: 'turn.start', at: 1, prompt: 'сделай' }), 1);
+
+  it('fatal error + session.closed(error) — одна карточка с turn=true, открытые строки закрыты', () => {
+    let s = turn(initialState());
+    s = applyEvent(s, ev({ type: 'tool.start', toolUseId: 't', name: 'Bash', input: {} }), 1);
+    s = applyEvent(s, ev({ type: 'error', fatal: true, message: 'ECONNRESET' }), 1);
+    s = applyEvent(s, ev({ type: 'session.closed', reason: 'error', message: 'ECONNRESET' }), 1);
+    const fails = s.rows.filter((r): r is Extract<FeedRow, { kind: 'fail' }> => r.kind === 'fail');
+    expect(fails).toHaveLength(1);
+    expect(fails[0]).toMatchObject({ fatal: true, turn: true, message: 'ECONNRESET' });
+    expect(s.rows.find((r) => r.kind === 'tool')).toMatchObject({ state: 'stopped' });
+    expect(s.status).toBe('error');
+    expect(s.closed?.reason).toBe('error');
+  });
+
+  it('exit посреди хода — карточка, exit в покое — тихая строка', () => {
+    const mid = applyEvent(turn(initialState()), ev({ type: 'session.closed', reason: 'exit' }), 1);
+    expect(kindsOf(mid)).toContain('fail');
+    const idle = applyEvent(initialState(), ev({ type: 'session.closed', reason: 'exit' }), 1);
+    expect(kindsOf(idle)).toEqual(['sys']);
+  });
+
+  it('после успешного хода (sum) ошибка — карточка «возобновить», не «повторить ход»', () => {
+    let s = turn(initialState());
+    s = applyEvent(
+      s,
+      ev({
+        type: 'turn.result',
+        ok: true,
+        subtype: 'success',
+        interrupted: false,
+        durationMs: 1,
+        apiDurationMs: 0,
+        numTurns: 1,
+        usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 },
+        totalCostUsd: 0,
+        permissionDenials: [],
+      }),
+      2,
+    );
+    s = applyEvent(s, ev({ type: 'error', fatal: true, message: 'упал' }), 3);
+    expect(s.rows.at(-1)).toMatchObject({ kind: 'fail', turn: false });
+  });
+
+  it('api_retry — не ошибка: одна нейтральная строка на серию повторов, статус не меняется', () => {
+    let s = turn(initialState());
+    s = applyEvent(
+      s,
+      ev({ type: 'error', fatal: false, code: 'api_retry', message: 'Повтор 1/10' }),
+      1,
+    );
+    s = applyEvent(
+      s,
+      ev({ type: 'error', fatal: false, code: 'api_retry', message: 'Повтор 2/10' }),
+      1,
+    );
+    const rows = s.rows.filter((r) => r.kind === 'sys');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ text: ['Повтор 2/10'] });
+    expect((rows[0] as { tone?: string }).tone).toBeUndefined();
+    expect(s.status).toBe('working');
+  });
+
+  it('markRetrying гасит карточку; новая ошибка заменяет «повторяю…», а не копится', () => {
+    let s = applyEvent(turn(initialState()), ev({ type: 'error', fatal: true, message: 'a' }), 1);
+    s = markRetrying(s);
+    expect(s.rows.at(-1)).toMatchObject({ kind: 'fail', state: 'retrying' });
+    s = applyEvent(s, ev({ type: 'error', fatal: true, message: 'b' }), 2);
+    const fails = s.rows.filter((r) => r.kind === 'fail');
+    expect(fails).toHaveLength(1);
+    expect(fails[0]).toMatchObject({ message: 'b', state: 'open' });
+  });
+
+  it('карточка ошибки гаснет (становится красной строкой), когда человек пошёл дальше: новое сообщение или ход', () => {
+    const base = applyEvent(
+      turn(initialState()),
+      ev({ type: 'error', fatal: false, message: 'ответ не получен' }),
+      1,
+    );
+    expect(base.rows.at(-1)).toMatchObject({ kind: 'fail', state: 'open' });
+    for (const s of [
+      queueUser(base, 'дальше'),
+      applyEvent(base, ev({ type: 'turn.start', at: 2, prompt: 'дальше' }), 2),
+    ]) {
+      expect(s.rows.some((r) => r.kind === 'fail')).toBe(false);
+      expect(s.rows.find((r) => r.kind === 'sys' && r.tone === 'bad')).toMatchObject({
+        text: ['ответ не получен'],
+      });
+    }
+  });
+
+  it('limit.update rejected и ошибка limit — одна строка «ход не начат» с причиной и сбросом', () => {
+    let s = turn(initialState());
+    s = applyEvent(
+      s,
+      ev({
+        type: 'limit.update',
+        source: 'engine',
+        status: 'rejected',
+        windows: [],
+        resetsAt: 5 * 3_600_000,
+      }),
+      1,
+    );
+    s = applyEvent(
+      s,
+      ev({ type: 'error', fatal: false, code: 'limit', message: 'лимит 5-часового окна исчерпан' }),
+      1,
+    );
+    const rows = s.rows.filter((r) => r.kind === 'sys' && r.tag === 'limit');
+    expect(rows).toHaveLength(1);
+    const text = (rows[0] as Extract<FeedRow, { kind: 'sys' }>).text.join('');
+    expect(text).toContain('ход не начат: лимит 5-часового окна исчерпан');
+    expect(text).toContain('сброс в');
+    expect(s.status).toBe('limited');
+    // событие без текста позже не затирает причину
+    s = applyEvent(
+      s,
+      ev({ type: 'limit.update', source: 'engine', status: 'rejected', windows: [] }),
+      2,
+    );
+    expect(
+      (
+        s.rows.find((r) => r.kind === 'sys' && r.tag === 'limit') as Extract<
+          FeedRow,
+          { kind: 'sys' }
+        >
+      ).text.join(''),
+    ).toContain('5-часового');
+  });
+
+  it('seedHistory: давняя ошибка из транскрипта — строка, без кнопки; closed не переносится', () => {
+    const s = seedHistory(
+      initialState(),
+      { sessionId: 's', skippedTurns: 0 },
+      [
+        ev({ type: 'turn.start', at: 1, prompt: 'x' }),
+        ev({ type: 'error', fatal: false, code: 'unknown', message: 'API Error' }),
+      ],
+      10,
+    );
+    expect(kindsOf(s)).not.toContain('fail');
+    expect(s.rows.at(-1)).toMatchObject({ kind: 'sys', tone: 'bad', text: ['API Error'] });
+    expect(s.closed).toBeUndefined();
   });
 });

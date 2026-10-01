@@ -14,7 +14,9 @@ import {
   type TimelineSeg,
   type TurnTimeline,
 } from './hudState';
-import { clock } from './chatState';
+import { clock, resetLabel } from './chatState';
+
+export { resetLabel };
 import { formatCost, formatDuration, formatInt, shortModel, splitPath, toolView } from './toolView';
 import { ui } from './strings';
 
@@ -109,6 +111,8 @@ export interface ContextView {
   blocks: Block[];
   /** «порог 150k пройден» — когда перешагнули второй порог. */
   note?: string;
+  /** Идёт сжатие контекста — рядом с числом «сжимаю…». */
+  compacting: boolean;
   title: string;
 }
 
@@ -129,7 +133,12 @@ export function contextView(s: HudState): ContextView {
     ...(passed !== undefined && zone !== 'ok'
       ? { note: ui.compose.thresholdPassed(kilo(passed)) }
       : {}),
-    title: ui.compose.ctxTitle(sorted.map(kilo), kilo(fullAt), scale < max ? kilo(scale) : undefined),
+    compacting: !!s.compacting,
+    title: ui.compose.ctxTitle(
+      sorted.map(kilo),
+      kilo(fullAt),
+      scale < max ? kilo(scale) : undefined,
+    ),
   };
 }
 
@@ -211,15 +220,6 @@ export function limitMeter(w: LimitWindow | undefined): LimitMeter | undefined {
   };
 }
 
-const WEEKDAYS = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
-
-/** Время сброса: сегодня — `17:00`, иначе `пт 09:00`. */
-export function resetLabel(resetsAt: number, now: number): string {
-  const d = new Date(resetsAt);
-  const sameDay = d.toDateString() === new Date(now).toDateString();
-  return sameDay ? clock(resetsAt) : `${WEEKDAYS[d.getDay()]} ${clock(resetsAt)}`;
-}
-
 export interface LimitsView {
   five?: LimitMeter;
   week?: LimitMeter;
@@ -255,6 +255,8 @@ export interface TimelineRowView {
   d: string;
   now?: boolean;
   mute?: boolean;
+  /** Цвет строки: `warn` — ждёт разрешения, `agent` — решения по плану. */
+  tone?: 'warn' | 'agent';
 }
 
 export interface TimelineView {
@@ -293,6 +295,15 @@ export function timelineView(t: TurnTimeline, now: number, cwd?: string): Timeli
   const rows = t.segs.map((g): TimelineRowView => {
     const running = g.endAt === undefined;
     const dur = formatDuration((g.endAt ?? now) - g.at);
+    if (running && g.waiting) {
+      return {
+        at: (Math.max(0, g.at - t.startedAt) / 1000).toFixed(1),
+        ev: segLabel(g, cwd),
+        d: ui.turn.waiting[g.waiting],
+        now: true,
+        tone: g.waiting === 'plan' ? 'agent' : 'warn',
+      };
+    }
     const tail = g.kind === 'text' && running ? ui.turn.streaming : running ? `${dur}…` : dur;
     return {
       at: (Math.max(0, g.at - t.startedAt) / 1000).toFixed(1),

@@ -246,6 +246,46 @@ describe('ClaudeAdapter', () => {
     ]);
   });
 
+  it('обрыв сети посреди хода (ECONNRESET после первых сообщений): события хода доходят, затем error fatal и closed {error}', async () => {
+    const queue: unknown[] = [
+      init,
+      {
+        type: 'assistant',
+        message: {
+          id: 'msg-1',
+          role: 'assistant',
+          model: 'claude-sonnet-5-5',
+          content: [{ type: 'text', text: 'Начинаю' }],
+          usage: { input_tokens: 1, output_tokens: 1 },
+        },
+        parent_tool_use_id: null,
+      },
+    ];
+    const fake = fakeSdk({
+      next: async () => {
+        if (queue.length > 0) return { value: queue.shift(), done: false };
+        throw new Error('read ECONNRESET');
+      },
+    });
+    const session = await new ClaudeAdapter({ loadSdk: async () => fake.sdk }).createSession({
+      cwd: '/w',
+    });
+    await tick();
+    const events: AgentEvent[] = [];
+    session.events.on((e) => events.push(e));
+    expect(events.map((e) => e.type)).toEqual(
+      expect.arrayContaining(['session.init', 'error', 'session.closed']),
+    );
+    expect(events.at(-2)).toEqual({ type: 'error', fatal: true, message: 'read ECONNRESET' });
+    expect(events.at(-1)).toEqual({
+      type: 'session.closed',
+      reason: 'error',
+      message: 'read ECONNRESET',
+    });
+    // после обрыва отправка отвергается — интерфейс покажет карточку и отключит поле ввода
+    expect(session.send('ещё')).toBe(false);
+  });
+
   it('accountInfo: ответ и закрытие процесса; без ответа — ошибка по таймауту и тоже закрытие', async () => {
     const ok = fakeSdk();
     const adapter = new ClaudeAdapter({ loadSdk: async () => ok.sdk });

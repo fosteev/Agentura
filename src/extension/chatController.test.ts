@@ -12,6 +12,7 @@ import type {
 import type { ToWebview } from '../protocol';
 import {
   ChatController,
+  describeEvent,
   PLAN_REFINE_MESSAGE,
   PLAN_REFINE_PREFIX,
   PLAN_REJECT_MESSAGE,
@@ -565,7 +566,11 @@ describe('ChatController', () => {
     live.set.mockClear();
     s.emit({ type: 'session.closed', reason: 'error', message: 'упал' });
     expect(live.delete).toHaveBeenCalledWith('sess-1');
-    expect(live.set).not.toHaveBeenCalled();
+    // упавшая сессия остаётся в списке строкой `err` — до «Повторить ход», возобновления или закрытия вкладки
+    expect(live.set).toHaveBeenCalledWith('sess-1', 'error');
+    live.set.mockClear();
+    controller.dispose();
+    expect(live.delete).toHaveBeenLastCalledWith('sess-1');
   });
 });
 
@@ -945,5 +950,217 @@ describe('ChatController: сессии (этап 6)', () => {
     expect(posted.some((m) => m.type === 'agent.event' && m.event.type === 'session.title')).toBe(
       true,
     );
+  });
+});
+
+// ——— этап 7: ошибки, «Повторить ход», журнал ———
+
+describe('ChatController: ошибки и повтор хода (этап 7)', () => {
+  const initEvent = {
+    type: 'session.init',
+    sessionId: 'sess-1',
+    model: 'sonnet',
+    cwd: '/p',
+    tools: [],
+    permissionMode: 'default',
+    slashCommands: [],
+    skills: [],
+    agents: [],
+    apiKeySource: 'none',
+    engineVersion: '2.1.285',
+  } as unknown as AgentEvent;
+  const okResult = {
+    type: 'turn.result',
+    ok: true,
+    subtype: 'success',
+    interrupted: false,
+    durationMs: 1,
+    apiDurationMs: 0,
+    numTurns: 1,
+    usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 },
+    totalCostUsd: 0.1,
+    permissionDenials: [],
+  } as unknown as AgentEvent;
+
+  function build(over: Partial<ChatDeps> = {}) {
+    const sessions: FakeSession[] = [];
+    const resumed: string[] = [];
+    const loadHistory = vi.fn(async (): Promise<SessionHistory> => ({
+      events: [],
+      turns: 0,
+      skippedTurns: 0,
+    }));
+    const adapter = {
+      id: 'fake',
+      loadHistory,
+      createSession: async () => {
+        const s = new FakeSession();
+        sessions.push(s);
+        return s;
+      },
+      resumeSession: async (id: string) => {
+        resumed.push(id);
+        const s = new FakeSession();
+        s.id = id;
+        sessions.push(s);
+        return s;
+      },
+    } as unknown as AgentAdapter;
+    const posted: ToWebview[] = [];
+    const deps: ChatDeps = {
+      adapter,
+      cwd: '/p',
+      project: 'p',
+      post: (m) => posted.push(m),
+      setTitle: vi.fn(),
+      log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      settings: () => ({ allowBypass: false }),
+      findFiles: async () => [],
+      pickFiles: async () => [],
+      readSelection: async () => undefined,
+      listRecent: async () => [],
+      showSessions: vi.fn(),
+      showLogs: vi.fn(),
+      ...over,
+    };
+    return { controller: new ChatController(deps), sessions, resumed, loadHistory, posted, deps };
+  }
+
+  /** Новая сессия: init, пользователь отправил промпт, движок упал посреди хода. */
+  async function crashed() {
+    const t = build();
+    t.controller.start();
+    await tick();
+    t.sessions[0]!.emit(initEvent);
+    await t.controller.handle({ type: 'send', sessionId: 'sess-1', text: 'почини табло' });
+    t.sessions[0]!.emit({ type: 'error', fatal: true, message: 'ECONNRESET' });
+    t.sessions[0]!.emit({ type: 'session.closed', reason: 'error', message: 'ECONNRESET' });
+    return t;
+  }
+
+  it('«Повторить ход»: resume упавшей сессии по запомненному id и тот же промпт ещё раз', async () => {
+    const t = await crashed();
+    // у новой сессии, упавшей до resume, `sessionId` после closed пуст — id помнится отдельно
+    expect(t.controller.sessionId).toBeUndefined();
+    await t.controller.handle({ type: 'turn.retry', sessionId: 'sess-1', turn: true });
+    await tick();
+    expect(t.resumed).toEqual(['sess-1']);
+    expect(t.loadHistory).toHaveBeenCalledWith('sess-1', '/p');
+    expect(t.sessions[1]!.sent).toEqual(['почини табло']);
+  });
+
+  it('промпт успешного хода не повторяется: «Повторить» только возобновляет', async () => {
+    const t = build();
+    t.controller.start();
+    await tick();
+    t.sessions[0]!.emit(initEvent);
+    await t.controller.handle({ type: 'send', sessionId: 'sess-1', text: 'привет' });
+    t.sessions[0]!.emit(okResult);
+    t.sessions[0]!.emit({ type: 'session.closed', reason: 'error', message: 'упал' });
+    await t.controller.handle({ type: 'turn.retry', sessionId: 'sess-1', turn: true });
+    await tick();
+    expect(t.resumed).toEqual(['sess-1']);
+    expect(t.sessions[1]!.sent).toEqual([]);
+  });
+
+  it('сессия, не дожившая до init: повтор — заново с тем же промптом', async () => {
+    const t = build();
+    t.controller.start();
+    await tick();
+    await t.controller.handle({ type: 'send', sessionId: '', text: 'привет' });
+    t.sessions[0]!.emit({ type: 'session.closed', reason: 'error', message: 'нет сети' });
+    await t.controller.handle({ type: 'turn.retry', sessionId: '', turn: true });
+    await tick();
+    expect(t.resumed).toEqual([]);
+    expect(t.sessions[1]!.sent).toEqual(['привет']);
+  });
+
+  it('«Возобновить сессию» (turn: false) после неудачного, но законченного хода промпт не шлёт', async () => {
+    const t = build();
+    t.controller.start();
+    await tick();
+    t.sessions[0]!.emit(initEvent);
+    await t.controller.handle({ type: 'send', sessionId: 'sess-1', text: 'привет' });
+    t.sessions[0]!.emit({ ...okResult, ok: false, subtype: 'error_max_turns' } as AgentEvent);
+    t.sessions[0]!.emit({ type: 'session.closed', reason: 'error', message: 'упал в покое' });
+    await t.controller.handle({ type: 'turn.retry', sessionId: 'sess-1', turn: false });
+    await tick();
+    expect(t.resumed).toEqual(['sess-1']);
+    expect(t.sessions[1]!.sent).toEqual([]);
+  });
+
+  it('«Повторить» на устаревшей карточке во время идущего хода ничего не делает', async () => {
+    const t = build();
+    t.controller.start();
+    await tick();
+    t.sessions[0]!.emit(initEvent);
+    await t.controller.handle({ type: 'send', sessionId: 'sess-1', text: 'новый ход' });
+    t.sessions[0]!.emit({ type: 'turn.start', at: 1, prompt: 'новый ход' } as AgentEvent);
+    await t.controller.handle({ type: 'turn.retry', sessionId: 'sess-1', turn: true });
+    await tick();
+    expect(t.resumed).toEqual([]);
+    expect(t.sessions).toHaveLength(1);
+    expect(t.sessions[0]!.sent).toEqual(['новый ход']);
+  });
+
+  it('упавшая сессия: строка списка `error`, после «Повторить» — снята', async () => {
+    const live = { set: vi.fn(), delete: vi.fn() };
+    const t = build({ live: live as unknown as ChatDeps['live'] });
+    t.controller.start();
+    await tick();
+    t.sessions[0]!.emit(initEvent);
+    t.sessions[0]!.emit({ type: 'session.closed', reason: 'error', message: 'упал' });
+    expect(live.set).toHaveBeenLastCalledWith('sess-1', 'error');
+    live.delete.mockClear();
+    await t.controller.handle({ type: 'turn.retry', sessionId: 'sess-1', turn: true });
+    expect(live.delete).toHaveBeenCalledWith('sess-1');
+  });
+
+  it('log.show открывает журнал', async () => {
+    const t = build();
+    await t.controller.handle({ type: 'log.show' });
+    expect(t.deps.showLogs).toHaveBeenCalled();
+  });
+
+  it('журнал: строки контроллера с префиксом из 8 символов id, все события — debug, ошибки — error', async () => {
+    const t = build();
+    t.controller.start();
+    await tick();
+    t.sessions[0]!.id = 'abcdef12-3456-7890';
+    t.sessions[0]!.emit({ ...initEvent, sessionId: 'abcdef12-3456-7890' } as AgentEvent);
+    expect(t.deps.log.info).toHaveBeenCalledWith(
+      expect.stringMatching(/^\[abcdef12\] session\.init/),
+    );
+    expect(t.deps.log.debug).toHaveBeenCalledWith('[abcdef12] ← session.init');
+    t.sessions[0]!.emit({ type: 'text.delta', messageId: 'm', text: 'привет' });
+    expect(t.deps.log.debug).toHaveBeenCalledWith('[abcdef12] ← text.delta 6 симв.');
+    t.sessions[0]!.emit({ type: 'error', fatal: true, message: 'ECONNRESET' });
+    expect(t.deps.log.error).toHaveBeenCalledWith('[abcdef12] error (fatal): ECONNRESET');
+    t.sessions[0]!.emit({ type: 'session.closed', reason: 'error', message: 'ECONNRESET' });
+    expect(t.deps.log.error).toHaveBeenCalledWith('[abcdef12] session.closed: error — ECONNRESET');
+  });
+
+  it('журнал: до init префикс «новая»', async () => {
+    const t = build();
+    t.controller.start();
+    await tick();
+    expect(t.deps.log.info).toHaveBeenCalledWith('[новая] Сессия агента создана');
+  });
+
+  it('describeEvent: одна строка без текстов и результатов', () => {
+    expect(
+      describeEvent({ type: 'tool.start', toolUseId: 't', name: 'Edit', input: { a: 1 } }),
+    ).toBe('tool.start Edit');
+    expect(
+      describeEvent({
+        type: 'limit.update',
+        source: 'engine',
+        status: 'rejected',
+        windows: [{ kind: 'five-hour', percent: 100 }],
+      }),
+    ).toBe('limit.update engine rejected five-hour 100%');
+    expect(
+      describeEvent({ type: 'text.delta', agentId: 'agent-12345678', messageId: 'm', text: 'abc' }),
+    ).toBe('text.delta [агент agent-12] 3 симв.');
   });
 });

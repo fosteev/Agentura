@@ -13,6 +13,8 @@ const extension = {
   platform: 'node',
   // SDK — ESM с нативным бинарником CLI, ищет его через import.meta.url: не бандлить (этап 2).
   external: ['vscode', '@anthropic-ai/claude-agent-sdk'],
+  // фикстуры состояний для agentura.debug.showState (этап 7) — текстом в бандл
+  loader: { '.jsonl': 'text' },
 };
 
 const webview = {
