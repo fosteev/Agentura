@@ -365,6 +365,9 @@ const FROM_WEBVIEW_TYPES: ReadonlySet<string> = new Set<FromWebview['type']>([
   'settings.reveal',
 ]);
 
+/** `error.code` карточки «claude не найден»: webview рисует инструкцию и «Открыть настройки». */
+export const ENGINE_MISSING_CODE = 'engine_missing';
+
 /** Проверка входящего от webview сообщения: снаружи приходит `unknown`. */
 export function isFromWebview(value: unknown): value is FromWebview {
   if (typeof value !== 'object' || value === null) return false;

@@ -1999,6 +1999,89 @@ describe('ChatController: ошибки и повтор хода (этап 7)', (
     expect(t.sessions[1]!.sent).toEqual(['новое']);
   });
 
+  it('settings.open открывает вкладку настроек', async () => {
+    const openSettings = vi.fn();
+    const t = build({ openSettings });
+    await t.controller.handle({ type: 'settings.open' });
+    expect(openSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it('claude не найден: движок не стартует, в ленте карточка с кодом engine_missing', async () => {
+    const t = build({
+      engine: {
+        ready: async () => ({ ok: false as const, problem: 'Не найден Claude Code' }),
+      },
+    });
+    t.controller.start();
+    await tick();
+    expect(t.sessions).toHaveLength(0);
+    expect(t.posted).toContainEqual(
+      expect.objectContaining({
+        type: 'agent.event',
+        event: expect.objectContaining({
+          type: 'error',
+          fatal: true,
+          code: 'engine_missing',
+          message: 'Не найден Claude Code',
+        }),
+      }),
+    );
+  });
+
+  it('claude найден позже: «Повторить» поднимает движок', async () => {
+    let ok = false;
+    const t = build({
+      engine: {
+        ready: async () => (ok ? { ok: true as const } : { ok: false as const, problem: 'нет' }),
+      },
+    });
+    t.controller.start();
+    await tick();
+    expect(t.sessions).toHaveLength(0);
+    ok = true;
+    await t.controller.handle({ type: 'turn.retry', sessionId: '', turn: false });
+    await tick();
+    expect(t.sessions).toHaveLength(1);
+  });
+
+  it('сессию заменили, пока шёл поиск claude: старое поколение движок не спавнит', async () => {
+    const waiting: (() => void)[] = [];
+    const t = build({
+      engine: {
+        ready: () =>
+          new Promise<{ ok: true }>((r) => {
+            waiting.push(() => r({ ok: true }));
+          }),
+      },
+    });
+    t.controller.start();
+    t.controller.newSession(true);
+    for (const go of waiting) go();
+    await tick();
+    expect(t.sessions).toHaveLength(1);
+    expect(t.posted).not.toContainEqual(
+      expect.objectContaining({ event: expect.objectContaining({ type: 'error' }) }),
+    );
+  });
+
+  it('сообщение, отправленное без claude, не теряется: «Проверить снова» его отправляет', async () => {
+    let ok = false;
+    const t = build({
+      engine: {
+        ready: async () => (ok ? { ok: true as const } : { ok: false as const, problem: 'нет' }),
+      },
+    });
+    t.controller.start();
+    await tick();
+    await t.controller.handle({ type: 'send', sessionId: '', text: 'привет' });
+    expect(t.sessions).toHaveLength(0);
+    ok = true;
+    await t.controller.handle({ type: 'turn.retry', sessionId: '', turn: true });
+    await tick();
+    expect(t.sessions).toHaveLength(1);
+    expect(t.sessions[0]!.sent).toEqual(['привет']);
+  });
+
   it('log.show открывает журнал', async () => {
     const t = build();
     await t.controller.handle({ type: 'log.show' });

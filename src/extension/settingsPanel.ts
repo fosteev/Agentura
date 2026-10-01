@@ -37,8 +37,8 @@ export class SettingsPanel {
       config: () => vscode.workspace.getConfiguration('agentura'),
       globalTarget: vscode.ConfigurationTarget.Global,
       post: (m) => postToWebview(webview, m),
-      checkEngine: (path) => {
-        const r = resolveExecutable(path.trim());
+      checkEngine: async (path) => {
+        const r = await resolveExecutable(path.trim());
         return {
           ok: r.version !== undefined,
           source: r.source,

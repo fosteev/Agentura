@@ -1,6 +1,6 @@
 # Agentura 0.2: правки дегустации, агенты, настройки, скриншоты, долг
 
-> Статус: в работе · создан 2026-10-01 из `docs/roadmap/03-after-0.1.md` · этап 1 принят 2026-10-01 · этап 2 принят 2026-10-01 · этап 3 принят 2026-10-01 · этап 4 принят 2026-10-01 · этап 8 (добавлен по решению владельца, идёт до 5) принят 2026-10-01 · этап 5 принят 2026-10-01 · этап 6 принят 2026-10-01 · следующий — 7.
+> Статус: этапы приняты, ждёт владельца · создан 2026-10-01 из `docs/roadmap/03-after-0.1.md` · этап 1 принят 2026-10-01 · этап 2 принят 2026-10-01 · этап 3 принят 2026-10-01 · этап 4 принят 2026-10-01 · этап 8 (добавлен по решению владельца, идёт до 5) принят 2026-10-01 · этап 5 принят 2026-10-01 · этап 6 принят 2026-10-01 · этап 7 принят 2026-10-01 · **все этапы приняты**. Остались пункты владельца: установка `agentura-0.2.0.vsix`, день работы, тег `v0.2.0` и его push, первый зелёный прогон CI на GitHub, решения в `04-release-0.2.pending.md`.
 > Исполнитель отмечает чекбоксы по ходу работы. Пункты с пометкой «(владелец)» исполнитель и приёмка не
 > отмечают: они уходят в `04-release-0.2.pending.md` → «Проверить руками».
 > Формат — под автопилот `/roadmap-run`: этап → исполнитель → приёмка `/plan-review` → мерж в main.
@@ -695,21 +695,21 @@ Esc — только `interrupt`; `.vsix` фикстуры не тянет (`src
 ### 7. Упаковка, CI и сборка 0.2.0
 Поиск `claude` без блокировки хоста, понятное поведение без `claude`, CI, пакет 0.2.0.
 
-- [ ] Поиск `claude` асинхронный: прогрев при активации (`execFile` с промисом, таймаут на кандидата). Первый
+- [x] Поиск `claude` асинхронный: прогрев при активации (`execFile` с промисом, таймаут на кандидата). Первый
       запуск движка ждёт результат прогрева, а не блокирует поток. «Проверить» на вкладке настроек
       (`settingsPanel.ts` → `checkEngine`, этап 3) тоже переводится на async: сейчас синхронный `resolveExecutable`,
       до 5 с на кандидата на потоке хоста; `SettingsDeps.checkEngine` станет `Promise<EngineCheck>`
-- [ ] Windows: кандидаты `claude.cmd` и `claude.exe`. `.cmd` запускать через `shell: true` или `cmd /c`; тест на
+- [x] Windows: кандидаты `claude.cmd` и `claude.exe`. `.cmd` запускать через `shell: true` или `cmd /c`; тест на
       список кандидатов по платформе (без живого Windows)
-- [ ] `claude` не найден → движок не запускается. В ленте карточка с инструкцией (установить CLI или указать
+- [x] `claude` не найден → движок не запускается. В ленте карточка с инструкцией (установить CLI или указать
       `agentura.claudeExecutable`, ссылка на ⚙ настройки из этапа 3), без ошибки SDK про отсутствующий бинарник.
       Кнопка «Открыть настройки» шлёт `settings.open` (в протокол добавлено на этапе 3; `ChatController` его пока не
       обрабатывает — добавить `openSettings` в `ChatDeps` и `case 'settings.open'`, вызывает команду `agentura.openSettings`)
-- [ ] CI: `.github/workflows/check.yml` — `npm ci`, `npm run check` на macOS и ubuntu. `test:integration` под `xvfb-run` на
+- [x] CI: `.github/workflows/check.yml` — `npm ci`, `npm run check` на macOS и ubuntu. `test:integration` под `xvfb-run` на
       ubuntu с кэшем `.vscode-test`
-- [ ] `CHANGELOG.md` — раздел 0.2.0 по этапам 1–6 и 8. README — ⚙ настройки, ⌘V, агенты, файлы-вложения (текст, pdf,
+- [x] `CHANGELOG.md` — раздел 0.2.0 по этапам 1–6 и 8. README — ⚙ настройки, ⌘V, агенты, файлы-вложения (текст, pdf,
       перетаскивание из проводника с ⇧), новые настройки
-- [ ] `package.json` → `0.2.0`. `npm run package` → `agentura-0.2.0.vsix`, `node scripts/vsix-verify.mjs` проходит.
+- [x] `package.json` → `0.2.0`. `npm run package` → `agentura-0.2.0.vsix`, `node scripts/vsix-verify.mjs` проходит.
       Размер — в «Решения»
 - [ ] (владелец) установить `.vsix` в основной VS Code, день работы, тег `v0.2.0`, push тега
 - [ ] (владелец) решить про per-platform пакеты, Windows/Linux, вход по API-ключу и ToS — до публикации в Marketplace
@@ -719,6 +719,66 @@ Esc — только `interrupt`; `.vsix` фикстуры не тянет (`src
 собран и проверен `vsix-verify.mjs`.
 
 **Сессия:** sonnet, effort medium. Последовательно после 6, последним. Промт 7.
+
+**Решения (2026-10-01, по итогам сессии 7):**
+- **Поиск `claude`.** `resolveExecutable` (`src/agent/claude/executable.ts`) стал асинхронным: `execFile` с таймаутом 5 с на кандидата
+  (`timeoutMs`), кандидаты проверяются параллельно, выбор — по порядку списка (настройка → PATH → `~/.local/bin` → `~/.claude/local` →
+  Homebrew). Кэш и прогрев — новый `EngineLocator` (`src/extension/engineLocator.ts`, без `vscode`): `warm()` в `activate()`, найденный путь
+  кэшируется по значению настройки, «не найден» не кэшируется (поставил claude — «Проверить снова» подхватывает без перезагрузки окна),
+  параллельные запросы делят один поиск. `ClaudeAdapterConfig.executablePath` теперь может вернуть промис; `baseOptions` асинхронный, `ClaudeSession`
+  получает готовые опции параметром (поток хоста на старте движка не блокируется). «Проверить» на вкладке настроек: `SettingsDeps.checkEngine`
+  — `Promise<EngineCheck>`, всегда свежий поиск (кэш не используется), результат приходит `settings.engine` после ответа.
+- **Windows.** Кандидаты: `claude.exe`, затем `claude.cmd` в каждой папке PATH и `~/.local/bin`, `~/.claude/local`, плюс `%APPDATA%\npm` (npm-установка);
+  Homebrew-пути только не на Windows. `.cmd`/`.bat` запускаются `--version` через `shell: true` с путём в кавычках (`needsShell`, `defaultRun`). Тесты —
+  список кандидатов по платформе и `needsShell` (без живого Windows). **Не проверено:** что SDK сам запускает `claude.cmd` как `pathToClaudeCodeExecutable`
+  (Node на Windows отказывается запускать `.cmd` без оболочки; если SDK не обёртывает — понадобится `claude.exe` или путь к `cli.js`), и живой поиск на Windows.
+- **Без `claude`.** `ChatDeps.engine.ready()` проверяется в `ensureSession` до `createSession`/`resumeSession`: не готов — `EngineMissingError`,
+  в ленту идёт `error {fatal, code: 'engine_missing', message: <problem>}` + `session.closed` (одна карточка, как у обычной ошибки), SDK не вызывается
+  (его бинарника в `.vsix` нет). Webview: `FailCardView` по коду рисует «Claude Code не найден», инструкцию, «Открыть настройки» (`settings.open`)
+  и «Проверить снова» (`turn.retry` — тот же путь, что «Возобновить сессию»). `ChatController` обрабатывает `settings.open` через `ChatDeps.openSettings`
+  (`agentura.openSettings`). Аккаунт боковой панели без `claude` тоже не стартует временный процесс (`accountInfo` ждёт `engine.ready()`). Всплывашка
+  `showWarningMessage` осталась только для случая «claude найден, но версия старая / настройка не запускается»; на «не найден» её нет — карточка и журнал.
+  Сообщение, отправленное, пока `claude` не найден, не доставляется (после «Проверить снова» его надо отправить заново). Константа кода — `ENGINE_MISSING_CODE` в `protocol.ts`.
+- **`vsix-verify.mjs`** по умолчанию брал `agentura-0.1.0.vsix` (зашит) — теперь `agentura-<version из package.json>.vsix`; прежний вызов с аргументом работает.
+- **`activate()` / TestApi (этап 6)** не тронуты по сути: добавлены `engine.warm()` и `engine` в `ChatServices`; `agentura.debug` и возврат `TestApi` на месте.
+- **CI** (`.github/workflows/check.yml`): триггеры `push` в main, `pull_request`, `workflow_dispatch`. Job `check` — матрица `macos-latest` × `ubuntu-24.04`:
+  `npm ci` (кэш npm через `setup-node`), `npm run check`; на ubuntu ещё `npm run package` + `node scripts/vsix-verify.mjs` (без `--live`). Job `integration` —
+  только ubuntu-24.04: apt-библиотеки Electron (`xvfb libgbm1 libnss3 libxss1 libasound2t64 libgtk-3-0t64`), кэш `.vscode-test` по ключу
+  `vscode-test-<ОС>-<версия VS Code>`, `VSCODE_TEST_VERSION` закреплён на `1.140.0` (билд, на котором тест проходит локально; без закрепа `stable` плавает и ломает кэш),
+  `xvfb-run -a npm run test:integration` с одной повторной попыткой при падении (предупреждение в логе). Node 22 (как в VS Code 1.140), `timeout-minutes` 15/20, `concurrency`
+  отменяет устаревшие прогоны. **Флаки-план:** если integration на GitHub нестабилен — снять его с `push`/`pull_request` и оставить по `workflow_dispatch` (риск
+  из «Рисков»), `check` на двух ОС при этом остаётся. `actionlint` не установлен — файл проверен разбором YAML (ruby) и сверкой с докой; список apt-пакетов
+  под ubuntu-24.04 (суффиксы `t64`) и сам xvfb-прогон на GitHub **не проверены** — первый зелёный прогон после мержа обязателен.
+- **Версия и пакет.** `package.json`/`package-lock.json` → 0.2.0. `agentura-0.2.0.vsix` в корне: 3163 файла, **5,55 МБ** (0.1.0 — 5,48 МБ; +0,07 МБ: три бандла вместо двух, `agents/attach/settings.css`);
+  `*.vsix` в `.gitignore`, `agentura-0.1.0.vsix` не тронут. `vsix-verify` — 17 проверок ok. Универсальный, без бинарника движка.
+- **CHANGELOG/README.** Раздел 0.2.0 собран из «Решений» и «Приёмки» этапов 1–6, 8 и 8b: настройки во вкладке, скриншоты, файлы-вложения (⇧ для перетаскивания,
+  лимиты на сессию 100 страниц/24 МБ/70 % окна), агенты, строка порога, «Повторить» без двоения промпта (и его оговорка), автосохранение при разрешении,
+  `agentura.debug.showState` только из исходников, поиск claude и карточка, безопасность (`machine`-настройки, проверки вложений, drop по любому пути — 8b),
+  ограничения (Windows/Linux, нет стоимости по агентам, нет лимита вкладок). README: возможности, поиск claude, таблица настроек (`defaultPermissionMode`, `defaultEffort`), ограничения.
+- **Проверки.** `npm run check` — 57 файлов, 679 тестов (+13: `executable` +5, `engineLocator` 5, `chatController` +3, `statesDom` +1; `settingsController` — адаптирован); `npm run test:integration` — exit 0
+  (VS Code 1.140.0 локально); `npm run package` и `node scripts/vsix-verify.mjs` — проходят.
+- **Не проверено:** прогон workflow на GitHub; живой поиск claude на Windows и запуск `claude.cmd` из SDK; карточка «не найден» в настоящем VS Code (только DOM- и контроллер-тесты:
+  у владельца claude установлен); живой ход движка (по заданию этапа не нужен); установка `.vsix` (владелец).
+
+**Приёмка (2026-10-01, два прохода: свой + независимый opus):**
+- **Windows `.cmd` отменён (блокер).** SDK 0.3.285 спавнит `pathToClaudeCodeExecutable` без оболочки, Node ≥ 18.20.2 отклоняет
+  `.cmd` без `shell` (EINVAL): `--version` через `shell: true` проходил, `ready()` говорил «ok», а движок падал «exists but failed to
+  launch». Теперь на Windows кандидат — только `claude.exe`; найденная npm-обёртка `claude.cmd` (или `.cmd`/`.bat` в настройке) даёт
+  карточку с подсказкой «поставьте нативный claude.exe / укажите путь к нему». `needsShell` и `shell: true` удалены целиком — вопрос
+  инъекции в строку `cmd.exe` снят. Отвергнуто: `spawnClaudeCodeProcess` с оболочкой (аргументы SDK пришлось бы экранировать под
+  `cmd.exe`) и подмена `.cmd` на `cli.js` из `node_modules` (непроверяемо без Windows, у npm-пакета 2.x может не быть `cli.js`).
+- **Жёсткий таймаут `--version`:** свой `setTimeout` → `SIGKILL` и отказ сразу, не дожидаясь закрытия потоков (внук мог держать
+  pipe, и прогрев висел бы, раздавая всем один вечный промис). Тест — настоящий зависающий скрипт с внуком.
+- **Путь из настройки, не отвечающий на `--version`,** теперь тоже «не готов»: карточка вместо невнятной ошибки SDK; не кэшируется;
+  `path()` отдаёт только пригодный путь. Всплывашка — только для старой версии.
+- **Поколение после `await ready()`:** сессию заменили (`/clear`, resume) или вкладку закрыли, пока шёл поиск, — старое поколение не
+  вызывает `createSession`/`resumeSession` (не спавнит движок, не трогает `resumed`/`retryDrop`) и карточку не рисует.
+- **Сообщение до готовности движка не теряется:** при неподнятой сессии `send` кладётся в `inflight`, карточка видит открытый ход,
+  «Проверить снова» (`retry(true)`) отправляет его (тест).
+- **Мелочи:** результат поиска по сменившемуся значению настройки не кэшируется и не предупреждает; ответы «Проверить» на вкладке
+  настроек — только на последний запрос (`checkSeq`); CHANGELOG вернул потерянные записи «Артефакты Claude Code» и «Превью HTML»
+  (были в «Не выпущено»); CI — кэш только `.vscode-test/vscode-*` (не замораживать `user-data` профиля), actions на Node 24
+  (`checkout@v6`, `setup-node@v6`, `cache@v5`).
 
 ### 8. Файлы-вложения и перетаскивание из проводника VS Code
 Добавлен 2026-10-01 по решению владельца на приёмке этапа 4: пункт «+» обещает «Изображение или файл…», а

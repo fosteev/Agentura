@@ -24,6 +24,7 @@ import type {
   SessionSummary,
   ToWebview,
 } from '../protocol';
+import { ENGINE_MISSING_CODE } from '../protocol';
 import type {
   FileKind,
   ImageMediaType,
@@ -55,6 +56,8 @@ import type { LiveSessions } from '../data/sessions';
 import { mergeReplay, StreamTail } from './reseedReplay';
 
 /** Всё, что контроллеру нужно от VS Code, — через этот интерфейс: сам контроллер vscode не импортирует. */
+class EngineMissingError extends Error {}
+
 export interface ChatDeps {
   adapter: AgentAdapter;
   cwd: string;
@@ -130,6 +133,13 @@ export interface ChatDeps {
   onEngineVersion?(version: string): void;
   /** Показать канал журнала расширения (карточка ошибки, этап 7). */
   showLogs?(): void;
+  /**
+   * Готов ли `claude` (поиск асинхронный, прогрев при активации). Не готов — движок не запускается, в ленте
+   * карточка с инструкцией. Нет поля — проверки нет (тесты, свой бинарник SDK).
+   */
+  engine?: { ready(): Promise<{ ok: true } | { ok: false; problem: string }> };
+  /** Карточка «claude не найден» и `settings.open`: вкладка настроек (`agentura.openSettings`). */
+  openSettings?(): void;
 }
 
 export interface OpenDiff {
@@ -624,6 +634,9 @@ export class ChatController {
       case 'log.show':
         deps.showLogs?.();
         return;
+      case 'settings.open':
+        deps.openSettings?.();
+        return;
       case 'turn.retry':
         await this.retry(m.turn);
         return;
@@ -632,8 +645,14 @@ export class ChatController {
     }
     const session = await this.ensureSession();
     if (!session) {
-      // сообщение с вложениями не ушло — вернуть webview точный счёт сессии (он прибавил их заранее)
-      if (m.type === 'send' && (m.images?.length || m.files?.length)) this.postAttach();
+      if (m.type === 'send' && !this.disposed) {
+        // движок не поднялся (нет `claude`, ошибка старта): сообщение не теряем — карточка ошибки видит
+        // открытый ход, и «Проверить снова» / «Повторить ход» (`retry(true)`) отправит его из `inflight`
+        this.touched = true;
+        this.noteSent(m);
+        // вложения не ушли — вернуть webview точный счёт сессии (он прибавил их заранее)
+        if (m.images?.length || m.files?.length) this.postAttach();
+      }
       return;
     }
     try {
@@ -1103,41 +1122,53 @@ export class ChatController {
         cwd: deps.cwd,
         allowBypassPermissions: s.allowBypass,
       };
-      const opened = resume
-        ? (() => {
-            const h = this.resumed?.history;
-            // режим и модель — с конца сессии: движок при `resume` берёт их из опций, а не из записи
-            const mode =
-              h?.mode === 'bypassPermissions' && !s.allowBypass
-                ? 'default'
-                : (h?.mode ?? 'default');
-            const model = h?.model ?? s.defaultModel;
-            // база = то, с чего движок сам продолжит `total_cost_usd`: он восстанавливает итог из записи
-            // `cost-state` транскрипта (нет записи — с нуля). Любая другая база (память расширения)
-            // занизила бы стоимость первого хода после `resume` (`turn.result.costUsd = итог − база`)
-            const baseline = h?.totalCostUsd ?? 0;
-            return deps.adapter.resumeSession(resume, {
-              ...base,
-              permissionMode: mode,
-              ...(model ? { model } : {}),
-              baselineCostUsd: baseline,
-              ...(this.retryDrop ? { dropTurn: this.retryDrop } : {}),
-            });
-          })()
-        : (() => {
-            // настройки «режим» и «effort по умолчанию» — только новым сессиям (resume берёт своё)
-            const mode = resolveDefaultMode(s.defaultPermissionMode, s.allowBypass);
-            const effort = resolveDefaultEffort(s.defaultEffort);
-            // меню под полем ввода — сразу, не дожидаясь `session.init` после первого хода
-            this.defaults = { type: 'session.defaults', mode, ...(effort ? { effort } : {}) };
-            deps.post(this.defaults);
-            return deps.adapter.createSession({
-              ...base,
-              permissionMode: mode,
-              ...(s.defaultModel ? { model: s.defaultModel } : {}),
-              ...(effort ? { effort } : {}),
-            });
-          })();
+      const open = (): Promise<AgentSession> =>
+        resume
+          ? (() => {
+              const h = this.resumed?.history;
+              // режим и модель — с конца сессии: движок при `resume` берёт их из опций, а не из записи
+              const mode =
+                h?.mode === 'bypassPermissions' && !s.allowBypass
+                  ? 'default'
+                  : (h?.mode ?? 'default');
+              const model = h?.model ?? s.defaultModel;
+              // база = то, с чего движок сам продолжит `total_cost_usd`: он восстанавливает итог из записи
+              // `cost-state` транскрипта (нет записи — с нуля). Любая другая база (память расширения)
+              // занизила бы стоимость первого хода после `resume` (`turn.result.costUsd = итог − база`)
+              const baseline = h?.totalCostUsd ?? 0;
+              return deps.adapter.resumeSession(resume, {
+                ...base,
+                permissionMode: mode,
+                ...(model ? { model } : {}),
+                baselineCostUsd: baseline,
+                ...(this.retryDrop ? { dropTurn: this.retryDrop } : {}),
+              });
+            })()
+          : (() => {
+              // настройки «режим» и «effort по умолчанию» — только новым сессиям (resume берёт своё)
+              const mode = resolveDefaultMode(s.defaultPermissionMode, s.allowBypass);
+              const effort = resolveDefaultEffort(s.defaultEffort);
+              // меню под полем ввода — сразу, не дожидаясь `session.init` после первого хода
+              this.defaults = { type: 'session.defaults', mode, ...(effort ? { effort } : {}) };
+              deps.post(this.defaults);
+              return deps.adapter.createSession({
+                ...base,
+                permissionMode: mode,
+                ...(s.defaultModel ? { model: s.defaultModel } : {}),
+                ...(effort ? { effort } : {}),
+              });
+            })();
+      // без `claude` движок не запускаем: SDK в `.vsix` своего бинарника не имеет и упал бы невнятной ошибкой
+      const opened = deps.engine
+        ? deps.engine.ready().then((ready) => {
+            // пока шёл поиск, сессию заменили (`/clear`, resume) или вкладку закрыли: не спавнить движок
+            // и не трогать чужие `resumed`/`retryDrop` — отказ этого поколения `catch` ниже проглотит
+            if (gen !== this.generation || this.disposed)
+              throw new Error('сессия заменена до старта');
+            if (!ready.ok) throw new EngineMissingError(ready.problem);
+            return open();
+          })
+        : open();
       this.session = opened.then((session) => {
         if (gen !== this.generation) {
           session.dispose();
@@ -1150,11 +1181,16 @@ export class ChatController {
       });
       this.session.catch((e: unknown) => {
         // сессию уже заменили (`/clear`, новая) — падение старой не касается ни новой, ни ленты
-        if (gen !== this.generation) return;
+        if (gen !== this.generation || this.disposed) return;
         const message = e instanceof Error ? e.message : String(e);
         this.log.error(`сессия не создана: ${message}`);
         this.session = undefined;
-        this.forward('', { type: 'error', message, fatal: true });
+        this.forward('', {
+          type: 'error',
+          message,
+          fatal: true,
+          ...(e instanceof EngineMissingError ? { code: ENGINE_MISSING_CODE } : {}),
+        });
         this.forward('', { type: 'session.closed', reason: 'error', message });
         this.status = 'error';
         deps.setTitle(tabTitle(this.status, this.title));

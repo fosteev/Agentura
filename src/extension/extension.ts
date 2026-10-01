@@ -37,7 +37,8 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     userAgent: `Agentura/${String(context.extension.packageJSON.version)}`,
   });
   const usage = new UsageService(limits.fetch);
-  const adapter = createAdapter(log);
+  const { adapter, engine } = createAdapter(log);
+  engine.warm();
   const folder = vscode.workspace.workspaceFolders?.[0];
   const cwd = folder?.uri.fsPath ?? '';
   const live = new LiveSessions();
@@ -52,7 +53,12 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     log: { debug: (m) => log.debug(m), warn: (m) => log.warn(m) },
   });
   const account = new AccountService({
-    accountInfo: () => adapter.accountInfo(cwd || process.cwd()),
+    accountInfo: async () => {
+      // без `claude` временный процесс не запускаем: у SDK в `.vsix` своего бинарника нет
+      const ready = await engine.ready();
+      if (!ready.ok) throw new Error(ready.problem);
+      return adapter.accountInfo(cwd || process.cwd());
+    },
     readPlan: () => limits.readPlan(),
     ...(memory.engineVersion() ? { savedEngine: memory.engineVersion()! } : {}),
   });
@@ -81,6 +87,7 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     sessions,
     account,
     memory,
+    engine,
   };
 
   /** Быстрый выбор сессии проекта: «Возобновить сессию» из палитры. */
