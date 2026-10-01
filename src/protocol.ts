@@ -196,8 +196,6 @@ export type FromWebview =
   | { type: 'session.resume'; sessionId: string }
   /** Этап 6: переименование по двойному клику в списке (B9). */
   | { type: 'session.rename'; sessionId: string; title: string }
-  /** Этап 6: кнопка `/status` боковой панели. */
-  | { type: 'status.show' }
   /**
    * Этап 7: «Повторить ход» на карточке ошибки — хост возобновляет сессию (`resume`) и заново
    * отправляет последний неотвеченный промпт, если карточка говорит, что ход был оборван (`turn`);
@@ -259,7 +257,6 @@ const FROM_WEBVIEW_TYPES: ReadonlySet<string> = new Set<FromWebview['type']>([
   'limits.refresh',
   'session.resume',
   'session.rename',
-  'status.show',
   'turn.retry',
   'log.show',
 ]);

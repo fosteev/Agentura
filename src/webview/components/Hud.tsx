@@ -117,9 +117,6 @@ export function Hud({
         >
           {ui.hud.sessions}
         </button>
-        <button title={ui.hud.newChatTitle} onClick={onNew}>
-          {ui.hud.newChat}
-        </button>
         {open && (
           <div class="menu down" role="menu">
             <div class="hd">{ui.sessionsPopup.heading(project)}</div>
