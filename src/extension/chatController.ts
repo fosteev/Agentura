@@ -70,7 +70,9 @@ export interface ChatDeps {
    */
   pickAttachments?(): Promise<{ images: PickedImage[]; files: PickedFile[] }>;
   /** Перетаскивание из проводника VS Code (этап 8): прочитать файлы по uri (`workspace.fs`). */
-  readUris?(uris: string[]): Promise<{ images: PickedImage[]; files: PickedFile[] }>;
+  readUris?(
+    uris: string[],
+  ): Promise<{ images: PickedImage[]; files: PickedFile[]; folders?: FileHit[] }>;
   /** Картинка во вкладке редактора: временный файл в storage расширения. */
   openImage?(image: { mediaType: ImageMediaType; data: string }): Promise<void>;
   /**
@@ -507,7 +509,10 @@ export class ChatController {
       case 'attach.uris': {
         const uris = Array.isArray(m.uris) ? m.uris.filter((u) => typeof u === 'string') : [];
         if (uris.length === 0) return;
-        this.postPicked(await deps.readUris?.(uris));
+        const r = await deps.readUris?.(uris);
+        this.postPicked(r);
+        // папка из перетаскивания — чип-ссылка, как из «Файл или папка…» (этап 8b)
+        if (r?.folders?.length) deps.post({ type: 'attach.picked', items: r.folders });
         return;
       }
       case 'file.open': {

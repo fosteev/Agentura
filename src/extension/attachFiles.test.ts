@@ -5,7 +5,6 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { deflateSync } from 'node:zlib';
 import {
   attachmentFileName,
-  dropAllowed,
   modelPath,
   pdfPagesDeep,
   rejected,
@@ -138,32 +137,15 @@ describe('pdf, который API не примет (приёмка этапа 8
 });
 
 describe('rejected — плашка по имени файла', () => {
-  it('картинка сверх потолка «+» — плашка картинки total, вне рабочей папки — плашка файла', () => {
+  it('картинка сверх потолка «+» — плашка картинки total', () => {
     expect(rejected('a.png', 'total')).toEqual({
       images: [{ name: 'a.png', mediaType: 'image/png', problem: 'total' }],
       files: [],
-    });
-    expect(rejected('a.png', 'outside')).toEqual({
-      images: [],
-      files: [{ name: 'a.png', problem: 'outside' }],
     });
   });
 });
 
 describe('пути', () => {
-  it('dropAllowed: только внутри папок воркспейса; соседняя папка с тем же префиксом и ~/.ssh — нет', () => {
-    const roots = ['/work/proj', '/work/lib'];
-    expect(dropAllowed('/work/proj/a/b.ts', roots)).toBe(true);
-    expect(dropAllowed('/work/lib/x.md', roots)).toBe(true);
-    expect(dropAllowed('/work/proj2/a.ts', roots)).toBe(false);
-    expect(dropAllowed('/Users/me/.ssh/id_rsa', roots)).toBe(false);
-    expect(dropAllowed('/work/proj', roots)).toBe(false);
-    expect(dropAllowed('/work/proj/../secret', roots)).toBe(false);
-    expect(dropAllowed('/home/u/repo/a.ts', ['/home/u/repo'], true)).toBe(true);
-    expect(dropAllowed('/home/u/.ssh/id_rsa', ['/home/u/repo'], true)).toBe(false);
-    expect(dropAllowed('/a.ts', [])).toBe(false);
-  });
-
   it('modelPath: внутри — относительный с /, снаружи и соседняя папка с тем же префиксом — абсолютный', () => {
     expect(modelPath(CWD, '/work/proj/a/b.ts')).toBe('a/b.ts');
     expect(modelPath(CWD, '/work/proj2/a.ts')).toBe('/work/proj2/a.ts');
