@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="ru" data-theme="dark" data-width="vscode">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agentura · настройки</title>
+<link rel="stylesheet" href="../shared/tokens.css">
+<link rel="stylesheet" href="../shared/preview.css">
+<link rel="stylesheet" href="../shared/hud.css">
+<link rel="stylesheet" href="../shared/settings.css">
+</head>
+<body>
+<div class="preview-bar">
+  <b>Настройки</b>
+  <span class="grp"><button data-set-theme="dark">Тёмная</button><button data-set-theme="light">Светлая</button></span>
+  <span class="grp"><button data-set-width="vscode">боковая панель + вкладка</button><button data-set-width="900">900 · вкладка</button><button data-set-width="380">380 · сплит</button><button data-set-width="full">во всю ширину</button></span>
+  <a href="../index.html">← оглавление</a>
+</div>
+<div class="preview-stage">
+<div class="webview settings" data-sidebar="live" data-gear="on">
+
+  <header class="hud" aria-label="Настройки">
+    <span class="sess" style="display:block;padding-left:8px">Agentura · <b>настройки</b></span>
+    <span class="acts"><button title="Открыть в настройках VS Code">в настройках VS Code</button><button title="Открыть settings.json">settings.json</button></span>
+  </header>
+
+  <div class="st-wrap">
+    <nav class="st-nav">
+      <a href="#perm" class="on">Разрешения</a>
+      <a href="#model">Модель</a>
+      <a href="#ctx">Контекст</a>
+      <a href="#lim">Лимиты</a>
+      <a href="#engine">Движок</a>
+      <div class="src">Хранится в настройках VS Code, раздел «Пользователь». Меняется сразу, без перезапуска.<a href="#">открыть settings.json</a></div>
+    </nav>
+
+    <div class="st-body">
+      <h2 id="perm">Разрешения</h2>
+      <div class="set">
+        <span class="nm">Режим новых сессий<span class="new">новая</span></span>
+        <span class="ds">С каким режимом открывается новая сессия. В открытой сессии режим меняется меню «режим» под полем ввода или ⇧⇥.</span>
+        <span class="key">agentura.defaultPermissionMode</span>
+        <span class="ctl"><span class="dd">manual</span></span>
+      </div>
+      <div class="set on">
+        <span class="nm">Разрешить режим «без разрешений»</span>
+        <span class="ds">Добавляет пункт «без разрешений» (bypassPermissions) в меню режима. Сам режим не включается — его выбирают в сессии.</span>
+        <span class="key">agentura.allowBypassPermissions · только эта машина</span>
+        <span class="ctl"><span class="tg on danger" role="switch" aria-checked="true"></span></span>
+        <div class="warn"><b>Без разрешений</b> агент правит файлы и запускает любые команды, не спрашивая, — включая удаление и сеть. Включай для изолированной папки или контейнера; на рабочем проекте лучше режим «принимать правки».</div>
+      </div>
+
+      <h2 id="model">Модель</h2>
+      <div class="set">
+        <span class="nm">Модель по умолчанию</span>
+        <span class="ds">Для новых сессий. «Выбор движка» — та, что стоит в Claude Code.</span>
+        <span class="key">agentura.defaultModel</span>
+        <span class="ctl"><span class="dd">выбор движка · opus-5.5</span></span>
+      </div>
+      <div class="set">
+        <span class="nm">Effort по умолчанию<span class="new">новая</span></span>
+        <span class="ds">Сколько думать перед ответом. Меняется в строке под полем ввода.</span>
+        <span class="key">agentura.defaultEffort</span>
+        <span class="ctl"><span class="dd">high</span></span>
+      </div>
+
+      <h2 id="ctx">Контекст</h2>
+      <div class="set">
+        <span class="nm">Пороги шкалы контекста</span>
+        <span class="ds">Где полоса и число над полем ввода становятся жёлтыми и оранжевыми. Автосжатие на 200 000 делает движок — здесь не настраивается.</span>
+        <span class="key">agentura.contextThresholds</span>
+        <span class="ctl"><span class="u">жёлтый</span><span class="num">120 000</span><span class="u">оранжевый</span><span class="num">150 000</span></span>
+        <div class="th" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="h"></i><i class="h"></i><i class="h"></i><i class="h"></i><i class="f"></i></div>
+        <div class="thl"><span>0</span><span>120k</span><span style="display:flex;justify-content:space-between"><span>150k</span><span>200k · сжатие</span></span></div>
+      </div>
+
+      <h2 id="lim">Лимиты подписки</h2>
+      <div class="set">
+        <span class="nm">Опрашивать лимиты каждые</span>
+        <span class="ds">5-часовое и недельное окно в боковой панели и под полем ввода. Вручную — ↻ в боковой панели.</span>
+        <span class="key">agentura.usagePollMinutes · не меньше 5</span>
+        <span class="ctl"><span class="num">15</span><span class="u">мин</span></span>
+      </div>
+      <div class="set">
+        <span class="nm">Читать токен из Keychain macOS</span>
+        <span class="ds">Нужен только для запроса лимитов. Без него проценты появятся после первого хода.</span>
+        <span class="key">agentura.limits.readKeychain</span>
+        <span class="ctl"><span class="tg on" role="switch" aria-checked="true"></span></span>
+      </div>
+
+      <h2 id="engine">Движок</h2>
+      <div class="set">
+        <span class="nm">Путь к claude</span>
+        <span class="ds">Пусто — искать системный: PATH, ~/.local/bin, Homebrew.</span>
+        <span class="key">agentura.claudeExecutable · только эта машина</span>
+        <span class="ctl"><span class="num wide">пусто — искать системный</span><button class="btn">проверить</button></span>
+        <div class="ok">✓ найден <span class="dim">~/.local/bin/claude</span> · 2.1.284 · system</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</div>
+<script src="../shared/preview.js"></script>
+<script src="../shared/sidebar.js"></script>
+<script src="../shared/limits.js"></script>
+</body>
+</html>

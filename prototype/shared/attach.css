@@ -1,0 +1,39 @@
+/* Картинки в сообщении: вставка ⌘V / перетаскивание, миниатюры у поля ввода и в ленте.
+   Предложение поверх hud.css; в media/ не перенесено, пока экран не принят. */
+
+/* условный скриншот табло — рисуется css, чтобы не тащить картинки в прототип */
+.mock { position: relative; overflow: hidden; background: #0d1b2a; border-radius: 2px; font-family: var(--font); color: #e0e6ee; }
+.mock.board .bar { height: 14%; background: #1b3a5c; display: flex; align-items: center; padding: 0 6%; font-size: 7px; letter-spacing: .04em; color: #9fb7d1; }
+.mock.board .row { display: flex; justify-content: space-between; align-items: center; padding: 3% 6% 0; }
+.mock.board .w { font-size: 7px; color: #9fb7d1; }
+.mock.board .n { font-family: var(--mono); font-weight: 700; color: #ffb547; }
+.mock.board .n.z { color: #ff6b6b; }
+.mock.board .off { position: absolute; left: 6%; right: 6%; bottom: 8%; background: #6b1d1d; color: #ffd7d7; font-size: 7px; padding: 2px 4px; border-radius: 2px; }
+.mock.cons { background: #1e1e1e; font-family: var(--mono); font-size: 6.5px; line-height: 1.5; padding: 5% 5%; color: #ccc; }
+.mock.cons .er { color: #f48771; }
+.mock.cons .wa { color: #cca700; }
+
+/* миниатюры над полем ввода */
+.compose .att { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.compose .att .im { display: grid; grid-template-columns: 72px auto; gap: 2px 8px; align-items: center; padding: 4px 8px 4px 4px; border: 1px solid var(--line-strong); border-radius: 3px; background: var(--bg-input); font-size: 11px; color: var(--fg-mute); position: relative; }
+.compose .att .im .mock { grid-row: 1 / span 2; width: 72px; height: 46px; }
+.compose .att .im b { color: var(--fg); font-weight: 500; }
+.compose .att .im .x { position: absolute; top: -7px; right: -7px; width: 16px; height: 16px; border-radius: 50%; background: var(--bg-raise); border: 1px solid var(--line-strong); color: var(--fg-mute); font-size: 9px; line-height: 14px; text-align: center; }
+.compose .att .im.busy { color: var(--info); }
+.compose .att .im.err { border-color: var(--full); }
+.compose .att .im.err .ph { grid-row: 1 / span 2; width: 72px; height: 46px; display: grid; place-items: center; background: var(--bg); color: var(--full); font-size: 10px; border-radius: 2px; }
+.compose .att .im.err small { color: var(--full); }
+.compose .att .im small { font-size: 10.5px; }
+.compose .ctx .cn .plus { color: var(--info); }
+
+/* миниатюры в реплике пользователя */
+.log .u .att { display: flex; gap: 10px; margin-top: 8px; font-weight: 400; }
+.log .u .att figure { margin: 0; }
+.log .u .att .mock { width: 176px; height: 112px; border: 1px solid var(--line-strong); }
+.log .u .att figcaption { font-size: 10.5px; color: var(--fg-mute); margin-top: 3px; }
+
+/* подсказка при перетаскивании */
+.compose.drop .prompt { border: 1px dashed var(--info); background: color-mix(in srgb, var(--info) 8%, var(--bg-input)); }
+.compose.drop .prompt .text { color: var(--info); }
+.log .u .att { flex-wrap: wrap; }
+html[data-width="380"] .log .u .att .mock { width: 136px; height: 87px; }

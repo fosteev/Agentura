@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="ru" data-theme="dark" data-width="vscode">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agentura · скриншоты в сообщении</title>
+<link rel="stylesheet" href="../shared/tokens.css">
+<link rel="stylesheet" href="../shared/preview.css">
+<link rel="stylesheet" href="../shared/hud.css">
+<link rel="stylesheet" href="../shared/attach.css">
+</head>
+<body>
+<div class="preview-bar">
+  <b>Скриншоты в сообщении</b>
+  <span class="grp"><button data-set-theme="dark">Тёмная</button><button data-set-theme="light">Светлая</button></span>
+  <span class="grp"><button data-set-width="vscode">боковая панель + вкладка</button><button data-set-width="900">900 · вкладка</button><button data-set-width="380">380 · сплит</button><button data-set-width="full">во всю ширину</button></span>
+  <a href="../index.html">← оглавление</a>
+</div>
+<div class="preview-stage">
+<div class="webview" data-sidebar="live">
+
+  <header class="hud" aria-label="Сессия">
+    <nav class="tabs" role="tablist">
+      <button role="tab" aria-selected="true" data-tab="chat">чат</button>
+      <button role="tab" aria-selected="false" data-tab="turn">ход</button>
+      <button role="tab" aria-selected="false" data-tab="agents">агенты <span class="b">4</span></button>
+    </nav>
+    <span class="sess">queue-board · <b>мигание счётчика талонов</b></span>
+    <span class="acts"><button title="Сессии">sessions</button></span>
+  </header>
+
+  <div class="body">
+    <main class="pane" id="pane-chat">
+      <div class="log">
+        <div class="sum"><span>in 2 980</span><span>out 3 410</span><span>cache r402 100 w6 230</span><span>агенты 38.9k</span><b>$0.31</b><span>2m 41s</span></div>
+
+        <div class="u"><span class="p">&gt;</span><span>Вот что видно на киоске после разрыва: счётчик на долю секунды показывает 000, а в консоли ошибка. Это то же самое?
+          <span class="att">
+            <figure>
+              <div class="mock board"><div class="bar">КИОСК · ЗАЛ 2</div><div class="row"><span class="w">СЕЙЧАС</span><span class="n z" style="font-size:30px">000</span></div><div class="row"><span class="w">ОКНО</span><span class="n" style="font-size:16px">3</span></div><div class="off">нет связи · переподключение…</div></div>
+              <figcaption>скриншот 1 · 1568×1000 · ~2.1k</figcaption>
+            </figure>
+            <figure>
+              <div class="mock cons"><div>[ws] close 1006</div><div>[ws] reconnect in 500ms</div><div>[ws] open</div><div class="wa">⚠ ticketSlice/reset</div><div class="er">✕ Uncaught TypeError: cannot read 'items' of undefined</div><div class="er">&nbsp;&nbsp;at useQueue.ts:41</div></div>
+              <figcaption>скриншот 2 · 1200×764 · ~1.2k</figcaption>
+            </figure>
+          </span></span><span class="at">15:10</span></div>
+        <div class="e think"><span class="p">▸</span><span class="op">think</span><span class="what">на первом 000 под плашкой «нет связи», на втором reset() и падение в useQueue:41 — это второе место из отчёта агента</span><span class="r">4s</span></div>
+        <div class="e"><span class="p">▸</span><span class="op">read</span><span class="what"><span class="dim">apps/kiosk/src/hooks/</span>useQueue.ts<span class="dim"> 30–55</span></span><span class="r">0.3s</span></div>
+        <div class="txt">
+          <p>Да, то же самое, и уже починено в прошлом ходе. На первом скриншоте <code>000</code> рисует <code>reset()</code> из <code>ticketSlice</code>: он обнулял очередь до прихода снимка. Ошибка на втором — следствие: <code>useQueue.ts:41</code> читает <code>items</code> у очереди, которую только что обнулили.</p>
+          <p>После правки <code>reset()</code> на переподключении не вызывается, и <code>items</code> больше не пропадает. Плашка «нет связи» — отдельная история: она висит, пока сокет не ответит.</p>
+        </div>
+        <div class="sum"><span>in 3 520</span><span>out 640</span><span>картинки 3.3k</span><span>cache r402 100 w3 900</span><b>$0.06</b><span>19s</span></div>
+      </div>
+    </main>
+
+    <aside class="pane side">
+      <section class="tabpane" id="pane-turn">
+        <h4>ход · 15:10 · 19s</h4>
+        <div class="tl">
+          <div class="strip" aria-hidden="true"><i class="th" style="flex:4"></i><i style="flex:1"></i><i class="tx" style="flex:14"></i></div>
+          <div class="row"><span class="at">0.0</span><span class="ev" style="color:var(--fg-mute)">think<span class="d">4s</span></span></div>
+          <div class="row"><span class="at">4.1</span><span class="ev">read useQueue.ts<span class="d">0.3s</span></span></div>
+          <div class="row"><span class="at">4.6</span><span class="ev" style="color:var(--fg-mute)">текст ответа<span class="d">14s</span></span></div>
+        </div>
+      </section>
+      <section class="tabpane" id="pane-agents"><h4>агенты</h4></section>
+    </aside>
+  </div>
+
+  <footer class="compose">
+    <div class="blocks" aria-hidden="true"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on t"></i><i class="on w"></i><i class="on w"></i><i class="part t"></i><i></i><i></i><i></i><i></i><i></i></div>
+    <div class="att">
+      <span class="im"><span class="mock board"><span class="bar" style="font-size:4px">КИОСК · ЗАЛ 2</span><span class="row"><span class="w" style="font-size:4px">СЕЙЧАС</span><span class="n" style="font-size:12px">042</span></span><span class="off" style="font-size:4px">нет связи</span></span><b>скриншот 3</b><small title="уменьшен с 3024×1928">1568×1000 · ~2.1k</small><span class="x" title="Убрать">✕</span></span>
+      <span class="im busy"><span class="mock cons" style="font-size:3.5px"><div>[ws] close 1006</div><div>[ws] open</div><div>[board] snapshot 42</div></span><b>скриншот 4</b><small>уменьшаю…</small><span class="x" title="Убрать">✕</span></span>
+      <span class="im err"><span class="ph">HEIC</span><b title="IMG_2041.heic">IMG_2041</b><small title="поддерживаются png, jpeg, gif, webp">HEIC не берём</small><span class="x" title="Убрать">✕</span></span>
+    </div>
+    <div class="ctx"><span class="dim" style="color:var(--fg-faint)">⌘V — вставить картинку · перетащить с ⇧</span><span class="cn" title="Картинки считаются по размеру: ширина × высота / 750 токенов">контекст <b class="warn">143 180</b> <span class="plus">+2.1k картинки</span> / 200 000 · <button>сжать</button></span></div>
+    <div class="prompt"><span class="p">$</span><span class="typed">После фикса 000 больше нет, но плашка «нет связи» висит секунды три. Это нормально?<span class="cursor"></span></span></div>
+    <div class="opts">
+      <button class="mode">режим <b>manual</b></button>
+      <button class="agent" title="Агент: Claude">агент <b>claude</b></button>
+      <button>модель <b>opus-5.5</b></button>
+      <button>effort <b>high</b></button>
+      <span class="meters"><span class="m"><span class="clock"></span>кэш <b>04:40</b> · <b>90%</b></span><span class="m" title="5-часовое окно · сброс 17:00"><span class="cells"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i></span>5ч <b>67%</b></span></span>
+      <button class="send" title="Отправить (Enter)">enter ↵</button>
+    </div>
+  </footer>
+
+</div>
+</div>
+<script src="../shared/preview.js"></script>
+<script src="../shared/sidebar.js"></script>
+<script src="../shared/limits.js"></script>
+<script src="../shared/hud.js"></script>
+</body>
+</html>

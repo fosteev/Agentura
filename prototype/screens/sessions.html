@@ -31,9 +31,9 @@
 <div class="webview">
 
   <div class="sidebar" aria-label="Боковая панель Agentura">
-    <div class="head">Agentura</div>
+    <div class="head"><span>Agentura</span><button class="gear" title="Настройки Agentura">⚙</button></div>
     <section class="sec">
-      <h3><span class="tri"></span>Аккаунт и лимиты<button class="r">/status</button><button class="refresh" title="Обновить лимиты · данные на 14:52">↻</button></h3>
+      <h3><span class="tri"></span>Аккаунт и лимиты<button class="refresh" title="Обновить лимиты · данные на 14:52">↻</button></h3>
       <div class="kv"><span>Аккаунт</span><b>andrey@example.com</b><span>План</span><b>Max 5×</b><span>Вход</span><b>через CLI · ок</b><span>Агент</span><b>Claude · claude 2.1.284</b></div>
       <div class="lim">
         <div class="row"><span>Окно 5 часов</span><span class="n">62 %</span><span class="bar"><i style="width:62%"></i></span><small>сброс в 17:00 · через 2 ч 08 мин</small></div>
@@ -44,7 +44,7 @@
       <h3><span class="tri"></span>Сессии<span class="r" style="color:var(--fg-mute)">queue-board</span></h3>
       <button class="new"><span class="plus">＋</span>Новая сессия<span style="margin-left:auto;color:var(--fg-faint);font-size:11px">⌘⇧N</span></button>
     </section>
-    <div class="tools"><input type="search" id="s-search" placeholder="Поиск по названию — скоро" disabled><button title="Фильтр">⚲</button></div>
+    <div class="tools"><input type="search" id="s-search" placeholder="Поиск по названию" disabled><button title="Фильтр">⚲</button></div>
     <div class="list">
       <div class="day">Сегодня</div>
       <button class="s cur live"><span class="dot"></span><span class="t">мигание счётчика талонов<small>14 ходов · $1.84 · 131k</small></span><span class="when">сейчас</span></button>
@@ -67,7 +67,7 @@
         <button role="tab" aria-selected="false">агенты <span class="b">1</span></button>
       </nav>
       <span class="sess">queue-board · <b>мигание счётчика талонов</b></span>
-      <span class="acts pop"><button title="Сессии" style="color:var(--fg)">sessions</button><button title="Новый диалог">new</button>
+      <span class="acts pop"><button title="Сессии" style="color:var(--fg)">sessions</button>
         <div class="menu down">
           <div class="hd">сессии queue-board · возобновить</div>
           <button class="it sel"><span>мигание счётчика талонов<small>сейчас · 14 ходов · $1.84</small></span><span class="hint">131k</span></button>

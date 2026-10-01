@@ -4,6 +4,7 @@
   var wv = document.querySelector('.webview[data-sidebar]');
   if (!wv) return;
   var st = wv.getAttribute('data-sidebar');
+  var gear = wv.getAttribute('data-gear') === 'on';
   var lim = st === 'limit'
     ? { h5: 100, h5t: 'сброс в 17:00 · через 2 ч 04 мин', wk: 36, full: true }
     : { h5: 62, h5t: 'сброс в 17:00 · через 2 ч 08 мин', wk: 34, full: false };
@@ -21,8 +22,8 @@
     '<aside class="sidebar-view" aria-label="Боковая панель VS Code">' +
       '<div class="activity" aria-hidden="true"><i class="a"></i><i></i><i></i><i></i><i class="on"></i></div>' +
       '<div class="sidebar">' +
-        '<div class="head">Agentura</div>' +
-        '<section class="sec"><h3><span class="tri"></span>Аккаунт и лимиты<button class="r">/status</button><button class="refresh" title="Обновить лимиты · данные на 14:52">↻</button></h3>' +
+        '<div class="head"><span>Agentura</span><button class="gear' + (gear ? ' on' : '') + '" title="Настройки Agentura">⚙</button></div>' +
+        '<section class="sec"><h3><span class="tri"></span>Аккаунт и лимиты<button class="refresh" title="Обновить лимиты · данные на 14:52">↻</button></h3>' +
           '<div class="kv"><span>Аккаунт</span><b>andrey@example.com</b><span>План</span><b>Max 5×</b><span>Вход</span><b>через CLI · ок</b><span>Агент</span><b>Claude · claude 2.1.284</b></div>' +
           '<div class="lim">' +
             '<div class="row"><span>Окно 5 часов</span><span class="n' + (lim.full ? ' full' : '') + '">' + lim.h5 + ' %</span><span class="bar"><i class="' + (lim.full ? 'full' : '') + '" style="width:' + lim.h5 + '%"></i></span><small>' + lim.h5t + '</small></div>' +
@@ -30,7 +31,7 @@
           '</div></section>' +
         '<section class="sec"><h3><span class="tri"></span>Сессии<span class="r" style="color:var(--fg-mute)">queue-board</span></h3>' +
           '<button class="new"><span class="plus">＋</span>Новая сессия<span style="margin-left:auto;color:var(--fg-faint);font-size:11px">⌘⇧N</span></button></section>' +
-        '<div class="tools"><input type="search" placeholder="Поиск по названию — скоро" disabled><button title="Фильтр">⚲</button></div>' +
+        '<div class="tools"><input type="search" placeholder="Поиск по названию" disabled><button title="Фильтр">⚲</button></div>' +
         '<div class="list"><div class="day">Сегодня</div>' + top +
           '<button class="s ' + cur.cls + '"><span class="dot"></span><span class="t">мигание счётчика талонов<small>' + cur.sub + '</small></span><span class="when">' + cur.when + '</span></button>' +
           '<button class="s wait"><span class="dot"></span><span class="t">плашка «нет связи» на табло<small>3 хода · $0.42 · ждёт ответа</small></span><span class="when">13:05</span></button>' +
