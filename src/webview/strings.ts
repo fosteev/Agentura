@@ -97,6 +97,12 @@ export const ui = {
     retryTurn: 'Повторить ход',
     retryResume: 'Возобновить сессию',
     retrying: 'повторяю…',
+    missingTitle: 'Claude Code не найден',
+    missingHint:
+      'Установите Claude Code (https://claude.com/claude-code), выполните вход (claude → /login) или укажите путь к claude в настройках ⚙ (agentura.claudeExecutable).',
+    missingSettings: 'Открыть настройки',
+    missingRecheck: 'Проверить снова',
+    missingChecking: 'проверяю…',
     openLog: 'Открыть журнал расширения',
     logHint: 'журнал: панель Output → Agentura',
     toolOutputTitle: 'Вывод инструмента',

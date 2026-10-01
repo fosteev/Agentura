@@ -17,7 +17,7 @@ export interface SettingsDeps {
   globalTarget: unknown;
   post(m: ToWebview): void;
   /** Тот же поиск, что при старте движка (`resolveExecutable`). */
-  checkEngine(path: string): EngineCheck;
+  checkEngine(path: string): Promise<EngineCheck>;
   reveal(target: 'ui' | 'json'): void;
   warn(message: string): void;
 }
@@ -27,6 +27,9 @@ export const BYPASS_NOT_ALLOWED =
 
 /** Логика вкладки настроек без `vscode`: приём сообщений webview и выдача текущих значений. */
 export class SettingsController {
+  /** Номер последней «проверить» — ответ приходит только на неё. */
+  private checkSeq = 0;
+
   constructor(private readonly deps: SettingsDeps) {}
 
   /** Текущие значения → webview. Зовётся на `ready`, после записи и из `onDidChangeConfiguration`. */
@@ -47,12 +50,13 @@ export class SettingsController {
       case 'settings.set':
         await this.set(m.key, m.value);
         break;
-      case 'settings.checkEngine':
-        this.deps.post({
-          type: 'settings.engine',
-          result: this.deps.checkEngine(typeof m.path === 'string' ? m.path : ''),
-        });
+      case 'settings.checkEngine': {
+        // проверки асинхронные (до 5 с): ответ устаревшей не должен перебить ответ последней
+        const seq = ++this.checkSeq;
+        const result = await this.deps.checkEngine(typeof m.path === 'string' ? m.path : '');
+        if (seq === this.checkSeq) this.deps.post({ type: 'settings.engine', result });
         break;
+      }
       case 'settings.reveal':
         this.deps.reveal(m.target === 'json' ? 'json' : 'ui');
         break;

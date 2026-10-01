@@ -20,12 +20,14 @@ function setup(values: Record<string, unknown> = {}, over: Partial<SettingsDeps>
     config: () => config,
     globalTarget: GLOBAL,
     post: (m) => posted.push(m),
-    checkEngine: vi.fn(() => ({
-      ok: true,
-      source: 'system' as const,
-      path: '/b/claude',
-      version: '2.1.285',
-    })),
+    checkEngine: vi.fn(() =>
+      Promise.resolve({
+        ok: true,
+        source: 'system' as const,
+        path: '/b/claude',
+        version: '2.1.285',
+      }),
+    ),
     reveal: vi.fn(),
     warn: vi.fn(),
     ...over,
@@ -124,6 +126,25 @@ describe('SettingsController', () => {
       type: 'settings.engine',
       result: { ok: true, version: '2.1.285' },
     });
+  });
+
+  it('checkEngine: ответ устаревшей проверки не перебивает последнюю', async () => {
+    const slow = { ok: false, source: 'setting' as const, problem: 'старая' };
+    const fast = { ok: true, source: 'system' as const, path: '/b/claude', version: '2.1.285' };
+    const { c, posted } = setup(
+      {},
+      {
+        checkEngine: (path: string) =>
+          path === '/old'
+            ? new Promise((r) => setTimeout(() => r(slow), 20))
+            : Promise.resolve(fast),
+      },
+    );
+    await Promise.all([
+      c.handle({ type: 'settings.checkEngine', path: '/old' }),
+      c.handle({ type: 'settings.checkEngine', path: '' }),
+    ]);
+    expect(posted).toEqual([{ type: 'settings.engine', result: fast }]);
   });
 
   it('reveal: ui и json', async () => {

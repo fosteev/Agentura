@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { isAbsolute } from 'node:path';
 import { samePath } from './pathKey';
 import * as vscode from 'vscode';
-import { resolveExecutable } from '../agent/claude/executable';
+import { EngineLocator } from './engineLocator';
 import { ClaudeAdapter } from '../agent/claude/adapter';
 import type { AgentAdapter } from '../agent/types';
 import type { LimitsSource } from '../data/limits';
@@ -65,37 +65,26 @@ export interface ChatServices {
   sessions: SessionsService;
   account: AccountService;
   memory: SessionMemory;
+  /** Поиск `claude` (асинхронный, с прогревом). */
+  engine: EngineLocator;
 }
 
-export function createAdapter(log: Logger): AgentAdapter {
+export function createAdapter(log: Logger): { adapter: AgentAdapter; engine: EngineLocator } {
   const cfg = () => vscode.workspace.getConfiguration('agentura');
-  // `.vsix` без бинарника движка: настройка → системный `claude` (с проверкой версии). Найденный путь
-  // кэшируется по значению настройки; «не нашли» не кэшируется (поставил claude — следующая вкладка
-  // его подхватит без перезагрузки окна), предупреждение — один раз на значение настройки.
-  let cached: { setting: string; path: string } | undefined;
-  let warnedFor: string | undefined;
-  const executablePath = (): string | undefined => {
-    const setting = cfg().get<string>('claudeExecutable') ?? '';
-    if (cached?.setting === setting) return cached.path;
-    const r = resolveExecutable(setting);
-    if (r.path) {
-      log.info(`claude: ${r.path} ${r.version ?? ''} (${r.source})`);
-      cached = { setting, path: r.path };
-    } else {
-      log.info('claude: системный не найден, остаётся бинарник SDK');
-    }
-    if (r.problem && warnedFor !== setting) {
-      warnedFor = setting;
-      log.warn(r.problem);
-      void vscode.window.showWarningMessage(`Agentura: ${r.problem}`);
-    }
-    return r.path;
-  };
-  return new ClaudeAdapter({
-    executablePath,
+  // `.vsix` без бинарника движка: настройка → системный `claude` (с проверкой версии). Поиск асинхронный
+  // (`EngineLocator`): прогрев при активации, первый запуск движка ждёт его результат, а не поток хоста.
+  const engine = new EngineLocator({
+    setting: () => cfg().get<string>('claudeExecutable') ?? '',
+    info: (m) => log.info(m),
+    warn: (m) => log.warn(m),
+    notify: (m) => void vscode.window.showWarningMessage(`Agentura: ${m}`),
+  });
+  const adapter = new ClaudeAdapter({
+    executablePath: () => engine.path(),
     clientApp: 'agentura',
     log: (level, message) => log[level](message),
   });
+  return { adapter, engine };
 }
 
 interface OpenOptions {
@@ -355,6 +344,8 @@ export class ChatPanel {
       listRecent: async () => (await services.sessions.summaries()).slice(0, CHAT_SESSIONS),
       showSessions: () => void vscode.commands.executeCommand('workbench.view.extension.agentura'),
       showLogs: () => log.show(),
+      engine: { ready: () => services.engine.ready() },
+      openSettings: () => void vscode.commands.executeCommand('agentura.openSettings'),
       live: services.live,
       // превью — по тексту из редактора, если там несохранённые правки: именно он попадёт на диск.
       // Сохраняет файл `saveFile` — когда человек разрешил правку, а не когда показана карточка

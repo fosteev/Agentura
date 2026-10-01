@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { delimiter, isAbsolute, join } from 'node:path';
@@ -20,7 +20,9 @@ export interface ResolveDeps {
   env?: NodeJS.ProcessEnv;
   exists?: (path: string) => boolean;
   /** Вывод `claude --version`; бросает, если не запустился. */
-  runVersion?: (path: string) => string;
+  runVersion?: (path: string) => Promise<string>;
+  /** Таймаут `--version` на одного кандидата, мс (по умолчанию 5000). */
+  timeoutMs?: number;
   home?: string;
   platform?: NodeJS.Platform;
 }
@@ -41,33 +43,92 @@ export function versionAtLeast(a: string, b: string): boolean {
   return true;
 }
 
-/** Места, где обычно лежит `claude`: PATH, затем установщик и менеджеры пакетов. */
-export function candidatePaths(deps: ResolveDeps = {}): string[] {
-  const env = deps.env ?? process.env;
-  const home = deps.home ?? homedir();
-  const win = (deps.platform ?? process.platform) === 'win32';
-  const name = win ? 'claude.exe' : 'claude';
+/** Папки, где обычно лежит `claude`: PATH, затем установщик и менеджеры пакетов. */
+function candidateDirs(env: NodeJS.ProcessEnv, home: string, win: boolean): string[] {
   // Относительные элементы PATH («.», «bin») не берём: они резолвятся от cwd хоста, а не от системы.
   const dirs = (env.PATH ?? '').split(delimiter).filter((d) => d && isAbsolute(d));
   dirs.push(join(home, '.local', 'bin'), join(home, '.claude', 'local'));
-  if (!win) dirs.push('/opt/homebrew/bin', '/usr/local/bin');
+  if (win) {
+    // npm-установка кладёт обёртку в `%APPDATA%\npm`; PATH там обычно уже есть, но не всегда у GUI-процесса
+    const appData = env.APPDATA;
+    if (appData && isAbsolute(appData)) dirs.push(join(appData, 'npm'));
+  } else dirs.push('/opt/homebrew/bin', '/usr/local/bin');
+  return dirs;
+}
+
+/**
+ * Где искать `claude`. На Windows — только `claude.exe`: npm-обёртку `claude.cmd` SDK запускает без оболочки,
+ * а Node (≥ 18.20.2) такой запуск `.cmd` отклоняет (EINVAL) — движок не поднялся бы.
+ */
+export function candidatePaths(deps: ResolveDeps = {}): string[] {
+  const win = (deps.platform ?? process.platform) === 'win32';
+  const name = win ? 'claude.exe' : 'claude';
+  const dirs = candidateDirs(deps.env ?? process.env, deps.home ?? homedir(), win);
   return [...new Set(dirs.map((d) => join(d, name)))];
 }
 
-const defaultRun = (path: string): string =>
-  execFileSync(path, ['--version'], { encoding: 'utf8', timeout: 5000 });
+/** npm-обёртки `claude.cmd` на Windows: найдены — подсказка поставить `claude.exe` вместо «не найден». */
+function windowsWrappers(deps: ResolveDeps, exists: (p: string) => boolean): string[] {
+  if ((deps.platform ?? process.platform) !== 'win32') return [];
+  const dirs = candidateDirs(deps.env ?? process.env, deps.home ?? homedir(), true);
+  return [...new Set(dirs.map((d) => join(d, 'claude.cmd')))].filter((p) => exists(p));
+}
+
+/** `.cmd`/`.bat`: на Windows SDK их не запустит (нужна оболочка), Agentura их не принимает. */
+export function isShellScript(path: string, platform: NodeJS.Platform = process.platform): boolean {
+  return platform === 'win32' && /\.(cmd|bat)$/i.test(path.trim());
+}
+
+/** Подсказка для npm-обёртки на Windows. */
+const CMD_PROBLEM = (path: string) =>
+  `${path} — npm-обёртка, движок через неё не запускается. Установите Claude Code нативным установщиком (claude.exe) или укажите путь к claude.exe в agentura.claudeExecutable.`;
+
+/**
+ * `claude --version` с жёстким таймаутом: по истечении процесс убивается (SIGKILL), а промис отклоняется
+ * сразу, не дожидаясь закрытия потоков (их мог унаследовать дочерний процесс). Без оболочки.
+ */
+export function defaultRun(timeoutMs = 5000) {
+  return (path: string): Promise<string> =>
+    new Promise((resolve, reject) => {
+      let done = false;
+      const child = execFile(
+        path,
+        ['--version'],
+        { encoding: 'utf8', windowsHide: true },
+        (error, stdout) => {
+          if (done) return;
+          done = true;
+          clearTimeout(timer);
+          if (error) reject(error);
+          else resolve(stdout);
+        },
+      );
+      const timer = setTimeout(() => {
+        if (done) return;
+        done = true;
+        child.kill('SIGKILL');
+        reject(new Error(`${path} --version: нет ответа за ${timeoutMs} мс`));
+      }, timeoutMs);
+    });
+}
 
 /**
  * Какой `claude` запускать. Настройка важнее поиска; найденный бинарь проверяется `--version`.
  * `.vsix` 0.1 собран без бинарника движка (213 МБ), поэтому нужен системный `claude`.
  */
-export function resolveExecutable(setting: string, deps: ResolveDeps = {}): ResolvedExecutable {
+export async function resolveExecutable(
+  setting: string,
+  deps: ResolveDeps = {},
+): Promise<ResolvedExecutable> {
   const exists = deps.exists ?? existsSync;
-  const run = deps.runVersion ?? defaultRun;
-  const check = (path: string, source: 'setting' | 'system'): ResolvedExecutable | undefined => {
+  const run = deps.runVersion ?? defaultRun(deps.timeoutMs);
+  const check = async (
+    path: string,
+    source: 'setting' | 'system',
+  ): Promise<ResolvedExecutable | undefined> => {
     let out: string;
     try {
-      out = run(path);
+      out = await run(path);
     } catch {
       return undefined;
     }
@@ -81,7 +142,9 @@ export function resolveExecutable(setting: string, deps: ResolveDeps = {}): Reso
   };
 
   if (setting.trim()) {
-    const found = check(setting.trim(), 'setting');
+    if (isShellScript(setting, deps.platform ?? process.platform))
+      return { path: setting.trim(), source: 'setting', problem: CMD_PROBLEM(setting.trim()) };
+    const found = await check(setting.trim(), 'setting');
     return (
       found ?? {
         path: setting.trim(),
@@ -90,11 +153,16 @@ export function resolveExecutable(setting: string, deps: ResolveDeps = {}): Reso
       }
     );
   }
-  for (const candidate of candidatePaths(deps)) {
-    if (!exists(candidate)) continue;
-    const found = check(candidate, 'system');
-    if (found) return found;
-  }
+  // кандидаты проверяются параллельно (у каждого свой таймаут), выбор — по порядку списка
+  const found = await Promise.all(
+    candidatePaths(deps)
+      .filter((c) => exists(c))
+      .map((c) => check(c, 'system')),
+  );
+  const first = found.find((r) => r !== undefined);
+  if (first) return first;
+  const wrapper = windowsWrappers(deps, exists)[0];
+  if (wrapper) return { source: 'none', problem: CMD_PROBLEM(wrapper) };
   return {
     source: 'none',
     problem:

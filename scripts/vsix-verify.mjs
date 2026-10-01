@@ -1,7 +1,7 @@
 // Проверка собранного .vsix (этап 8): распаковать, загрузить dist/extension.js с заглушкой vscode,
 // резолвить SDK из распакованного пакета и убедиться, что бинарника движка в нём нет.
 // С --live — один ход Haiku через SDK из пакета и системный claude (≈ $0.01).
-// Запуск: node scripts/vsix-verify.mjs [agentura-0.1.0.vsix] [--live]
+// Запуск: node scripts/vsix-verify.mjs [agentura-<версия>.vsix] [--live]; без аргумента — пакет текущей версии из package.json
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -10,7 +10,8 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const args = process.argv.slice(2);
-const vsix = resolve(args.find((a) => a.endsWith('.vsix')) ?? 'agentura-0.1.0.vsix');
+const version = JSON.parse(readFileSync('package.json', 'utf8')).version;
+const vsix = resolve(args.find((a) => a.endsWith('.vsix')) ?? `agentura-${version}.vsix`);
 const live = args.includes('--live');
 const dir = mkdtempSync(join(tmpdir(), 'agentura-vsix-'));
 execFileSync('unzip', ['-q', vsix, '-d', dir]);

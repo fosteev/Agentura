@@ -242,6 +242,31 @@ describe('экран error (error.html)', () => {
     expect(host.textContent).not.toContain('expected 42, received 0');
   });
 
+  it('claude не найден: карточка с инструкцией, «Открыть настройки» шлёт settings.open', async () => {
+    const host = mount();
+    dispatchEvent({
+      type: 'error',
+      fatal: true,
+      code: 'engine_missing',
+      message: 'Не найден Claude Code (claude).',
+    } as AgentEvent);
+    dispatchEvent({
+      type: 'session.closed',
+      reason: 'error',
+      message: 'Не найден Claude Code (claude).',
+    } as AgentEvent);
+    await flush();
+    const cards = host.querySelectorAll('.ask.danger');
+    expect(cards).toHaveLength(1);
+    expect(cards[0]!.querySelector('.h')?.textContent).toContain('Claude Code не найден');
+    expect(cards[0]!.textContent).toContain('agentura.claudeExecutable');
+    expect(button(host, 'Повторить ход')).toBeFalsy();
+    button(host, 'Открыть настройки')!.click();
+    expect(posted.at(-1)).toEqual({ type: 'settings.open' });
+    button(host, 'Проверить снова')!.click();
+    expect(posted.at(-1)).toMatchObject({ type: 'turn.retry' });
+  });
+
   it('обрыв сети посреди хода: error + session.closed → одна карточка, поле ввода выключено', async () => {
     const host = mount();
     dispatchEvent({ type: 'turn.start', at: Date.now(), prompt: 'сделай' } as AgentEvent);

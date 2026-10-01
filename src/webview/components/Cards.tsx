@@ -2,6 +2,8 @@
 import { useMemo } from 'preact/hooks';
 import type { FailCard, PermCard, PlanCard, QuestionCard } from '../chatState';
 import { alwaysButton, planView } from '../cardView';
+import { ENGINE_MISSING_CODE } from '../../protocol';
+import { send } from '../vscode';
 import { onCodeCopyClick, renderMarkdown } from '../markdown';
 import {
   chooseOption,
@@ -167,6 +169,7 @@ export const NETWORK_ERROR =
 
 /** Карточка «Движок остановился» (экран error): текст ошибки, «Повторить ход», «Открыть журнал». */
 export function FailCardView({ c }: { c: FailCard }) {
+  if (c.code === ENGINE_MISSING_CODE) return <EngineMissingCard c={c} />;
   const retrying = c.state === 'retrying';
   const hint = NETWORK_ERROR.test(`${c.message} ${c.code ?? ''}`)
     ? ui.fail.hintNetwork
@@ -198,6 +201,39 @@ export function FailCardView({ c }: { c: FailCard }) {
               {ui.fail.openLog}
             </button>
             <span class="hint">{ui.fail.logHint}</span>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Карточка «Claude Code не найден»: движок не запускался; инструкция, настройки ⚙, «Проверить снова». */
+function EngineMissingCard({ c }: { c: FailCard }) {
+  const retrying = c.state === 'retrying';
+  return (
+    <div class="ask danger" role="alert">
+      <div class="h">
+        {ui.fail.missingTitle}
+        <span class="tag">{ui.fail.tag(c.at)}</span>
+      </div>
+      <div class="bd">
+        <p>{c.message}</p>
+        <p class="dim">{ui.fail.missingHint}</p>
+      </div>
+      <div class="acts">
+        {retrying ? (
+          <span class="hint" style={{ marginLeft: 0 }}>
+            {ui.fail.missingChecking}
+          </span>
+        ) : (
+          <>
+            <button class="btn pri" onClick={() => send({ type: 'settings.open' })}>
+              {ui.fail.missingSettings}
+            </button>
+            <button class="btn ghost" onClick={retryTurn}>
+              {ui.fail.missingRecheck}
+            </button>
           </>
         )}
       </div>

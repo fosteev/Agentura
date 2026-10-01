@@ -69,7 +69,7 @@ export interface ClaudeAdapterConfig {
    * Путь к `claude` (настройка `agentura.claudeExecutable` или найденный системный); пусто — бинарник
    * из пакета SDK. Функция вычисляется при каждом запуске движка (настройку можно сменить на лету).
    */
-  executablePath?: string | (() => string | undefined);
+  executablePath?: string | (() => string | undefined | Promise<string | undefined>);
   /** Имя клиента для движка (`CLAUDE_AGENT_SDK_CLIENT_APP`). */
   clientApp?: string;
   log?: LogFn;
@@ -200,11 +200,19 @@ export class ClaudeAdapter implements AgentAdapter {
   }
 
   async createSession(options: SessionOptions): Promise<AgentSession> {
-    return new ClaudeSession(await this.loadSdk(), this.config, options);
+    const sdk = await this.loadSdk();
+    return new ClaudeSession(sdk, this.config, await this.baseOptions(options.cwd), options);
   }
 
   async resumeSession(sessionId: string, options: ResumeOptions): Promise<AgentSession> {
-    return new ClaudeSession(await this.loadSdk(), this.config, options, sessionId);
+    const sdk = await this.loadSdk();
+    return new ClaudeSession(
+      sdk,
+      this.config,
+      await this.baseOptions(options.cwd),
+      options,
+      sessionId,
+    );
   }
 
   async listSessions(dir: string): Promise<SessionInfo[]> {
@@ -323,7 +331,7 @@ export class ClaudeAdapter implements AgentAdapter {
     const abort = new AbortController();
     const q = sdk.query({
       prompt: input,
-      options: { ...this.baseOptions(cwd), abortController: abort },
+      options: { ...(await this.baseOptions(cwd)), abortController: abort },
     });
     let timer: ReturnType<typeof setTimeout> | undefined;
     // проигравший гонку с таймаутом запрос отклонится на `close()` — без обработчика это unhandled rejection
@@ -358,7 +366,7 @@ export class ClaudeAdapter implements AgentAdapter {
     }
   }
 
-  baseOptions(cwd: string): Options {
+  async baseOptions(cwd: string): Promise<Options> {
     const options: Options = {
       cwd,
       env: engineEnv(this.config.env ?? process.env, this.config.clientApp),
@@ -368,7 +376,7 @@ export class ClaudeAdapter implements AgentAdapter {
     };
     const exe =
       typeof this.config.executablePath === 'function'
-        ? this.config.executablePath()
+        ? await this.config.executablePath()
         : this.config.executablePath;
     if (exe) options.pathToClaudeCodeExecutable = exe;
     return options;
@@ -391,6 +399,7 @@ class ClaudeSession implements AgentSession {
   constructor(
     sdk: SdkModule,
     config: ClaudeAdapterConfig,
+    base: Options,
     options: SessionOptions & ResumeOptions,
     resume?: string,
   ) {
@@ -406,9 +415,8 @@ class ClaudeSession implements AgentSession {
       (taskId) => this.mapper.agentIdForTask(taskId),
     );
 
-    const adapter = new ClaudeAdapter(config);
     const sdkOptions: Options = {
-      ...adapter.baseOptions(options.cwd),
+      ...base,
       includePartialMessages: true,
       thinking: { type: 'adaptive', display: 'summarized' },
       forwardSubagentText: true,
