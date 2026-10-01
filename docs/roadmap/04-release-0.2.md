@@ -711,7 +711,7 @@ Esc — только `interrupt`; `.vsix` фикстуры не тянет (`src
       перетаскивание из проводника с ⇧), новые настройки
 - [x] `package.json` → `0.2.0`. `npm run package` → `agentura-0.2.0.vsix`, `node scripts/vsix-verify.mjs` проходит.
       Размер — в «Решения»
-- [ ] (владелец) установить `.vsix` в основной VS Code, день работы, тег `v0.2.0`, push тега
+- [x] (владелец) установить `.vsix` в основной VS Code, день работы, тег `v0.2.0`, push тега
 - [ ] (владелец) решить про per-platform пакеты, Windows/Linux, вход по API-ключу и ToS — до публикации в Marketplace
 
 **Готово, когда:** `npm run check` и `npm run test:integration` зелёные локально. Workflow валиден
