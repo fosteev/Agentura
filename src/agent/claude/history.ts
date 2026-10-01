@@ -8,7 +8,7 @@
  */
 import type { AgentEvent, PermissionMode, SessionHistory, TokenUsage } from '../types';
 import { cost } from '../../data/pricing';
-import { arr, isObj, obj, str, timestamp, type Json } from './json';
+import { arr, isObj, num, obj, str, timestamp, type Json } from './json';
 import { usageFrom } from './mapper';
 
 /** Сообщение `getSessionMessages()` — только то, что нам нужно. */
@@ -25,6 +25,11 @@ export interface BuildOptions {
   toolResults?: ReadonlyMap<string, unknown>;
   /** Последний ход не закрывать `turn.result` — сессия сейчас идёт. */
   live?: boolean;
+  /**
+   * Процесс движка жив (пересев webview открытой сессии): задачи без конца в транскрипте ещё идут —
+   * не закрывать их «остановлено». По умолчанию — как `live`.
+   */
+  tasksAlive?: boolean;
   /** Сколько последних ходов показать. */
   maxTurns?: number;
 }
@@ -72,6 +77,68 @@ function resultText(content: unknown): string {
     .join('\n');
 }
 
+/**
+ * Отчёт субагента в результате `Agent`: движок оборачивает его рамкой «[Subagent hand-back] …
+ * The report follows:» и сдвигает строки на два пробела. Для итога в карте — только сам отчёт.
+ */
+export function handBackText(text: string): string {
+  const mark = 'The report follows:';
+  const i = text.indexOf(mark);
+  if (!text.startsWith('[Subagent hand-back]') || i < 0) return text;
+  return text
+    .slice(i + mark.length)
+    .replace(/^\n/, '')
+    .split('\n')
+    .map((l) => (l.startsWith('  ') ? l.slice(2) : l))
+    .join('\n')
+    .trim();
+}
+
+/** Уведомление о фоновой задаче, которое движок кладёт в транскрипт сообщением пользователя. */
+const TASK_NOTIFICATION = /^<task-notification>/;
+
+function tag(text: string, name: string): string | undefined {
+  const m = new RegExp(`<${name}>([\\s\\S]*?)</${name}>`).exec(text);
+  return m ? m[1]!.trim() : undefined;
+}
+
+function tagNumber(text: string, name: string): number | undefined {
+  const v = tag(text, name);
+  const n = v === undefined ? NaN : Number(v);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+/** `<task-notification>` → `agent.end` (как `task_notification` живого потока). */
+export function notificationEnd(
+  text: string,
+  at: number | undefined,
+): Extract<AgentEvent, { type: 'agent.end' }> | undefined {
+  const taskId = tag(text, 'task-id');
+  if (!taskId) return undefined;
+  const raw = tag(text, 'status');
+  const status =
+    raw === 'failed' || raw === 'stopped' || raw === 'killed'
+      ? raw === 'failed'
+        ? 'failed'
+        : 'stopped'
+      : 'completed';
+  const summary = tag(text, 'result') ?? tag(text, 'summary');
+  const tokens = tagNumber(text, 'subagent_tokens') ?? tagNumber(text, 'total_tokens');
+  const uses = tagNumber(text, 'tool_uses');
+  const duration = tagNumber(text, 'duration_ms');
+  return {
+    type: 'agent.end',
+    agentId: tag(text, 'tool-use-id') ?? taskId,
+    taskId,
+    status,
+    ...(summary ? { summary } : {}),
+    ...(tokens !== undefined ? { totalTokens: tokens } : {}),
+    ...(uses !== undefined ? { toolUses: uses } : {}),
+    ...(duration !== undefined ? { durationMs: duration } : {}),
+    ...(at ? { at } : {}),
+  };
+}
+
 /** Режим из записи транскрипта; `auto`/`dontAsk` расширение не ведёт — как `default`. */
 export function modeFromTranscript(value: unknown): PermissionMode | undefined {
   if (typeof value !== 'string') return undefined;
@@ -107,6 +174,10 @@ export function buildHistory(
   let lastModel: string | undefined;
   const toolStartedAt = new Map<string, number>();
   const usageEmitted = new Set<string>();
+  /** Вызовы `Agent`/`Task` основного — их результаты закрывают агентов. */
+  const agentCalls = new Set<string>();
+  /** Запущенные задачи без конца: id вызова → id задачи. */
+  const openAgents = new Map<string, string>();
 
   const closeTurn = (open: boolean): void => {
     if (!turn) return;
@@ -141,19 +212,104 @@ export function buildHistory(
     });
   };
 
+  const newTurn = (at: number): Turn => ({
+    startAt: at,
+    lastAt: at,
+    interrupted: false,
+    calls: new Map(),
+    assistantMessages: 0,
+  });
+
   const startTurn = (prompt: string, at: number): void => {
     closeTurn(false);
     if (events.length) perTurn.push(events);
     events = [];
     turns++;
-    turn = {
-      startAt: at,
-      lastAt: at,
-      interrupted: false,
-      calls: new Map(),
-      assistantMessages: 0,
-    };
+    turn = newTurn(at);
     events.push({ type: 'turn.start', prompt, at });
+  };
+
+  /**
+   * Уведомление о фоновой задаче: её конец и ход-пробуждение движка (без промпта). Пробуждение
+   * остаётся в блоке хода пользователя — `maxTurns` режет по ходам пользователя.
+   */
+  const wake = (text: string, at: number): void => {
+    closeTurn(false);
+    // движок может склеить несколько уведомлений в одну реплику — закрыть каждую задачу
+    const blocks = text.match(/<task-notification>[\s\S]*?<\/task-notification>/g) ?? [text];
+    for (const block of blocks) {
+      const end = notificationEnd(block, at);
+      if (!end) continue;
+      events.push(end);
+      openAgents.delete(end.agentId);
+    }
+    turn = newTurn(at);
+    events.push({ type: 'turn.start', at });
+  };
+
+  /** Вызов `Agent`/`Task` или фоновый `Bash` — задача для панели «агенты» (как `task_started`). */
+  const agentStart = (name: string, toolUseId: string, input: Json, at: number): void => {
+    const structured = obj(toolResults.get(toolUseId));
+    if (name === 'Agent' || name === 'Task') {
+      const subagentType = str(input['subagent_type']);
+      const prompt = str(input['prompt']);
+      events.push({
+        type: 'agent.start',
+        agentId: toolUseId,
+        taskId: str(structured?.['agentId']) ?? toolUseId,
+        description: str(input['description']) ?? '',
+        taskType: 'local_agent',
+        ...(subagentType ? { subagentType } : {}),
+        background: input['run_in_background'] === true,
+        ...(prompt ? { prompt } : {}),
+        ...(at ? { at } : {}),
+      });
+      agentCalls.add(toolUseId);
+      openAgents.set(toolUseId, str(structured?.['agentId']) ?? toolUseId);
+    } else if (name === 'Bash' && input['run_in_background'] === true) {
+      const taskId = str(structured?.['backgroundTaskId']);
+      if (!taskId) return;
+      events.push({
+        type: 'agent.start',
+        agentId: toolUseId,
+        taskId,
+        description: str(input['description']) ?? str(input['command']) ?? '',
+        taskType: 'local_bash',
+        background: true,
+        ...(at ? { at } : {}),
+      });
+      openAgents.set(toolUseId, taskId);
+    }
+  };
+
+  /** Результат `Agent` переднего плана — конец агента; фоновый («async_launched») закончится уведомлением. */
+  const agentEnd = (toolUseId: string, isError: boolean, content: string, at: number): void => {
+    if (!agentCalls.has(toolUseId)) return;
+    const structured = obj(toolResults.get(toolUseId));
+    const status = str(structured?.['status']);
+    if (status === 'async_launched' || (!structured && content.startsWith('Async agent launched')))
+      return;
+    const taskId = str(structured?.['agentId']) ?? toolUseId;
+    const text =
+      arr(structured?.['content'])
+        .filter(isObj)
+        .map((b) => str(b['text']) ?? '')
+        .join('\n') || handBackText(content);
+    const tokens = num(structured?.['totalTokens']);
+    const uses = num(structured?.['totalToolUseCount']);
+    const duration = num(structured?.['totalDurationMs']);
+    events.push({
+      type: 'agent.end',
+      agentId: toolUseId,
+      taskId,
+      status: isError ? (/interrupted/i.test(content) ? 'stopped' : 'failed') : 'completed',
+      ...(text ? { summary: text } : {}),
+      ...(tokens !== undefined ? { totalTokens: tokens } : {}),
+      ...(uses !== undefined ? { toolUses: uses } : {}),
+      ...(duration !== undefined ? { durationMs: duration } : {}),
+      ...(at ? { at } : {}),
+    });
+    openAgents.delete(toolUseId);
   };
 
   for (const m of main) {
@@ -189,6 +345,7 @@ export function buildHistory(
             if (started !== undefined) event.durationMs = Math.max(0, at - started);
           }
           events.push(event);
+          agentEnd(toolUseId, event.isError, event.content, at);
         }
         continue;
       }
@@ -204,6 +361,10 @@ export function buildHistory(
         continue;
       }
       if (t.startsWith('<command-') || t.startsWith('<local-command-')) continue;
+      if (TASK_NOTIFICATION.test(t)) {
+        wake(t, at);
+        continue;
+      }
       startTurn(text, at);
       continue;
     }
@@ -254,13 +415,15 @@ export function buildHistory(
           const name = str(block['name']);
           if (!toolUseId || !name) break;
           toolStartedAt.set(toolUseId, at);
+          const input = obj(block['input']) ?? ({} as Json);
           events.push({
             type: 'tool.start',
             toolUseId,
             name,
-            input: obj(block['input']) ?? ({} as Json),
+            input,
             ...(at ? { at } : {}),
           });
+          agentStart(name, toolUseId, input, at);
           break;
         }
         default:
@@ -268,7 +431,21 @@ export function buildHistory(
       }
     }
   }
+  const lastAt = turn?.lastAt;
   closeTurn(options.live === true);
+  // Задача без конца в транскрипте (сессию закрыли посреди работы агента): процесса движка уже нет —
+  // агент остановлен, иначе карта «бежала» бы вечно с ■ в никуда. У идущей сессии (`live`) — ждём.
+  if (!(options.tasksAlive ?? options.live)) {
+    for (const [agentId, taskId] of openAgents) {
+      events.push({
+        type: 'agent.end',
+        agentId,
+        taskId,
+        status: 'stopped',
+        ...(lastAt ? { at: lastAt } : {}),
+      });
+    }
+  }
   if (events.length) perTurn.push(events);
 
   // Последние `maxTurns` ходов; «нулевой» блок (до первого промпта) — только если ходов не отрезали.

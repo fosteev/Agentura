@@ -5,6 +5,7 @@ import type { AgentEvent, AgentEventOf } from '../types';
 import { ClaudeEventMapper, windowsFromRateLimit } from './mapper';
 import { PermissionBroker } from './permissions';
 import { PROBE_BASELINES, projectEvents, replayProbeLog } from './replay';
+import { agentsParallelEvents } from './__fixtures__/agentsParallel';
 
 const logsDir = join(__dirname, '..', '..', '..', 'spikes', 'sdk-probe', 'logs');
 const fixturesDir = join(__dirname, '__fixtures__');
@@ -309,5 +310,63 @@ describe('PermissionBroker', () => {
         { ...dirs, destination: 'session' },
       ],
     });
+  });
+});
+
+describe('несколько агентов: живой прогон agents-parallel (scripts/agents-smoke.mjs)', () => {
+  it('задачи: фоновый Bash, два Explore на переднем плане, фоновый general-purpose', async () => {
+    const events = await agentsParallelEvents();
+    const starts = ofType(events, 'agent.start');
+    expect(
+      starts.map((a) => [a.taskType, a.subagentType ?? '-', a.background, !!a.prompt]),
+    ).toEqual([
+      ['local_bash', '-', true, false],
+      ['local_agent', 'Explore', false, true],
+      ['local_agent', 'Explore', false, true],
+      ['local_agent', 'general-purpose', true, true],
+    ]);
+    // agentId задачи — id вызова инструмента основного (Agent/Bash), он же в событиях субагента
+    const calls = ofType(events, 'tool.start').filter((t) => !t.agentId);
+    for (const a of starts) expect(calls.some((c) => c.toolUseId === a.agentId)).toBe(true);
+    // промпт хода привязан по эху uuid
+    expect(ofType(events, 'turn.start')[0]?.prompt).toMatch(/^Сделай в одном ответе/);
+  });
+
+  it('у каждого субагента — свои вызовы с agentId до его конца (живой «текущий вызов»)', async () => {
+    const events = await agentsParallelEvents();
+    for (const a of ofType(events, 'agent.start').filter((x) => x.taskType === 'local_agent')) {
+      const end = events.findIndex((e) => e.type === 'agent.end' && e.agentId === a.agentId);
+      const call = events.findIndex((e) => e.type === 'tool.start' && e.agentId === a.agentId);
+      const result = events.findIndex((e) => e.type === 'tool.result' && e.agentId === a.agentId);
+      expect(call).toBeGreaterThan(-1);
+      expect(call).toBeLessThan(result);
+      expect(result).toBeLessThan(end);
+      // текст итога субагента (forwardSubagentText) — тоже с agentId, в основную ленту не идёт
+      expect(events.some((e) => e.type === 'text.delta' && e.agentId === a.agentId)).toBe(true);
+    }
+  });
+
+  it('токены и время: task_progress → agent.progress, task_notification → agent.end', async () => {
+    const events = await agentsParallelEvents();
+    const progress = ofType(events, 'agent.progress').filter((p) => p.totalTokens !== undefined);
+    expect(progress.length).toBe(3);
+    for (const p of progress) {
+      expect(p.durationMs).toBeGreaterThan(0);
+      expect(p.lastToolName).toBe('Read');
+    }
+    const ends = ofType(events, 'agent.end');
+    expect(ends.map((e) => e.status)).toEqual(['completed', 'completed', 'completed', 'completed']);
+    for (const e of ends.slice(0, 3)) {
+      expect(e.totalTokens).toBeGreaterThan(10_000);
+      expect(e.durationMs).toBeGreaterThan(0);
+      expect(e.summary).toBeTruthy();
+    }
+    // фоновые задачи закрываются ходами-пробуждениями движка
+    const results = ofType(events, 'turn.result');
+    expect(results.map((r) => r.origin ?? '-')).toEqual([
+      '-',
+      'task-notification',
+      'task-notification',
+    ]);
   });
 });

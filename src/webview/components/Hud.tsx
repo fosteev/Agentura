@@ -25,8 +25,8 @@ export function Hud({
   onTab: (t: Tab) => void;
   /** Панели «ход» и «агенты» недоступны в пустой сессии (экран empty). */
   sidePanesEnabled: boolean;
-  /** Бейджи вкладок: число строк хода (`live` — ход идёт) и число агентов. */
-  badges: { turn?: { count: number; live: boolean }; agents?: number };
+  /** Бейджи вкладок: число строк хода (`live` — ход идёт) и агенты хода `идут / всего` (A6). */
+  badges: { turn?: { count: number; live: boolean }; agents?: { text: string; live: boolean } };
   /** Сессии проекта, коротко (`sessions.update`) — попап `sessions`. */
   sessions: SessionSummary[];
   currentId?: string | undefined;
@@ -98,8 +98,8 @@ export function Hud({
             {k === 'turn' && badges.turn && (
               <span class={badges.turn.live ? 'b live' : 'b'}>{badges.turn.count}</span>
             )}
-            {k === 'agents' && badges.agents !== undefined && (
-              <span class="b">{badges.agents}</span>
+            {k === 'agents' && badges.agents && (
+              <span class={badges.agents.live ? 'b live' : 'b'}>{badges.agents.text}</span>
             )}
           </button>
         ))}

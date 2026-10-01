@@ -12,6 +12,9 @@ import {
   toolView,
 } from '../toolView';
 import { FailCardView, PermissionCard, PlanCardView, QuestionCardView, ToolOutput } from './Cards';
+import { agentGroupView, feedItems } from '../agentsView';
+import { initialHud, type HudState } from '../hudState';
+import { AgentGroup } from './AgentGroup';
 
 type Row<K extends FeedRow['kind']> = Extract<FeedRow, { kind: K }>;
 
@@ -242,6 +245,9 @@ export function Log({
   onDiff,
   onPreview,
   onOpenUrl,
+  hud,
+  onStopAgent,
+  onOpenAgent,
   children,
 }: {
   rows: FeedRow[];
@@ -255,12 +261,27 @@ export function Log({
   onDiff: (toolUseId: string) => void;
   onPreview: (path: string) => void;
   onOpenUrl: (url: string) => void;
+  /** Агенты (A6): вызовы `Agent`/`Task` рисуются группой со статусами из приборов. */
+  hud?: HudState;
+  onStopAgent?: (taskId: string) => void;
+  onOpenAgent?: (agentId: string) => void;
   children?: preact.ComponentChildren;
 }) {
+  const items = feedItems(rows);
+  const last = rows[rows.length - 1];
   return (
     <div class="log" role="log" aria-label={ui.log.aria}>
-      {rows.map((it, i) => {
+      {items.map((it) => {
         switch (it.kind) {
+          case 'agents':
+            return (
+              <AgentGroup
+                key={it.id}
+                g={agentGroupView(it.rows, hud ?? initialHud(), now, cwd)}
+                onStop={(id) => onStopAgent?.(id)}
+                onOpen={(id) => onOpenAgent?.(id)}
+              />
+            );
           case 'sys':
             return (
               <div class={it.tone ? `sys ${it.tone}` : 'sys'} key={it.id}>
@@ -294,7 +315,7 @@ export function Log({
               />
             );
           case 'text':
-            return <Text key={it.id} r={it} last={i === rows.length - 1} />;
+            return <Text key={it.id} r={it} last={it === last} />;
           case 'perm':
             return (
               <PermissionCard

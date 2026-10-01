@@ -293,6 +293,35 @@ describe('ChatController', () => {
     expect(sessions[1]!.permissions).toEqual([['t1', 'allow', undefined]]); // новая сессия: брокер вернёт false
   });
 
+  it('agent.transcript: текст адаптера — документом только для чтения; нет файла — только журнал', async () => {
+    const { controller, deps } = setup();
+    const asked: unknown[][] = [];
+    const opened: { key: string; name: string; text: string }[] = [];
+    (deps.adapter as { agentTranscript?: unknown }).agentTranscript = async (...a: unknown[]) => {
+      asked.push(a);
+      return a[2] === 'tk1' ? '# t' : undefined;
+    };
+    deps.openText = async (d) => void opened.push(d);
+    await controller.handle({
+      type: 'agent.transcript',
+      sessionId: 's1',
+      agentId: 'toolu_1',
+      taskId: 'tk1',
+    });
+    await controller.handle({
+      type: 'agent.transcript',
+      sessionId: 's1',
+      agentId: 'toolu_2',
+      taskId: 'tk2',
+    });
+    expect(asked).toEqual([
+      ['s1', '/p', 'tk1', ''],
+      ['s1', '/p', 'tk2', ''],
+    ]);
+    expect(opened).toEqual([{ key: 'agent-tk1', name: 'agent-tk1.md', text: '# t' }]);
+    expect(deps.log.warn).toHaveBeenCalledTimes(1);
+  });
+
   it('bypass без настройки allowBypassPermissions не включается', async () => {
     const { controller, sessions, deps } = setup();
     controller.start();

@@ -43,7 +43,8 @@ export async function replayProbeLog(lines: unknown[], baselineCostUsd = 0): Pro
     }
     switch (line['kind']) {
       case 'send':
-        mapper.notePrompt(str(line['text']) ?? '');
+        // `uuid` пишет agents-smoke (живой движок отвечает эхом uuid); у логов пробы его нет — по очереди
+        mapper.notePrompt(str(line['text']) ?? '', str(line['uuid']));
         break;
       case 'canUseTool': {
         const options = optionsFromProbe(line['options']);

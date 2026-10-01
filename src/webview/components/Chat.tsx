@@ -12,14 +12,18 @@ import {
   recent,
   releaseLimit,
   replyTarget,
+  openAgentTranscript,
   respondPermission,
+  selectedAgent,
   showThinking,
   stopAgent,
+  stopAgents,
   tick,
 } from '../store';
 import { activeCard, pendingPlan } from '../chatState';
 import { limitBanner } from '../limitView';
-import { agentRows, cacheLive, sessionTotals, turnBadge, turnsView } from '../hudView';
+import { cacheLive, turnBadge, turnsView } from '../hudView';
+import { agentBadge, agentMapView, liveSubagents, waitingAgents } from '../agentsView';
 import { ui } from '../strings';
 import { send } from '../vscode';
 import { Composer } from './Composer';
@@ -128,6 +132,17 @@ export function Chat() {
   const active = activeCard(s);
 
   const turnBdg = turnBadge(h);
+  const agentsBdg = agentBadge(h);
+  // основной ждёт своих субагентов: живая строка «ждёт N агентов» и «stop all»
+  const awaited = working && s.status !== 'waiting' ? waitingAgents(s.rows, h) : [];
+  const liveText = awaited.length
+    ? `${ui.log.waitingAgents(awaited.length)}${s.turnStartedAt ? ` · ${formatDuration(now - s.turnStartedAt)}` : ''}`
+    : live;
+  // «карта агентов», «итог», «лог» в группе: выбрать агента и показать вкладку (в широкой она и так видна)
+  const openAgent = (agentId: string) => {
+    selectedAgent.value = agentId;
+    if (!document.documentElement.hasAttribute('data-width')) tab.value = 'agents';
+  };
 
   return (
     <div class="webview">
@@ -137,7 +152,11 @@ export function Chat() {
         tab={t}
         onTab={(k) => (tab.value = k)}
         sidePanesEnabled={!empty}
-        badges={empty ? {} : { ...(turnBdg ? { turn: turnBdg } : {}), agents: 1 + h.agents.length }}
+        badges={
+          empty
+            ? {}
+            : { ...(turnBdg ? { turn: turnBdg } : {}), ...(agentsBdg ? { agents: agentsBdg } : {}) }
+        }
         sessions={recent.value}
         currentId={currentSession.value ?? (s.sessionId || undefined)}
         onResume={(id) => send({ type: 'session.resume', sessionId: id })}
@@ -194,8 +213,11 @@ export function Chat() {
               onDiff={(toolUseId) => send({ type: 'diff.open', sessionId: s.sessionId, toolUseId })}
               onPreview={(path) => send({ type: 'preview.open', path })}
               onOpenUrl={(url) => send({ type: 'link.open', url })}
+              hud={h}
+              onStopAgent={stopAgent}
+              onOpenAgent={openAgent}
             >
-              {live && (
+              {liveText && (
                 <div class="live" role="status">
                   <span
                     class="spin"
@@ -206,11 +228,22 @@ export function Chat() {
                         : undefined
                     }
                   />{' '}
-                  {live}{' '}
-                  <button class="stop" onClick={interrupt}>
-                    {/* пока ждёт ответа, Esc отклоняет карточку, а не останавливает ход */}
-                    {s.status === 'waiting' ? ui.log.stopOnly : ui.log.stop}
-                  </button>
+                  {liveText}{' '}
+                  {awaited.length ? (
+                    // Esc по-прежнему останавливает ход целиком (interrupt), кнопка — только агентов
+                    <button
+                      class="stop"
+                      title={ui.log.stopAllTitle}
+                      onClick={() => stopAgents(liveSubagents(h).map((a) => a.taskId))}
+                    >
+                      {ui.log.stopAll}
+                    </button>
+                  ) : (
+                    <button class="stop" onClick={interrupt}>
+                      {/* пока ждёт ответа, Esc отклоняет карточку, а не останавливает ход */}
+                      {s.status === 'waiting' ? ui.log.stopOnly : ui.log.stop}
+                    </button>
+                  )}
                 </div>
               )}
             </Log>
@@ -219,10 +252,19 @@ export function Chat() {
         <aside class="pane side" style={{ display: t === 'chat' ? 'none' : 'block' }}>
           <TurnPane turns={turnsView(h, now, s.cwd)} hidden={t !== 'turn'} />
           <AgentsPane
-            rows={agentRows(h, { working, now, ...(s.model ? { model: s.model } : {}) })}
-            totals={sessionTotals(h)}
+            view={agentMapView(h, {
+              working,
+              waiting: awaited.length > 0,
+              now,
+              cwd: s.cwd,
+              hasSession: !!s.sessionId,
+              ...(selectedAgent.value ? { selected: selectedAgent.value } : {}),
+              ...(s.model ? { model: s.model } : {}),
+            })}
             hidden={t !== 'agents'}
+            onSelect={(id) => (selectedAgent.value = id)}
             onStop={stopAgent}
+            onTranscript={openAgentTranscript}
           />
         </aside>
       </div>

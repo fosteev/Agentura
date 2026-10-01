@@ -191,6 +191,11 @@ export type FromWebview =
   | { type: 'effort.set'; sessionId: string; effort: string }
   | { type: 'compact'; sessionId: string }
   | { type: 'agent.stop'; sessionId: string; taskId: string }
+  /**
+   * Этап 2 roadmap 0.2: транскрипт субагента документом только для чтения. `taskId` — id задачи
+   * движка (имя файла `subagents/agent-<taskId>.jsonl`), `agentId` — id вызова `Agent` (заголовок).
+   */
+  | { type: 'agent.transcript'; sessionId: string; agentId: string; taskId: string }
   | { type: 'session.new' }
   | { type: 'limits.refresh' }
   | { type: 'session.resume'; sessionId: string }
@@ -253,6 +258,7 @@ const FROM_WEBVIEW_TYPES: ReadonlySet<string> = new Set<FromWebview['type']>([
   'effort.set',
   'compact',
   'agent.stop',
+  'agent.transcript',
   'session.new',
   'limits.refresh',
   'session.resume',

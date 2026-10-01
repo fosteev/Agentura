@@ -33,6 +33,14 @@ import { PermissionBroker } from './permissions';
 import { buildHistory, DEFAULT_MAX_TURNS, type HistoryMessage } from './history';
 import { transcriptPath } from '../../data/sessions';
 import { readTranscriptExtras } from '../../data/transcriptExtras';
+import {
+  readSubagentMeta,
+  readSubagentRecords,
+  subagentFile,
+  subagentMarkdown,
+  subagentsDir,
+  withSubagentTimelines,
+} from './subagents';
 
 /**
  * Адаптер Claude Agent SDK. Одна живая `query()` на сессию в streaming input mode: prompt —
@@ -169,7 +177,7 @@ export class ClaudeAdapter implements AgentAdapter {
   async loadHistory(
     sessionId: string,
     cwd: string,
-    options: { live?: boolean; maxTurns?: number } = {},
+    options: { live?: boolean; tasksAlive?: boolean; maxTurns?: number } = {},
   ): Promise<SessionHistory> {
     const sdk = await this.loadSdk();
     const messages = await sdk.getSessionMessages(sessionId, { dir: cwd });
@@ -182,13 +190,36 @@ export class ClaudeAdapter implements AgentAdapter {
     const history = buildHistory(messages as HistoryMessage[], {
       toolResults: extras.toolResults,
       live: options.live ?? false,
+      ...(options.tasksAlive !== undefined ? { tasksAlive: options.tasksAlive } : {}),
       maxTurns: options.maxTurns ?? DEFAULT_MAX_TURNS,
     });
+    const dir = subagentsDir(transcriptPath(cwd, sessionId), sessionId);
+    if (dir) withSubagentTimelines(history.events, dir, (m) => this.config.log?.('warn', m));
     return {
       ...history,
       ...(extras.mode ? { mode: extras.mode } : {}),
       ...(extras.totalCostUsd !== undefined ? { totalCostUsd: extras.totalCostUsd } : {}),
     };
+  }
+
+  /**
+   * Транскрипт субагента Markdown-текстом (кнопка «транскрипт» в карте агентов). Нет файла —
+   * `undefined` (агент ещё не писал, сессия не наша, транскрипт удалён).
+   */
+  async agentTranscript(
+    sessionId: string,
+    cwd: string,
+    taskId: string,
+    title: string,
+  ): Promise<string | undefined> {
+    const dir = subagentsDir(transcriptPath(cwd, sessionId), sessionId);
+    const file = dir ? subagentFile(dir, taskId) : undefined;
+    if (!file) return undefined;
+    const meta = readSubagentMeta(file);
+    return subagentMarkdown(readSubagentRecords(file), {
+      title: title || meta.description || taskId,
+      ...(meta.agentType ? { agentType: meta.agentType } : {}),
+    });
   }
 
   async renameSession(sessionId: string, title: string, cwd: string): Promise<void> {
