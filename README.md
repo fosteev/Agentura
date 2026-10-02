@@ -62,6 +62,9 @@ npm run package        # agentura-0.2.0.vsix в корне
 | `agentura.allowBypassPermissions` | `false`            | Разрешить режим `bypassPermissions` ¹                                      |
 | `agentura.usagePollMinutes`       | `15`               | Период опроса лимитов подписки, минут (не меньше 5)                        |
 | `agentura.limits.readKeychain`    | `true`             | Читать токен Claude Code из Keychain macOS для запроса лимитов             |
+| `agentura.sessionList.view`       | `compact`          | Вид списка: `detailed`, `compact`, `dense` (кнопка в заголовке «Сессии»)   |
+| `agentura.sessionList.context`    | `true`             | Колонка контекста сессии (`173k ctx`) в списке                             |
+| `agentura.sessionList.time`       | `true`             | Колонка времени последней активности в списке                              |
 
 ¹ Только в пользовательских настройках: значение из `.vscode/settings.json` рабочей папки игнорируется,
 чтобы чужой репозиторий не подменил запускаемый файл и не включил работу без подтверждений.
