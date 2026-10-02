@@ -1,8 +1,9 @@
 import { signal } from '@preact/signals';
 import { useEffect, useRef } from 'preact/hooks';
 import type { AccountSummary, LimitWindowSummary, SessionSummary } from '../../protocol';
+import { DEFAULT_SESSION_LIST, nextSessionListMode, type SessionListMode } from '../../settings';
 import { ui } from '../strings';
-import { groupByDay, limitRows, rowClass, subLabel, whenLabel } from '../sessionsView';
+import { ctxLabel, groupByDay, limitRows, rowClass, subLabel, whenLabel } from '../sessionsView';
 import { onHostMessage, send } from '../vscode';
 
 const windows = signal<LimitWindowSummary[]>([]);
@@ -11,6 +12,12 @@ const account = signal<AccountSummary | undefined>(undefined);
 const sessions = signal<SessionSummary[]>([]);
 const current = signal<string | undefined>(undefined);
 const project = signal('');
+/**
+ * Вид списка (`agentura.sessionList.*`): `data-list`, `data-ctx`, `data-time` на `.sidebar`, вёрстка — в
+ * hud.css.
+ */
+const listMode = signal<SessionListMode>(DEFAULT_SESSION_LIST);
+const listCols = signal({ context: true, time: true });
 /** Секундный/минутный тик: подписи «сейчас», «через 2 ч 08 мин», день в заголовках. */
 const now = signal(Date.now());
 /** Строка в режиме переименования (двойной клик): id сессии. */
@@ -84,6 +91,7 @@ function SessionRow({ s }: { s: SessionSummary }) {
           />
           <small>{ui.sidebar.renameHint}</small>
         </span>
+        <span class="ctx">{ctxLabel(s)}</span>
         <span class="when">{whenLabel(s, now.value)}</span>
       </div>
     );
@@ -91,7 +99,7 @@ function SessionRow({ s }: { s: SessionSummary }) {
   return (
     <button
       class={cls}
-      title={ui.sidebar.renameTitle}
+      title={`${s.title}\n${subLabel(s)}\n${ui.sidebar.renameTitle}`}
       onClick={() => {
         clearTimeout(timer.current);
         timer.current = setTimeout(
@@ -107,9 +115,32 @@ function SessionRow({ s }: { s: SessionSummary }) {
       <span class="dot" />
       <span class="t">
         {s.title}
-        <small>{subLabel(s)}</small>
+        <small>{subLabel(s, !listCols.value.context)}</small>
       </span>
+      <span class="ctx">{ctxLabel(s)}</span>
       <span class="when">{whenLabel(s, now.value)}</span>
+    </button>
+  );
+}
+
+/** Кнопка вида списка в заголовке «Сессии»: по кругу подробно → компактно → плотно. */
+function ListModeButton() {
+  const cur = listMode.value;
+  const next = nextSessionListMode(cur);
+  const L = ui.sidebar.listMode;
+  const title = L.title(L.names[cur], L.names[next]);
+  return (
+    <button
+      type="button"
+      class="view"
+      title={title}
+      aria-label={title}
+      onClick={() => {
+        listMode.value = next; // сразу, не дожидаясь записи настройки; хост пришлёт фактическое
+        send({ type: 'settings.set', key: 'sessionList.view', value: next });
+      }}
+    >
+      {L.icons[cur]}
     </button>
   );
 }
@@ -126,6 +157,10 @@ export function Sidebar() {
           break;
         case 'account.info':
           account.value = m;
+          break;
+        case 'sidebar.view':
+          listMode.value = m.view;
+          listCols.value = { context: m.context, time: m.time };
           break;
         case 'sessions.update':
           sessions.value = m.sessions;
@@ -148,7 +183,13 @@ export function Sidebar() {
   const groups = groupByDay(sessions.value, n);
   const limits = limitRows(windows.value, n);
   return (
-    <div class="sidebar" aria-label={ui.sidebar.aria}>
+    <div
+      class="sidebar"
+      aria-label={ui.sidebar.aria}
+      data-list={listMode.value}
+      data-ctx={listCols.value.context ? 'on' : 'off'}
+      data-time={listCols.value.time ? 'on' : 'off'}
+    >
       <div class="head">
         <span>{ui.sidebar.head}</span>
         <button
@@ -204,6 +245,7 @@ export function Sidebar() {
           <span class="r" style={{ color: 'var(--fg-mute)' }}>
             {project.value}
           </span>
+          <ListModeButton />
         </h3>
         <button class="new" onClick={() => send({ type: 'session.new' })}>
           <span class="plus">＋</span>

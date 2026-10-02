@@ -36,6 +36,9 @@ const values: SettingsValues = {
   usagePollMinutes: 15,
   'limits.readKeychain': true,
   claudeExecutable: '',
+  'sessionList.view': 'compact',
+  'sessionList.context': true,
+  'sessionList.time': true,
 };
 const state = (over: Partial<SettingsValues> = {}) =>
   handleSettingsMessage({
@@ -85,6 +88,7 @@ describe('вкладка настроек', () => {
       'model',
       'ctx',
       'lim',
+      'view',
       'engine',
     ]);
     expect([...host.querySelectorAll('.set .key')].map((e) => e.textContent)).toEqual([
@@ -96,6 +100,9 @@ describe('вкладка настроек', () => {
       'agentura.contextThresholds',
       'agentura.usagePollMinutes · не меньше 5',
       'agentura.limits.readKeychain',
+      'agentura.sessionList.view',
+      'agentura.sessionList.context',
+      'agentura.sessionList.time',
       'agentura.claudeExecutable · только эта машина',
     ]);
   });

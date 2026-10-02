@@ -21,6 +21,7 @@
 | `shared/sidebar.js` | боковая панель VS Code (аккаунт, лимиты, сессии) в режиме «боковая панель + вкладка»; состояние берётся из `data-sidebar` на экране |
 | `tools/layout-check.sh` | проверка вёрстки headless-хромом |
 | `tools/shots.sh` | рендер экранов в PNG для галереи: `sh prototype/tools/shots.sh <папка> [экран …]` → `<экран>-dark.png`, `<экран>-light.png` (окно 1324×760) |
+| `screens/sessions-dense.html` | вид списка сессий (`agentura.sessionList.view` / `.context` / `.time`, 02.10): хэш `#вид[-noctx][-notime]`, вид — `detailed`, `compact` (по умолчанию), `dense`; стили видов и колонок, кнопка ☰/≡/≣ в заголовке «Сессии» — в `hud.css` и `sidebar.js` (там вид по умолчанию: компактно, колонки включены) |
 | `screens/panel-resize.html`, `panel-rail.html` | правая панель: ресайз (тянут), свёрнута в полосу 32 px |
 | `directions/` | этап 2.1: три направления главного экрана (архив, выбрано третье) |
 

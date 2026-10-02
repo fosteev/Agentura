@@ -471,6 +471,7 @@ export const ui = {
       model: 'Модель',
       ctx: 'Контекст',
       lim: 'Лимиты подписки',
+      view: 'Вид',
       engine: 'Движок',
     },
     navShort: {
@@ -478,6 +479,7 @@ export const ui = {
       model: 'Модель',
       ctx: 'Контекст',
       lim: 'Лимиты',
+      view: 'Вид',
       engine: 'Движок',
     },
     source:
@@ -525,6 +527,23 @@ export const ui = {
       noLess: 'не меньше 5',
       unit: 'мин',
     },
+    listView: {
+      name: 'Вид списка сессий',
+      desc: 'Сколько строк на сессию в боковой панели. Ходы и цена всегда есть в подсказке строки. Переключается и кнопкой в заголовке «Сессии».',
+      options: {
+        detailed: 'подробно — две строки',
+        compact: 'компактно — две строки только у важных',
+        dense: 'плотно — всё в одну строку',
+      } as Record<string, string>,
+    },
+    listContext: {
+      name: 'Контекст в строке',
+      desc: 'Колонка справа: контекст последнего запроса сессии, например 173k ctx.',
+    },
+    listTime: {
+      name: 'Время в строке',
+      desc: 'Колонка справа: когда сессия обновлялась — сейчас, 13:05, вт, 25.09.',
+    },
     keychain: {
       name: 'Читать токен из Keychain macOS',
       desc: 'Нужен только для запроса лимитов. Без него проценты появятся после первого хода.',
@@ -552,6 +571,11 @@ export const ui = {
     updatedAt: 'данные на',
     refreshFailed: 'не обновилось',
     sessions: 'Сессии',
+    listMode: {
+      names: { detailed: 'подробно', compact: 'компактно', dense: 'плотно' },
+      icons: { detailed: '☰', compact: '≡', dense: '≣' },
+      title: (cur: string, next: string) => `Вид списка: ${cur} · переключить на «${next}»`,
+    },
     newSession: 'Новая сессия',
     newSessionKey: '⌘⇧N',
     search: 'Поиск по названию',
@@ -570,6 +594,7 @@ export const ui = {
     renameHint: 'Enter — сохранить, Esc — отмена',
     days: { today: 'Сегодня', yesterday: 'Вчера' },
     now: 'сейчас',
+    ctx: 'ctx',
     partialCost: '≈ не все модели',
     stateTag: {
       waiting: 'ждёт ответа',

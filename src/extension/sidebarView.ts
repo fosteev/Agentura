@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { postToWebview, type SessionSummary } from '../protocol';
+import { readSettings, writeSetting } from '../settings';
 import type { AccountService } from './account';
 import { ChatPanel } from './chatPanel';
 import type { SessionsService } from './sessionsService';
@@ -13,6 +14,11 @@ export const SIDEBAR_VIEW_ID = 'agentura.sidebar';
 export class SidebarProvider implements vscode.WebviewViewProvider {
   private view: vscode.WebviewView | undefined;
   private rows: SessionSummary[] = [];
+  /**
+   * Записей вида от кнопки в полёте. Пока они есть, вид в панель не шлём: ответ на первый из быстрых кликов
+   * откатил бы кнопку и следующий клик посчитался бы не от того вида. Шлём один раз — после последней записи.
+   */
+  private viewWrites = 0;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -42,12 +48,17 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         case 'settings.open':
           void vscode.commands.executeCommand('agentura.openSettings');
           break;
+        case 'settings.set':
+          // из боковой панели пишется только вид списка (кнопка в заголовке «Сессии»)
+          if (m.key === 'sessionList.view') void this.setListView(m.value);
+          break;
         case 'limits.refresh':
           void this.refreshUsage();
           break;
         case 'ready':
           // Опрос лимитов идёт с активации; открытой позже панели отдаём снимок (в кулдауне — из кэша).
           void this.refreshUsage();
+          this.pushView();
           void this.account.get().then((a) => this.post({ type: 'account.info', ...a }));
           void this.sessions
             .refresh()
@@ -65,6 +76,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       }),
       this.account.onUpdate((a) => this.post({ type: 'account.info', ...a })),
       ChatPanel.onDidChange(() => this.pushSessions()),
+      vscode.workspace.onDidChangeConfiguration((e) => {
+        if (e.affectsConfiguration('agentura.sessionList') && this.viewWrites === 0)
+          this.pushView();
+      }),
     ];
     view.onDidDispose(() => {
       sub.dispose();
@@ -86,6 +101,35 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       ...(current ? { current } : {}),
       ...(project ? { project } : {}),
     });
+  }
+
+  private pushView(): void {
+    const v = readSettings(vscode.workspace.getConfiguration('agentura'));
+    this.post({
+      type: 'sidebar.view',
+      view: v['sessionList.view'],
+      context: v['sessionList.context'],
+      time: v['sessionList.time'],
+    });
+  }
+
+  private async setListView(value: unknown): Promise<void> {
+    this.viewWrites++;
+    try {
+      const checked = await writeSetting(
+        vscode.workspace.getConfiguration('agentura'),
+        'sessionList.view',
+        value,
+        vscode.ConfigurationTarget.Global,
+      );
+      if (!checked.ok) this.log.warn(`agentura.sessionList.view: ${checked.error}`);
+    } catch (e) {
+      this.log.warn(`не удалось записать agentura.sessionList.view: ${String(e)}`);
+    } finally {
+      this.viewWrites--;
+    }
+    // фактическое значение: запись отклонена или перекрыта настройкой рабочей папки — кнопка вернётся к нему
+    if (this.viewWrites === 0) this.pushView();
   }
 
   private async rename(sessionId: string, title: string): Promise<void> {

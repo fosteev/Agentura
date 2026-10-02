@@ -155,7 +155,9 @@ describe('боковая панель (sessions.html)', () => {
     ]);
     const s = [...host.querySelectorAll('.list .s')];
     expect(s.map((x) => x.className)).toEqual(['s cur live', 's wait', 's']);
-    expect(s[0]!.querySelector('small')!.textContent).toBe('14 ходов · $1.84 · 131k');
+    // контекст — колонкой справа (agentura.sessionList.context по умолчанию), во второй строке его нет
+    expect(s[0]!.querySelector('small')!.textContent).toBe('14 ходов · $1.84');
+    expect(s[0]!.querySelector('.ctx')!.textContent).toBe('131k ctx');
     expect(s[0]!.querySelector('.when')!.textContent).toBe('сейчас');
     expect(s[1]!.querySelector('small')!.textContent).toContain('ждёт ответа');
     expect(host.querySelector('input[type=search]')!.hasAttribute('disabled')).toBe(true);
@@ -212,6 +214,31 @@ describe('боковая панель (sessions.html)', () => {
     (host.querySelector('.new') as HTMLElement).click();
     expect(host.querySelector('h3 button.r')).toBeNull();
     expect(posted.map((m) => m.type)).toEqual(['session.new']);
+  });
+
+  it('вид списка: sidebar.view ставит data-list и колонки, кнопка в «Сессии» пишет следующий вид; в подсказке — ходы и цена', async () => {
+    const host = mount(Sidebar);
+    await flush();
+    const bar = host.querySelector('.sidebar') as HTMLElement;
+    expect([bar.dataset.list, bar.dataset.ctx, bar.dataset.time]).toEqual(['compact', 'on', 'on']);
+    sidebarMessages({ type: 'sidebar.view', view: 'dense', context: true, time: false });
+    sidebarMessages({
+      type: 'sessions.update',
+      sessions: [session({ id: 'a', turns: 3, costUsd: 0.42, contextTokens: 173_000 })],
+    });
+    await flush();
+    expect([bar.dataset.list, bar.dataset.ctx, bar.dataset.time]).toEqual(['dense', 'on', 'off']);
+    const row = host.querySelector('.list .s') as HTMLElement;
+    expect(row.title).toContain('3 хода · $0.42 · 173k');
+    expect(row.querySelector('.ctx')?.textContent).toBe('173k ctx');
+    // контекст колонкой — во второй строке не дублируется
+    expect(row.querySelector('small')?.textContent).toBe('3 хода · $0.42');
+    const btn = host.querySelector('.sec h3 button.view') as HTMLButtonElement;
+    expect(btn.title).toContain('«подробно»');
+    btn.click();
+    await flush();
+    expect(posted).toEqual([{ type: 'settings.set', key: 'sessionList.view', value: 'detailed' }]);
+    expect(bar.dataset.list).toBe('detailed');
   });
 
   it('пустой проект и неактивное окно: подпись и «0 %» без сброса', async () => {

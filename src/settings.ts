@@ -16,6 +16,14 @@ export const MIN_POLL_MINUTES = 5;
 /** Сутки: длиннее setTimeout в Node не держит (2^31 мс ≈ 24,8 дня), а реже суток опрос бессмыслен. */
 export const MAX_POLL_MINUTES = 1440;
 export const DEFAULT_THRESHOLDS: [number, number] = [120_000, 150_000];
+/**
+ * Вид списка сессий в боковой панели (`sessionList.view`): `detailed` — две строки (название, ходы и цена),
+ * `compact` — в одну, кроме текущей, идущей и ждущих ответа, `dense` — все в одну. Подробности — в подсказке.
+ * Колонки контекста и времени справа включаются отдельно: `sessionList.context`, `sessionList.time`.
+ */
+export const SESSION_LIST_MODES = ['detailed', 'compact', 'dense'] as const;
+export type SessionListMode = (typeof SESSION_LIST_MODES)[number];
+export const DEFAULT_SESSION_LIST: SessionListMode = 'compact';
 
 /** Ключи без префикса `agentura.` — те же, что в `getConfiguration('agentura')`. */
 export type SettingKey =
@@ -26,7 +34,10 @@ export type SettingKey =
   | 'contextThresholds'
   | 'usagePollMinutes'
   | 'limits.readKeychain'
-  | 'claudeExecutable';
+  | 'claudeExecutable'
+  | 'sessionList.view'
+  | 'sessionList.context'
+  | 'sessionList.time';
 
 export const SETTING_KEYS: readonly SettingKey[] = [
   'defaultPermissionMode',
@@ -37,6 +48,9 @@ export const SETTING_KEYS: readonly SettingKey[] = [
   'usagePollMinutes',
   'limits.readKeychain',
   'claudeExecutable',
+  'sessionList.view',
+  'sessionList.context',
+  'sessionList.time',
 ];
 
 /**
@@ -44,10 +58,7 @@ export const SETTING_KEYS: readonly SettingKey[] = [
  * не machine (решение владельца 2026-10-01): его можно задать на проект; bypass из него всё равно требует
  * machine-настройки `allowBypassPermissions`.
  */
-export const MACHINE_KEYS: readonly SettingKey[] = [
-  'allowBypassPermissions',
-  'claudeExecutable',
-];
+export const MACHINE_KEYS: readonly SettingKey[] = ['allowBypassPermissions', 'claudeExecutable'];
 
 export interface SettingsValues {
   defaultPermissionMode: DefaultMode;
@@ -59,6 +70,9 @@ export interface SettingsValues {
   usagePollMinutes: number;
   'limits.readKeychain': boolean;
   claudeExecutable: string;
+  'sessionList.view': SessionListMode;
+  'sessionList.context': boolean;
+  'sessionList.time': boolean;
 }
 
 /** Результат «проверить» у пути к claude: тот же поиск, что при старте движка (`resolveExecutable`). */
@@ -79,6 +93,16 @@ export interface ConfigLike {
 
 export function isDefaultMode(v: unknown): v is DefaultMode {
   return typeof v === 'string' && (DEFAULT_MODES as readonly string[]).includes(v);
+}
+
+export function isSessionListMode(v: unknown): v is SessionListMode {
+  return typeof v === 'string' && (SESSION_LIST_MODES as readonly string[]).includes(v);
+}
+
+/** Следующий вид по кнопке в заголовке «Сессии»: подробно → компактно → плотно → подробно. */
+export function nextSessionListMode(m: SessionListMode): SessionListMode {
+  const i = SESSION_LIST_MODES.indexOf(m);
+  return SESSION_LIST_MODES[(i + 1) % SESSION_LIST_MODES.length] ?? DEFAULT_SESSION_LIST;
 }
 
 export function isEffort(v: unknown): v is EffortLevel {
@@ -133,6 +157,8 @@ export function validateSetting(key: SettingKey, value: unknown): Checked {
         : bad(`Допустимо: пусто, ${EFFORT_LEVELS.join(', ')}.`);
     case 'allowBypassPermissions':
     case 'limits.readKeychain':
+    case 'sessionList.context':
+    case 'sessionList.time':
       return typeof value === 'boolean' ? { ok: true, value } : bad('Нужно да или нет.');
     case 'defaultModel':
     case 'claudeExecutable':
@@ -145,6 +171,10 @@ export function validateSetting(key: SettingKey, value: unknown): Checked {
       return value <= MAX_POLL_MINUTES
         ? { ok: true, value }
         : bad(`Не больше ${MAX_POLL_MINUTES} (сутки).`);
+    case 'sessionList.view':
+      return isSessionListMode(value)
+        ? { ok: true, value }
+        : bad(`Допустимо: ${SESSION_LIST_MODES.join(', ')}.`);
     case 'contextThresholds': {
       const e = thresholdsError(value);
       return e ? bad(e) : { ok: true, value };
@@ -158,6 +188,7 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
   const effort = cfg.get<unknown>('defaultEffort');
   const th = cfg.get<unknown>('contextThresholds');
   const poll = cfg.get<unknown>('usagePollMinutes');
+  const list = cfg.get<unknown>('sessionList.view');
   const str = (k: string) => {
     const v = cfg.get<unknown>(k);
     return typeof v === 'string' ? v : '';
@@ -175,6 +206,9 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
     usagePollMinutes: typeof poll === 'number' && Number.isFinite(poll) ? poll : 15,
     'limits.readKeychain': cfg.get<unknown>('limits.readKeychain') !== false,
     claudeExecutable: str('claudeExecutable'),
+    'sessionList.view': isSessionListMode(list) ? list : DEFAULT_SESSION_LIST,
+    'sessionList.context': cfg.get<unknown>('sessionList.context') !== false,
+    'sessionList.time': cfg.get<unknown>('sessionList.time') !== false,
   };
 }
 

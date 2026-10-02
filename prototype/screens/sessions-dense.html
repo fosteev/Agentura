@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="ru" data-theme="dark" data-width="vscode">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agentura · боковая панель · вид списка сессий</title>
+<link rel="stylesheet" href="../shared/tokens.css">
+<link rel="stylesheet" href="../shared/preview.css">
+<link rel="stylesheet" href="../shared/hud.css">
+<style>
+  /* Каркас — как в sessions.html. Вид списка (agentura.sessionList) — из хэша: #detailed, #compact, #dense; стили видов — в hud.css */
+  .webview { grid-template-rows: 1fr; grid-template-columns: 1fr; }
+  .chatside { display: none; }
+  html[data-width="900"] .webview, html[data-width="vscode"] .webview, html[data-width="full"] .webview { grid-template-columns: 380px 1fr; }
+  html[data-width="vscode"] .webview { width: 1324px; border-radius: 6px; border-left: 1px solid #333; }
+  html[data-width="900"] .chatside, html[data-width="vscode"] .chatside, html[data-width="full"] .chatside { display: grid; grid-template-rows: auto 1fr; border-left: 1px solid var(--line); font-family: var(--mono); font-size: 12px; min-width: 0; }
+  .sidebar .head { padding: 10px 14px 6px; font-family: var(--font); font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--fg-mute); border-bottom: 1px solid var(--line); }
+  .chatside .note { align-self: center; justify-self: center; max-width: 440px; padding: 0 24px; font-family: var(--font); font-size: 13px; color: var(--fg-mute); line-height: 1.5; }
+  .chatside .note b { display: block; color: var(--fg); font-size: 20px; font-weight: 600; margin-bottom: 8px; }
+  .chatside .note i { display: block; margin-top: 10px; font-style: normal; font-family: var(--mono); font-size: 12px; color: var(--fg); }
+
+</style>
+</head>
+<body>
+<div class="preview-bar">
+  <b>Боковая панель · вид списка сессий</b>
+  <span class="grp"><button data-set-theme="dark">Тёмная</button><button data-set-theme="light">Светлая</button></span>
+  <span class="grp"><a href="#detailed">подробно</a> <a href="#compact">компактно</a> <a href="#dense">плотно</a></span>
+  <a href="../index.html">← оглавление</a>
+</div>
+<div class="preview-stage">
+<div class="webview">
+
+  <div class="sidebar" aria-label="Боковая панель Agentura">
+    <div class="head"><span>Agentura</span><button class="gear" title="Настройки Agentura">⚙</button></div>
+    <section class="sec">
+      <h3><span class="tri"></span>Аккаунт и лимиты<button class="refresh" title="Обновить лимиты · данные на 14:52">↻</button></h3>
+      <div class="kv"><span>Аккаунт</span><b>andrey@example.com</b><span>План</span><b>Max 5×</b><span>Вход</span><b>через CLI · ок</b><span>Агент</span><b>Claude · claude 2.1.284</b></div>
+      <div class="lim">
+        <div class="row"><span>Окно 5 часов</span><span class="n">62 %</span><span class="bar"><i style="width:62%"></i></span><small>сброс в 17:00 · через 2 ч 08 мин</small></div>
+        <div class="row"><span>Неделя</span><span class="n">34 %</span><span class="bar"><i style="width:34%"></i></span><small>сброс в четверг, 09:00</small></div>
+      </div>
+    </section>
+    <section class="sec">
+      <h3><span class="tri"></span>Сессии<span class="r" style="color:var(--fg-mute)">queue-board</span><button class="view" title="Вид списка: компактно · переключить на «плотно»">≡</button></h3>
+      <button class="new"><span class="plus">＋</span>Новая сессия<span style="margin-left:auto;color:var(--fg-faint);font-size:11px">⌘⇧N</span></button>
+    </section>
+    <div class="tools"><input type="search" placeholder="Поиск по названию" disabled><button title="Фильтр">⚲</button></div>
+    <div class="list">
+      <div class="day">Сегодня</div>
+      <button class="s cur live" title="14 ходов · $1.84 · 131k"><span class="dot"></span><span class="t">мигание счётчика талонов<small>14 ходов · $1.84</small></span><span class="ctx">131k ctx</span><span class="when">сейчас</span></button>
+      <button class="s wait" title="3 хода · $0.42 · ждёт ответа"><span class="dot"></span><span class="t">плашка «нет связи» на табло<small>3 хода · $0.42 · ждёт ответа</small></span><span class="ctx">44k ctx</span><span class="when">13:05</span></button>
+      <button class="s" title="2 хода · $0.11"><span class="dot"></span><span class="t">почему падает lint в ws-client<small>2 хода · $0.11</small></span><span class="ctx">12k ctx</span><span class="when">11:48</span></button>
+      <button class="s" title="7 ходов · $0.93"><span class="dot"></span><span class="t">ретраи запросов к сервису очереди<small>7 ходов · $0.93</small></span><span class="ctx">27k ctx</span><span class="when">10:20</span></button>
+      <button class="s" title="4 хода · $0.37"><span class="dot"></span><span class="t">переименовать TicketCounter в хук<small>4 хода · $0.37</small></span><span class="ctx">8k ctx</span><span class="when">09:41</span></button>
+      <div class="day">Вчера</div>
+      <button class="s" title="31 ход · $6.20"><span class="dot"></span><span class="t">миграция табло на новый ws-client<small>31 ход · $6.20</small></span><span class="ctx">168k ctx</span><span class="when" data-d="вчера">18:02</span></button>
+      <button class="s" title="12 ходов · $2.14"><span class="dot"></span><span class="t">звук вызова талона не играет в Safari<small>12 ходов · $2.14</small></span><span class="ctx">96k ctx</span><span class="when" data-d="вчера">15:27</span></button>
+      <button class="s" title="9 ходов · $1.05"><span class="dot"></span><span class="t">тесты очереди талонов<small>9 ходов · $1.05</small></span><span class="ctx">35k ctx</span><span class="when" data-d="вчера">11:30</span></button>
+      <button class="s" title="3 хода · $0.19"><span class="dot"></span><span class="t">что делает флаг legacyBoard<small>3 хода · $0.19</small></span><span class="ctx">6k ctx</span><span class="when" data-d="вчера">10:02</span></button>
+      <div class="day">29 сентября</div>
+      <button class="s" title="18 ходов · $3.70"><span class="dot"></span><span class="t">разбор падения board в проде<small>18 ходов · $3.70</small></span><span class="ctx">142k ctx</span><span class="when">вт</span></button>
+      <button class="s" title="5 ходов · $0.58"><span class="dot"></span><span class="t">обновить зависимости монорепо<small>5 ходов · $0.58</small></span><span class="ctx">58k ctx</span><span class="when">вт</span></button>
+      <button class="s" title="22 хода · $4.45"><span class="dot"></span><span class="t">табло: режим «окно закрыто»<small>22 хода · $4.45</small></span><span class="ctx">173k ctx</span><span class="when">вт</span></button>
+      <div class="day">28 сентября</div>
+      <button class="s" title="6 ходов · $0.74"><span class="dot"></span><span class="t">линтер ругается на any в api-типах<small>6 ходов · $0.74</small></span><span class="ctx">21k ctx</span><span class="when">пн</span></button>
+      <button class="s" title="15 ходов · $2.88"><span class="dot"></span><span class="t">локализация табло на татарский<small>15 ходов · $2.88</small></span><span class="ctx">77k ctx</span><span class="when">пн</span></button>
+      <div class="day">25 сентября</div>
+      <button class="s" title="27 ходов · $5.31"><span class="dot"></span><span class="t">перенос сборки с webpack на vite<small>27 ходов · $5.31</small></span><span class="ctx">118k ctx</span><span class="when">25.09</span></button>
+      <button class="s" title="8 ходов · $1.12"><span class="dot"></span><span class="t">скелетоны на экране загрузки<small>8 ходов · $1.12</small></span><span class="ctx">64k ctx</span><span class="when">25.09</span></button>
+      <button class="s" title="2 хода · $0.09"><span class="dot"></span><span class="t">как запустить e2e локально<small>2 хода · $0.09</small></span><span class="ctx">4k ctx</span><span class="when">25.09</span></button>
+      <button class="s" title="11 ходов · $1.67"><span class="dot"></span><span class="t">утечка таймеров в BoardClock<small>11 ходов · $1.67</small></span><span class="ctx">89k ctx</span><span class="when">25.09</span></button>
+    </div>
+  </div>
+
+  <div class="chatside">
+    <header class="hud" aria-label="Сессия">
+      <nav class="tabs" role="tablist">
+        <button role="tab" aria-selected="true">чат</button>
+        <button role="tab" aria-selected="false">ход</button>
+        <button role="tab" aria-selected="false">агенты <span class="b">1</span></button>
+      </nav>
+      <span class="sess">queue-board · <b>мигание счётчика талонов</b></span>
+    </header>
+    <div class="note" id="note"></div>
+  </div>
+
+</div>
+</div>
+<script src="../shared/preview.js"></script>
+<script src="../shared/limits.js"></script>
+<script>
+(function () {
+  var notes = {
+    detailed: ['подробно', 'Две строки на сессию: название, под ним ходы и цена. Как было до настройки.', '~45 px на строку', '☰', 'компактно'],
+    compact: ['компактно · по умолчанию', 'Одна строка, а текущая, идущие и ждущие ответа — в две, с подробностями. У остальных ходы и цена — в подсказке.', '22 px, у важных ~40 px', '≡', 'плотно'],
+    dense: ['плотно', 'Одна строка на любую сессию; статус — цветная точка, ходы и цена — в подсказке.', '22 px на строку', '≣', 'подробно']
+  };
+  function apply() {
+    // #вид[-noctx][-notime]: вид списка и выключенные колонки (agentura.sessionList.*)
+    var parts = (location.hash.slice(1) || 'compact').toLowerCase().split('-');
+    var v = notes[parts[0]] ? parts[0] : 'compact';
+    var ctx = parts.indexOf('noctx') < 0, time = parts.indexOf('notime') < 0;
+    var sb = document.querySelector('.sidebar');
+    sb.setAttribute('data-list', v);
+    sb.setAttribute('data-ctx', ctx ? 'on' : 'off');
+    sb.setAttribute('data-time', time ? 'on' : 'off');
+    var btn = sb.querySelector('h3 .view');
+    btn.textContent = notes[v][3];
+    btn.title = 'Вид списка: ' + v.replace('compact', 'компактно').replace('detailed', 'подробно').replace('dense', 'плотно') + ' · переключить на «' + notes[v][4] + '»';
+    var list = sb.querySelector('.list'), rows = list.querySelectorAll('.s'), fit = 0;
+    var bottom = list.getBoundingClientRect().bottom;
+    rows.forEach(function (r) { if (r.getBoundingClientRect().bottom <= bottom + 1) fit++; });
+    var n = notes[v];
+    document.getElementById('note').innerHTML = '<b>' + n[0] + (ctx ? '' : ' · без контекста') + (time ? '' : ' · без времени') + '</b>' + n[1] + ' Колонки контекста и времени справа включаются в настройках, раздел «Вид». Вид переключается кнопкой ' + n[3] + ' в заголовке «Сессии» (по кругу) и в настройках.<i>' + n[2] + ' · на экране ' + fit + ' из ' + rows.length + ' сессий</i>';
+  }
+  window.addEventListener('hashchange', apply);
+  apply();
+})();
+</script>
+</body>
+</html>

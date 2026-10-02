@@ -30,7 +30,7 @@
 <div class="preview-stage">
 <div class="webview">
 
-  <div class="sidebar" aria-label="Боковая панель Agentura">
+  <div class="sidebar" aria-label="Боковая панель Agentura" data-list="compact" data-ctx="on" data-time="on">
     <div class="head"><span>Agentura</span><button class="gear" title="Настройки Agentura">⚙</button></div>
     <section class="sec">
       <h3><span class="tri"></span>Аккаунт и лимиты<button class="refresh" title="Обновить лимиты · данные на 14:52">↻</button></h3>
@@ -41,21 +41,21 @@
       </div>
     </section>
     <section class="sec">
-      <h3><span class="tri"></span>Сессии<span class="r" style="color:var(--fg-mute)">queue-board</span></h3>
+      <h3><span class="tri"></span>Сессии<span class="r" style="color:var(--fg-mute)">queue-board</span><button class="view" title="Вид списка: компактно · переключить на «плотно»">≡</button></h3>
       <button class="new"><span class="plus">＋</span>Новая сессия<span style="margin-left:auto;color:var(--fg-faint);font-size:11px">⌘⇧N</span></button>
     </section>
     <div class="tools"><input type="search" id="s-search" placeholder="Поиск по названию" disabled><button title="Фильтр">⚲</button></div>
     <div class="list">
       <div class="day">Сегодня</div>
-      <button class="s cur live"><span class="dot"></span><span class="t">мигание счётчика талонов<small>14 ходов · $1.84 · 131k</small></span><span class="when">сейчас</span></button>
-      <button class="s wait"><span class="dot"></span><span class="t">плашка «нет связи» на табло<small>3 хода · $0.42 · ждёт ответа</small></span><span class="when">13:05</span></button>
-      <button class="s"><span class="dot"></span><span class="t">почему падает lint в ws-client<small>2 хода · $0.11</small></span><span class="when">11:48</span></button>
+      <button class="s cur live"><span class="dot"></span><span class="t">мигание счётчика талонов<small>14 ходов · $1.84</small></span><span class="ctx">131k ctx</span><span class="when">сейчас</span></button>
+      <button class="s wait"><span class="dot"></span><span class="t">плашка «нет связи» на табло<small>3 хода · $0.42 · ждёт ответа</small></span><span class="ctx">44k ctx</span><span class="when">13:05</span></button>
+      <button class="s"><span class="dot"></span><span class="t">почему падает lint в ws-client<small>2 хода · $0.11</small></span><span class="ctx">12k ctx</span><span class="when">11:48</span></button>
       <div class="day">Вчера</div>
-      <button class="s"><span class="dot"></span><span class="t">миграция табло на новый ws-client<small>31 ход · $6.20</small></span><span class="when">18:02</span></button>
-      <button class="s"><span class="dot"></span><span class="t">тесты очереди талонов<small>9 ходов · $1.05</small></span><span class="when">11:30</span></button>
+      <button class="s"><span class="dot"></span><span class="t">миграция табло на новый ws-client<small>31 ход · $6.20</small></span><span class="ctx">168k ctx</span><span class="when">18:02</span></button>
+      <button class="s"><span class="dot"></span><span class="t">тесты очереди талонов<small>9 ходов · $1.05</small></span><span class="ctx">27k ctx</span><span class="when">11:30</span></button>
       <div class="day">23 сентября</div>
-      <button class="s"><span class="dot"></span><span class="t">разбор падения board в проде<small>18 ходов · $3.70</small></span><span class="when">вт</span></button>
-      <button class="s"><span class="dot"></span><span class="t">обновить зависимости монорепо<small>5 ходов · $0.58</small></span><span class="when">вт</span></button>
+      <button class="s"><span class="dot"></span><span class="t">разбор падения board в проде<small>18 ходов · $3.70</small></span><span class="ctx">96k ctx</span><span class="when">вт</span></button>
+      <button class="s"><span class="dot"></span><span class="t">обновить зависимости монорепо<small>5 ходов · $0.58</small></span><span class="ctx">35k ctx</span><span class="when">вт</span></button>
     </div>
   </div>
 

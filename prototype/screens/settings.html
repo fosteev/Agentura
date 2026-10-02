@@ -30,6 +30,7 @@
       <a href="#model">Модель</a>
       <a href="#ctx">Контекст</a>
       <a href="#lim">Лимиты</a>
+      <a href="#view">Вид</a>
       <a href="#engine">Движок</a>
       <div class="src">Хранится в настройках VS Code, раздел «Пользователь». Меняется сразу, без перезапуска.<a href="#">открыть settings.json</a></div>
     </nav>
@@ -85,6 +86,26 @@
         <span class="nm">Читать токен из Keychain macOS</span>
         <span class="ds">Нужен только для запроса лимитов. Без него проценты появятся после первого хода.</span>
         <span class="key">agentura.limits.readKeychain</span>
+        <span class="ctl"><span class="tg on" role="switch" aria-checked="true"></span></span>
+      </div>
+
+      <h2 id="view">Вид</h2>
+      <div class="set">
+        <span class="nm">Вид списка сессий<span class="new">новая</span></span>
+        <span class="ds">Сколько строк на сессию в боковой панели. Ходы и цена всегда есть в подсказке строки. Переключается и кнопкой в заголовке «Сессии».</span>
+        <span class="key">agentura.sessionList.view</span>
+        <span class="ctl"><span class="dd">компактно — две строки только у важных</span></span>
+      </div>
+      <div class="set">
+        <span class="nm">Контекст в строке<span class="new">новая</span></span>
+        <span class="ds">Колонка справа: контекст последнего запроса сессии, например 173k ctx.</span>
+        <span class="key">agentura.sessionList.context</span>
+        <span class="ctl"><span class="tg on" role="switch" aria-checked="true"></span></span>
+      </div>
+      <div class="set">
+        <span class="nm">Время в строке<span class="new">новая</span></span>
+        <span class="ds">Колонка справа: когда сессия обновлялась — сейчас, 13:05, вт, 25.09.</span>
+        <span class="key">agentura.sessionList.time</span>
         <span class="ctl"><span class="tg on" role="switch" aria-checked="true"></span></span>
       </div>
 
