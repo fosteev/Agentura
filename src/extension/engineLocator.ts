@@ -1,4 +1,5 @@
 import { resolveExecutable, type ResolvedExecutable } from '../agent/claude/executable';
+import { hostStrings, type Lang } from '../shared/l10n';
 
 export interface EngineLocatorDeps {
   /** Значение `agentura.claudeExecutable` на сейчас. */
@@ -8,6 +9,8 @@ export interface EngineLocatorDeps {
   warn(m: string): void;
   /** Предупреждение пользователю (путь есть, но версия старая или не запускается). Один раз на значение настройки. */
   notify?(m: string): void;
+  /** Язык текстов проблем; по умолчанию русский. */
+  lang?(): Lang;
 }
 
 /**
@@ -31,7 +34,7 @@ export class EngineLocator {
     const setting = this.deps.setting();
     if (this.cached?.setting === setting) return Promise.resolve(this.cached.result);
     if (this.inflight?.setting === setting) return this.inflight.promise;
-    const run = this.deps.resolve ?? ((s: string) => resolveExecutable(s));
+    const run = this.deps.resolve ?? ((s: string) => resolveExecutable(s, { lang: this.deps.lang?.() ?? 'ru' }));
     const promise = run(setting).then((r) => {
       if (this.inflight?.promise === promise) this.inflight = undefined;
       // настройку сменили, пока шёл поиск: результат старого значения не кэшируем и не предупреждаем о нём
@@ -74,7 +77,7 @@ export class EngineLocator {
     const r = await this.locate();
     return usable(r)
       ? { ok: true }
-      : { ok: false, problem: r.problem ?? 'Не найден Claude Code (claude).' };
+      : { ok: false, problem: r.problem ?? hostStrings(this.deps.lang?.() ?? 'ru').engineNotFoundShort };
   }
 }
 

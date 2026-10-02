@@ -44,6 +44,7 @@ import {
   type SessionAttach,
 } from '../shared/files';
 import { resolveDefaultEffort, resolveDefaultMode } from '../settings';
+import type { Lang } from '../shared/l10n';
 import { appliedSides, previewOf, proposedSides, type EditSides } from './editDiff';
 import {
   buildPrompt,
@@ -59,6 +60,8 @@ import { mergeReplay, StreamTail } from './reseedReplay';
 class EngineMissingError extends Error {}
 
 export interface ChatDeps {
+  /** Язык текстов для пользователя; по умолчанию русский. */
+  lang?: Lang;
   adapter: AgentAdapter;
   cwd: string;
   project: string;
@@ -914,7 +917,7 @@ export class ChatController {
       type: 'diff.preview' as const,
       sessionId: session.id,
       toolUseId: e.toolUseId,
-      preview: previewOf(sides),
+      preview: previewOf(sides, undefined, this.deps.lang ?? 'ru'),
     };
     // запрос уже закрыт, пока читали файл, — превью хранить незачем (пересев отдаст только ждущие)
     if (this.pendingRequests.has(e.toolUseId)) this.previews.set(e.toolUseId, msg);

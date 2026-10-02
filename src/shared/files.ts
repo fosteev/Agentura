@@ -306,12 +306,13 @@ export function fileName(path: string): string {
   return path.split(/[\\/]/).filter(Boolean).pop() ?? path;
 }
 
-/** Подпись размера: «812 Б», «12 КБ», «1.4 МБ». */
-export function formatBytes(n: number): string {
-  if (n < 1024) return `${n} Б`;
-  if (n < 1024 * 1024) return `${Math.round(n / 1024)} КБ`;
-  const mb = n / (1024 * 1024);
-  return `${mb < 10 ? mb.toFixed(1) : Math.round(mb)} МБ`;
+/** Подпись размера: «812 Б», «12 КБ», «1.4 МБ» (en: «812 B», «12 KB», «1.4 MB»). */
+export function formatBytes(n: number, lang: 'ru' | 'en' = 'ru'): string {
+  const [b, kb, mb] = lang === 'en' ? ['B', 'KB', 'MB'] : ['Б', 'КБ', 'МБ'];
+  if (n < 1024) return `${n} ${b}`;
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} ${kb}`;
+  const m = n / (1024 * 1024);
+  return `${m < 10 ? m.toFixed(1) : Math.round(m)} ${mb}`;
 }
 
 /** Метка типа на значке чипа: расширение файла или `TXT`/`PDF`. */

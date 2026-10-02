@@ -1,4 +1,5 @@
 import type { FromWebview, ToWebview } from '../protocol';
+import { hostStrings, type Lang } from '../shared/l10n';
 import {
   SETTING_KEYS,
   overriddenKeys,
@@ -20,10 +21,11 @@ export interface SettingsDeps {
   checkEngine(path: string): Promise<EngineCheck>;
   reveal(target: 'ui' | 'json'): void;
   warn(message: string): void;
+  /** Язык текстов ошибок; по умолчанию русский. */
+  lang?(): Lang;
 }
 
-export const BYPASS_NOT_ALLOWED =
-  'Сначала включите «Разрешить режим «без разрешений»» (agentura.allowBypassPermissions).';
+export const BYPASS_NOT_ALLOWED = hostStrings('ru').bypassNotAllowed;
 
 /** Логика вкладки настроек без `vscode`: приём сообщений webview и выдача текущих значений. */
 export class SettingsController {
@@ -71,7 +73,9 @@ export class SettingsController {
       this.deps.warn(`settings.set: неизвестный ключ ${String(key)}`);
       return;
     }
-    const checked = validateSetting(key, value);
+    const lang = this.deps.lang?.() ?? 'ru';
+    const t = hostStrings(lang);
+    const checked = validateSetting(key, value, lang);
     // «без разрешений» по умолчанию — только когда сам режим разрешён (machine-настройка)
     if (
       checked.ok &&
@@ -79,7 +83,7 @@ export class SettingsController {
       checked.value === 'bypassPermissions' &&
       !readSettings(this.deps.config()).allowBypassPermissions
     ) {
-      this.deps.post({ type: 'settings.error', key, message: BYPASS_NOT_ALLOWED });
+      this.deps.post({ type: 'settings.error', key, message: t.bypassNotAllowed });
       return;
     }
     if (!checked.ok) {
@@ -91,7 +95,7 @@ export class SettingsController {
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       this.deps.warn(`не удалось записать agentura.${key}: ${message}`);
-      this.deps.post({ type: 'settings.error', key, message: `Не удалось записать: ${message}` });
+      this.deps.post({ type: 'settings.error', key, message: t.writeFailed(message) });
       return;
     }
     this.pushState();

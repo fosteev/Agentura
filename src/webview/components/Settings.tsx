@@ -21,7 +21,7 @@ import {
   setError,
   settingsValues,
 } from '../settingsStore';
-import { ui } from '../strings';
+import { ui, uiLang } from '../strings';
 
 const T = ui.settings;
 /** Ширина вкладки, с которой слева появляется навигация по разделам (в узком сплите она скрыта). */
@@ -173,7 +173,7 @@ function PollField({ value }: { value: number }) {
       return;
     }
     // проверка до отправки (та же, что на хосте; хост проверит ещё раз)
-    const checked = validateSetting('usagePollMinutes', n);
+    const checked = validateSetting('usagePollMinutes', n, uiLang);
     if (!checked.ok) {
       setError('usagePollMinutes', checked.error);
       return;
@@ -205,7 +205,7 @@ function Thresholds({ value }: { value: [number, number] }) {
   const send = (i: 0 | 1, text: string) => {
     const d = i === 0 ? [text, o] : [y, text];
     const nums = d.map((t) => (t.trim() === '' ? NaN : Number(t)));
-    const err = thresholdsError(nums);
+    const err = thresholdsError(nums, uiLang);
     if (err) {
       setError('contextThresholds', err);
       return;
@@ -241,7 +241,7 @@ function Thresholds({ value }: { value: [number, number] }) {
 
 function ThresholdScale({ value }: { value: [number, number] }) {
   const [y, o] = value;
-  const ok = thresholdsError(value) === undefined;
+  const ok = thresholdsError(value, uiLang) === undefined;
   const cells = Array.from({ length: 20 }, (_, i) => {
     const from = i * 10_000;
     const cls = i === 19 ? 'f' : ok && from >= o ? 'h' : ok && from >= y ? 'w' : '';

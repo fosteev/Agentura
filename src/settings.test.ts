@@ -203,3 +203,12 @@ describe('writeSetting', () => {
     expect(calls).toEqual([]);
   });
 });
+
+describe('ошибки по языку', () => {
+  it('validateSetting и thresholdsError отдают английский текст', () => {
+    expect(validateSetting('usagePollMinutes', 1)).toEqual({ ok: false, error: 'Не меньше 5.' });
+    expect(validateSetting('usagePollMinutes', 1, 'en')).toEqual({ ok: false, error: 'At least 5.' });
+    expect(thresholdsError([100, 50], 'en')).toBe('The yellow threshold must be below the orange one.');
+    expect(thresholdsError([100, 300_000], 'en')).toMatch(/below 200,000/);
+  });
+});

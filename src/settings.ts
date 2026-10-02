@@ -156,9 +156,47 @@ export function resolveDefaultEffort(raw: unknown): EffortLevel | undefined {
   return isEffort(raw) ? raw : undefined;
 }
 
+type ErrLang = 'ru' | 'en';
+
+/** Тексты ошибок полей (показываются во вкладке настроек). Свой словарь: файл общий для хоста и webview. */
+const ERRORS = {
+  ru: {
+    twoNumbers: 'Нужны два числа: жёлтый и оранжевый порог.',
+    numbers: 'Пороги должны быть числами.',
+    integers: 'Пороги — целые числа больше нуля.',
+    yellowBelowOrange: 'Жёлтый порог должен быть ниже оранжевого.',
+    orangeBelow: (limit: string) => `Оранжевый порог должен быть ниже ${limit} (там автосжатие).`,
+    unknownMode: 'Неизвестный режим.',
+    allowed: (list: string) => `Допустимо: ${list}.`,
+    allowedOrEmpty: (list: string) => `Допустимо: пусто, ${list}.`,
+    yesNo: 'Нужно да или нет.',
+    string: 'Нужна строка.',
+    wholeMinutes: 'Нужно целое число минут.',
+    atLeast: (n: number) => `Не меньше ${n}.`,
+    atMost: (n: number) => `Не больше ${n} (сутки).`,
+  },
+  en: {
+    twoNumbers: 'Two numbers are required: the yellow and orange thresholds.',
+    numbers: 'Thresholds must be numbers.',
+    integers: 'Thresholds must be whole numbers above zero.',
+    yellowBelowOrange: 'The yellow threshold must be below the orange one.',
+    orangeBelow: (limit: string) =>
+      `The orange threshold must be below ${limit} (auto-compact happens there).`,
+    unknownMode: 'Unknown mode.',
+    allowed: (list: string) => `Allowed: ${list}.`,
+    allowedOrEmpty: (list: string) => `Allowed: empty, ${list}.`,
+    yesNo: 'Must be yes or no.',
+    string: 'A string is required.',
+    wholeMinutes: 'A whole number of minutes is required.',
+    atLeast: (n: number) => `At least ${n}.`,
+    atMost: (n: number) => `At most ${n} (one day).`,
+  },
+} as const;
+
 /** Пороги: жёлтый < оранжевый < 200 000, целые положительные. Текст ошибки — для поля. */
-export function thresholdsError(v: unknown): string | undefined {
-  if (!Array.isArray(v) || v.length !== 2) return 'Нужны два числа: жёлтый и оранжевый порог.';
+export function thresholdsError(v: unknown, lang: ErrLang = 'ru'): string | undefined {
+  const t = ERRORS[lang];
+  if (!Array.isArray(v) || v.length !== 2) return t.twoNumbers;
   const [y, o] = v as unknown[];
   if (
     typeof y !== 'number' ||
@@ -166,14 +204,14 @@ export function thresholdsError(v: unknown): string | undefined {
     !Number.isFinite(y) ||
     !Number.isFinite(o)
   ) {
-    return 'Пороги должны быть числами.';
+    return t.numbers;
   }
   if (!Number.isInteger(y) || !Number.isInteger(o) || y <= 0) {
-    return 'Пороги — целые числа больше нуля.';
+    return t.integers;
   }
-  if (y >= o) return 'Жёлтый порог должен быть ниже оранжевого.';
+  if (y >= o) return t.yellowBelowOrange;
   if (o >= CONTEXT_LIMIT) {
-    return `Оранжевый порог должен быть ниже ${CONTEXT_LIMIT.toLocaleString('ru')} (там автосжатие).`;
+    return t.orangeBelow(CONTEXT_LIMIT.toLocaleString(lang));
   }
   return undefined;
 }
@@ -181,45 +219,46 @@ export function thresholdsError(v: unknown): string | undefined {
 export type Checked = { ok: true; value: unknown } | { ok: false; error: string };
 
 /** Проверка значения до записи; возвращает приведённое значение (строки обрезаются). */
-export function validateSetting(key: SettingKey, value: unknown): Checked {
+export function validateSetting(key: SettingKey, value: unknown, lang: ErrLang = 'ru'): Checked {
+  const t = ERRORS[lang];
   const bad = (error: string): Checked => ({ ok: false, error });
   switch (key) {
     case 'defaultPermissionMode':
-      return isDefaultMode(value) ? { ok: true, value } : bad('Неизвестный режим.');
+      return isDefaultMode(value) ? { ok: true, value } : bad(t.unknownMode);
     case 'defaultEffort':
       return value === '' || isEffort(value)
         ? { ok: true, value }
-        : bad(`Допустимо: пусто, ${EFFORT_LEVELS.join(', ')}.`);
+        : bad(t.allowedOrEmpty(EFFORT_LEVELS.join(', ')));
     case 'allowBypassPermissions':
     case 'limits.readKeychain':
     case 'sessionList.context':
     case 'sessionList.time':
-      return typeof value === 'boolean' ? { ok: true, value } : bad('Нужно да или нет.');
+      return typeof value === 'boolean' ? { ok: true, value } : bad(t.yesNo);
     case 'defaultModel':
     case 'claudeExecutable':
-      return typeof value === 'string' ? { ok: true, value: value.trim() } : bad('Нужна строка.');
+      return typeof value === 'string' ? { ok: true, value: value.trim() } : bad(t.string);
     case 'usagePollMinutes':
       if (typeof value !== 'number' || !Number.isFinite(value) || !Number.isInteger(value)) {
-        return bad('Нужно целое число минут.');
+        return bad(t.wholeMinutes);
       }
-      if (value < MIN_POLL_MINUTES) return bad(`Не меньше ${MIN_POLL_MINUTES}.`);
+      if (value < MIN_POLL_MINUTES) return bad(t.atLeast(MIN_POLL_MINUTES));
       return value <= MAX_POLL_MINUTES
         ? { ok: true, value }
-        : bad(`Не больше ${MAX_POLL_MINUTES} (сутки).`);
+        : bad(t.atMost(MAX_POLL_MINUTES));
     case 'sessionList.view':
       return isSessionListMode(value)
         ? { ok: true, value }
-        : bad(`Допустимо: ${SESSION_LIST_MODES.join(', ')}.`);
+        : bad(t.allowed(SESSION_LIST_MODES.join(', ')));
     case 'sidebar.top':
       return isSidebarTopMode(value)
         ? { ok: true, value }
-        : bad(`Допустимо: ${SIDEBAR_TOP_MODES.join(', ')}.`);
+        : bad(t.allowed(SIDEBAR_TOP_MODES.join(', ')));
     case 'language':
       return isLanguageMode(value)
         ? { ok: true, value }
-        : bad(`Допустимо: ${LANGUAGE_MODES.join(', ')}.`);
+        : bad(t.allowed(LANGUAGE_MODES.join(', ')));
     case 'contextThresholds': {
-      const e = thresholdsError(value);
+      const e = thresholdsError(value, lang);
       return e ? bad(e) : { ok: true, value };
     }
   }

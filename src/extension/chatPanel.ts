@@ -26,6 +26,7 @@ import type { SessionMemory } from './sessionMemory';
 import type { SessionsService } from './sessionsService';
 import type { UsageService } from './usage';
 import type { Logger } from './logger';
+import { hostStrings } from '../shared/l10n';
 import { attachMessaging, currentLanguage, renderWebview, webviewOptions } from './webviewHost';
 import { WorkspaceFiles } from './workspaceFiles';
 import { writeImageTemp } from './imageFiles';
@@ -78,11 +79,13 @@ export function createAdapter(log: Logger): { adapter: AgentAdapter; engine: Eng
     info: (m) => log.info(m),
     warn: (m) => log.warn(m),
     notify: (m) => void vscode.window.showWarningMessage(`Agentura: ${m}`),
+    lang: currentLanguage,
   });
   const adapter = new ClaudeAdapter({
     executablePath: () => engine.path(),
     clientApp: 'agentura',
     log: (level, message) => log[level](message),
+    lang: currentLanguage,
   });
   return { adapter, engine };
 }
@@ -136,9 +139,7 @@ export class ChatPanel {
   private static folder(): vscode.WorkspaceFolder | undefined {
     const folder = vscode.workspace.workspaceFolders?.[0];
     if (!folder) {
-      void vscode.window.showWarningMessage(
-        'Agentura: откройте папку проекта, чтобы начать сессию.',
-      );
+      void vscode.window.showWarningMessage(hostStrings(currentLanguage()).openFolder);
     }
     return folder;
   }
@@ -237,6 +238,7 @@ export class ChatPanel {
       panel.viewColumn === vscode.ViewColumn.One ? vscode.ViewColumn.Two : vscode.ViewColumn.One;
     panel.webview.options = webviewOptions(context.extensionUri);
     this.controller = new ChatController({
+      lang: currentLanguage(),
       adapter: services.adapter,
       cwd: folder.uri.fsPath,
       project: folder.name,
@@ -267,7 +269,7 @@ export class ChatPanel {
           canSelectFiles: true,
           canSelectFolders: false,
           canSelectMany: true,
-          openLabel: 'Добавить',
+          openLabel: hostStrings(currentLanguage()).addLabel,
         });
         return readAttachments(folder.uri.fsPath, (picked ?? []).slice(0, MAX_DROPPED));
       },

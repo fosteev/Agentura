@@ -48,7 +48,7 @@ import {
 import type { LimitMeter } from '../hudView';
 import { deferredNote } from '../limitView';
 import { menuKeys } from '../a11y';
-import { ui } from '../strings';
+import { ui, uiLang } from '../strings';
 import { compactTokens, shortModel } from '../toolView';
 import { imageTokens, imagesTokens } from '../../shared/images';
 import { fileBadge, fileTokens, filesTokens, formatBytes } from '../../shared/files';
@@ -234,7 +234,7 @@ function FileChip({ d }: { d: DraftFile }) {
       <span class="ic">{fileBadge(f)}</span>
       <b>{d.name}</b>
       <small>
-        {formatBytes(f.size)} ·{' '}
+        {formatBytes(f.size, uiLang)} ·{' '}
         {tokens !== undefined ? `~${compactTokens(tokens)}` : ui.compose.fileUnknownTokens}
       </small>
       {remove}

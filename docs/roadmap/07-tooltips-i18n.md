@@ -1,7 +1,7 @@
 # Тултипы на элементах управления и язык интерфейса ru/en
 
 > Статус: в работе · создан 2026-10-02 по запросу владельца · этап 1 — в галерее (v21), ждёт выбора владельца ·
-> этап 2 принят (ветка `stage-2-i18n-webview`) · этап 3 — у исполнителя.
+> этапы 2–3 приняты (ветка `stage-2-i18n-webview`) · этап 4 ждёт решения по виду тултипа.
 > Исполнитель отмечает чекбоксы по ходу работы. Дизайн владелец принимает только картинками в галерее-артефакте.
 
 ## Цель
@@ -73,15 +73,26 @@
   русские — перенесены в этап 3.
 
 ### 3. Язык: хост и манифест
-- [ ] `src/extension/l10n.ts`: словарь сообщений хоста ru/en по разрешённому языку
-- [ ] Пользовательские тексты хоста (`showInformationMessage`/`showErrorMessage`/QuickPick/тексты в webview) —
+- [x] `src/shared/l10n.ts`: словарь сообщений хоста ru/en по разрешённому языку
+- [x] Пользовательские тексты хоста (`showInformationMessage`/`showErrorMessage`/QuickPick/тексты в webview) —
   через него; `toLocaleString('ru')` → по языку
-- [ ] Ошибки `validateSetting`/`thresholdsError` (`src/settings.ts`) — по языку
-- [ ] `package.nls.json` + `package.nls.ru.json`, `%ключи%` в `package.json`; `.vsix` их содержит
+- [x] Ошибки `validateSetting`/`thresholdsError` (`src/settings.ts`) — по языку
+- [x] `package.nls.json` + `package.nls.ru.json`, `%ключи%` в `package.json`; `.vsix` их содержит
 
 **Готово, когда:** `npm run check` зелёный, `npm run package` + `scripts/vsix-verify.mjs` — nls-файлы в пакете;
 `grep` кириллицы в пользовательских вызовах хоста вне `l10n.ts` пуст.
 **Сессия:** sonnet, high. После приёмки 2.
+
+**Решения (2026-10-02, по итогам сессии 3, приняты на приёмке):**
+- Словарь хоста — `src/shared/l10n.ts` (приёмка перенесла из `src/extension/`: его импортируют `agent/` и `data/`,
+  слой `extension` для них — чужой). Без `vscode`; язык в модули без `vscode` приходит полем `lang?` в их deps
+  (`ChatDeps`, `SettingsDeps`, `EngineLocatorDeps`, `ResolveDeps`, `AccountDeps`, `LimitsSourceOptions`,
+  `MapperOptions`, `ClaudeAdapterConfig`), по умолчанию `'ru'` — существующие тесты не тронуты.
+- Сверх промта переведены: ошибки лимитов (`limits.ts`), плашка `api_retry` (`mapper.ts`), транскрипт субагента
+  (`subagents.ts`), строка «Вход» (`account.ts`), единицы `formatBytes` (`shared/files.ts`, параметр `lang`).
+- `settings.ts` — свой маленький словарь ошибок `ERRORS` (файл общий с webview, тянуть `l10n` туда не стали).
+- Не переведено осознанно: запасные имена вложений `документ.pdf/.txt` в истории (`history.ts:189`), тексты
+  таймаутов (`executable.ts:109`, `adapter.ts:349` — только в журнал), debug-панель. Если всплывут на F5 — доводка.
 
 ### 4. Тултипы в расширении
 - [ ] `media/tooltip.css` (= `prototype/shared/tooltip.css`), подключение в `webviewHost.ts`
@@ -184,7 +195,7 @@ $SCRATCH = /private/tmp/claude-501/-Users-fost-Projects-Agentura/22b242b3-f05e-4
 webview-словари src/webview/strings.ts (ru) и strings.en.ts (en, тип Ui) — образец стиля английского.
 Смена языка = перезагрузка окна, поэтому язык хоста можно читать при каждом показе сообщения, кэш не нужен.
 
-1. src/extension/l10n.ts — БЕЗ импорта vscode (его импортируют модули, которые тестируются без vscode, напр.
+1. src/extension/l10n.ts (приёмка перенесла в src/shared/l10n.ts) — БЕЗ импорта vscode (его импортируют модули, которые тестируются без vscode, напр.
    chatController.ts): `export type Lang = 'ru' | 'en'`, `export function hostStrings(lang: Lang)` → словарь
    сообщений хоста (ru и en объекты одного типа, как в strings.ts: `const ru = {...}`, `type HostUi`,
    `const en: HostUi`). Тест src/extension/l10n.test.ts: в en нет кириллицы, ключи совпадают (по образцу

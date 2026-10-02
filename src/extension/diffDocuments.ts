@@ -1,6 +1,8 @@
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { OpenDiff } from './chatController';
+import { hostStrings } from '../shared/l10n';
+import { currentLanguage } from './webviewHost';
 
 /** Схема виртуальных документов диффа: левая сторона — файл до правки, правая — после. */
 export const DIFF_SCHEME = 'agentura-diff';
@@ -69,8 +71,11 @@ export class DiffDocuments implements vscode.TextDocumentContentProvider {
     this.remember(key);
     this.docs.set(left.toString(), d.before);
     this.docs.set(right.toString(), d.after);
-    const what = d.stage === 'proposed' ? 'предложенная правка' : 'правка агента';
-    await vscode.commands.executeCommand('vscode.diff', left, right, `${name}: ${what}`, {
+    const title = hostStrings(currentLanguage()).diffTitle(
+      name,
+      d.stage === 'proposed' ? 'proposed' : 'applied',
+    );
+    await vscode.commands.executeCommand('vscode.diff', left, right, title, {
       preview: true,
       ...(column !== undefined ? { viewColumn: column } : {}),
     });

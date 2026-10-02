@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { delimiter, isAbsolute, join } from 'node:path';
+import { hostStrings, type Lang } from '../../shared/l10n';
 
 /** Минимальная версия движка: та, на которой прогонялись фикстуры и сценарии (SDK 0.3.285 ↔ CLI 2.1.285). */
 export const MIN_ENGINE_VERSION = '2.1.285';
@@ -25,6 +26,8 @@ export interface ResolveDeps {
   timeoutMs?: number;
   home?: string;
   platform?: NodeJS.Platform;
+  /** Язык текстов проблем; по умолчанию русский. */
+  lang?: Lang;
 }
 
 /** `2.1.285 (Claude Code)` → `2.1.285`. */
@@ -79,10 +82,6 @@ export function isShellScript(path: string, platform: NodeJS.Platform = process.
   return platform === 'win32' && /\.(cmd|bat)$/i.test(path.trim());
 }
 
-/** Подсказка для npm-обёртки на Windows. */
-const CMD_PROBLEM = (path: string) =>
-  `${path} — npm-обёртка, движок через неё не запускается. Установите Claude Code нативным установщиком (claude.exe) или укажите путь к claude.exe в agentura.claudeExecutable.`;
-
 /**
  * `claude --version` с жёстким таймаутом: по истечении процесс убивается (SIGKILL), а промис отклоняется
  * сразу, не дожидаясь закрытия потоков (их мог унаследовать дочерний процесс). Без оболочки.
@@ -120,6 +119,7 @@ export async function resolveExecutable(
   setting: string,
   deps: ResolveDeps = {},
 ): Promise<ResolvedExecutable> {
+  const t = hostStrings(deps.lang ?? 'ru');
   const exists = deps.exists ?? existsSync;
   const run = deps.runVersion ?? defaultRun(deps.timeoutMs);
   const check = async (
@@ -136,20 +136,20 @@ export async function resolveExecutable(
     if (!version) return undefined;
     const result: ResolvedExecutable = { path, version, source };
     if (!versionAtLeast(version, MIN_ENGINE_VERSION)) {
-      result.problem = `Agentura проверена на Claude Code ${MIN_ENGINE_VERSION}+, найден ${version} (${path}). Обновите: claude update.`;
+      result.problem = t.engineOld(MIN_ENGINE_VERSION, version, path);
     }
     return result;
   };
 
   if (setting.trim()) {
     if (isShellScript(setting, deps.platform ?? process.platform))
-      return { path: setting.trim(), source: 'setting', problem: CMD_PROBLEM(setting.trim()) };
+      return { path: setting.trim(), source: 'setting', problem: t.engineWrapper(setting.trim()) };
     const found = await check(setting.trim(), 'setting');
     return (
       found ?? {
         path: setting.trim(),
         source: 'setting',
-        problem: `agentura.claudeExecutable: «${setting.trim()}» не запускается (claude --version).`,
+        problem: t.engineSettingBroken(setting.trim()),
       }
     );
   }
@@ -162,10 +162,9 @@ export async function resolveExecutable(
   const first = found.find((r) => r !== undefined);
   if (first) return first;
   const wrapper = windowsWrappers(deps, exists)[0];
-  if (wrapper) return { source: 'none', problem: CMD_PROBLEM(wrapper) };
+  if (wrapper) return { source: 'none', problem: t.engineWrapper(wrapper) };
   return {
     source: 'none',
-    problem:
-      'Не найден Claude Code (claude). Установите его и выполните вход (claude → /login) либо укажите путь в настройке agentura.claudeExecutable.',
+    problem: t.engineNotFound,
   };
 }

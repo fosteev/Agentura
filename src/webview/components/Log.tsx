@@ -2,7 +2,7 @@ import { useMemo, useState } from 'preact/hooks';
 import type { Seg } from '../fixtures/chat';
 import type { FeedRow } from '../chatState';
 import { onCodeCopyClick, renderMarkdown, withCursor } from '../markdown';
-import { ui } from '../strings';
+import { ui, uiLang } from '../strings';
 import type { FileRef, ImageRef } from '../../agent/types';
 import { imageTokens } from '../../shared/images';
 import { fileBadge, fileName, formatBytes } from '../../shared/files';
@@ -81,7 +81,7 @@ function UserFiles({
           >
             <span class="ic">{fileBadge(f)}</span>
             <b>{fileName(f.path)}</b>
-            {f.size !== undefined && <small>{formatBytes(f.size)}</small>}
+            {f.size !== undefined && <small>{formatBytes(f.size, uiLang)}</small>}
           </button>
         );
       })}
