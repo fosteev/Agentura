@@ -135,6 +135,14 @@ describe('overriddenKeys', () => {
     };
     expect(overriddenKeys(cfg)).toEqual(['defaultModel']);
   });
+  it('вид списка сессий перекрывается настройкой рабочей области или папки', () => {
+    const only = (i: object) => ({ inspect: (k: string) => (k === 'sessionList.view' ? i : {}) });
+    expect(overriddenKeys(only({ workspaceValue: 'dense' }))).toEqual(['sessionList.view']);
+    expect(overriddenKeys(only({ workspaceFolderValue: 'detailed' }))).toEqual([
+      'sessionList.view',
+    ]);
+    expect(overriddenKeys(only({ globalValue: 'dense' }))).toEqual([]);
+  });
 });
 
 describe('writeSetting', () => {

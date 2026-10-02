@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { postToWebview, type SessionSummary } from '../protocol';
-import { readSettings, writeSetting } from '../settings';
+import { overriddenKeys, readSettings, writeSetting } from '../settings';
 import type { AccountService } from './account';
 import { ChatPanel } from './chatPanel';
 import type { SessionsService } from './sessionsService';
@@ -9,6 +9,9 @@ import type { UsageService } from './usage';
 import { attachMessaging, renderWebview, webviewOptions } from './webviewHost';
 
 export const SIDEBAR_VIEW_ID = 'agentura.sidebar';
+
+const OVERRIDDEN_VIEW_MESSAGE =
+  'Agentura: вид списка задан в настройках рабочей папки (agentura.sessionList.view) — поменяйте его там.';
 
 /** Боковая панель: аккаунт и лимиты, список сессий проекта (этап 6). */
 export class SidebarProvider implements vscode.WebviewViewProvider {
@@ -114,6 +117,14 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   }
 
   private async setListView(value: unknown): Promise<void> {
+    // вид перекрыт настройкой рабочей папки: запись в Global ничего не изменит — говорим об этом, а не молчим
+    if (
+      overriddenKeys(vscode.workspace.getConfiguration('agentura')).includes('sessionList.view')
+    ) {
+      void vscode.window.showInformationMessage(OVERRIDDEN_VIEW_MESSAGE);
+      if (this.viewWrites === 0) this.pushView(); // кнопка вернётся к фактическому виду
+      return;
+    }
     this.viewWrites++;
     try {
       const checked = await writeSetting(
