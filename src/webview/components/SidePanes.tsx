@@ -3,7 +3,16 @@ import type { TimelineView } from '../hudView';
 import { ui } from '../strings';
 import { useStickToBottom } from '../useStickToBottom';
 
-export function TurnPane({ turns, hidden }: { turns: TimelineView[]; hidden?: boolean }) {
+export function TurnPane({
+  turns,
+  hidden,
+  labelledBy = 'tab-turn',
+}: {
+  turns: TimelineView[];
+  hidden?: boolean;
+  /** id вкладки-подписи: шапка (`tab-turn`) или вкладка панели (`ptab-turn`). */
+  labelledBy?: string;
+}) {
   // в широкой вёрстке панель скроллится сама (hud.css) и во время хода липнет к низу, как лента
   const { ref, onScroll } = useStickToBottom<HTMLElement>([turns]);
   return (
@@ -13,7 +22,7 @@ export function TurnPane({ turns, hidden }: { turns: TimelineView[]; hidden?: bo
       class="tabpane"
       id="pane-turn"
       role="tabpanel"
-      aria-labelledby="tab-turn"
+      aria-labelledby={labelledBy}
       hidden={hidden}
     >
       {turns.length === 0 && (
@@ -67,12 +76,14 @@ export function TurnPane({ turns, hidden }: { turns: TimelineView[]; hidden?: bo
 export function AgentsPane({
   view,
   hidden,
+  labelledBy = 'tab-agents',
   onSelect,
   onStop,
   onTranscript,
 }: {
   view: AgentMapView;
   hidden?: boolean;
+  labelledBy?: string;
   onSelect: (agentId: string) => void;
   onStop: (taskId: string) => void;
   onTranscript: (agentId: string, taskId: string) => void;
@@ -129,7 +140,7 @@ export function AgentsPane({
       class="tabpane"
       id="pane-agents"
       role="tabpanel"
-      aria-labelledby="tab-agents"
+      aria-labelledby={labelledBy}
       hidden={hidden}
     >
       <div class="amap">

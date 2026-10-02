@@ -18,7 +18,6 @@ cat > "$TMP/proto/shared/preview.js" <<'JS'
   var m = location.search.match(/theme=(dark|light)/);
   h.setAttribute('data-theme', m ? m[1] : 'dark');
   h.setAttribute('data-width', 'vscode');
-  if (!h.getAttribute('data-collapse')) h.setAttribute('data-collapse', 'hidden');
 })();
 JS
 echo '.preview-bar{display:none!important} .preview-stage{padding:0!important;min-height:0!important} .webview{border:0!important;border-radius:0!important;box-shadow:none!important} .sidebar-view{border:0!important;border-radius:0!important;box-shadow:none!important}' >> "$TMP/proto/shared/preview.css"

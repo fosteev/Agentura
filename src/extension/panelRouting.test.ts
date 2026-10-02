@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { restoredSessionId, routeNew, routeOpen, routeResume, type PanelView } from './panelRouting';
+import {
+  restoredSessionId,
+  routeNew,
+  routeOpen,
+  routeResume,
+  type PanelView,
+} from './panelRouting';
 
 const p = (over: Partial<PanelView> = {}): PanelView => ({
   pristine: false,
@@ -49,6 +55,12 @@ describe('routeNew / routeOpen', () => {
 });
 
 describe('restoredSessionId (сериализатор)', () => {
+  it('лишнее поле panel состояния не мешает: id берётся из sessionId', () => {
+    expect(restoredSessionId({ sessionId: 'a', panel: { w: 400, off: true } }, [], ['b'])).toBe(
+      'a',
+    );
+    expect(restoredSessionId({ panel: { w: 400 } }, [], ['b'])).toBeUndefined();
+  });
   it('своя сессия из состояния webview', () => {
     expect(restoredSessionId({ sessionId: 'a' }, [], ['b'])).toBe('a');
   });

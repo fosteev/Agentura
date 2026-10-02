@@ -10,7 +10,7 @@ for f in prototype/screens/*.html; do
   sed -i '' 's|</body>|<script src="../check.js"></script></body>|' "$TMP/proto/screens/$n"
   r=$("$CH" --headless=new --disable-gpu --no-sandbox --allow-file-access-from-files --window-size=1500,1000 \
       --virtual-time-budget=3000 --dump-dom "file://$TMP/proto/screens/$n" 2>/dev/null \
-      | sed -n '/REPORT/,/END/p' | sed 's/&gt;/>/g;s/&lt;/</g' | grep -v -E '^(REPORT|END)$|layout-report|^OK' || true)
+      | sed -n '/REPORT/,/END/p' | sed 's/<\/pre>//;s/&gt;/>/g;s/&lt;/</g' | grep -v -E '^(REPORT|END)$|layout-report|^OK' || true)
   echo "$n: ${r:-OK}"
 done
 rm -rf "$TMP"

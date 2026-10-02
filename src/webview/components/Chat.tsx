@@ -1,5 +1,5 @@
 import { signal, useSignalEffect } from '@preact/signals';
-import { useEffect } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import {
   chat,
   chooseOption,
@@ -27,10 +27,11 @@ import { limitBanner } from '../limitView';
 import { cacheLive, turnBadge, turnsView } from '../hudView';
 import { agentBadge, agentMapView, liveSubagents, waitingAgents } from '../agentsView';
 import { ui } from '../strings';
-import { send } from '../vscode';
+import { readPanel, savePanel, send, type PanelState } from '../vscode';
 import { Composer } from './Composer';
 import { Empty } from './Empty';
 import { Hud, type Tab } from './Hud';
+import { TabBar, type TabItem } from './TabBar';
 import { Log } from './Log';
 import { useStickToBottom } from '../useStickToBottom';
 import { AgentsPane, TurnPane } from './SidePanes';
@@ -40,21 +41,122 @@ import { formatDuration, toolView } from '../toolView';
 const tab = signal<Tab>('chat');
 /** Широкая вёрстка (ход и агенты панелью справа) включается с этой ширины вкладки. */
 const WIDE_PX = 700;
+/** Правая панель: ширина по умолчанию, минимум и сколько оставить ленте. */
+const PANEL_DEF = 300;
+const PANEL_MIN = 220;
+const PANEL_RESERVE = 360;
+const PANEL_STEP = 16;
+/** Широкая ли вёрстка сейчас (панель справа вместо вкладок шапки). */
+const wide = signal(typeof window !== 'undefined' && window.innerWidth >= WIDE_PX);
+
+/** Ширина панели в пределах: от минимума до «ширина тела − резерв ленты» (тело не измерено — без верхнего предела). */
+function clampPanel(w: number, bodyW: number): number {
+  const max = bodyW > 0 ? Math.max(PANEL_MIN, bodyW - PANEL_RESERVE) : Infinity;
+  return Math.round(Math.min(max, Math.max(PANEL_MIN, w)));
+}
+
+const ICON_HIDE = (
+  <svg
+    class="ico"
+    viewBox="0 0 16 16"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="1"
+    aria-hidden="true"
+  >
+    <rect x="1.5" y="2.5" width="13" height="11" rx="1" />
+    <path d="M10 2.5v11" stroke-dasharray="1.6 1.4" />
+  </svg>
+);
+const ICON_SHOW = (
+  <svg
+    class="ico"
+    viewBox="0 0 16 16"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="1"
+    aria-hidden="true"
+  >
+    <rect x="1.5" y="2.5" width="13" height="11" rx="1" />
+    <path d="M10 2.5v11" />
+    <path d="M10.5 3v10h3.5V3z" fill="currentColor" stroke="none" opacity=".55" />
+  </svg>
+);
+const ICON_TURN = (
+  <svg
+    class="ico"
+    viewBox="0 0 16 16"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="1.2"
+    aria-hidden="true"
+  >
+    <path d="M2 4h12M2 8h7M2 12h10" />
+  </svg>
+);
+const ICON_AGENTS = (
+  <svg
+    class="ico"
+    viewBox="0 0 16 16"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="1.2"
+    aria-hidden="true"
+  >
+    <circle cx="8" cy="3.5" r="1.8" />
+    <circle cx="3.5" cy="12" r="1.8" />
+    <circle cx="12.5" cy="12" r="1.8" />
+    <path d="M7 5l-2.5 5.3M9 5l2.5 5.3" />
+  </svg>
+);
 
 export function Chat() {
   // hud.css переключает вёрстку по html[data-width="900"]; в реальном webview ширину меряем сами
   useSignalEffect(() => {
     const apply = () => {
-      const wide = window.innerWidth >= WIDE_PX;
-      if (wide) {
+      const isWide = window.innerWidth >= WIDE_PX;
+      wide.value = isWide;
+      if (isWide) {
         document.documentElement.setAttribute('data-width', '900');
-        tab.value = 'chat'; // вкладок в широкой вёрстке нет
+        tab.value = 'chat'; // вкладок шапки в широкой вёрстке нет
       } else document.documentElement.removeAttribute('data-width');
     };
     apply();
     window.addEventListener('resize', apply);
     return () => window.removeEventListener('resize', apply);
   });
+
+  // правая панель (широкая вёрстка): состояние своё у каждой вкладки чата, живёт в setState webview
+  const [panel, setPanel] = useState<PanelState>(readPanel);
+  const [bodyW, setBodyW] = useState(0);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const dragging = useRef(false);
+  // ref — чтобы быстрый повтор клавиши шёл от свежей ширины, а не от значения последнего рендера
+  const panelRef = useRef(panel);
+  const updatePanel = (patch: PanelState) => {
+    panelRef.current = { ...panelRef.current, ...patch };
+    setPanel(panelRef.current);
+    savePanel(patch);
+  };
+  // ширина тела нужна для верхнего предела панели; меняется только с окном
+  useEffect(() => {
+    const measure = () => setBodyW(bodyRef.current?.getBoundingClientRect().width ?? 0);
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, []);
+  const panelW = clampPanel(panel.w ?? PANEL_DEF, bodyW);
+  const panelOff = !!panel.off;
+  const dragWidth = (clientX: number) => {
+    const r = bodyRef.current?.getBoundingClientRect();
+    return r ? clampPanel(r.right - clientX, r.width) : PANEL_DEF;
+  };
+  const setLiveWidth = (w: number) => bodyRef.current?.style.setProperty('--side-w', `${w}px`);
+  const stepWidth = (delta: number) => {
+    const r = bodyRef.current?.getBoundingClientRect();
+    const cur = clampPanel(panelRef.current.w ?? PANEL_DEF, r?.width ?? 0);
+    updatePanel({ w: clampPanel(cur + delta, r?.width ?? 0) });
+  };
 
   const s = chat.value;
   const working = s.status === 'working' || s.status === 'waiting';
@@ -143,8 +245,25 @@ export function Chat() {
   // «карта агентов», «итог», «лог» в группе: выбрать агента и показать вкладку (в широкой она и так видна)
   const openAgent = (agentId: string) => {
     selectedAgent.value = agentId;
-    if (!document.documentElement.hasAttribute('data-width')) tab.value = 'agents';
+    if (wide.value) updatePanel({ tab: 'agents', off: false });
+    else tab.value = 'agents';
   };
+  // вкладки панели: в пустой сессии недоступны, активна «ход»
+  const panelTab = empty ? 'turn' : (panel.tab ?? 'turn');
+  const panelItems: readonly TabItem<'turn' | 'agents'>[] = [
+    {
+      key: 'turn',
+      label: ui.tabs.turn,
+      disabled: empty,
+      ...(turnBdg ? { badge: { text: String(turnBdg.count), live: turnBdg.live } } : {}),
+    },
+    {
+      key: 'agents',
+      label: ui.tabs.agents,
+      disabled: empty,
+      ...(agentsBdg ? { badge: agentsBdg } : {}),
+    },
+  ];
 
   return (
     <div class="webview">
@@ -189,7 +308,12 @@ export function Chat() {
           </span>
         </div>
       )}
-      <div class="body">
+      <div
+        class="body"
+        ref={bodyRef}
+        data-side={wide.value && panelOff ? 'off' : undefined}
+        style={{ '--side-w': `${panelW}px` }}
+      >
         <main
           class="pane"
           id="pane-chat"
@@ -253,8 +377,89 @@ export function Chat() {
             </Log>
           )}
         </main>
-        <aside class="pane side" style={{ display: t === 'chat' ? 'none' : 'block' }}>
-          <TurnPane turns={turnsView(h, now, s.cwd)} hidden={t !== 'turn'} />
+        <aside
+          class="pane side"
+          data-active={panelTab}
+          style={wide.value ? undefined : { display: t === 'chat' ? 'none' : 'block' }}
+        >
+          <TabBar
+            class="ptabs"
+            items={panelItems}
+            active={panelTab}
+            onSelect={(k) => updatePanel({ tab: k })}
+            idPrefix="ptab"
+            ariaLabel={ui.panel.tabsAria}
+          >
+            <button
+              class="phide"
+              title={ui.panel.hide}
+              aria-label={ui.panel.hide}
+              onClick={() => updatePanel({ off: true })}
+            >
+              {ICON_HIDE}
+            </button>
+          </TabBar>
+          <div
+            class="grip"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label={ui.panel.gripAria}
+            aria-valuenow={panelW}
+            aria-valuemin={PANEL_MIN}
+            aria-valuemax={bodyW > 0 ? clampPanel(Infinity, bodyW) : undefined}
+            title={ui.panel.gripTitle}
+            tabIndex={0}
+            onPointerDown={(e) => {
+              if (e.button !== 0) return;
+              dragging.current = true;
+              (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+              (e.currentTarget as HTMLElement).classList.add('drag');
+              document.documentElement.classList.add('resizing');
+              e.preventDefault();
+            }}
+            onPointerMove={(e) => {
+              if (dragging.current) setLiveWidth(dragWidth(e.clientX));
+            }}
+            onPointerUp={(e) => {
+              if (!dragging.current) return;
+              dragging.current = false;
+              const grip = e.currentTarget as HTMLElement;
+              grip.releasePointerCapture?.(e.pointerId);
+              grip.classList.remove('drag');
+              document.documentElement.classList.remove('resizing');
+              updatePanel({ w: dragWidth(e.clientX) });
+            }}
+            onPointerCancel={(e) => {
+              dragging.current = false;
+              (e.currentTarget as HTMLElement).classList.remove('drag');
+              document.documentElement.classList.remove('resizing');
+              setLiveWidth(panelW);
+            }}
+            onLostPointerCapture={(e) => {
+              // захват сорвался без pointerup (ручку скрыли, окно отобрало мышь) — не оставлять
+              // ручку «залипшей», а html — без выделения текста; ширину берём последнюю показанную
+              if (!dragging.current) return;
+              dragging.current = false;
+              (e.currentTarget as HTMLElement).classList.remove('drag');
+              document.documentElement.classList.remove('resizing');
+              const live = parseFloat(bodyRef.current?.style.getPropertyValue('--side-w') ?? '');
+              updatePanel({ w: Number.isFinite(live) ? live : panelW });
+            }}
+            onDblClick={() => updatePanel({ w: PANEL_DEF })}
+            onKeyDown={(e) => {
+              // панель справа: ← двигает левый край влево (шире), → — вправо (уже)
+              if (e.key === 'ArrowLeft') stepWidth(PANEL_STEP);
+              else if (e.key === 'ArrowRight') stepWidth(-PANEL_STEP);
+              else if (e.key === 'Home') updatePanel({ w: PANEL_DEF });
+              else return;
+              e.preventDefault();
+            }}
+          />
+          <TurnPane
+            turns={turnsView(h, now, s.cwd)}
+            hidden={wide.value ? panelTab !== 'turn' : t !== 'turn'}
+            labelledBy={wide.value ? 'ptab-turn' : 'tab-turn'}
+          />
           <AgentsPane
             view={agentMapView(h, {
               working,
@@ -265,12 +470,43 @@ export function Chat() {
               ...(selectedAgent.value ? { selected: selectedAgent.value } : {}),
               ...(s.model ? { model: s.model } : {}),
             })}
-            hidden={t !== 'agents'}
+            hidden={wide.value ? panelTab !== 'agents' : t !== 'agents'}
+            labelledBy={wide.value ? 'ptab-agents' : 'tab-agents'}
             onSelect={(id) => (selectedAgent.value = id)}
             onStop={stopAgent}
             onTranscript={openAgentTranscript}
           />
         </aside>
+        <nav class="rail" aria-label={ui.panel.railAria}>
+          <button
+            title={ui.tabs.turn}
+            aria-label={ui.panel.openTab(ui.tabs.turn)}
+            disabled={empty}
+            onClick={() => updatePanel({ tab: 'turn', off: false })}
+          >
+            {ICON_TURN}
+            {turnBdg && <span class={turnBdg.live ? 'b live' : 'b'}>{turnBdg.count}</span>}
+          </button>
+          <button
+            title={ui.tabs.agents}
+            aria-label={ui.panel.openTab(ui.tabs.agents)}
+            disabled={empty}
+            onClick={() => updatePanel({ tab: 'agents', off: false })}
+          >
+            {ICON_AGENTS}
+            {agentsBdg && (
+              <span class={agentsBdg.live ? 'b live' : 'b'}>{agentsBdg.text.split(' / ')[0]}</span>
+            )}
+          </button>
+          <button
+            class="show"
+            title={ui.panel.show}
+            aria-label={ui.panel.show}
+            onClick={() => updatePanel({ off: false })}
+          >
+            {ICON_SHOW}
+          </button>
+        </nav>
       </div>
       <Composer />
     </div>
