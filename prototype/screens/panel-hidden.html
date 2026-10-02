@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="ru" data-theme="dark" data-width="vscode">
+<html lang="ru" data-theme="dark" data-width="vscode" data-collapse="hidden">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Agentura · несколько агентов</title>
+<title>Agentura · панель свёрнута · hidden</title>
 <link rel="stylesheet" href="../shared/tokens.css">
 <link rel="stylesheet" href="../shared/preview.css">
 <link rel="stylesheet" href="../shared/hud.css">
@@ -11,7 +11,7 @@
 </head>
 <body>
 <div class="preview-bar">
-  <b>Несколько агентов</b>
+  <b>Панель свёрнута · скрыта целиком (A)</b>
   <span class="grp"><button data-set-theme="dark">Тёмная</button><button data-set-theme="light">Светлая</button></span>
   <span class="grp"><button data-set-width="vscode">боковая панель + вкладка</button><button data-set-width="900">900 · вкладка</button><button data-set-width="380">380 · сплит</button><button data-set-width="full">во всю ширину</button></span>
   <a href="agents-done.html">итог →</a>
@@ -32,7 +32,7 @@
     <span class="acts"><button title="Сессии">sessions</button></span>
   </header>
 
-  <div class="body">
+  <div class="body" data-side="off">
     <main class="pane" id="pane-chat">
       <div class="log">
         <div class="u"><span class="p">&gt;</span><span>Добавь тест на переподключение, чтобы это не вернулось.</span><span class="at">14:51</span></div>
