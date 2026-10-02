@@ -4,7 +4,7 @@
  */
 import type { LimitWindow } from '../agent/types';
 import type { SessionSummary } from '../protocol';
-import { clock } from './chatState';
+import { clock, resetLabel } from './chatState';
 import { formatCost } from './toolView';
 import { ui } from './strings';
 
@@ -85,6 +85,16 @@ export function groupByDay(
   return out;
 }
 
+/** Поиск по названию: без регистра, «ё» = «е», пустой запрос — весь список. */
+export function filterSessions<T extends Pick<SessionSummary, 'title'>>(
+  rows: readonly T[],
+  query: string,
+): T[] {
+  const norm = (x: string) => x.toLowerCase().replace(/ё/g, 'е');
+  const q = norm(query.trim());
+  return q ? rows.filter((s) => norm(s.title).includes(q)) : [...rows];
+}
+
 /** `131k`, `950`, `1.2M` — контекст в строке списка. */
 export function tokensLabel(n: number): string {
   if (n >= 999_500) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
@@ -153,6 +163,10 @@ export interface LimitRowView {
   full: boolean;
   /** Пусто у неактивного окна без `resetsAt` — «0 %» без времени сброса. */
   note: string;
+  /** Сброс коротко для вида «компактно»: `17:00`, `сб 09:00`; пусто без `resetsAt`. */
+  reset: string;
+  /** Подпись мини-шкалы в заголовке панели (вид «плотно»): `5 ч`, `нед`; у окна модели — пусто, его там нет. */
+  mini: string;
 }
 
 function limitNote(w: LimitWindow, now: number): string {
@@ -183,6 +197,13 @@ export function limitRows(windows: readonly LimitWindow[], now: number): LimitRo
         percent,
         full: percent >= 100,
         note: limitNote(w, now),
+        reset: w.resetsAt === undefined ? '' : resetLabel(w.resetsAt, now),
+        mini:
+          w.kind === 'five-hour'
+            ? ui.sidebar.miniFive
+            : w.kind === 'weekly'
+              ? ui.sidebar.miniWeek
+              : '',
       };
     });
 }

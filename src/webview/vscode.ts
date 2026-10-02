@@ -30,6 +30,14 @@ export interface PanelState {
 export interface WebviewState {
   sessionId?: string;
   panel?: PanelState;
+  /** Боковая панель: свёрнутые секции. */
+  fold?: SidebarFold;
+}
+
+/** Свёрнутые секции боковой панели (нет поля — развёрнута). */
+export interface SidebarFold {
+  account?: boolean;
+  sessions?: boolean;
 }
 
 function readState(): WebviewState {
@@ -81,6 +89,20 @@ export function readPanel(): PanelState {
 /** Дописать поля в состояние панели, не трогая остальное состояние (в том числе `sessionId`). */
 export function savePanel(patch: PanelState): void {
   writeState({ ...readState(), panel: { ...readPanel(), ...patch } });
+}
+
+/** Свёрнутые секции боковой панели; кривые поля — как отсутствующие. */
+export function readFold(): SidebarFold {
+  const f = readState().fold as Record<string, unknown> | undefined;
+  if (!f || typeof f !== 'object') return {};
+  const out: SidebarFold = {};
+  if (typeof f.account === 'boolean') out.account = f.account;
+  if (typeof f.sessions === 'boolean') out.sessions = f.sessions;
+  return out;
+}
+
+export function saveFold(fold: SidebarFold): void {
+  writeState({ ...readState(), fold });
 }
 
 /** Сообщения от хоста; возвращает отписку. */

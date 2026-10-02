@@ -1,10 +1,25 @@
 import { signal } from '@preact/signals';
 import { useEffect, useRef } from 'preact/hooks';
 import type { AccountSummary, LimitWindowSummary, SessionSummary } from '../../protocol';
-import { DEFAULT_SESSION_LIST, nextSessionListMode, type SessionListMode } from '../../settings';
+import {
+  DEFAULT_SESSION_LIST,
+  DEFAULT_SIDEBAR_TOP,
+  nextSessionListMode,
+  type SessionListMode,
+  type SidebarTopMode,
+} from '../../settings';
+import { limitLevel } from '../hudView';
 import { ui } from '../strings';
-import { ctxLabel, groupByDay, limitRows, rowClass, subLabel, whenLabel } from '../sessionsView';
-import { onHostMessage, send } from '../vscode';
+import {
+  ctxLabel,
+  filterSessions,
+  groupByDay,
+  limitRows,
+  rowClass,
+  subLabel,
+  whenLabel,
+} from '../sessionsView';
+import { onHostMessage, readFold, saveFold, send, type SidebarFold } from '../vscode';
 
 const windows = signal<LimitWindowSummary[]>([]);
 const usage = signal<{ pending: boolean; updatedAt?: number; error?: string }>({ pending: false });
@@ -18,10 +33,20 @@ const project = signal('');
  */
 const listMode = signal<SessionListMode>(DEFAULT_SESSION_LIST);
 const listCols = signal({ context: true, time: true });
+/**
+ * Вид верха (`agentura.sidebar.top`): `data-top` на `.sidebar`; элементы чужого вида не рендерятся, вёрстка —
+ * в hud.css. Вид «подробно» — разметка как в прототипе sessions.html.
+ */
+const topMode = signal<SidebarTopMode>(DEFAULT_SIDEBAR_TOP);
 /** Секундный/минутный тик: подписи «сейчас», «через 2 ч 08 мин», день в заголовках. */
 const now = signal(Date.now());
 /** Строка в режиме переименования (двойной клик): id сессии. */
 const editing = signal<string | undefined>(undefined);
+
+/** Свёрнутые секции; переживают перезагрузку вида (state webview). */
+const fold = signal<SidebarFold>(readFold());
+/** Строка поиска по названию — живой фильтр списка. */
+const query = signal('');
 
 /** Одиночный клик — возобновить; ждём, не станет ли он двойным (переименование). */
 const CLICK_DELAY_MS = 250;
@@ -52,6 +77,28 @@ function accountRows(a: AccountSummary | undefined): [string, string][] {
     [L.login, a?.login ?? (a?.error ? `${ui.sidebar.loadError}: ${a.error}` : dash)],
     [L.agent, a?.engine ? `${ui.sidebar.agentName} · ${a.engine}` : ui.sidebar.agentName],
   ];
+}
+
+/** Аккаунт одной строкой (вид «компактно»): почта · план · движок; вход и агент — в подсказке. */
+function AccountLine({ a }: { a: AccountSummary | undefined }) {
+  const rows = accountRows(a);
+  const parts = [a?.plan, a?.engine].filter((x): x is string => !!x);
+  const ok = !!a?.login && !a.error;
+  return (
+    <div class="who" title={rows.map(([k, v]) => `${k}: ${v}`).join('\n')}>
+      <b>{a?.email ?? ui.sidebar.unknown}</b>
+      {parts.map((x) => (
+        <span key={x}>· {x}</span>
+      ))}
+      {ok && <i class="okd" title={ui.sidebar.loginOk} />}
+    </div>
+  );
+}
+
+/** Уровень цвета у лимита: до 70 % — цвет по умолчанию, дальше жёлтый и красный, как у поля ввода. */
+function levelClass(percent: number): string {
+  const lv = limitLevel(percent);
+  return lv === 'lim-hot' ? '' : lv;
 }
 
 function SessionRow({ s }: { s: SessionSummary }) {
@@ -123,6 +170,33 @@ function SessionRow({ s }: { s: SessionSummary }) {
   );
 }
 
+function toggleFold(key: keyof SidebarFold) {
+  fold.value = { ...fold.value, [key]: !fold.value[key] };
+  saveFold(fold.value);
+}
+
+/**
+ * Заголовок секции сворачивает её целиком; кнопки внутри (↻, вид списка) живут своей жизнью.
+ * `.tri` остаётся span — разметка как в прототипе, поворот — в hud.css.
+ */
+function foldProps(key: keyof SidebarFold, name: string) {
+  const folded = !!fold.value[key];
+  const toggle = (e: Event) => {
+    if ((e.target as Element).closest('button')) return;
+    e.preventDefault();
+    toggleFold(key);
+  };
+  return {
+    tabIndex: 0,
+    'aria-expanded': !folded,
+    title: ui.sidebar.fold(name, folded),
+    onClick: toggle,
+    onKeyDown: (e: KeyboardEvent) => {
+      if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) toggle(e);
+    },
+  };
+}
+
 /** Кнопка вида списка в заголовке «Сессии»: по кругу подробно → компактно → плотно. */
 function ListModeButton() {
   const cur = listMode.value;
@@ -160,6 +234,7 @@ export function Sidebar() {
           break;
         case 'sidebar.view':
           listMode.value = m.view;
+          topMode.value = m.top ?? DEFAULT_SIDEBAR_TOP;
           listCols.value = { context: m.context, time: m.time };
           break;
         case 'sessions.update':
@@ -180,8 +255,12 @@ export function Sidebar() {
 
   const u = usage.value;
   const n = now.value;
-  const groups = groupByDay(sessions.value, n);
+  const q = query.value;
+  const shown = filterSessions(sessions.value, q);
+  const groups = groupByDay(shown, n);
+  const f = fold.value;
   const limits = limitRows(windows.value, n);
+  const top = topMode.value;
   return (
     <div
       class="sidebar"
@@ -189,9 +268,49 @@ export function Sidebar() {
       data-list={listMode.value}
       data-ctx={listCols.value.context ? 'on' : 'off'}
       data-time={listCols.value.time ? 'on' : 'off'}
+      data-top={top}
     >
-      <div class="head">
+      <div
+        class="head"
+        title={
+          top === 'dense'
+            ? accountRows(account.value)
+                .map(([k, v]) => `${k}: ${v}`)
+                .join('\n')
+            : undefined
+        }
+      >
         <span>{ui.sidebar.head}</span>
+        {top === 'dense' && (
+          <span class="hl">
+            {limits
+              .filter((l) => l.mini)
+              .map((l) => (
+                <span
+                  class={`m ${levelClass(l.percent)}`.trim()}
+                  key={l.key}
+                  title={[l.label, l.note].filter(Boolean).join(' · ')}
+                >
+                  {l.mini}
+                  <i>
+                    <b style={{ width: `${l.percent}%` }} />
+                  </i>
+                  <span class="n">{l.percent} %</span>
+                </span>
+              ))}
+            <button
+              type="button"
+              class={u.pending ? 'refresh busy' : 'refresh'}
+              title={refreshTitle()}
+              aria-label={ui.sidebar.refreshTitle}
+              aria-busy={u.pending}
+              disabled={u.pending}
+              onClick={refreshUsage}
+            >
+              {ui.sidebar.refresh}
+            </button>
+          </span>
+        )}
         <button
           type="button"
           class="gear"
@@ -202,8 +321,8 @@ export function Sidebar() {
           {ui.sidebar.gear}
         </button>
       </div>
-      <section class="sec">
-        <h3>
+      <section class={f.account ? 'sec acc folded' : 'sec acc'}>
+        <h3 {...foldProps('account', ui.sidebar.account)}>
           <span class="tri" />
           {ui.sidebar.account}
           <button
@@ -225,42 +344,82 @@ export function Sidebar() {
             </>
           ))}
         </div>
+        {top === 'compact' && <AccountLine a={account.value} />}
         <div class="lim">
           {limits.map((l) => (
-            <div class="row" key={l.key}>
+            <div class="row" key={l.key} title={[l.label, l.note].filter(Boolean).join(' · ')}>
               <span>{l.label}</span>
               <span class={l.full ? 'n full' : 'n'}>{l.percent} %</span>
               <span class="bar">
                 <i class={l.full ? 'full' : ''} style={{ width: `${l.percent}%` }} />
               </span>
               {l.note && <small>{l.note}</small>}
+              {top === 'compact' && l.reset && <em class="rs">{ui.sidebar.resetShort(l.reset)}</em>}
             </div>
           ))}
         </div>
       </section>
-      <section class="sec">
-        <h3>
+      <section class={f.sessions ? 'sec folded' : 'sec'}>
+        <h3 {...foldProps('sessions', ui.sidebar.sessions)}>
           <span class="tri" />
           {ui.sidebar.sessions}
           <span class="r" style={{ color: 'var(--fg-mute)' }}>
             {project.value}
           </span>
+          {top !== 'detailed' && (
+            <button
+              type="button"
+              class="add"
+              title={`${ui.sidebar.newSession} · ${ui.sidebar.newSessionKey}`}
+              aria-label={ui.sidebar.newSession}
+              onClick={() => send({ type: 'session.new' })}
+            >
+              ＋
+            </button>
+          )}
           <ListModeButton />
         </h3>
-        <button class="new" onClick={() => send({ type: 'session.new' })}>
-          <span class="plus">＋</span>
-          {ui.sidebar.newSession}
-          <span style={{ marginLeft: 'auto', color: 'var(--fg-faint)', fontSize: '11px' }}>
-            {ui.sidebar.newSessionKey}
-          </span>
-        </button>
+        {top === 'detailed' && (
+          <button class="new" onClick={() => send({ type: 'session.new' })}>
+            <span class="plus">＋</span>
+            {ui.sidebar.newSession}
+            <span style={{ marginLeft: 'auto', color: 'var(--fg-faint)', fontSize: '11px' }}>
+              {ui.sidebar.newSessionKey}
+            </span>
+          </button>
+        )}
       </section>
-      <div class="tools">
-        <input type="search" placeholder={ui.sidebar.search} disabled />
-        <button title={ui.sidebar.filterTitle}>⚲</button>
+      <div class="tools" hidden={f.sessions}>
+        <input
+          type="search"
+          placeholder={ui.sidebar.search}
+          aria-label={ui.sidebar.search}
+          value={q}
+          onInput={(e) => (query.value = e.currentTarget.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape' && query.value) {
+              e.preventDefault();
+              query.value = '';
+            }
+          }}
+        />
+        <button
+          type="button"
+          title={q ? ui.sidebar.searchClear : ui.sidebar.searchFocus}
+          aria-label={q ? ui.sidebar.searchClear : ui.sidebar.searchFocus}
+          onClick={(e) => {
+            const input = e.currentTarget.previousElementSibling as HTMLInputElement | null;
+            if (query.value) query.value = '';
+            input?.focus();
+          }}
+        >
+          {q ? '✕' : '⚲'}
+        </button>
       </div>
-      <div class="list">
-        {groups.length === 0 && <div class="day">{ui.sidebar.noSessions}</div>}
+      <div class="list" hidden={f.sessions}>
+        {groups.length === 0 && (
+          <div class="day">{q.trim() ? ui.sidebar.noMatches : ui.sidebar.noSessions}</div>
+        )}
         {groups.map((g) => (
           <>
             <div class="day">{g.day}</div>

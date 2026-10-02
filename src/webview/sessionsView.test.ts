@@ -3,6 +3,7 @@ import type { SessionSummary } from '../protocol';
 import {
   costLabel,
   dayLabel,
+  filterSessions,
   groupByDay,
   limitRows,
   resetWhen,
@@ -130,10 +131,25 @@ describe('лимиты', () => {
     ]);
     expect(rows[0]!.note).toBe('сброс в 17:00 · через 2 ч 00 мин');
     expect(rows[1]!.note).toBe('сброс в субботу, 09:00');
+    expect(rows.map((r) => [r.reset, r.mini])).toEqual([
+      ['17:00', '5 ч'],
+      ['сб 09:00', 'нед'],
+      ['сб 09:00', ''],
+    ]);
     const idle = limitRows([{ kind: 'five-hour', percent: 0 }], NOW)[0]!;
-    expect(idle).toMatchObject({ percent: 0, note: '', full: false });
+    expect(idle).toMatchObject({ percent: 0, note: '', reset: '', full: false });
     expect(
       limitRows([{ kind: 'five-hour', percent: 100, resetsAt: NOW + 60_000 }], NOW)[0]!.full,
     ).toBe(true);
+  });
+});
+
+describe('поиск', () => {
+  const rows = [row({ id: 'a', title: 'Плашка «нет связи»' }), row({ id: 'b', title: 'Ёлка' })];
+  it('без регистра, ё = е, пробелы по краям не считаются; пустой запрос — всё', () => {
+    expect(filterSessions(rows, ' ПЛАШ ').map((r) => r.id)).toEqual(['a']);
+    expect(filterSessions(rows, 'елк').map((r) => r.id)).toEqual(['b']);
+    expect(filterSessions(rows, '  ')).toEqual(rows);
+    expect(filterSessions(rows, 'нет такой')).toEqual([]);
   });
 });

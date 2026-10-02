@@ -80,7 +80,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       this.account.onUpdate((a) => this.post({ type: 'account.info', ...a })),
       ChatPanel.onDidChange(() => this.pushSessions()),
       vscode.workspace.onDidChangeConfiguration((e) => {
-        if (e.affectsConfiguration('agentura.sessionList') && this.viewWrites === 0)
+        if (
+          (e.affectsConfiguration('agentura.sessionList') ||
+            e.affectsConfiguration('agentura.sidebar')) &&
+          this.viewWrites === 0
+        )
           this.pushView();
       }),
     ];
@@ -113,6 +117,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       view: v['sessionList.view'],
       context: v['sessionList.context'],
       time: v['sessionList.time'],
+      top: v['sidebar.top'],
     });
   }
 

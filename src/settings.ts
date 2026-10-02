@@ -24,6 +24,14 @@ export const DEFAULT_THRESHOLDS: [number, number] = [120_000, 150_000];
 export const SESSION_LIST_MODES = ['detailed', 'compact', 'dense'] as const;
 export type SessionListMode = (typeof SESSION_LIST_MODES)[number];
 export const DEFAULT_SESSION_LIST: SessionListMode = 'compact';
+/**
+ * Вид верха боковой панели (`sidebar.top`): `detailed` — аккаунт таблицей, у лимитов шкала и строка сброса;
+ * `compact` — аккаунт и каждый лимит в строку, «Новая сессия» — кнопкой ＋ в заголовке «Сессии»;
+ * `dense` — секции аккаунта нет, лимиты мини-шкалами в заголовке панели, аккаунт — в подсказке.
+ */
+export const SIDEBAR_TOP_MODES = ['detailed', 'compact', 'dense'] as const;
+export type SidebarTopMode = (typeof SIDEBAR_TOP_MODES)[number];
+export const DEFAULT_SIDEBAR_TOP: SidebarTopMode = 'detailed';
 
 /** Ключи без префикса `agentura.` — те же, что в `getConfiguration('agentura')`. */
 export type SettingKey =
@@ -37,7 +45,8 @@ export type SettingKey =
   | 'claudeExecutable'
   | 'sessionList.view'
   | 'sessionList.context'
-  | 'sessionList.time';
+  | 'sessionList.time'
+  | 'sidebar.top';
 
 export const SETTING_KEYS: readonly SettingKey[] = [
   'defaultPermissionMode',
@@ -51,6 +60,7 @@ export const SETTING_KEYS: readonly SettingKey[] = [
   'sessionList.view',
   'sessionList.context',
   'sessionList.time',
+  'sidebar.top',
 ];
 
 /**
@@ -73,6 +83,7 @@ export interface SettingsValues {
   'sessionList.view': SessionListMode;
   'sessionList.context': boolean;
   'sessionList.time': boolean;
+  'sidebar.top': SidebarTopMode;
 }
 
 /** Результат «проверить» у пути к claude: тот же поиск, что при старте движка (`resolveExecutable`). */
@@ -97,6 +108,10 @@ export function isDefaultMode(v: unknown): v is DefaultMode {
 
 export function isSessionListMode(v: unknown): v is SessionListMode {
   return typeof v === 'string' && (SESSION_LIST_MODES as readonly string[]).includes(v);
+}
+
+export function isSidebarTopMode(v: unknown): v is SidebarTopMode {
+  return typeof v === 'string' && (SIDEBAR_TOP_MODES as readonly string[]).includes(v);
 }
 
 /** Следующий вид по кнопке в заголовке «Сессии»: подробно → компактно → плотно → подробно. */
@@ -175,6 +190,10 @@ export function validateSetting(key: SettingKey, value: unknown): Checked {
       return isSessionListMode(value)
         ? { ok: true, value }
         : bad(`Допустимо: ${SESSION_LIST_MODES.join(', ')}.`);
+    case 'sidebar.top':
+      return isSidebarTopMode(value)
+        ? { ok: true, value }
+        : bad(`Допустимо: ${SIDEBAR_TOP_MODES.join(', ')}.`);
     case 'contextThresholds': {
       const e = thresholdsError(value);
       return e ? bad(e) : { ok: true, value };
@@ -189,6 +208,7 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
   const th = cfg.get<unknown>('contextThresholds');
   const poll = cfg.get<unknown>('usagePollMinutes');
   const list = cfg.get<unknown>('sessionList.view');
+  const top = cfg.get<unknown>('sidebar.top');
   const str = (k: string) => {
     const v = cfg.get<unknown>(k);
     return typeof v === 'string' ? v : '';
@@ -209,6 +229,7 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
     'sessionList.view': isSessionListMode(list) ? list : DEFAULT_SESSION_LIST,
     'sessionList.context': cfg.get<unknown>('sessionList.context') !== false,
     'sessionList.time': cfg.get<unknown>('sessionList.time') !== false,
+    'sidebar.top': isSidebarTopMode(top) ? top : DEFAULT_SIDEBAR_TOP,
   };
 }
 

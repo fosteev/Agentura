@@ -5,6 +5,7 @@ import {
   MAX_POLL_MINUTES,
   MIN_POLL_MINUTES,
   SESSION_LIST_MODES,
+  SIDEBAR_TOP_MODES,
   thresholdsError,
   validateSetting,
   type SettingKey,
@@ -355,6 +356,10 @@ export function Settings() {
     m,
     T.listView.options[m] ?? m,
   ]);
+  const topModes = SIDEBAR_TOP_MODES.map((m): [string, string] => [
+    m,
+    T.sidebarTop.options[m] ?? m,
+  ]);
 
   return (
     <div class="webview settings">
@@ -458,6 +463,9 @@ export function Settings() {
           </Row>
           <Row name={T.listTime.name} isNew desc={T.listTime.desc} k="sessionList.time">
             <Toggle k="sessionList.time" value={v['sessionList.time']} />
+          </Row>
+          <Row name={T.sidebarTop.name} isNew desc={T.sidebarTop.desc} k="sidebar.top">
+            <Select k="sidebar.top" value={v['sidebar.top']} options={topModes} />
           </Row>
 
           <h2 id="engine">{T.sections.engine}</h2>

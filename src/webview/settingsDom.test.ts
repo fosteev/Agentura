@@ -39,6 +39,7 @@ const values: SettingsValues = {
   'sessionList.view': 'compact',
   'sessionList.context': true,
   'sessionList.time': true,
+  'sidebar.top': 'detailed',
 };
 const state = (over: Partial<SettingsValues> = {}) =>
   handleSettingsMessage({
@@ -103,6 +104,7 @@ describe('вкладка настроек', () => {
       'agentura.sessionList.view',
       'agentura.sessionList.context',
       'agentura.sessionList.time',
+      'agentura.sidebar.top',
       'agentura.claudeExecutable · только эта машина',
     ]);
   });

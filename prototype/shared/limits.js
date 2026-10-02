@@ -9,7 +9,7 @@
     var p = pct(b); if (p === null) return;
     m.classList.add('lim', level(p)); b.classList.add('pct');
   });
-  document.querySelectorAll('.sidebar .lim .row').forEach(function (r) {
+  document.querySelectorAll('.sidebar .lim .row, .sidebar .head .hl .m').forEach(function (r) {
     var p = pct(r.querySelector('.n')); if (p === null) return;
     r.classList.add(level(p));
   });

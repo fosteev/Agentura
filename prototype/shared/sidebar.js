@@ -23,7 +23,7 @@
       '<div class="activity" aria-hidden="true"><i class="a"></i><i></i><i></i><i></i><i class="on"></i></div>' +
       '<div class="sidebar" data-list="compact" data-ctx="on" data-time="on">' +
         '<div class="head"><span>Agentura</span><button class="gear' + (gear ? ' on' : '') + '" title="Настройки Agentura">⚙</button></div>' +
-        '<section class="sec"><h3><span class="tri"></span>Аккаунт и лимиты<button class="refresh" title="Обновить лимиты · данные на 14:52">↻</button></h3>' +
+        '<section class="sec acc"><h3><span class="tri"></span>Аккаунт и лимиты<button class="refresh" title="Обновить лимиты · данные на 14:52">↻</button></h3>' +
           '<div class="kv"><span>Аккаунт</span><b>andrey@example.com</b><span>План</span><b>Max 5×</b><span>Вход</span><b>через CLI · ок</b><span>Агент</span><b>Claude · claude 2.1.284</b></div>' +
           '<div class="lim">' +
             '<div class="row"><span>Окно 5 часов</span><span class="n' + (lim.full ? ' full' : '') + '">' + lim.h5 + ' %</span><span class="bar"><i class="' + (lim.full ? 'full' : '') + '" style="width:' + lim.h5 + '%"></i></span><small>' + lim.h5t + '</small></div>' +

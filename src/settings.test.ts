@@ -76,6 +76,10 @@ describe('sessionList', () => {
     expect(nextSessionListMode('compact')).toBe('dense');
     expect(nextSessionListMode('dense')).toBe('detailed');
   });
+  it('вид верха боковой панели — detailed, compact, dense', () => {
+    expect(validateSetting('sidebar.top', 'dense')).toEqual({ ok: true, value: 'dense' });
+    expect(validateSetting('sidebar.top', 'mini').ok).toBe(false);
+  });
 });
 
 describe('resolveDefaultMode / resolveDefaultEffort', () => {
@@ -106,12 +110,14 @@ describe('readSettings', () => {
         usagePollMinutes: 'z',
         'sessionList.view': 'tree',
         'sessionList.context': 'x',
+        'sidebar.top': 'mini',
       }),
     );
     expect(v).toMatchObject({
       'sessionList.view': 'compact',
       'sessionList.context': true,
       'sessionList.time': true,
+      'sidebar.top': 'detailed',
       defaultPermissionMode: 'manual',
       defaultEffort: '',
       contextThresholds: [120_000, 150_000],

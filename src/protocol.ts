@@ -16,7 +16,13 @@ import type {
 import type { Attachment, FileHit } from './shared/prompt';
 import type { ImageProblem } from './shared/images';
 import type { FileProblem } from './shared/files';
-import type { EngineCheck, SessionListMode, SettingKey, SettingsValues } from './settings';
+import type {
+  EngineCheck,
+  SessionListMode,
+  SettingKey,
+  SidebarTopMode,
+  SettingsValues,
+} from './settings';
 
 export type {
   AgentEvent,
@@ -173,10 +179,17 @@ export type ToWebview =
       mode?: PermissionMode;
     }
   /**
-   * Вид списка сессий боковой панели (`agentura.sessionList.*`): строк на сессию и колонки контекста и
-   * времени. На `ready` и при правке настройки.
+   * Вид боковой панели (`agentura.sessionList.*`, `agentura.sidebar.top`): строк на сессию, колонки контекста и
+   * времени, вид верха. На `ready` и при правке настройки.
    */
-  | { type: 'sidebar.view'; view: SessionListMode; context: boolean; time: boolean }
+  | {
+      type: 'sidebar.view';
+      view: SessionListMode;
+      context: boolean;
+      time: boolean;
+      /** Вид верха панели (`agentura.sidebar.top`). */
+      top: SidebarTopMode;
+    }
   /** Этап 6: аккаунт для боковой панели. */
   | ({ type: 'account.info' } & AccountSummary)
   /** Этап 6: команда из боковой панели (`/status`) — выполнить в этой вкладке. */

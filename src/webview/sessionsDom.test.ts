@@ -160,7 +160,7 @@ describe('боковая панель (sessions.html)', () => {
     expect(s[0]!.querySelector('.ctx')!.textContent).toBe('131k ctx');
     expect(s[0]!.querySelector('.when')!.textContent).toBe('сейчас');
     expect(s[1]!.querySelector('small')!.textContent).toContain('ждёт ответа');
-    expect(host.querySelector('input[type=search]')!.hasAttribute('disabled')).toBe(true);
+    expect(host.querySelector('input[type=search]')!.hasAttribute('disabled')).toBe(false);
     void push;
   });
 
@@ -221,7 +221,13 @@ describe('боковая панель (sessions.html)', () => {
     await flush();
     const bar = host.querySelector('.sidebar') as HTMLElement;
     expect([bar.dataset.list, bar.dataset.ctx, bar.dataset.time]).toEqual(['compact', 'on', 'on']);
-    sidebarMessages({ type: 'sidebar.view', view: 'dense', context: true, time: false });
+    sidebarMessages({
+      type: 'sidebar.view',
+      view: 'dense',
+      context: true,
+      time: false,
+      top: 'detailed',
+    });
     sidebarMessages({
       type: 'sessions.update',
       sessions: [session({ id: 'a', turns: 3, costUsd: 0.42, contextTokens: 173_000 })],
@@ -239,6 +245,126 @@ describe('боковая панель (sessions.html)', () => {
     await flush();
     expect(posted).toEqual([{ type: 'settings.set', key: 'sessionList.view', value: 'detailed' }]);
     expect(bar.dataset.list).toBe('detailed');
+  });
+
+  it('вид верха: sidebar.view ставит data-top; аккаунт строкой, короткий сброс, мини-шкалы в заголовке, ＋ — новая сессия', async () => {
+    const host = mount(Sidebar);
+    await flush();
+    const bar = host.querySelector('.sidebar') as HTMLElement;
+    expect(bar.dataset.top).toBe('detailed');
+    sidebarMessages({
+      type: 'sidebar.view',
+      view: 'compact',
+      context: true,
+      time: true,
+      top: 'compact',
+    });
+    sidebarMessages({
+      type: 'account.info',
+      email: 'a@b.c',
+      plan: 'Max 5×',
+      login: 'через CLI · ок',
+      engine: 'claude 2.1.285',
+    });
+    const at = new Date();
+    at.setHours(23, 30, 0, 0);
+    sidebarMessages({
+      type: 'limits.update',
+      updatedAt: Date.now(),
+      windows: [
+        { kind: 'five-hour', percent: 91, resetsAt: at.getTime() },
+        { kind: 'weekly', percent: 34, resetsAt: Date.now() + 2 * 86_400_000 },
+        { kind: 'weekly-model', model: 'Fable', percent: 12 },
+      ],
+    });
+    await flush();
+    expect(bar.dataset.top).toBe('compact');
+    const who = host.querySelector('.who') as HTMLElement;
+    expect(who.textContent).toBe('a@b.c· Max 5×· claude 2.1.285');
+    expect(who.title).toContain('Вход: через CLI · ок');
+    expect(who.querySelector('.okd')).not.toBeNull();
+    expect(host.querySelector('.lim .row .rs')?.textContent).toBe('→ 23:30');
+    sidebarMessages({
+      type: 'sidebar.view',
+      view: 'compact',
+      context: true,
+      time: true,
+      top: 'dense',
+    });
+    await flush();
+    expect(bar.dataset.top).toBe('dense');
+    expect(host.querySelector('.who')).toBeNull();
+    // мини-шкалы — только 5 часов и неделя; 91 % — красный уровень
+    const minis = [...host.querySelectorAll('.head .hl .m')] as HTMLElement[];
+    expect(minis.map((m) => m.textContent)).toEqual(['5 ч91 %', 'нед34 %']);
+    expect(minis[0]!.className).toBe('m lim-full');
+    expect(minis[1]!.className).toBe('m');
+    expect(minis[0]!.title).toContain('Окно 5 часов · сброс в 23:30');
+    expect((host.querySelector('.head') as HTMLElement).title).toContain('Аккаунт: a@b.c');
+    (host.querySelector('.head .hl .refresh') as HTMLElement).click();
+    (host.querySelector('.sec h3 button.add') as HTMLElement).click();
+    expect(posted.map((m) => m.type)).toEqual(['limits.refresh', 'session.new']);
+  });
+
+  it('поиск по названию фильтрует список, ✕ и Esc сбрасывают; пусто — «Ничего не найдено»', async () => {
+    const host = mount(Sidebar);
+    await flush();
+    sidebarMessages({
+      type: 'sessions.update',
+      sessions: [
+        session({ id: 'a', title: 'Плашка «нет связи»' }),
+        session({ id: 'b', title: 'ёлка в шапке' }),
+      ],
+    });
+    await flush();
+    const input = host.querySelector<HTMLInputElement>('.tools input')!;
+    const titles = () =>
+      [...host.querySelectorAll('.list .s .t')].map((t) => t.firstChild!.textContent);
+    const type = async (v: string) => {
+      input.value = v;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      await flush();
+    };
+    await type('  плаш ');
+    expect(titles()).toEqual(['Плашка «нет связи»']);
+    await type('елка');
+    expect(titles()).toEqual(['ёлка в шапке']);
+    const btn = host.querySelector<HTMLButtonElement>('.tools button')!;
+    expect(btn.textContent).toBe('✕');
+    btn.click();
+    await flush();
+    expect(titles()).toHaveLength(2);
+    await type('нет такой');
+    expect(host.querySelector('.list .day')!.textContent).toBe('Ничего не найдено.');
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await flush();
+    expect(input.value).toBe('');
+    expect(titles()).toHaveLength(2);
+  });
+
+  it('заголовки секций сворачивают и разворачивают; кнопки в заголовке не сворачивают', async () => {
+    const host = mount(Sidebar);
+    await flush();
+    const [acc, ses] = [...host.querySelectorAll<HTMLElement>('section.sec')];
+    const h = (sec: HTMLElement) => sec.querySelector<HTMLElement>('h3')!;
+    h(acc!).querySelector<HTMLButtonElement>('.refresh')!.click();
+    await flush();
+    expect(acc!.classList.contains('folded')).toBe(false);
+    posted.length = 0;
+    h(acc!).click();
+    await flush();
+    expect(acc!.classList.contains('folded')).toBe(true);
+    expect(h(acc!).getAttribute('aria-expanded')).toBe('false');
+    h(ses!).dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await flush();
+    expect(ses!.classList.contains('folded')).toBe(true);
+    expect(host.querySelector('.tools')!.hasAttribute('hidden')).toBe(true);
+    expect(host.querySelector('.list')!.hasAttribute('hidden')).toBe(true);
+    h(acc!).click();
+    h(ses!).click();
+    await flush();
+    expect(acc!.classList.contains('folded')).toBe(false);
+    expect(host.querySelector('.list')!.hasAttribute('hidden')).toBe(false);
   });
 
   it('пустой проект и неактивное окно: подпись и «0 %» без сброса', async () => {
