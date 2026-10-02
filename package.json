@@ -227,6 +227,21 @@
           "default": "detailed",
           "description": "Вид верха боковой панели: сколько места занимают аккаунт, лимиты и «Новая сессия»."
         },
+        "agentura.language": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "ru",
+            "en"
+          ],
+          "enumDescriptions": [
+            "Как в VS Code: русский при русском интерфейсе VS Code, иначе английский",
+            "Русский",
+            "English"
+          ],
+          "default": "auto",
+          "description": "Язык интерфейса Agentura. Применяется после перезагрузки окна."
+        },
         "agentura.limits.readKeychain": {
           "type": "boolean",
           "default": true,

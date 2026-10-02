@@ -12,6 +12,7 @@ import { SessionMemory } from './sessionMemory';
 import { SessionsService } from './sessionsService';
 import { showDebugState } from './debugPanel';
 import { SettingsPanel } from './settingsPanel';
+import { currentLanguage } from './webviewHost';
 import { WorkspaceFiles } from './workspaceFiles';
 
 /** Что активация отдаёт интеграционным тестам (только при запуске из исходников). */
@@ -143,6 +144,19 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     // правка настроек (UI, settings.json, вкладка настроек) доходит до открытых вкладок чата
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('agentura')) ChatPanel.settingsChanged();
+      if (e.affectsConfiguration('agentura.language')) {
+        const reload = currentLanguage() === 'en' ? 'Reload' : 'Перезагрузить';
+        void vscode.window
+          .showInformationMessage(
+            currentLanguage() === 'en'
+              ? 'Agentura language will apply after the window reloads.'
+              : 'Язык Agentura применится после перезагрузки окна.',
+            reload,
+          )
+          .then((pick) => {
+            if (pick === reload) void vscode.commands.executeCommand('workbench.action.reloadWindow');
+          });
+      }
     }),
     vscode.commands.registerCommand('agentura.showLogs', () => log.show()),
     // отладка: фикстуры состояний в отдельной вкладке без движка (этап 7)

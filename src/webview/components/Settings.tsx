@@ -2,6 +2,7 @@ import type { ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import {
   EFFORT_LEVELS,
+  LANGUAGE_MODES,
   MAX_POLL_MINUTES,
   MIN_POLL_MINUTES,
   SESSION_LIST_MODES,
@@ -361,6 +362,11 @@ export function Settings() {
     T.sidebarTop.options[m] ?? m,
   ]);
 
+  const languageModes = LANGUAGE_MODES.map((m): [string, string] => [
+    m,
+    T.language.options[m] ?? m,
+  ]);
+
   return (
     <div class="webview settings">
       <header class="hud" aria-label={T.aria}>
@@ -466,6 +472,9 @@ export function Settings() {
           </Row>
           <Row name={T.sidebarTop.name} isNew desc={T.sidebarTop.desc} k="sidebar.top">
             <Select k="sidebar.top" value={v['sidebar.top']} options={topModes} />
+          </Row>
+          <Row name={T.language.name} isNew desc={T.language.desc} k="language">
+            <Select k="language" value={v.language} options={languageModes} />
           </Row>
 
           <h2 id="engine">{T.sections.engine}</h2>

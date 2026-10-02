@@ -6,7 +6,7 @@ import { ChatPanel } from './chatPanel';
 import type { SessionsService } from './sessionsService';
 import type { Logger } from './logger';
 import type { UsageService } from './usage';
-import { attachMessaging, renderWebview, webviewOptions } from './webviewHost';
+import { attachMessaging, currentLanguage, renderWebview, webviewOptions } from './webviewHost';
 
 export const SIDEBAR_VIEW_ID = 'agentura.sidebar';
 
@@ -35,7 +35,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     this.view = view;
     const { webview } = view;
     webview.options = webviewOptions(this.context.extensionUri);
-    webview.html = renderWebview(webview, this.context.extensionUri, 'sidebar', 'Agentura');
+    webview.html = renderWebview(webview, this.context.extensionUri, 'sidebar', 'Agentura', currentLanguage());
     const version = String(this.context.extension.packageJSON.version);
     const sub = attachMessaging(webview, 'sidebar', version, this.log, (m) => {
       switch (m.type) {

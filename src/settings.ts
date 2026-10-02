@@ -32,6 +32,13 @@ export const DEFAULT_SESSION_LIST: SessionListMode = 'compact';
 export const SIDEBAR_TOP_MODES = ['detailed', 'compact', 'dense'] as const;
 export type SidebarTopMode = (typeof SIDEBAR_TOP_MODES)[number];
 export const DEFAULT_SIDEBAR_TOP: SidebarTopMode = 'detailed';
+/**
+ * Язык интерфейса (`language`): `auto` — как в VS Code (`vscode.env.language`), иначе явно. Применяется после
+ * перезагрузки окна.
+ */
+export const LANGUAGE_MODES = ['auto', 'ru', 'en'] as const;
+export type LanguageMode = (typeof LANGUAGE_MODES)[number];
+export const DEFAULT_LANGUAGE: LanguageMode = 'auto';
 
 /** Ключи без префикса `agentura.` — те же, что в `getConfiguration('agentura')`. */
 export type SettingKey =
@@ -46,7 +53,8 @@ export type SettingKey =
   | 'sessionList.view'
   | 'sessionList.context'
   | 'sessionList.time'
-  | 'sidebar.top';
+  | 'sidebar.top'
+  | 'language';
 
 export const SETTING_KEYS: readonly SettingKey[] = [
   'defaultPermissionMode',
@@ -61,6 +69,7 @@ export const SETTING_KEYS: readonly SettingKey[] = [
   'sessionList.context',
   'sessionList.time',
   'sidebar.top',
+  'language',
 ];
 
 /**
@@ -84,6 +93,7 @@ export interface SettingsValues {
   'sessionList.context': boolean;
   'sessionList.time': boolean;
   'sidebar.top': SidebarTopMode;
+  language: LanguageMode;
 }
 
 /** Результат «проверить» у пути к claude: тот же поиск, что при старте движка (`resolveExecutable`). */
@@ -112,6 +122,16 @@ export function isSessionListMode(v: unknown): v is SessionListMode {
 
 export function isSidebarTopMode(v: unknown): v is SidebarTopMode {
   return typeof v === 'string' && (SIDEBAR_TOP_MODES as readonly string[]).includes(v);
+}
+
+export function isLanguageMode(v: unknown): v is LanguageMode {
+  return typeof v === 'string' && (LANGUAGE_MODES as readonly string[]).includes(v);
+}
+
+/** Язык интерфейса: явный `ru`/`en`, иначе (auto или мусор) — по языку VS Code: `ru*` → русский, остальное → английский. */
+export function resolveLanguage(raw: unknown, envLanguage: string): 'ru' | 'en' {
+  if (raw === 'ru' || raw === 'en') return raw;
+  return envLanguage.toLowerCase().startsWith('ru') ? 'ru' : 'en';
 }
 
 /** Следующий вид по кнопке в заголовке «Сессии»: подробно → компактно → плотно → подробно. */
@@ -194,6 +214,10 @@ export function validateSetting(key: SettingKey, value: unknown): Checked {
       return isSidebarTopMode(value)
         ? { ok: true, value }
         : bad(`Допустимо: ${SIDEBAR_TOP_MODES.join(', ')}.`);
+    case 'language':
+      return isLanguageMode(value)
+        ? { ok: true, value }
+        : bad(`Допустимо: ${LANGUAGE_MODES.join(', ')}.`);
     case 'contextThresholds': {
       const e = thresholdsError(value);
       return e ? bad(e) : { ok: true, value };
@@ -209,6 +233,7 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
   const poll = cfg.get<unknown>('usagePollMinutes');
   const list = cfg.get<unknown>('sessionList.view');
   const top = cfg.get<unknown>('sidebar.top');
+  const lang = cfg.get<unknown>('language');
   const str = (k: string) => {
     const v = cfg.get<unknown>(k);
     return typeof v === 'string' ? v : '';
@@ -230,6 +255,7 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
     'sessionList.context': cfg.get<unknown>('sessionList.context') !== false,
     'sessionList.time': cfg.get<unknown>('sessionList.time') !== false,
     'sidebar.top': isSidebarTopMode(top) ? top : DEFAULT_SIDEBAR_TOP,
+    language: isLanguageMode(lang) ? lang : DEFAULT_LANGUAGE,
   };
 }
 

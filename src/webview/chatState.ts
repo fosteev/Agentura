@@ -191,13 +191,11 @@ export function clock(ms: number): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-const WEEKDAYS = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
-
 /** Время сброса: сегодня — `17:00`, иначе `пт 09:00`. */
 export function resetLabel(resetsAt: number, now: number): string {
   const d = new Date(resetsAt);
   const sameDay = d.toDateString() === new Date(now).toDateString();
-  return sameDay ? clock(resetsAt) : `${WEEKDAYS[d.getDay()]} ${clock(resetsAt)}`;
+  return sameDay ? clock(resetsAt) : `${ui.time.weekdaysShort[d.getDay()]} ${clock(resetsAt)}`;
 }
 
 function push(s: ChatState, row: DistributiveOmit<FeedRow, 'id'>): ChatState {
@@ -905,5 +903,5 @@ function compactionText(e: Extract<AgentEvent, { type: 'compaction.end' }>, now:
     e.postTokens !== undefined
       ? `${formatInt(e.preTokens)} → ${formatInt(e.postTokens)}`
       : formatInt(e.preTokens);
-  return [`${clock(now)} · ${how}: `, { b: range }, ' токенов'];
+  return [`${clock(now)} · ${how}: `, { b: range }, ui.sys.tokensSuffix];
 }

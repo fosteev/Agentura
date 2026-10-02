@@ -65,9 +65,9 @@ type MenuName = 'mode' | 'model' | 'effort' | 'agent' | 'plus';
 
 /** Запасной список, пока движок не прислал `supportedModels()` (сессия ещё поднимается). */
 const FALLBACK_MODELS = [
-  { value: 'opus', displayName: 'opus', description: 'сложные задачи, планирование' },
-  { value: 'sonnet', displayName: 'sonnet', description: 'быстрее и дешевле' },
-  { value: 'haiku', displayName: 'haiku', description: 'мелкие правки' },
+  { value: 'opus', displayName: 'opus', description: ui.menus.modelDesc.opus },
+  { value: 'sonnet', displayName: 'sonnet', description: ui.menus.modelDesc.sonnet },
+  { value: 'haiku', displayName: 'haiku', description: ui.menus.modelDesc.haiku },
 ];
 
 const MODE_ORDER: PermissionMode[] = ['default', 'acceptEdits', 'plan'];
@@ -817,7 +817,7 @@ export function Composer() {
               <ItemButton
                 it={{
                   label: 'Codex',
-                  small: 'адаптер по форме ACP',
+                  small: ui.compose.acpAdapter,
                   hint: ui.compose.agentSoon,
                   dis: true,
                 }}
@@ -825,7 +825,7 @@ export function Composer() {
               <ItemButton
                 it={{
                   label: 'Gemini',
-                  small: 'адаптер по форме ACP',
+                  small: ui.compose.acpAdapter,
                   hint: ui.compose.agentSoon,
                   dis: true,
                 }}

@@ -83,10 +83,10 @@ export function limitBlock(input: LimitInput, now: number): LimitBlock | undefin
 /** `2 ч 04 мин`, `37 мин`, `меньше минуты`. */
 export function leftLabel(ms: number): string {
   const total = Math.max(0, Math.ceil(ms / 60_000));
-  if (total < 1) return 'меньше минуты';
+  if (total < 1) return ui.time.lessThanMinute;
   const h = Math.floor(total / 60);
   const m = total % 60;
-  return h > 0 ? `${h} ч ${String(m).padStart(2, '0')} мин` : `${m} мин`;
+  return h > 0 ? ui.time.hourMinutes(h, String(m).padStart(2, '0')) : ui.time.minutes(m);
 }
 
 export interface LimitBanner {

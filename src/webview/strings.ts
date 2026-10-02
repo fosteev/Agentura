@@ -1,5 +1,12 @@
-/** Строки интерфейса webview в одном месте — под будущую локализацию. Данные сессий сюда не попадают. */
-export const ui = {
+import type { EffortLevel } from '../agent/types';
+import { en } from './strings.en';
+
+/**
+ * Строки интерфейса webview в одном месте: русский словарь `ru` здесь, английский — `strings.en.ts`
+ * (тот же тип `Ui`, расхождение ключей и сигнатур ловит компилятор). Язык берётся из `<html lang>`
+ * при загрузке модуля. Данные сессий сюда не попадают.
+ */
+const ru = {
   hud: {
     aria: 'Сессия',
     sessions: 'sessions',
@@ -50,6 +57,10 @@ export const ui = {
     noImageData:
       'Транскрипт не отдал картинку (или она старше последних в истории) — только плашка',
     openFile: 'Открыть файл во вкладке редактора',
+    inPath: (path: string) => `в ${path}`,
+    todoWhat: 'список задач',
+    askFallback: 'вопрос',
+    planReady: 'план готов',
     fileNoCopy:
       'Файл вне рабочей папки, а копии в истории нет (старше последних) — откроется исходный, если он на месте',
   },
@@ -59,6 +70,7 @@ export const ui = {
     compactedManual: 'контекст сжат',
     compactFailed: (error?: string) => `не удалось сжать контекст${error ? `: ${error}` : ''}`,
     interrupted: 'ход остановлен',
+    tokensSuffix: ' токенов',
     closed: (reason: 'exit' | 'error' | 'disposed', message?: string) =>
       reason === 'error'
         ? `сессия оборвалась${message ? `: ${message}` : ''}`
@@ -156,7 +168,7 @@ export const ui = {
     sent: 'ответ отправлен…',
     enter: 'enter',
     esc: 'esc',
-    destination: (d?: string) =>
+    destination: (d?: string): string =>
       d === 'localSettings'
         ? '.claude/settings.local.json'
         : d === 'projectSettings'
@@ -438,6 +450,7 @@ export const ui = {
     thinkingHint: 'показывать блоки think в ленте',
     byDefault: 'по умолчанию',
     bypassOff: 'включается настройкой agentura.allowBypassPermissions',
+    modelDesc: { opus: 'сложные задачи, планирование', sonnet: 'быстрее и дешевле', haiku: 'мелкие правки' },
   },
   commands: {
     plan: ['перейти в режим плана', 'режим'],
@@ -456,6 +469,37 @@ export const ui = {
     bypassPermissions: ['без разрешений', 'без вопросов вообще', 'bypass'],
   } as Record<string, readonly [string, string, string]>,
   efforts: ['low', 'medium', 'high', 'xhigh', 'max'] as const,
+  /** Даты и длительности: названия дней и месяцев, порядок «число месяц», предлоги. */
+  time: {
+    weekdaysShort: ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'],
+    /** После «в »: `в четверг`. */
+    weekdaysLong: ['воскресенье', 'понедельник', 'вторник', 'среду', 'четверг', 'пятницу', 'субботу'],
+    months: [
+      'января',
+      'февраля',
+      'марта',
+      'апреля',
+      'мая',
+      'июня',
+      'июля',
+      'августа',
+      'сентября',
+      'октября',
+      'ноября',
+      'декабря',
+    ],
+    /** `23 сентября`, с годом — `23 сентября 2025`. */
+    dayMonth: (day: number, month: number, year?: number): string =>
+      `${day} ${ru.time.months[month]}${year !== undefined ? ` ${year}` : ''}`,
+    lessThanMinute: 'меньше минуты',
+    minutes: (n: number) => `${n} мин`,
+    hourMinutes: (h: number, mm: string) => `${h} ч ${mm} мин`,
+    daysHours: (d: number, h: number) => `${d} дн ${h} ч`,
+    oneHour: '1 ч',
+    at: (clock: string) => `в ${clock}`,
+    atWeekday: (weekday: string, clock: string) => `в ${weekday}, ${clock}`,
+    atDate: (date: string, clock: string) => `${date}, ${clock}`,
+  },
   settings: {
     title: 'Настройки',
     head: 'Agentura · настройки',
@@ -544,6 +588,15 @@ export const ui = {
       name: 'Время в строке',
       desc: 'Колонка справа: когда сессия обновлялась — сейчас, 13:05, вт, 25.09.',
     },
+    language: {
+      name: 'Язык интерфейса',
+      desc: 'Применяется после перезагрузки окна VS Code. «Как в VS Code» — русский при русском интерфейсе VS Code, иначе английский. Названия команд и описания настроек всегда следуют языку VS Code.',
+      options: {
+        auto: 'Как в VS Code',
+        ru: 'Русский',
+        en: 'English',
+      } as Record<string, string>,
+    },
     sidebarTop: {
       name: 'Верх боковой панели',
       desc: 'Сколько места под аккаунтом и лимитами: подробно — таблицей, компактно — по строке, плотно — мини-шкалы лимитов в заголовке панели.',
@@ -626,6 +679,18 @@ export const ui = {
   },
 } as const;
 
+/** Тип словаря: строки — `string`, не литералы, функции и кортежи сохраняют сигнатуры. */
+type Widen<T> = T extends string
+  ? string
+  : T extends (...args: never[]) => unknown
+    ? T
+    : T extends readonly unknown[]
+      ? { readonly [K in keyof T]: Widen<T[K]> }
+      : T extends object
+        ? { [K in keyof T]: Widen<T[K]> }
+        : T;
+export type Ui = Omit<Widen<typeof ru>, 'efforts'> & { readonly efforts: readonly EffortLevel[] };
+
 function plural(n: number, one: string, few: string, many: string): string {
   const m10 = n % 10;
   const m100 = n % 100;
@@ -633,3 +698,12 @@ function plural(n: number, one: string, few: string, many: string): string {
   if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
   return many;
 }
+
+/** Язык оболочки: `<html lang>` задаёт хост (`buildWebviewHtml`); без атрибута (тесты, jsdom) — русский. */
+function pickLang(): 'ru' | 'en' {
+  if (typeof document === 'undefined') return 'ru';
+  return document.documentElement.lang === 'en' ? 'en' : 'ru';
+}
+
+export const uiLang: 'ru' | 'en' = pickLang();
+export const ui: Ui = uiLang === 'en' ? en : (ru as Ui);

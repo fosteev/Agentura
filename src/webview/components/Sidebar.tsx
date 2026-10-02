@@ -9,7 +9,7 @@ import {
   type SidebarTopMode,
 } from '../../settings';
 import { limitLevel } from '../hudView';
-import { ui } from '../strings';
+import { ui, uiLang } from '../strings';
 import {
   ctxLabel,
   filterSessions,
@@ -62,7 +62,7 @@ function refreshTitle(): string {
   if (u.pending) return ui.sidebar.refreshing;
   const parts: string[] = [ui.sidebar.refreshTitle];
   if (u.updatedAt) {
-    parts.push(`${ui.sidebar.updatedAt} ${new Date(u.updatedAt).toLocaleTimeString('ru')}`);
+    parts.push(`${ui.sidebar.updatedAt} ${new Date(u.updatedAt).toLocaleTimeString(uiLang)}`);
   }
   if (u.error) parts.push(`${ui.sidebar.refreshFailed}: ${u.error}`);
   return parts.join(' · ');

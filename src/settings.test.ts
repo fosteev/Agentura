@@ -3,6 +3,7 @@ import {
   nextSessionListMode,
   overriddenKeys,
   readSettings,
+  resolveLanguage,
   resolveDefaultEffort,
   resolveDefaultMode,
   thresholdsError,
@@ -79,6 +80,27 @@ describe('sessionList', () => {
   it('вид верха боковой панели — detailed, compact, dense', () => {
     expect(validateSetting('sidebar.top', 'dense')).toEqual({ ok: true, value: 'dense' });
     expect(validateSetting('sidebar.top', 'mini').ok).toBe(false);
+  });
+});
+
+describe('язык интерфейса', () => {
+  it('validateSetting: auto, ru, en', () => {
+    expect(validateSetting('language', 'en')).toEqual({ ok: true, value: 'en' });
+    expect(validateSetting('language', 'de').ok).toBe(false);
+  });
+  it('resolveLanguage', () => {
+    expect(resolveLanguage('auto', 'ru')).toBe('ru');
+    expect(resolveLanguage('auto', 'ru-RU')).toBe('ru');
+    expect(resolveLanguage('auto', 'en-US')).toBe('en');
+    expect(resolveLanguage('auto', 'de')).toBe('en');
+    expect(resolveLanguage('en', 'ru')).toBe('en');
+    expect(resolveLanguage('ru', 'en')).toBe('ru');
+    expect(resolveLanguage(42, 'ru')).toBe('ru');
+    expect(resolveLanguage(undefined, 'fr')).toBe('en');
+  });
+  it('readSettings: мусор → auto', () => {
+    expect(readSettings(cfgOf({ language: 'xx' })).language).toBe('auto');
+    expect(readSettings(cfgOf({ language: 'en' })).language).toBe('en');
   });
 });
 

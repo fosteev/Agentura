@@ -1,5 +1,6 @@
 export interface WebviewHtmlOptions {
   title: string;
+  lang: 'ru' | 'en';
   cspSource: string;
   nonce: string;
   scriptUri: string;
@@ -23,7 +24,7 @@ export function buildWebviewHtml(o: WebviewHtmlOptions): string {
     .map((u) => `<link rel="stylesheet" href="${escapeAttr(u)}">`)
     .join('\n');
   return `<!doctype html>
-<html lang="ru">
+<html lang="${o.lang}">
 <head>
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="${csp}">

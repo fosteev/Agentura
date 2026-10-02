@@ -3,7 +3,7 @@ import { resolveExecutable } from '../agent/claude/executable';
 import { postToWebview } from '../protocol';
 import type { Logger } from './logger';
 import { SettingsController } from './settingsController';
-import { attachMessaging, renderWebview, webviewOptions } from './webviewHost';
+import { attachMessaging, currentLanguage, renderWebview, webviewOptions } from './webviewHost';
 
 export const SETTINGS_VIEW_TYPE = 'agentura.settings';
 
@@ -55,7 +55,13 @@ export class SettingsPanel {
       },
       warn: (m) => log.warn(m),
     });
-    webview.html = renderWebview(webview, context.extensionUri, 'settings', 'Agentura · настройки');
+    webview.html = renderWebview(
+      webview,
+      context.extensionUri,
+      'settings',
+      currentLanguage() === 'en' ? 'Agentura · Settings' : 'Agentura · настройки',
+      currentLanguage(),
+    );
     this.disposables.push(
       attachMessaging(
         webview,

@@ -26,7 +26,7 @@ import type { SessionMemory } from './sessionMemory';
 import type { SessionsService } from './sessionsService';
 import type { UsageService } from './usage';
 import type { Logger } from './logger';
-import { attachMessaging, renderWebview, webviewOptions } from './webviewHost';
+import { attachMessaging, currentLanguage, renderWebview, webviewOptions } from './webviewHost';
 import { WorkspaceFiles } from './workspaceFiles';
 import { writeImageTemp } from './imageFiles';
 import { fileName } from '../shared/files';
@@ -374,7 +374,7 @@ export class ChatPanel {
 
     ChatPanel.panels.push(this);
     ChatPanel.lastActive = this;
-    panel.webview.html = renderWebview(panel.webview, context.extensionUri, 'chat', 'Agentura');
+    panel.webview.html = renderWebview(panel.webview, context.extensionUri, 'chat', 'Agentura', currentLanguage());
     this.disposables.push(
       attachMessaging(panel.webview, 'chat', version, log, (m) => {
         // 'ready' уже обработан в attachMessaging (init); остальное — контроллеру
