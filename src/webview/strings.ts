@@ -7,6 +7,15 @@ export const ui = {
     untitled: 'новая сессия',
   },
   tabs: { chat: 'чат', turn: 'ход', agents: 'агенты' },
+  panel: {
+    tabsAria: 'Панель хода и агентов',
+    hide: 'Скрыть панель',
+    show: 'Показать панель',
+    railAria: 'Свёрнутая панель',
+    openTab: (name: string) => `Открыть панель: ${name}`,
+    gripAria: 'Ширина панели',
+    gripTitle: 'Тяни, чтобы изменить ширину; двойной клик — 300 px',
+  },
   log: {
     aria: 'Лента сессии',
     diff: 'diff',

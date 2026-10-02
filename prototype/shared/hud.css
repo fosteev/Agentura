@@ -18,7 +18,7 @@
 .hud .tabs button { padding: 9px 10px 7px; }
 .hud .sess { display: none; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-left: 8px; }
 .hud .sess b { color: var(--fg); font-weight: 500; }
-html:not([data-width="380"]) .hud .sess { display: block; }
+html:is([data-width="900"],[data-width="full"],[data-width="vscode"]) .hud .sess { display: block; }
 .hud .acts { margin-left: auto; display: flex; gap: 12px; }
 .hud .acts button { color: var(--fg-mute); }
 
@@ -54,24 +54,24 @@ html[data-width="380"] .compose .ctx .cn { margin-left: 0; white-space: normal; 
 .tabs button[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--fg); }
 .tabs button .b { display: inline-block; min-width: 16px; padding: 0 4px; border-radius: 8px; background: var(--badge); color: var(--badge-fg); font-size: 10px; text-align: center; margin-left: 4px; }
 .tabs button .b.live { background: var(--info); color: #fff; }
-html:not([data-width="380"]) .tabs { display: none; }
+html:is([data-width="900"],[data-width="full"],[data-width="vscode"]) .tabs { display: none; }
 
 /* тело */
 .body { min-height: 0; display: grid; grid-template-columns: 1fr; }
 .pane { overflow: auto; min-width: 0; }
 .pane[hidden] { display: none; }
 /* широкий режим (всё, кроме 380; в расширении — webview от 700 px): справа панель с вкладками «ход | агенты» */
-html:not([data-width="380"]) .body { grid-template-columns: 1fr var(--side-w, 300px); }
-html:not([data-width="380"]) .pane.side { display: flex !important; flex-direction: column; overflow: hidden; border-left: 1px solid var(--line); background: var(--bg-side); position: relative; }
+html:is([data-width="900"],[data-width="full"],[data-width="vscode"]) .body { grid-template-columns: 1fr var(--side-w, 300px); }
+html:is([data-width="900"],[data-width="full"],[data-width="vscode"]) .pane.side { display: flex !important; flex-direction: column; overflow: hidden; border-left: 1px solid var(--line); background: var(--bg-side); position: relative; }
 /* видна одна вкладка панели на всю высоту и скроллится сама; «предыдущий» — внизу «хода», «за сессию» — внизу «агентов» */
-html:not([data-width="380"]) .pane.side .tabpane { display: none !important; }
-html:not([data-width="380"]) .pane.side[data-active="turn"] #pane-turn, html:not([data-width="380"]) .pane.side[data-active="agents"] #pane-agents { display: block !important; flex: 1; min-height: 0; overflow: auto; }
+html:is([data-width="900"],[data-width="full"],[data-width="vscode"]) .pane.side .tabpane { display: none !important; }
+html:is([data-width="900"],[data-width="full"],[data-width="vscode"]) .pane.side[data-active="turn"] #pane-turn, html:is([data-width="900"],[data-width="full"],[data-width="vscode"]) .pane.side[data-active="agents"] #pane-agents { display: block !important; flex: 1; min-height: 0; overflow: auto; }
 /* карта агентов в панели — всегда список над деталями */
-html:not([data-width="380"]) .pane.side .amap { grid-template-columns: 1fr; min-height: 0; }
-html:not([data-width="380"]) .pane.side .amap > .list { border-right: 0; }
-html:not([data-width="380"]) .pane.side .amap > .det { border-top: 1px solid var(--line); }
-html:not([data-width="380"]) .pane.side .det .hd { grid-template-columns: minmax(0, 1fr); }
-html:not([data-width="380"]) .pane.side .det .hd .acts { grid-row: auto; grid-column: 1; }
+html:is([data-width="900"],[data-width="full"],[data-width="vscode"]) .pane.side .amap { grid-template-columns: 1fr; min-height: 0; }
+html:is([data-width="900"],[data-width="full"],[data-width="vscode"]) .pane.side .amap > .list { border-right: 0; }
+html:is([data-width="900"],[data-width="full"],[data-width="vscode"]) .pane.side .amap > .det { border-top: 1px solid var(--line); }
+html:is([data-width="900"],[data-width="full"],[data-width="vscode"]) .pane.side .det .hd { grid-template-columns: minmax(0, 1fr); }
+html:is([data-width="900"],[data-width="full"],[data-width="vscode"]) .pane.side .det .hd .acts { grid-row: auto; grid-column: 1; }
 
 /* полоса вкладок панели, кнопка «скрыть», ручка ресайза */
 .ptabs { display: flex; align-items: stretch; flex: none; min-height: 34px; padding: 0 6px; border-bottom: 1px solid var(--line); }
@@ -80,23 +80,20 @@ html:not([data-width="380"]) .pane.side .det .hd .acts { grid-row: auto; grid-co
 .ptabs button .b { display: inline-block; min-width: 16px; padding: 0 4px; border-radius: 8px; background: var(--badge); color: var(--badge-fg); font-size: 10px; text-align: center; margin-left: 4px; }
 .ptabs button .b.live { background: var(--info); color: #fff; }
 .ptabs .phide { margin-left: auto; align-self: center; display: inline-flex; padding: 4px; border-radius: 3px; color: var(--fg-mute); }
-.ptabs .phide:hover, .showp:hover, .rail button:hover { background: var(--bg-hover); color: var(--fg); }
+.ptabs .phide:hover, .rail button:hover { background: var(--bg-hover); color: var(--fg); }
 .ico { width: 14px; height: 14px; display: block; }
 .grip { position: absolute; z-index: 5; top: 0; bottom: 0; left: 0; width: 6px; cursor: col-resize; touch-action: none; }
 .grip::after { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 2px; background: var(--accent); opacity: 0; }
 .grip:hover::after, .grip.drag::after { opacity: 1; }
 html.resizing, html.resizing * { user-select: none !important; cursor: col-resize !important; }
-html[data-width="380"] .ptabs, html[data-width="380"] .grip, html[data-width="380"] .rail, html[data-width="380"] .showp { display: none !important; }
+/* узкий режим: в прототипе data-width="380", в расширении атрибута нет — поэтому «не широкий», а не «380» */
+html:not(:is([data-width="900"],[data-width="full"],[data-width="vscode"])) :is(.ptabs, .grip, .rail) { display: none !important; }
 
-/* свёрнутая панель: вид A (data-collapse="hidden") — кнопка в шапке; вид B ("rail") — полоса 32 px справа */
-.showp { display: none; position: relative; align-self: center; padding: 4px; border-radius: 3px; color: var(--fg-mute); }
+/* свёрнутая панель — полоса 32 px справа */
 .rail { display: none; }
-html:not([data-width="380"]):not([data-collapse="rail"]) .webview:has(.body[data-side="off"]) .showp { display: inline-flex; }
-.webview:has(.ptabs [data-ptab="agents"] .b.live) .showp::after { content: ""; position: absolute; top: 2px; right: 2px; width: 6px; height: 6px; border-radius: 50%; background: var(--info); }
-html:not([data-width="380"]) .body[data-side="off"] .pane.side { display: none !important; }
-html:not([data-width="380"]) .body[data-side="off"] { grid-template-columns: 1fr; }
-html:not([data-width="380"])[data-collapse="rail"] .body[data-side="off"] { grid-template-columns: 1fr 32px; }
-html:not([data-width="380"])[data-collapse="rail"] .body[data-side="off"] .rail { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0; min-height: 0; background: var(--bg-side); border-left: 1px solid var(--line); }
+html:is([data-width="900"],[data-width="full"],[data-width="vscode"]) .body[data-side="off"] .pane.side { display: none !important; }
+html:is([data-width="900"],[data-width="full"],[data-width="vscode"]) .body[data-side="off"] { grid-template-columns: 1fr 32px; }
+html:is([data-width="900"],[data-width="full"],[data-width="vscode"]) .body[data-side="off"] .rail { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0; min-height: 0; background: var(--bg-side); border-left: 1px solid var(--line); }
 .rail button { width: 28px; display: grid; justify-items: center; gap: 3px; padding: 6px 0; border-radius: 3px; color: var(--fg-mute); }
 .rail .b { min-width: 14px; height: 14px; line-height: 14px; padding: 0 3px; border-radius: 7px; background: var(--badge); color: var(--badge-fg); font-size: 9.5px; text-align: center; }
 .rail .b.live { background: var(--info); color: #fff; }

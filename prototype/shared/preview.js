@@ -12,14 +12,11 @@
   }
   apply('theme', store.get('agentura-theme') || 'dark');
   apply('width', store.get('agentura-width') || document.documentElement.getAttribute('data-width') || '380');
-  // вид свёрнутой правой панели: A «hidden» (кнопка в шапке) или B «rail» (полоса); атрибут экрана сильнее сохранённого
-  apply('collapse', html.getAttribute('data-collapse') || store.get('agentura-collapse') || 'hidden');
   document.addEventListener('click', function (e) {
-    var t = e.target.closest('[data-set-theme],[data-set-width],[data-set-collapse]');
+    var t = e.target.closest('[data-set-theme],[data-set-width]');
     if (!t) return;
     if (t.hasAttribute('data-set-theme')) apply('theme', t.getAttribute('data-set-theme'));
     if (t.hasAttribute('data-set-width')) apply('width', t.getAttribute('data-set-width'));
-    if (t.hasAttribute('data-set-collapse')) apply('collapse', t.getAttribute('data-set-collapse'));
   });
   // раскрытие/сворачивание блоков внутри прототипа
   document.addEventListener('click', function (e) {

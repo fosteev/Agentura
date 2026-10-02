@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { SessionSummary } from '../../protocol';
-import { menuKeys, tabStep } from '../a11y';
+import { menuKeys } from '../a11y';
 import { costLabel, tokensLabel, whenLabel } from '../sessionsView';
 import { ui } from '../strings';
+import { TabBar, type TabItem } from './TabBar';
 
 export type Tab = 'chat' | 'turn' | 'agents';
 
@@ -56,54 +57,34 @@ export function Hud({
     };
   }, [open]);
   const now = Date.now();
-  const tabs: readonly (readonly [Tab, string])[] = [
-    ['chat', ui.tabs.chat],
-    ['turn', ui.tabs.turn],
-    ['agents', ui.tabs.agents],
+  const tabs: readonly TabItem<Tab>[] = [
+    { key: 'chat', label: ui.tabs.chat },
+    {
+      key: 'turn',
+      label: ui.tabs.turn,
+      disabled: !sidePanesEnabled,
+      ...(badges.turn
+        ? { badge: { text: String(badges.turn.count), live: badges.turn.live } }
+        : {}),
+    },
+    {
+      key: 'agents',
+      label: ui.tabs.agents,
+      disabled: !sidePanesEnabled,
+      ...(badges.agents ? { badge: badges.agents } : {}),
+    },
   ];
   return (
     <header class="hud" aria-label={ui.hud.aria}>
-      <nav
+      <TabBar
         class="tabs"
-        role="tablist"
-        aria-label={ui.hud.aria}
-        onKeyDown={(e) => {
-          const enabled = tabs.map(([k]) => k === 'chat' || sidePanesEnabled);
-          const next = tabStep(
-            e.key,
-            tabs.findIndex(([k]) => k === tab),
-            enabled,
-          );
-          if (next === undefined) return;
-          e.preventDefault();
-          onTab(tabs[next]![0]);
-          const list = e.currentTarget as HTMLElement | null;
-          requestAnimationFrame(() => {
-            const buttons = list?.querySelectorAll<HTMLElement>('[role=tab]');
-            buttons?.[next]?.focus();
-          });
-        }}
-      >
-        {tabs.map(([k, label]) => (
-          <button
-            role="tab"
-            id={`tab-${k}`}
-            aria-controls={`pane-${k}`}
-            aria-selected={tab === k}
-            tabIndex={tab === k ? 0 : -1}
-            disabled={k !== 'chat' && !sidePanesEnabled}
-            onClick={() => onTab(k)}
-          >
-            {label}
-            {k === 'turn' && badges.turn && (
-              <span class={badges.turn.live ? 'b live' : 'b'}>{badges.turn.count}</span>
-            )}
-            {k === 'agents' && badges.agents && (
-              <span class={badges.agents.live ? 'b live' : 'b'}>{badges.agents.text}</span>
-            )}
-          </button>
-        ))}
-      </nav>
+        tag="nav"
+        items={tabs}
+        active={tab}
+        onSelect={onTab}
+        idPrefix="tab"
+        ariaLabel={ui.hud.aria}
+      />
       <span class="sess">
         {project} · <b>{title || ui.hud.untitled}</b>
       </span>

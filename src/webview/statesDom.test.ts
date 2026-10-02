@@ -408,7 +408,7 @@ describe('доступность', () => {
     const host = mount();
     play('working');
     await flush();
-    const tabs = [...host.querySelectorAll('[role="tab"]')] as HTMLElement[];
+    const tabs = [...host.querySelectorAll('.tabs [role="tab"]')] as HTMLElement[];
     expect(tabs.map((t) => t.getAttribute('aria-controls'))).toEqual([
       'pane-chat',
       'pane-turn',
@@ -420,7 +420,7 @@ describe('доступность', () => {
     );
     await flush();
     expect(
-      (host.querySelectorAll('[role="tab"]')[1] as HTMLElement).getAttribute('aria-selected'),
+      (host.querySelectorAll('.tabs [role="tab"]')[1] as HTMLElement).getAttribute('aria-selected'),
     ).toBe('true');
     expect(host.querySelector('#pane-turn')?.getAttribute('role')).toBe('tabpanel');
   });
