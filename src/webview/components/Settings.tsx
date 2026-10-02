@@ -4,6 +4,7 @@ import {
   EFFORT_LEVELS,
   MAX_POLL_MINUTES,
   MIN_POLL_MINUTES,
+  SESSION_LIST_MODES,
   thresholdsError,
   validateSetting,
   type SettingKey,
@@ -23,7 +24,7 @@ import { ui } from '../strings';
 const T = ui.settings;
 /** Ширина вкладки, с которой слева появляется навигация по разделам (в узком сплите она скрыта). */
 const NAV_PX = 600;
-const SECTIONS = ['perm', 'model', 'ctx', 'lim', 'engine'] as const;
+const SECTIONS = ['perm', 'model', 'ctx', 'lim', 'view', 'engine'] as const;
 type Section = (typeof SECTIONS)[number];
 
 /** Черновик поля: пока человек печатает, показываем его; пришло новое значение из хоста — берём его. */
@@ -350,6 +351,11 @@ export function Settings() {
     ...EFFORT_LEVELS.map((e): [string, string] => [e, e]),
   ];
 
+  const listModes = SESSION_LIST_MODES.map((m): [string, string] => [
+    m,
+    T.listView.options[m] ?? m,
+  ]);
+
   return (
     <div class="webview settings">
       <header class="hud" aria-label={T.aria}>
@@ -441,6 +447,17 @@ export function Settings() {
           </Row>
           <Row name={T.keychain.name} desc={T.keychain.desc} k="limits.readKeychain">
             <Toggle k="limits.readKeychain" value={v['limits.readKeychain']} />
+          </Row>
+
+          <h2 id="view">{T.sections.view}</h2>
+          <Row name={T.listView.name} isNew desc={T.listView.desc} k="sessionList.view">
+            <Select k="sessionList.view" value={v['sessionList.view']} options={listModes} />
+          </Row>
+          <Row name={T.listContext.name} isNew desc={T.listContext.desc} k="sessionList.context">
+            <Toggle k="sessionList.context" value={v['sessionList.context']} />
+          </Row>
+          <Row name={T.listTime.name} isNew desc={T.listTime.desc} k="sessionList.time">
+            <Toggle k="sessionList.time" value={v['sessionList.time']} />
           </Row>
 
           <h2 id="engine">{T.sections.engine}</h2>

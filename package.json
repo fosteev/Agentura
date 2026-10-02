@@ -187,6 +187,31 @@
           "maximum": 1440,
           "description": "Как часто опрашивать лимиты подписки, минут."
         },
+        "agentura.sessionList.view": {
+          "type": "string",
+          "enum": [
+            "detailed",
+            "compact",
+            "dense"
+          ],
+          "enumDescriptions": [
+            "Подробно: две строки на сессию — название, под ним ходы и цена",
+            "Компактно: одна строка, кроме текущей, идущих и ждущих ответа",
+            "Плотно: одна строка на любую сессию, подробности — в подсказке"
+          ],
+          "default": "compact",
+          "description": "Вид списка сессий в боковой панели. Переключается и кнопкой в заголовке «Сессии»."
+        },
+        "agentura.sessionList.context": {
+          "type": "boolean",
+          "default": true,
+          "description": "Показывать в списке сессий колонку контекста последнего запроса (173k ctx)."
+        },
+        "agentura.sessionList.time": {
+          "type": "boolean",
+          "default": true,
+          "description": "Показывать в списке сессий колонку времени (сейчас, 13:05, вт, 25.09)."
+        },
         "agentura.limits.readKeychain": {
           "type": "boolean",
           "default": true,

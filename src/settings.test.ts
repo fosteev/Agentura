@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  nextSessionListMode,
   overriddenKeys,
   readSettings,
   resolveDefaultEffort,
@@ -65,6 +66,18 @@ describe('validateSetting', () => {
   });
 });
 
+describe('sessionList', () => {
+  it('вид — только detailed, compact, dense; кнопка ходит по кругу; колонки — булевы', () => {
+    expect(validateSetting('sessionList.view', 'dense')).toEqual({ ok: true, value: 'dense' });
+    expect(validateSetting('sessionList.view', 'tree').ok).toBe(false);
+    expect(validateSetting('sessionList.time', false)).toEqual({ ok: true, value: false });
+    expect(validateSetting('sessionList.context', 'on').ok).toBe(false);
+    expect(nextSessionListMode('detailed')).toBe('compact');
+    expect(nextSessionListMode('compact')).toBe('dense');
+    expect(nextSessionListMode('dense')).toBe('detailed');
+  });
+});
+
 describe('resolveDefaultMode / resolveDefaultEffort', () => {
   it('manual → default, acceptEdits и plan как есть', () => {
     expect(resolveDefaultMode('manual', false)).toBe('default');
@@ -91,9 +104,14 @@ describe('readSettings', () => {
         defaultEffort: 5,
         contextThresholds: 'a',
         usagePollMinutes: 'z',
+        'sessionList.view': 'tree',
+        'sessionList.context': 'x',
       }),
     );
     expect(v).toMatchObject({
+      'sessionList.view': 'compact',
+      'sessionList.context': true,
+      'sessionList.time': true,
       defaultPermissionMode: 'manual',
       defaultEffort: '',
       contextThresholds: [120_000, 150_000],

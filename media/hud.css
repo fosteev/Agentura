@@ -328,7 +328,7 @@ html:is([data-width="900"],[data-width="full"],[data-width="vscode"]) .body[data
 .sidebar .tools button { color: var(--fg-mute); padding: 2px 6px; }
 .sidebar .list { overflow: auto; }
 .sidebar .day { padding: 8px 14px 2px; font-size: 11px; color: var(--fg-mute); }
-.sidebar .s { display: grid; grid-template-columns: 10px 1fr auto; gap: 8px; align-items: baseline; padding: 6px 14px; width: 100%; text-align: left; color: var(--fg); }
+.sidebar .s { display: grid; grid-template-columns: 10px 1fr auto auto; gap: 8px; align-items: baseline; padding: 6px 14px; width: 100%; text-align: left; color: var(--fg); }
 .sidebar .s:hover { background: var(--bg-hover); }
 .sidebar .s.cur { background: var(--sel); }
 .sidebar .s .dot { width: 7px; height: 7px; border-radius: 50%; background: transparent; align-self: center; }
@@ -336,7 +336,7 @@ html:is([data-width="900"],[data-width="full"],[data-width="vscode"]) .body[data
 .sidebar .s.wait .dot { background: var(--warn); }
 .sidebar .s .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sidebar .s .t small { display: block; color: var(--fg-mute); font-size: 11px; font-family: var(--mono); }
-.sidebar .s .when { color: var(--fg-mute); font-size: 11px; white-space: nowrap; }
+.sidebar .s .when { color: var(--fg-mute); font-size: 11px; white-space: nowrap; min-width: 42px; text-align: right; }
 .blocks i.part[style*="--c"]::after { background: var(--c); }
 
 /* защита от расползания: длинные строки кода и диффов прокручиваются внутри, а не растягивают ленту */
@@ -357,3 +357,18 @@ html:is([data-width="900"],[data-width="full"],[data-width="vscode"]) .body[data
 .sidebar .head { display: flex; align-items: center; }
 .sidebar .head .gear { margin-left: auto; color: var(--fg-mute); font-size: 17px; line-height: 1; padding: 2px 4px; border-radius: 3px; text-transform: none; letter-spacing: 0; }
 .sidebar .head .gear:hover, .sidebar .head .gear.on { color: var(--fg); background: var(--bg-raise); }
+/* вид списка сессий (agentura.sessionList): compact и dense — строка 22 px, ходы и цена в подсказке; detailed — как выше */
+.sidebar .sec h3 .view { color: var(--fg-mute); font-size: 13px; line-height: 1; padding: 0 2px; text-transform: none; letter-spacing: 0; }
+.sidebar .sec h3 .view:hover { color: var(--fg); }
+.sidebar:is([data-list="compact"], [data-list="dense"]) .s { height: 22px; padding: 0 14px; align-items: center; }
+.sidebar:is([data-list="compact"], [data-list="dense"]) .s .t small { display: none; }
+.sidebar:is([data-list="compact"], [data-list="dense"]) .day { padding: 6px 14px 1px; }
+.sidebar[data-list="compact"] .s:is(.cur, .live, .wait, .err), .sidebar[data-list] .s.editing { height: auto; padding: 4px 14px; align-items: baseline; }
+.sidebar[data-list="compact"] .s:is(.cur, .live, .wait, .err) .t small, .sidebar[data-list] .s.editing .t small { display: block; }
+/* колонки справа (agentura.sessionList.context / .time): ширина с запасом под самое длинное значение — у всех строк в одну линию */
+.sidebar .s .ctx { display: none; color: var(--fg-mute); font-size: 11px; font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; min-width: 8ch; text-align: right; }
+.sidebar[data-ctx="on"] .s .ctx { display: inline-block; }
+.sidebar[data-time="off"] .s .when { display: none; }
+/* выключенная колонка не оставляет пустой дорожки с зазором 8 px у правого края */
+.sidebar:is([data-ctx="off"], [data-time="off"]) .s { grid-template-columns: 10px 1fr auto; }
+.sidebar[data-ctx="off"][data-time="off"] .s { grid-template-columns: 10px 1fr; }

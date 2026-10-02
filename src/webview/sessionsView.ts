@@ -87,9 +87,14 @@ export function groupByDay(
 
 /** `131k`, `950`, `1.2M` — контекст в строке списка. */
 export function tokensLabel(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
+  if (n >= 999_500) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
   if (n >= 1000) return `${Math.round(n / 1000)}k`;
   return String(Math.round(n));
+}
+
+/** Колонка контекста в строке списка: `173k ctx`; неизвестен — пусто (ячейка остаётся для разметки). */
+export function ctxLabel(s: Pick<SessionSummary, 'contextTokens'>): string {
+  return s.contextTokens ? `${tokensLabel(s.contextTokens)} ${ui.sidebar.ctx}` : '';
 }
 
 /** Стоимость: нет данных — `—`, оценка без части моделей — с пометкой. */
@@ -99,10 +104,13 @@ export function costLabel(s: Pick<SessionSummary, 'costUsd' | 'costPartial'>): s
   return s.costPartial ? `${base} ${ui.sidebar.partialCost}` : base;
 }
 
-/** Подпись под названием: `14 ходов · $1.84 · 131k` и тег состояния (ждёт ответа, ошибка, лимит). */
-export function subLabel(s: SessionSummary): string {
+/**
+ * Подпись под названием и подсказка строки: `14 ходов · $1.84 · 131k` и тег состояния (ждёт ответа, ошибка,
+ * лимит). `withCtx: false` — контекст уже показан колонкой справа, во второй строке его нет.
+ */
+export function subLabel(s: SessionSummary, withCtx = true): string {
   const parts = [ui.empty.turns(s.turns), costLabel(s)];
-  if (s.contextTokens !== undefined && s.contextTokens > 0)
+  if (withCtx && s.contextTokens !== undefined && s.contextTokens > 0)
     parts.push(tokensLabel(s.contextTokens));
   if (s.state === 'waiting') parts.push(ui.sidebar.stateTag.waiting);
   else if (s.state === 'error') parts.push(ui.sidebar.stateTag.error);
