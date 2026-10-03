@@ -114,8 +114,9 @@
 - `scripts/vsix-verify.mjs` проверяет `media/tooltip.css` в пакете.
 
 ### 5. Документация и приёмка владельца
-- [ ] README (настройка `agentura.language`), CHANGELOG, `docs/features.md`
-- [ ] F5-чеклист в pending, мерж в `main`
+- [x] README (настройка `agentura.language`), CHANGELOG; `docs/features.md` — строк про язык и тултипы там нет, не трогали
+- [x] F5-чеклист в pending
+- [ ] F5 владельца, мерж в `main`
 
 **Сессия:** sonnet, medium; F5 — владелец.
 

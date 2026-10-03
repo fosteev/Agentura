@@ -66,6 +66,7 @@ npm run package        # agentura-0.2.0.vsix в корне
 | `agentura.sessionList.context`    | `true`             | Колонка контекста сессии (`173k ctx`) в списке                             |
 | `agentura.sessionList.time`       | `true`             | Колонка времени последней активности в списке                              |
 | `agentura.sidebar.top`            | `detailed`         | Вид верха панели: `detailed`, `compact`, `dense` (аккаунт и лимиты)        |
+| `agentura.language`               | `auto`             | Язык интерфейса: `auto` (как в VS Code), `ru`, `en`; после перезагрузки    |
 
 ¹ Только в пользовательских настройках: значение из `.vscode/settings.json` рабочей папки игнорируется,
 чтобы чужой репозиторий не подменил запускаемый файл и не включил работу без подтверждений.
