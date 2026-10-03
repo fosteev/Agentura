@@ -31,6 +31,7 @@ import type {
   SessionOptions,
 } from '../types';
 import { AsyncQueue, EventHub } from '../stream';
+import type { Lang } from '../../shared/l10n';
 import { ClaudeEventMapper } from './mapper';
 import { PermissionBroker } from './permissions';
 import { buildHistory, DEFAULT_MAX_TURNS, findRetryPoint, type HistoryMessage } from './history';
@@ -73,6 +74,8 @@ export interface ClaudeAdapterConfig {
   /** Имя клиента для движка (`CLAUDE_AGENT_SDK_CLIENT_APP`). */
   clientApp?: string;
   log?: LogFn;
+  /** Язык текстов для пользователя (плашки, транскрипт субагента); по умолчанию русский. */
+  lang?: () => Lang;
   /** Подмена SDK в тестах. */
   loadSdk?: () => Promise<SdkModule>;
   /** База окружения; по умолчанию `process.env`. */
@@ -312,6 +315,7 @@ export class ClaudeAdapter implements AgentAdapter {
     const meta = await readSubagentMeta(file);
     return subagentMarkdown(await readSubagentRecords(file), {
       title: title || meta.description || taskId,
+      ...(this.config.lang ? { lang: this.config.lang() } : {}),
       ...(meta.agentType ? { agentType: meta.agentType } : {}),
     });
   }
@@ -409,7 +413,10 @@ class ClaudeSession implements AgentSession {
       this.log('error', `подписчик событий упал: ${String(e)}`),
     );
     this.resumedId = resume;
-    this.mapper = new ClaudeEventMapper({ baselineCostUsd: resume ? options.baselineCostUsd : 0 });
+    this.mapper = new ClaudeEventMapper({
+      baselineCostUsd: resume ? options.baselineCostUsd : 0,
+      ...(config.lang ? { lang: config.lang } : {}),
+    });
     this.broker = new PermissionBroker(
       (e) => this.emit(e),
       (taskId) => this.mapper.agentIdForTask(taskId),

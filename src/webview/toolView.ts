@@ -63,7 +63,7 @@ export function toolView(name: string, input: Record<string, unknown>, cwd?: str
         dimAfter: true,
       };
       const at = str(input['path']);
-      if (at) view.dim = `в ${relPath(at, cwd)}`;
+      if (at) view.dim = ui.log.inPath(relPath(at, cwd));
       return view;
     }
     case 'Glob': {
@@ -73,7 +73,7 @@ export function toolView(name: string, input: Record<string, unknown>, cwd?: str
         dimAfter: true,
       };
       const at = str(input['path']);
-      if (at) view.dim = `в ${relPath(at, cwd)}`;
+      if (at) view.dim = ui.log.inPath(relPath(at, cwd));
       return view;
     }
     case 'Bash':
@@ -89,16 +89,16 @@ export function toolView(name: string, input: Record<string, unknown>, cwd?: str
     case 'WebSearch':
       return { op: 'search', what: clip(str(input['query']) ?? '') };
     case 'TodoWrite':
-      return { op: 'todo', what: 'список задач' };
+      return { op: 'todo', what: ui.log.todoWhat };
     case 'AskUserQuestion': {
       // этап 5: сам вопрос — карточкой ниже, строка — след в ленте и таймлайне
       const q = Array.isArray(input['questions'])
         ? (input['questions'][0] as Record<string, unknown>)
         : undefined;
-      return { op: 'ask', what: clip(str(q?.['question']) ?? 'вопрос') };
+      return { op: 'ask', what: clip(str(q?.['question']) ?? ui.log.askFallback) };
     }
     case 'ExitPlanMode':
-      return { op: 'plan', what: 'план готов' };
+      return { op: 'plan', what: ui.log.planReady };
     case 'Artifact': {
       const action = str(input['action']);
       const url = str(input['url']);

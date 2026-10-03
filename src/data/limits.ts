@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { LimitWindow } from '../agent/types';
+import { hostStrings, type Lang } from '../shared/l10n';
 import { readToken } from './agentmeter/desktop/token.ts';
 import {
   OAUTH_BETA_HEADER,
@@ -45,6 +46,8 @@ export interface LimitsSourceOptions {
   readKeychain?: () => boolean;
   now?: () => number;
   userAgent?: string;
+  /** Язык текстов ошибок; по умолчанию русский. */
+  lang?: () => Lang;
 }
 
 /** Что отдаёт источник: окна и когда эти данные получены (у окон движка — время события). */
@@ -111,6 +114,10 @@ export class LimitsSource {
     this.now = options.now ?? Date.now;
   }
 
+  private get t() {
+    return hostStrings(this.options.lang?.() ?? 'ru');
+  }
+
   /** Окна из `rate_limit_event` (событие `limit.update` адаптера) — запас на случай отказа OAuth. */
   observeEngine(windows: LimitWindow[], at = this.now()): void {
     if (windows.length > 0) this.engine = { windows, at };
@@ -138,9 +145,7 @@ export class LimitsSource {
   async fetchOauth(): Promise<LimitWindow[]> {
     const now = this.now();
     if (throttled(this.throttle, now)) {
-      throw new Error(
-        `лимит запросов к /api/oauth/usage, повтор после ${timeOf(this.throttle?.retryAt ?? now)}`,
-      );
+      throw new Error(this.t.limitThrottled(timeOf(this.throttle?.retryAt ?? now)));
     }
     const token = await this.token();
 
@@ -157,35 +162,33 @@ export class LimitsSource {
         },
       });
     } catch {
-      throw new Error('нет сети');
+      throw new Error(this.t.limitNoNetwork);
     }
     if (response.status === 401) {
-      throw new Error('вход отклонён (HTTP 401) — войдите в claude заново');
+      throw new Error(this.t.limitUnauthorized);
     }
     if (response.status === 403) {
       // Не повод перелогиниваться: так отвечает Cloudflare на Node по отпечатку TLS (замер
       // Agentmeter 11.08, `apps/desktop/src/main/oauth.ts`), токен при этом рабочий.
-      throw new Error('сервер отклонил запрос (HTTP 403)');
+      throw new Error(this.t.limitForbidden);
     }
     if (response.status === 429) {
       this.throttle = throttleFrom(response.headers.get('retry-after'), now);
-      throw new Error(
-        `лимит запросов к /api/oauth/usage, повтор после ${timeOf(this.throttle.retryAt)}`,
-      );
+      throw new Error(this.t.limitThrottled(timeOf(this.throttle.retryAt)));
     }
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     let body: unknown;
     try {
       body = await response.json();
     } catch {
-      throw new Error('ответ не JSON');
+      throw new Error(this.t.limitNotJson);
     }
     this.throttle = undefined;
     const snapshot = parseOauthUsage(body, now);
     const windows = snapshot ? windowsFromSnapshot(snapshot) : [];
     windows.push(...inactiveWindows(body, windows));
     // Пустой разбор — формат ответа поменялся или аккаунт без лимитов: не затираем прежние окна.
-    if (windows.length === 0) throw new Error('в ответе /api/oauth/usage нет окон лимитов');
+    if (windows.length === 0) throw new Error(this.t.limitNoWindows);
     return windows;
   }
 
@@ -216,13 +219,11 @@ export class LimitsSource {
     const fromFile = readToken({ claudeHome, platform, keychain: () => undefined });
     if (fromFile.token) return fromFile.token;
     if (this.options.readKeychain && !this.options.readKeychain()) {
-      throw new Error(
-        'нет ~/.claude/.credentials.json, а чтение токена из Keychain выключено — включите чтение токена (agentura.limits.readKeychain)',
-      );
+      throw new Error(this.t.limitKeychainOff);
     }
     const raw = await (this.options.keychain ?? defaultKeychainAsync(platform))();
     const token = readToken({ claudeHome, platform, keychain: () => raw }).token;
-    if (!token) throw new Error('нет токена Claude Code (войдите в claude)');
+    if (!token) throw new Error(this.t.limitNoToken);
     return token;
   }
 }

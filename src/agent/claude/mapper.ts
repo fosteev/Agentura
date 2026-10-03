@@ -7,6 +7,7 @@ import type {
   PermissionMode,
   TokenUsage,
 } from '../types';
+import { hostStrings, type Lang } from '../../shared/l10n';
 import { arr, isObj, num, obj, str, strings, timestamp, withoutImageData, type Json } from './json';
 
 /** Отправленное сообщение до привязки к ходу. `uuid` — наш `SDKUserMessage.uuid`. */
@@ -58,6 +59,8 @@ export interface MapperOptions {
   now?: () => number;
   /** Последний известный `total_cost_usd` (resume). Для новой сессии — 0. */
   baselineCostUsd?: number;
+  /** Язык текстов для пользователя (плашка «повтор запроса»); по умолчанию русский. */
+  lang?: () => Lang;
 }
 
 interface PendingUsage {
@@ -109,10 +112,12 @@ export class ClaudeEventMapper {
   private turnUsage: TokenUsage = emptyUsage();
   private lastTotalCost: number | undefined;
   private readonly contextWindows = new Map<string, number>();
+  private readonly lang: () => Lang;
 
   constructor(options: MapperOptions = {}) {
     this.now = options.now ?? Date.now;
     this.lastTotalCost = options.baselineCostUsd;
+    this.lang = options.lang ?? (() => 'ru');
   }
 
   get sessionId(): string | undefined {
@@ -358,7 +363,7 @@ export class ClaudeEventMapper {
           type: 'error',
           fatal: false,
           code: 'api_retry',
-          message: `Повтор запроса к API ${attempt}/${max}${status ? ` (HTTP ${status})` : ''}`,
+          message: hostStrings(this.lang()).apiRetry(attempt, max, status),
         });
         break;
       }

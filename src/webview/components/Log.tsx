@@ -2,7 +2,7 @@ import { useMemo, useState } from 'preact/hooks';
 import type { Seg } from '../fixtures/chat';
 import type { FeedRow } from '../chatState';
 import { onCodeCopyClick, renderMarkdown, withCursor } from '../markdown';
-import { ui } from '../strings';
+import { ui, uiLang } from '../strings';
 import type { FileRef, ImageRef } from '../../agent/types';
 import { imageTokens } from '../../shared/images';
 import { fileBadge, fileName, formatBytes } from '../../shared/files';
@@ -76,12 +76,12 @@ function UserFiles({
             key={n}
             type="button"
             class="fl"
-            title={`${f.path}\n${outside && !f.data ? ui.log.fileNoCopy : ui.log.openFile}`}
+            data-tip={`${f.path}\n${outside && !f.data ? ui.log.fileNoCopy : ui.log.openFile}`}
             onClick={() => onOpen?.(f)}
           >
             <span class="ic">{fileBadge(f)}</span>
             <b>{fileName(f.path)}</b>
-            {f.size !== undefined && <small>{formatBytes(f.size)}</small>}
+            {f.size !== undefined && <small>{formatBytes(f.size, uiLang)}</small>}
           </button>
         );
       })}
@@ -113,7 +113,7 @@ function UserImages({
                 class="mock"
                 src={`data:${i.mediaType};base64,${i.data}`}
                 alt={caption}
-                title={ui.log.openImage}
+                data-tip={ui.log.openImage}
                 role="button"
                 tabIndex={0}
                 onClick={() => onOpen?.(i)}
@@ -125,7 +125,7 @@ function UserImages({
                 }}
               />
             ) : (
-              <span class="mock ph" title={ui.log.noImageData}>
+              <span class="mock ph" data-tip={ui.log.noImageData}>
                 {ui.log.screenshot}
               </span>
             )}
@@ -308,7 +308,7 @@ function Think({ t, now }: { t: Row<'think'>; now: number }) {
       <div
         class={running ? 'e think now' : 'e think'}
         role="button"
-        title={ui.log.thinkToggle}
+        data-tip={ui.log.thinkToggle}
         style={{ cursor: t.text ? 'pointer' : undefined }}
         onClick={() => t.text && setOpen(!open)}
       >

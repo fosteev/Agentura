@@ -92,6 +92,7 @@ for (const f of [
   'media/icon.svg',
   'media/agents.css',
   'media/attach.css',
+  'media/tooltip.css',
   'media/settings.css',
   'package.json',
 ]) {

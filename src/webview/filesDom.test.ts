@@ -106,7 +106,7 @@ describe('файлы в поле ввода (этап 8 roadmap 0.2)', () => {
     expect(chips[0]!.querySelector('.ic')?.textContent).toBe('TXT');
     expect(chips[0]!.querySelector('b')?.textContent).toBe('notes.txt');
     expect(chips[0]!.querySelector('small')?.textContent).toBe('4 КБ · ~1k');
-    expect(chips[0]!.getAttribute('title')).toBe('docs/notes.txt');
+    expect(chips[0]!.getAttribute('data-tip')).toBe('docs/notes.txt');
     expect(chips[1]!.querySelector('.ic')?.textContent).toBe('PDF');
     expect(chips[1]!.querySelector('small')?.textContent).toBe('6 Б · ≈?');
     expect(host.querySelector('.ctx .cn .plus')?.textContent).toBe('+1k+? файлы');
@@ -320,7 +320,7 @@ describe('чипы файлов в ленте', () => {
     const chips = host.querySelectorAll<HTMLElement>('.log .u .att .fl');
     expect(chips).toHaveLength(2);
     expect([...chips].map((c) => c.textContent)).toEqual(['TXTnotes.txt4 КБ', 'PDFspec.pdf2.4 МБ']);
-    expect(chips[1]!.title).toContain('копии в истории нет');
+    expect(chips[1]!.getAttribute('data-tip')).toContain('копии в истории нет');
     chips[0]!.click();
     chips[1]!.click();
     expect(posted).toEqual([

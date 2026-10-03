@@ -8,30 +8,6 @@ import { clock, resetLabel } from './chatState';
 import { formatCost } from './toolView';
 import { ui } from './strings';
 
-const WEEKDAYS_SHORT = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
-const WEEKDAYS_LONG = [
-  'воскресенье',
-  'понедельник',
-  'вторник',
-  'среду',
-  'четверг',
-  'пятницу',
-  'субботу',
-];
-const MONTHS = [
-  'января',
-  'февраля',
-  'марта',
-  'апреля',
-  'мая',
-  'июня',
-  'июля',
-  'августа',
-  'сентября',
-  'октября',
-  'ноября',
-  'декабря',
-];
 const DAY_MS = 86_400_000;
 
 function startOfDay(ms: number): number {
@@ -51,8 +27,7 @@ export function dayLabel(ms: number, now: number): string {
   if (ago <= 0) return ui.sidebar.days.today;
   if (ago === 1) return ui.sidebar.days.yesterday;
   const d = new Date(ms);
-  const year = d.getFullYear() === new Date(now).getFullYear() ? '' : ` ${d.getFullYear()}`;
-  return `${d.getDate()} ${MONTHS[d.getMonth()]}${year}`;
+  return ui.time.dayMonth(d.getDate(), d.getMonth(), d.getFullYear() === new Date(now).getFullYear() ? undefined : d.getFullYear());
 }
 
 /** Справа в строке: `сейчас` у идущей, время за сегодня и вчера, день недели за неделю, иначе `23.09`. */
@@ -60,7 +35,7 @@ export function whenLabel(s: Pick<SessionSummary, 'state' | 'updatedAt'>, now: n
   if (s.state === 'live' || s.state === 'waiting') return ui.sidebar.now;
   const ago = daysAgo(s.updatedAt, now);
   if (ago <= 1) return clock(s.updatedAt);
-  if (ago < 7) return WEEKDAYS_SHORT[new Date(s.updatedAt).getDay()]!;
+  if (ago < 7) return ui.time.weekdaysShort[new Date(s.updatedAt).getDay()]!;
   const d = new Date(s.updatedAt);
   return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
@@ -141,19 +116,19 @@ export function rowClass(s: Pick<SessionSummary, 'state'>, current: boolean): st
 /** `2 ч 08 мин`, `45 мин`, `3 дн 4 ч` — до сброса окна. */
 export function untilLabel(ms: number): string {
   const min = Math.max(0, Math.round(ms / 60_000));
-  if (min < 60) return `${min} мин`;
+  if (min < 60) return ui.time.minutes(min);
   const h = Math.floor(min / 60);
-  if (h < 24) return `${h} ч ${String(min % 60).padStart(2, '0')} мин`;
-  return `${Math.floor(h / 24)} дн ${h % 24} ч`;
+  if (h < 24) return ui.time.hourMinutes(h, String(min % 60).padStart(2, '0'));
+  return ui.time.daysHours(Math.floor(h / 24), h % 24);
 }
 
 /** Когда сброс: сегодня — `в 17:00`, в ближайшие дни — `в четверг, 09:00`, иначе `23 сентября, 09:00`. */
 export function resetWhen(resetsAt: number, now: number): string {
   const ago = -daysAgo(resetsAt, now);
   const d = new Date(resetsAt);
-  if (ago <= 0) return `в ${clock(resetsAt)}`;
-  if (ago < 7) return `в ${WEEKDAYS_LONG[d.getDay()]}, ${clock(resetsAt)}`;
-  return `${d.getDate()} ${MONTHS[d.getMonth()]}, ${clock(resetsAt)}`;
+  if (ago <= 0) return ui.time.at(clock(resetsAt));
+  if (ago < 7) return ui.time.atWeekday(ui.time.weekdaysLong[d.getDay()]!, clock(resetsAt));
+  return ui.time.atDate(ui.time.dayMonth(d.getDate(), d.getMonth()), clock(resetsAt));
 }
 
 export interface LimitRowView {

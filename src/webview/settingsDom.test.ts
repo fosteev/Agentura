@@ -40,6 +40,7 @@ const values: SettingsValues = {
   'sessionList.context': true,
   'sessionList.time': true,
   'sidebar.top': 'detailed',
+  language: 'auto',
 };
 const state = (over: Partial<SettingsValues> = {}) =>
   handleSettingsMessage({
@@ -105,6 +106,7 @@ describe('вкладка настроек', () => {
       'agentura.sessionList.context',
       'agentura.sessionList.time',
       'agentura.sidebar.top',
+      'agentura.language',
       'agentura.claudeExecutable · только эта машина',
     ]);
   });

@@ -12,6 +12,8 @@ import { SessionMemory } from './sessionMemory';
 import { SessionsService } from './sessionsService';
 import { showDebugState } from './debugPanel';
 import { SettingsPanel } from './settingsPanel';
+import { hostStrings } from '../shared/l10n';
+import { currentLanguage } from './webviewHost';
 import { WorkspaceFiles } from './workspaceFiles';
 
 /** Что активация отдаёт интеграционным тестам (только при запуске из исходников). */
@@ -35,6 +37,7 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     readKeychain: () =>
       vscode.workspace.getConfiguration('agentura').get<boolean>('limits.readKeychain', true),
     userAgent: `Agentura/${String(context.extension.packageJSON.version)}`,
+    lang: currentLanguage,
   });
   const usage = new UsageService(limits.fetch);
   const { adapter, engine } = createAdapter(log);
@@ -60,6 +63,7 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
       return adapter.accountInfo(cwd || process.cwd());
     },
     readPlan: () => limits.readPlan(),
+    lang: currentLanguage,
     ...(memory.engineVersion() ? { savedEngine: memory.engineVersion()! } : {}),
   });
   if (folder) {
@@ -93,20 +97,21 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
   /** Быстрый выбор сессии проекта: «Возобновить сессию» из палитры. */
   const pickSession = async (): Promise<void> => {
     const rows = await sessions.summaries();
+    const t = hostStrings(currentLanguage());
     if (rows.length === 0) {
-      void vscode.window.showInformationMessage('Agentura: в этом проекте пока нет сессий.');
+      void vscode.window.showInformationMessage(t.noSessions);
       return;
     }
     const picked = await vscode.window.showQuickPick(
       rows.map((r) => ({
         label: r.title,
-        description: `${r.turns} ${r.turns === 1 ? 'ход' : 'ходов'}${
+        description: `${t.turns(r.turns)}${
           r.costUsd !== undefined ? ` · $${r.costUsd.toFixed(2)}` : ''
         }`,
-        detail: new Date(r.updatedAt).toLocaleString('ru'),
+        detail: new Date(r.updatedAt).toLocaleString(t.locale),
         id: r.id,
       })),
-      { placeHolder: 'Какую сессию возобновить?', matchOnDetail: true },
+      { placeHolder: t.pickSessionPlaceholder, matchOnDetail: true },
     );
     if (picked) ChatPanel.resume(context, log, services, picked.id);
   };
@@ -143,6 +148,15 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     // правка настроек (UI, settings.json, вкладка настроек) доходит до открытых вкладок чата
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('agentura')) ChatPanel.settingsChanged();
+      if (e.affectsConfiguration('agentura.language')) {
+        const t = hostStrings(currentLanguage());
+        const reload = t.reloadButton;
+        void vscode.window
+          .showInformationMessage(t.languageReload, reload)
+          .then((pick) => {
+            if (pick === reload) void vscode.commands.executeCommand('workbench.action.reloadWindow');
+          });
+      }
     }),
     vscode.commands.registerCommand('agentura.showLogs', () => log.show()),
     // отладка: фикстуры состояний в отдельной вкладке без движка (этап 7)

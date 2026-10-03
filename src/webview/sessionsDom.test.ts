@@ -235,12 +235,12 @@ describe('боковая панель (sessions.html)', () => {
     await flush();
     expect([bar.dataset.list, bar.dataset.ctx, bar.dataset.time]).toEqual(['dense', 'on', 'off']);
     const row = host.querySelector('.list .s') as HTMLElement;
-    expect(row.title).toContain('3 хода · $0.42 · 173k');
+    expect(row.getAttribute('data-tip')).toContain('3 хода · $0.42 · 173k');
     expect(row.querySelector('.ctx')?.textContent).toBe('173k ctx');
     // контекст колонкой — во второй строке не дублируется
     expect(row.querySelector('small')?.textContent).toBe('3 хода · $0.42');
     const btn = host.querySelector('.sec h3 button.view') as HTMLButtonElement;
-    expect(btn.title).toContain('«подробно»');
+    expect(btn.getAttribute('data-tip')).toContain('«подробно»');
     btn.click();
     await flush();
     expect(posted).toEqual([{ type: 'settings.set', key: 'sessionList.view', value: 'detailed' }]);
@@ -281,7 +281,7 @@ describe('боковая панель (sessions.html)', () => {
     expect(bar.dataset.top).toBe('compact');
     const who = host.querySelector('.who') as HTMLElement;
     expect(who.textContent).toBe('a@b.c· Max 5×· claude 2.1.285');
-    expect(who.title).toContain('Вход: через CLI · ок');
+    expect(who.getAttribute('data-tip')).toContain('Вход: через CLI · ок');
     expect(who.querySelector('.okd')).not.toBeNull();
     expect(host.querySelector('.lim .row .rs')?.textContent).toBe('→ 23:30');
     sidebarMessages({
@@ -299,8 +299,8 @@ describe('боковая панель (sessions.html)', () => {
     expect(minis.map((m) => m.textContent)).toEqual(['5 ч91 %', 'нед34 %']);
     expect(minis[0]!.className).toBe('m lim-full');
     expect(minis[1]!.className).toBe('m');
-    expect(minis[0]!.title).toContain('Окно 5 часов · сброс в 23:30');
-    expect((host.querySelector('.head') as HTMLElement).title).toContain('Аккаунт: a@b.c');
+    expect(minis[0]!.getAttribute('data-tip')).toContain('Окно 5 часов · сброс в 23:30');
+    expect(host.querySelector('.head')!.getAttribute('data-tip')).toContain('Аккаунт: a@b.c');
     (host.querySelector('.head .hl .refresh') as HTMLElement).click();
     (host.querySelector('.sec h3 button.add') as HTMLElement).click();
     expect(posted.map((m) => m.type)).toEqual(['limits.refresh', 'session.new']);

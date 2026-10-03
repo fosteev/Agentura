@@ -6,12 +6,10 @@ import { ChatPanel } from './chatPanel';
 import type { SessionsService } from './sessionsService';
 import type { Logger } from './logger';
 import type { UsageService } from './usage';
-import { attachMessaging, renderWebview, webviewOptions } from './webviewHost';
+import { hostStrings } from '../shared/l10n';
+import { attachMessaging, currentLanguage, renderWebview, webviewOptions } from './webviewHost';
 
 export const SIDEBAR_VIEW_ID = 'agentura.sidebar';
-
-const OVERRIDDEN_VIEW_MESSAGE =
-  'Agentura: вид списка задан в настройках рабочей папки (agentura.sessionList.view) — поменяйте его там.';
 
 /** Боковая панель: аккаунт и лимиты, список сессий проекта (этап 6). */
 export class SidebarProvider implements vscode.WebviewViewProvider {
@@ -35,7 +33,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     this.view = view;
     const { webview } = view;
     webview.options = webviewOptions(this.context.extensionUri);
-    webview.html = renderWebview(webview, this.context.extensionUri, 'sidebar', 'Agentura');
+    webview.html = renderWebview(webview, this.context.extensionUri, 'sidebar', 'Agentura', currentLanguage());
     const version = String(this.context.extension.packageJSON.version);
     const sub = attachMessaging(webview, 'sidebar', version, this.log, (m) => {
       switch (m.type) {
@@ -126,7 +124,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     if (
       overriddenKeys(vscode.workspace.getConfiguration('agentura')).includes('sessionList.view')
     ) {
-      void vscode.window.showInformationMessage(OVERRIDDEN_VIEW_MESSAGE);
+      void vscode.window.showInformationMessage(hostStrings(currentLanguage()).overriddenView);
       if (this.viewWrites === 0) this.pushView(); // кнопка вернётся к фактическому виду
       return;
     }
@@ -156,9 +154,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       ChatPanel.renamed(sessionId, clean);
     } catch (e) {
       this.log.warn(`переименование ${sessionId}: ${String(e)}`);
-      void vscode.window.showWarningMessage(
-        `Agentura: не удалось переименовать сессию: ${String(e)}`,
-      );
+      void vscode.window.showWarningMessage(hostStrings(currentLanguage()).renameFailed(String(e)));
     }
   }
 
@@ -166,7 +162,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   async refreshUsage(): Promise<void> {
     const snap = await this.usage.refresh();
     if (snap.error) this.log.warn(`Лимиты не обновились: ${snap.error}`);
-    else this.log.info(`Лимиты: данные на ${new Date(snap.updatedAt).toLocaleTimeString('ru')}`);
+    else this.log.info(`Лимиты: данные на ${new Date(snap.updatedAt).toLocaleTimeString(hostStrings(currentLanguage()).locale)}`);
     this.post({ type: 'limits.update', ...snap });
   }
 }

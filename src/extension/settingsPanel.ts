@@ -1,9 +1,10 @@
 import * as vscode from 'vscode';
 import { resolveExecutable } from '../agent/claude/executable';
 import { postToWebview } from '../protocol';
+import { hostStrings } from '../shared/l10n';
 import type { Logger } from './logger';
 import { SettingsController } from './settingsController';
-import { attachMessaging, renderWebview, webviewOptions } from './webviewHost';
+import { attachMessaging, currentLanguage, renderWebview, webviewOptions } from './webviewHost';
 
 export const SETTINGS_VIEW_TYPE = 'agentura.settings';
 
@@ -18,7 +19,7 @@ export class SettingsPanel {
     }
     const panel = vscode.window.createWebviewPanel(
       SETTINGS_VIEW_TYPE,
-      'Agentura · настройки',
+      hostStrings(currentLanguage()).settingsTitle,
       vscode.ViewColumn.Active,
       webviewOptions(context.extensionUri),
     );
@@ -38,7 +39,7 @@ export class SettingsPanel {
       globalTarget: vscode.ConfigurationTarget.Global,
       post: (m) => postToWebview(webview, m),
       checkEngine: async (path) => {
-        const r = await resolveExecutable(path.trim());
+        const r = await resolveExecutable(path.trim(), { lang: currentLanguage() });
         return {
           ok: r.version !== undefined,
           source: r.source,
@@ -54,8 +55,15 @@ export class SettingsPanel {
         );
       },
       warn: (m) => log.warn(m),
+      lang: currentLanguage,
     });
-    webview.html = renderWebview(webview, context.extensionUri, 'settings', 'Agentura · настройки');
+    webview.html = renderWebview(
+      webview,
+      context.extensionUri,
+      'settings',
+      hostStrings(currentLanguage()).settingsTitle,
+      currentLanguage(),
+    );
     this.disposables.push(
       attachMessaging(
         webview,

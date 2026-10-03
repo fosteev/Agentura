@@ -48,7 +48,7 @@ import {
 import type { LimitMeter } from '../hudView';
 import { deferredNote } from '../limitView';
 import { menuKeys } from '../a11y';
-import { ui } from '../strings';
+import { ui, uiLang } from '../strings';
 import { compactTokens, shortModel } from '../toolView';
 import { imageTokens, imagesTokens } from '../../shared/images';
 import { fileBadge, fileTokens, filesTokens, formatBytes } from '../../shared/files';
@@ -65,9 +65,9 @@ type MenuName = 'mode' | 'model' | 'effort' | 'agent' | 'plus';
 
 /** Запасной список, пока движок не прислал `supportedModels()` (сессия ещё поднимается). */
 const FALLBACK_MODELS = [
-  { value: 'opus', displayName: 'opus', description: 'сложные задачи, планирование' },
-  { value: 'sonnet', displayName: 'sonnet', description: 'быстрее и дешевле' },
-  { value: 'haiku', displayName: 'haiku', description: 'мелкие правки' },
+  { value: 'opus', displayName: 'opus', description: ui.menus.modelDesc.opus },
+  { value: 'sonnet', displayName: 'sonnet', description: ui.menus.modelDesc.sonnet },
+  { value: 'haiku', displayName: 'haiku', description: ui.menus.modelDesc.haiku },
 ];
 
 const MODE_ORDER: PermissionMode[] = ['default', 'acceptEdits', 'plan'];
@@ -148,7 +148,7 @@ function DraftChip({ d }: { d: DraftImage }) {
       role="button"
       tabIndex={0}
       aria-label={ui.compose.imageRemove}
-      title={ui.compose.imageRemove}
+      data-tip={ui.compose.imageRemove}
       onClick={() => removeImage(d.id)}
       onKeyDown={(e: KeyboardEvent) => pressKey(e, () => removeImage(d.id))}
     >
@@ -159,8 +159,8 @@ function DraftChip({ d }: { d: DraftImage }) {
     return (
       <span class="im err">
         <span class="ph">{d.problem === 'format' ? d.ext || '?' : '!'}</span>
-        <b title={d.name}>{d.name}</b>
-        <small title={ui.compose.imageProblemTitle[d.problem]}>
+        <b data-tip={d.name}>{d.name}</b>
+        <small data-tip={ui.compose.imageProblemTitle[d.problem]}>
           {d.problem === 'format'
             ? ui.compose.imageProblem.format(d.ext ?? '')
             : ui.compose.imageProblem[d.problem]}
@@ -189,7 +189,7 @@ function DraftChip({ d }: { d: DraftImage }) {
       <img class="mock" src={`data:${i.mediaType};base64,${i.data}`} alt="" />
       <b>{d.name}</b>
       <small
-        title={d.original ? ui.compose.imageScaled(d.original.width, d.original.height) : undefined}
+        data-tip={d.original ? ui.compose.imageScaled(d.original.width, d.original.height) : undefined}
       >
         {size}
       </small>
@@ -206,7 +206,7 @@ function FileChip({ d }: { d: DraftFile }) {
       role="button"
       tabIndex={0}
       aria-label={ui.compose.imageRemove}
-      title={ui.compose.imageRemove}
+      data-tip={ui.compose.imageRemove}
       onClick={() => removeFile(d.id)}
       onKeyDown={(e: KeyboardEvent) => pressKey(e, () => removeFile(d.id))}
     >
@@ -219,8 +219,8 @@ function FileChip({ d }: { d: DraftFile }) {
     return (
       <span class="im file err">
         <span class="ph">{problem === 'folder' ? '/' : ext ? ext.toUpperCase() : '!'}</span>
-        <b title={d.name}>{d.name}</b>
-        <small title={ui.compose.fileProblemTitle[problem]}>
+        <b data-tip={d.name}>{d.name}</b>
+        <small data-tip={ui.compose.fileProblemTitle[problem]}>
           {ui.compose.fileProblem[problem]}
         </small>
         {remove}
@@ -230,11 +230,11 @@ function FileChip({ d }: { d: DraftFile }) {
   const f = d.file;
   const tokens = fileTokens(f);
   return (
-    <span class="im file" title={f.path}>
+    <span class="im file" data-tip={f.path}>
       <span class="ic">{fileBadge(f)}</span>
       <b>{d.name}</b>
       <small>
-        {formatBytes(f.size)} ·{' '}
+        {formatBytes(f.size, uiLang)} ·{' '}
         {tokens !== undefined ? `~${compactTokens(tokens)}` : ui.compose.fileUnknownTokens}
       </small>
       {remove}
@@ -593,7 +593,7 @@ export function Composer() {
                 role="button"
                 tabIndex={0}
                 aria-label={ui.compose.removeChip}
-                title={ui.compose.removeChip}
+                data-tip={ui.compose.removeChip}
                 onClick={() => dismiss(attachmentKey(a))}
                 onKeyDown={(e: KeyboardEvent) => pressKey(e, () => dismiss(attachmentKey(a)))}
               >
@@ -613,7 +613,7 @@ export function Composer() {
                 role="button"
                 tabIndex={0}
                 aria-label={ui.compose.removeChip}
-                title={ui.compose.removeChip}
+                data-tip={ui.compose.removeChip}
                 onClick={() => removeExtra(attachmentKey(a))}
                 onKeyDown={(e: KeyboardEvent) => pressKey(e, () => removeExtra(attachmentKey(a)))}
               >
@@ -622,18 +622,18 @@ export function Composer() {
             </span>
           );
         })}
-        <span class="cn" title={hv.context.title}>
+        <span class="cn" data-tip={hv.context.title}>
           {ui.compose.context} <b class={hv.context.numCls}>{hv.context.now}</b>{' '}
           {draftTokens > 0 && (
             <>
-              <span class="plus" title={ui.compose.imagesPlusTitle}>
+              <span class="plus" data-tip={ui.compose.imagesPlusTitle}>
                 {ui.compose.imagesPlus(compactTokens(draftTokens))}
               </span>{' '}
             </>
           )}
           {withFiles && (
             <>
-              <span class="plus" title={ui.compose.filesPlusTitle}>
+              <span class="plus" data-tip={ui.compose.filesPlusTitle}>
                 {ui.compose.filesPlus(
                   fileEstimate.tokens > 0
                     ? `${compactTokens(fileEstimate.tokens)}${fileEstimate.unknown ? '+?' : ''}`
@@ -707,7 +707,8 @@ export function Composer() {
         <span class="pop" onKeyDown={menuKeys}>
           <button
             class="plus"
-            title={ui.compose.plusTitle}
+            data-tip={ui.compose.plusTitle}
+            aria-label={ui.compose.plusTitle}
             aria-haspopup="menu"
             aria-expanded={menu === 'plus'}
             onClick={() => toggle('plus')}
@@ -795,7 +796,7 @@ export function Composer() {
         <span class="pop" onKeyDown={menuKeys}>
           <button
             class="agent"
-            title={ui.compose.agentTitle}
+            data-tip={ui.compose.agentTitle}
             aria-haspopup="menu"
             aria-expanded={menu === 'agent'}
             onClick={() => toggle('agent')}
@@ -817,7 +818,7 @@ export function Composer() {
               <ItemButton
                 it={{
                   label: 'Codex',
-                  small: 'адаптер по форме ACP',
+                  small: ui.compose.acpAdapter,
                   hint: ui.compose.agentSoon,
                   dis: true,
                 }}
@@ -825,7 +826,7 @@ export function Composer() {
               <ItemButton
                 it={{
                   label: 'Gemini',
-                  small: 'адаптер по форме ACP',
+                  small: ui.compose.acpAdapter,
                   hint: ui.compose.agentSoon,
                   dis: true,
                 }}
@@ -890,7 +891,7 @@ export function Composer() {
           )}
         </span>
         <span class="meters">
-          <span class="m" title={hv.cache.title}>
+          <span class="m" data-tip={hv.cache.title}>
             <span
               class="clock"
               style={{
@@ -916,7 +917,8 @@ export function Composer() {
         </span>
         <button
           class="send"
-          title={ui.compose.sendTitle}
+          data-tip={ui.compose.sendTitle}
+          data-tip-key="Enter"
           // ответ карточке (вопрос, план) к лимиту не относится: Enter его пропускает — и кнопка тоже
           disabled={closed || (!!blocked && !target)}
           onClick={submit}
@@ -939,7 +941,7 @@ function LimitMeterView({
 }) {
   if (!meter) {
     return (
-      <span class="m" title={title}>
+      <span class="m" data-tip={title}>
         <span class="cells">
           {Array.from({ length: 10 }, () => (
             <i />
@@ -950,7 +952,7 @@ function LimitMeterView({
     );
   }
   return (
-    <span class={`m lim ${meter.level}`} title={title}>
+    <span class={`m lim ${meter.level}`} data-tip={title}>
       <span class="cells">
         {Array.from({ length: 10 }, (_, i) => (
           <i class={i < meter.cells ? (meter.full ? 'on f' : 'on') : ''} />

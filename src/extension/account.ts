@@ -1,5 +1,6 @@
 import type { AccountInfo } from '../agent/types';
 import type { AccountSummary } from '../protocol';
+import { hostStrings, type Lang } from '../shared/l10n';
 
 export interface PlanInfo {
   subscriptionType?: string;
@@ -18,11 +19,12 @@ export function planLabel(plan: PlanInfo): string | undefined {
 }
 
 /** Строка «Вход»: откуда движок взял авторизацию. */
-export function loginLabel(info: AccountInfo): string {
+export function loginLabel(info: AccountInfo, lang: Lang = 'ru'): string {
+  const t = hostStrings(lang);
   const source = info.tokenSource;
-  if (!source || source === 'none') return 'через CLI · ок';
-  if (/api.?key/i.test(source)) return 'ключ API';
-  return `${source} · ок`;
+  if (!source || source === 'none') return t.loginCli;
+  if (/api.?key/i.test(source)) return t.loginApiKey;
+  return t.loginOk(source);
 }
 
 export interface AccountDeps {
@@ -32,6 +34,8 @@ export interface AccountDeps {
   savedEngine?: string;
   now?: () => number;
   ttlMs?: number;
+  /** Язык подписей; по умолчанию русский. */
+  lang?: () => Lang;
 }
 
 export const ACCOUNT_TTL_MS = 10 * 60_000;
@@ -80,7 +84,7 @@ export class AccountService {
       const out: AccountSummary = {};
       if (info.status === 'fulfilled') {
         if (info.value.email) out.email = info.value.email;
-        out.login = loginLabel(info.value);
+        out.login = loginLabel(info.value, this.deps.lang?.() ?? 'ru');
         const fromPlan = plan.status === 'fulfilled' ? plan.value : {};
         const label = planLabel({
           ...fromPlan,

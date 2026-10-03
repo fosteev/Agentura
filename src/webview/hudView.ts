@@ -189,7 +189,7 @@ export function cacheView(s: HudState, now: number): CacheView {
     hit,
     expired: false,
     left: Math.min(1, remain / ttl),
-    title: ui.compose.cacheTitle(ttl >= 3_600_000 ? '1 ч' : `${Math.round(ttl / 60_000)} мин`),
+    title: ui.compose.cacheTitle(ttl >= 3_600_000 ? ui.time.oneHour : ui.time.minutes(Math.round(ttl / 60_000))),
   };
 }
 
@@ -238,12 +238,12 @@ export function limitsView(windows: readonly LimitWindow[], now: number): Limits
   const parts: string[] = [];
   if (five) {
     parts.push(
-      `${ui.compose.fiveHourWindow}${five.resetsAt !== undefined ? ` · сброс ${resetLabel(five.resetsAt, now)}` : ''}`,
+      `${ui.compose.fiveHourWindow}${five.resetsAt !== undefined ? ` · ${ui.sidebar.resetAt(resetLabel(five.resetsAt, now))}` : ''}`,
     );
   }
   if (week) {
     parts.push(
-      `${ui.compose.week} ${week.percent}%${week.resetsAt !== undefined ? ` · сброс ${resetLabel(week.resetsAt, now)}` : ''}`,
+      `${ui.compose.week} ${week.percent}%${week.resetsAt !== undefined ? ` · ${ui.sidebar.resetAt(resetLabel(week.resetsAt, now))}` : ''}`,
     );
   }
   return {

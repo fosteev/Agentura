@@ -2,6 +2,7 @@ import type { ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import {
   EFFORT_LEVELS,
+  LANGUAGE_MODES,
   MAX_POLL_MINUTES,
   MIN_POLL_MINUTES,
   SESSION_LIST_MODES,
@@ -20,7 +21,7 @@ import {
   setError,
   settingsValues,
 } from '../settingsStore';
-import { ui } from '../strings';
+import { ui, uiLang } from '../strings';
 
 const T = ui.settings;
 /** Ширина вкладки, с которой слева появляется навигация по разделам (в узком сплите она скрыта). */
@@ -172,7 +173,7 @@ function PollField({ value }: { value: number }) {
       return;
     }
     // проверка до отправки (та же, что на хосте; хост проверит ещё раз)
-    const checked = validateSetting('usagePollMinutes', n);
+    const checked = validateSetting('usagePollMinutes', n, uiLang);
     if (!checked.ok) {
       setError('usagePollMinutes', checked.error);
       return;
@@ -204,7 +205,7 @@ function Thresholds({ value }: { value: [number, number] }) {
   const send = (i: 0 | 1, text: string) => {
     const d = i === 0 ? [text, o] : [y, text];
     const nums = d.map((t) => (t.trim() === '' ? NaN : Number(t)));
-    const err = thresholdsError(nums);
+    const err = thresholdsError(nums, uiLang);
     if (err) {
       setError('contextThresholds', err);
       return;
@@ -240,7 +241,7 @@ function Thresholds({ value }: { value: [number, number] }) {
 
 function ThresholdScale({ value }: { value: [number, number] }) {
   const [y, o] = value;
-  const ok = thresholdsError(value) === undefined;
+  const ok = thresholdsError(value, uiLang) === undefined;
   const cells = Array.from({ length: 20 }, (_, i) => {
     const from = i * 10_000;
     const cls = i === 19 ? 'f' : ok && from >= o ? 'h' : ok && from >= y ? 'w' : '';
@@ -361,6 +362,11 @@ export function Settings() {
     T.sidebarTop.options[m] ?? m,
   ]);
 
+  const languageModes = LANGUAGE_MODES.map((m): [string, string] => [
+    m,
+    T.language.options[m] ?? m,
+  ]);
+
   return (
     <div class="webview settings">
       <header class="hud" aria-label={T.aria}>
@@ -368,10 +374,10 @@ export function Settings() {
           Agentura · <b>{T.title.toLowerCase()}</b>
         </span>
         <span class="acts">
-          <button type="button" title={T.openUiTitle} onClick={() => reveal('ui')}>
+          <button type="button" data-tip={T.openUiTitle} onClick={() => reveal('ui')}>
             {T.openUi}
           </button>
-          <button type="button" title={T.openJsonTitle} onClick={() => reveal('json')}>
+          <button type="button" data-tip={T.openJsonTitle} onClick={() => reveal('json')}>
             {T.openJson}
           </button>
         </span>
@@ -466,6 +472,9 @@ export function Settings() {
           </Row>
           <Row name={T.sidebarTop.name} isNew desc={T.sidebarTop.desc} k="sidebar.top">
             <Select k="sidebar.top" value={v['sidebar.top']} options={topModes} />
+          </Row>
+          <Row name={T.language.name} isNew desc={T.language.desc} k="language">
+            <Select k="language" value={v.language} options={languageModes} />
           </Row>
 
           <h2 id="engine">{T.sections.engine}</h2>

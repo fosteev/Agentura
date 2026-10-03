@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { buildWebviewHtml, makeNonce } from './html';
 import { isFromWebview, postToWebview, type FromWebview } from '../protocol';
 import type { Logger } from './logger';
+import { resolveLanguage } from '../settings';
 
 /** Общая часть обеих поверхностей: настройки webview, HTML, приём сообщений. */
 export function webviewOptions(extensionUri: vscode.Uri): vscode.WebviewOptions {
@@ -14,16 +15,26 @@ export function webviewOptions(extensionUri: vscode.Uri): vscode.WebviewOptions 
   };
 }
 
+/** Язык интерфейса: `agentura.language`, а для `auto` — язык VS Code. Один источник для всех поверхностей. */
+export function currentLanguage(): 'ru' | 'en' {
+  return resolveLanguage(
+    vscode.workspace.getConfiguration('agentura').get<unknown>('language'),
+    vscode.env.language,
+  );
+}
+
 export function renderWebview(
   webview: vscode.Webview,
   extensionUri: vscode.Uri,
   surface: 'chat' | 'sidebar' | 'settings',
   title: string,
+  lang: 'ru' | 'en',
 ): string {
   const uri = (...p: string[]) =>
     webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, ...p)).toString();
   return buildWebviewHtml({
     title,
+    lang,
     cspSource: webview.cspSource,
     nonce: makeNonce(),
     scriptUri: uri('dist', 'webview', `${surface}.js`),
@@ -33,6 +44,7 @@ export function renderWebview(
       uri('media', 'agents.css'),
       uri('media', 'attach.css'),
       uri('media', 'webview.css'),
+      uri('media', 'tooltip.css'),
       ...(surface === 'settings' ? [uri('media', 'settings.css')] : []),
     ],
   });

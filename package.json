@@ -1,7 +1,7 @@
 {
   "name": "agentura",
   "displayName": "Agentura",
-  "description": "Чат с Claude в VS Code: приборы контекста, стоимости, кэша и лимитов",
+  "description": "%ext.description%",
   "version": "0.2.0",
   "private": true,
   "publisher": "fost",
@@ -50,43 +50,43 @@
     "commands": [
       {
         "command": "agentura.open",
-        "title": "Открыть чат",
+        "title": "%command.open.title%",
         "category": "Agentura"
       },
       {
         "command": "agentura.newSession",
-        "title": "Новая сессия",
+        "title": "%command.newSession.title%",
         "category": "Agentura"
       },
       {
         "command": "agentura.openLast",
-        "title": "Открыть последнюю сессию",
+        "title": "%command.openLast.title%",
         "category": "Agentura"
       },
       {
         "command": "agentura.resumeSession",
-        "title": "Возобновить сессию",
+        "title": "%command.resumeSession.title%",
         "category": "Agentura"
       },
       {
         "command": "agentura.refreshUsage",
-        "title": "Обновить лимиты",
+        "title": "%command.refreshUsage.title%",
         "category": "Agentura"
       },
       {
         "command": "agentura.openSettings",
-        "title": "Настройки",
+        "title": "%command.openSettings.title%",
         "category": "Agentura",
         "icon": "$(gear)"
       },
       {
         "command": "agentura.showLogs",
-        "title": "Показать журнал",
+        "title": "%command.showLogs.title%",
         "category": "Agentura"
       },
       {
         "command": "agentura.debug.showState",
-        "title": "Показать состояние (отладка)",
+        "title": "%command.debug.showState.title%",
         "category": "Agentura"
       }
     ],
@@ -123,13 +123,13 @@
             120000,
             150000
           ],
-          "description": "Пороги шкалы контекста в токенах: жёлтая и оранжевая зоны."
+          "description": "%config.contextThresholds.description%"
         },
         "agentura.allowBypassPermissions": {
           "type": "boolean",
           "scope": "machine",
           "default": false,
-          "description": "Разрешить режим bypassPermissions (запуск инструментов без подтверждений)."
+          "description": "%config.allowBypassPermissions.description%"
         },
         "agentura.defaultPermissionMode": {
           "type": "string",
@@ -140,13 +140,13 @@
             "bypassPermissions"
           ],
           "enumDescriptions": [
-            "Спрашивать разрешение на правки и команды",
-            "Принимать правки файлов без вопросов",
-            "Сначала план, без правок до одобрения",
-            "Без подтверждений (только если включён agentura.allowBypassPermissions, иначе — как manual)"
+            "%config.defaultPermissionMode.enum.manual%",
+            "%config.defaultPermissionMode.enum.acceptEdits%",
+            "%config.defaultPermissionMode.enum.plan%",
+            "%config.defaultPermissionMode.enum.bypassPermissions%"
           ],
           "default": "manual",
-          "description": "С каким режимом разрешений открывается новая сессия. В открытой сессии режим меняется в меню под полем ввода."
+          "description": "%config.defaultPermissionMode.description%"
         },
         "agentura.defaultEffort": {
           "type": "string",
@@ -159,7 +159,7 @@
             "max"
           ],
           "enumDescriptions": [
-            "Выбор движка",
+            "%config.defaultEffort.enum.default%",
             "low",
             "medium",
             "high",
@@ -167,25 +167,25 @@
             "max"
           ],
           "default": "",
-          "description": "Effort новых сессий (сколько думать перед ответом); пусто — выбор движка."
+          "description": "%config.defaultEffort.description%"
         },
         "agentura.defaultModel": {
           "type": "string",
           "default": "",
-          "description": "Модель по умолчанию для новых сессий (пусто — выбор движка)."
+          "description": "%config.defaultModel.description%"
         },
         "agentura.claudeExecutable": {
           "type": "string",
           "scope": "machine",
           "default": "",
-          "description": "Путь к исполняемому файлу claude (пусто — искать системный: PATH, ~/.local/bin, Homebrew). Версия проверяется при первом запуске движка. Только в пользовательских настройках: настройки рабочей папки игнорируются."
+          "description": "%config.claudeExecutable.description%"
         },
         "agentura.usagePollMinutes": {
           "type": "number",
           "default": 15,
           "minimum": 5,
           "maximum": 1440,
-          "description": "Как часто опрашивать лимиты подписки, минут."
+          "description": "%config.usagePollMinutes.description%"
         },
         "agentura.sessionList.view": {
           "type": "string",
@@ -195,22 +195,22 @@
             "dense"
           ],
           "enumDescriptions": [
-            "Подробно: две строки на сессию — название, под ним ходы и цена",
-            "Компактно: одна строка, кроме текущей, идущих и ждущих ответа",
-            "Плотно: одна строка на любую сессию, подробности — в подсказке"
+            "%config.sessionList.view.enum.detailed%",
+            "%config.sessionList.view.enum.compact%",
+            "%config.sessionList.view.enum.dense%"
           ],
           "default": "compact",
-          "description": "Вид списка сессий в боковой панели. Переключается и кнопкой в заголовке «Сессии»."
+          "description": "%config.sessionList.view.description%"
         },
         "agentura.sessionList.context": {
           "type": "boolean",
           "default": true,
-          "description": "Показывать в списке сессий колонку контекста последнего запроса (173k ctx)."
+          "description": "%config.sessionList.context.description%"
         },
         "agentura.sessionList.time": {
           "type": "boolean",
           "default": true,
-          "description": "Показывать в списке сессий колонку времени (сейчас, 13:05, вт, 25.09)."
+          "description": "%config.sessionList.time.description%"
         },
         "agentura.sidebar.top": {
           "type": "string",
@@ -220,17 +220,32 @@
             "dense"
           ],
           "enumDescriptions": [
-            "Подробно: аккаунт таблицей, у каждого лимита шкала и строка сброса",
-            "Компактно: аккаунт и каждый лимит — в одну строку, «Новая сессия» — кнопкой ＋ в заголовке «Сессии»",
-            "Плотно: лимиты мини-шкалами в заголовке панели, аккаунт — в подсказке"
+            "%config.sidebar.top.enum.detailed%",
+            "%config.sidebar.top.enum.compact%",
+            "%config.sidebar.top.enum.dense%"
           ],
           "default": "detailed",
-          "description": "Вид верха боковой панели: сколько места занимают аккаунт, лимиты и «Новая сессия»."
+          "description": "%config.sidebar.top.description%"
+        },
+        "agentura.language": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "ru",
+            "en"
+          ],
+          "enumDescriptions": [
+            "%config.language.enum.auto%",
+            "%config.language.enum.ru%",
+            "English"
+          ],
+          "default": "auto",
+          "description": "%config.language.description%"
         },
         "agentura.limits.readKeychain": {
           "type": "boolean",
           "default": true,
-          "description": "Читать токен Claude Code из Keychain macOS для запроса лимитов подписки (/api/oauth/usage). Токен нужен только для этого запроса и никуда больше не отправляется. Без этого на macOS проценты 5-часового и недельного окна недоступны до первого хода (потом — из ответа движка), если нет файла ~/.claude/.credentials.json."
+          "description": "%config.limits.readKeychain.description%"
         }
       }
     }

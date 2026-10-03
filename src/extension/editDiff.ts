@@ -6,6 +6,7 @@
 import { applyPatch, structuredPatch, type StructuredPatchHunk } from 'diff';
 import type { DiffPreview } from '../agent/types';
 import type { EditPreview } from '../protocol';
+import { hostStrings, type Lang } from '../shared/l10n';
 
 export interface EditSides {
   filePath: string;
@@ -136,7 +137,11 @@ export function appliedSides(
 }
 
 /** Превью для карточки: ханки с контекстом 3 строки, счётчики `+N −M`, не больше `maxLines` строк. */
-export function previewOf(sides: EditSides, maxLines = PREVIEW_LINES): EditPreview {
+export function previewOf(
+  sides: EditSides,
+  maxLines = PREVIEW_LINES,
+  lang: Lang = 'ru',
+): EditPreview {
   const base = { filePath: sides.filePath, isNew: sides.isNew };
   const patch = structuredPatch('a', 'b', sides.before, sides.after, undefined, undefined, {
     context: 3,
@@ -171,7 +176,7 @@ export function previewOf(sides: EditSides, maxLines = PREVIEW_LINES): EditPrevi
       continue;
     }
     const header = sides.fragment
-      ? '@@ фрагмент правки @@'
+      ? hostStrings(lang).editFragment
       : `@@ -${start(h.oldStart, h.oldLines)},${h.oldLines} +${start(h.newStart, h.newLines)},${h.newLines} @@`;
     hunks.push({ header, lines: lines.slice(0, room) });
     shown += Math.min(room, lines.length);

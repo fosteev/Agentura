@@ -32,6 +32,13 @@ export const DEFAULT_SESSION_LIST: SessionListMode = 'compact';
 export const SIDEBAR_TOP_MODES = ['detailed', 'compact', 'dense'] as const;
 export type SidebarTopMode = (typeof SIDEBAR_TOP_MODES)[number];
 export const DEFAULT_SIDEBAR_TOP: SidebarTopMode = 'detailed';
+/**
+ * Язык интерфейса (`language`): `auto` — как в VS Code (`vscode.env.language`), иначе явно. Применяется после
+ * перезагрузки окна.
+ */
+export const LANGUAGE_MODES = ['auto', 'ru', 'en'] as const;
+export type LanguageMode = (typeof LANGUAGE_MODES)[number];
+export const DEFAULT_LANGUAGE: LanguageMode = 'auto';
 
 /** Ключи без префикса `agentura.` — те же, что в `getConfiguration('agentura')`. */
 export type SettingKey =
@@ -46,7 +53,8 @@ export type SettingKey =
   | 'sessionList.view'
   | 'sessionList.context'
   | 'sessionList.time'
-  | 'sidebar.top';
+  | 'sidebar.top'
+  | 'language';
 
 export const SETTING_KEYS: readonly SettingKey[] = [
   'defaultPermissionMode',
@@ -61,6 +69,7 @@ export const SETTING_KEYS: readonly SettingKey[] = [
   'sessionList.context',
   'sessionList.time',
   'sidebar.top',
+  'language',
 ];
 
 /**
@@ -84,6 +93,7 @@ export interface SettingsValues {
   'sessionList.context': boolean;
   'sessionList.time': boolean;
   'sidebar.top': SidebarTopMode;
+  language: LanguageMode;
 }
 
 /** Результат «проверить» у пути к claude: тот же поиск, что при старте движка (`resolveExecutable`). */
@@ -114,6 +124,16 @@ export function isSidebarTopMode(v: unknown): v is SidebarTopMode {
   return typeof v === 'string' && (SIDEBAR_TOP_MODES as readonly string[]).includes(v);
 }
 
+export function isLanguageMode(v: unknown): v is LanguageMode {
+  return typeof v === 'string' && (LANGUAGE_MODES as readonly string[]).includes(v);
+}
+
+/** Язык интерфейса: явный `ru`/`en`, иначе (auto или мусор) — по языку VS Code: `ru*` → русский, остальное → английский. */
+export function resolveLanguage(raw: unknown, envLanguage: string): 'ru' | 'en' {
+  if (raw === 'ru' || raw === 'en') return raw;
+  return envLanguage.toLowerCase().startsWith('ru') ? 'ru' : 'en';
+}
+
 /** Следующий вид по кнопке в заголовке «Сессии»: подробно → компактно → плотно → подробно. */
 export function nextSessionListMode(m: SessionListMode): SessionListMode {
   const i = SESSION_LIST_MODES.indexOf(m);
@@ -136,9 +156,47 @@ export function resolveDefaultEffort(raw: unknown): EffortLevel | undefined {
   return isEffort(raw) ? raw : undefined;
 }
 
+type ErrLang = 'ru' | 'en';
+
+/** Тексты ошибок полей (показываются во вкладке настроек). Свой словарь: файл общий для хоста и webview. */
+const ERRORS = {
+  ru: {
+    twoNumbers: 'Нужны два числа: жёлтый и оранжевый порог.',
+    numbers: 'Пороги должны быть числами.',
+    integers: 'Пороги — целые числа больше нуля.',
+    yellowBelowOrange: 'Жёлтый порог должен быть ниже оранжевого.',
+    orangeBelow: (limit: string) => `Оранжевый порог должен быть ниже ${limit} (там автосжатие).`,
+    unknownMode: 'Неизвестный режим.',
+    allowed: (list: string) => `Допустимо: ${list}.`,
+    allowedOrEmpty: (list: string) => `Допустимо: пусто, ${list}.`,
+    yesNo: 'Нужно да или нет.',
+    string: 'Нужна строка.',
+    wholeMinutes: 'Нужно целое число минут.',
+    atLeast: (n: number) => `Не меньше ${n}.`,
+    atMost: (n: number) => `Не больше ${n} (сутки).`,
+  },
+  en: {
+    twoNumbers: 'Two numbers are required: the yellow and orange thresholds.',
+    numbers: 'Thresholds must be numbers.',
+    integers: 'Thresholds must be whole numbers above zero.',
+    yellowBelowOrange: 'The yellow threshold must be below the orange one.',
+    orangeBelow: (limit: string) =>
+      `The orange threshold must be below ${limit} (auto-compact happens there).`,
+    unknownMode: 'Unknown mode.',
+    allowed: (list: string) => `Allowed: ${list}.`,
+    allowedOrEmpty: (list: string) => `Allowed: empty, ${list}.`,
+    yesNo: 'Must be yes or no.',
+    string: 'A string is required.',
+    wholeMinutes: 'A whole number of minutes is required.',
+    atLeast: (n: number) => `At least ${n}.`,
+    atMost: (n: number) => `At most ${n} (one day).`,
+  },
+} as const;
+
 /** Пороги: жёлтый < оранжевый < 200 000, целые положительные. Текст ошибки — для поля. */
-export function thresholdsError(v: unknown): string | undefined {
-  if (!Array.isArray(v) || v.length !== 2) return 'Нужны два числа: жёлтый и оранжевый порог.';
+export function thresholdsError(v: unknown, lang: ErrLang = 'ru'): string | undefined {
+  const t = ERRORS[lang];
+  if (!Array.isArray(v) || v.length !== 2) return t.twoNumbers;
   const [y, o] = v as unknown[];
   if (
     typeof y !== 'number' ||
@@ -146,14 +204,14 @@ export function thresholdsError(v: unknown): string | undefined {
     !Number.isFinite(y) ||
     !Number.isFinite(o)
   ) {
-    return 'Пороги должны быть числами.';
+    return t.numbers;
   }
   if (!Number.isInteger(y) || !Number.isInteger(o) || y <= 0) {
-    return 'Пороги — целые числа больше нуля.';
+    return t.integers;
   }
-  if (y >= o) return 'Жёлтый порог должен быть ниже оранжевого.';
+  if (y >= o) return t.yellowBelowOrange;
   if (o >= CONTEXT_LIMIT) {
-    return `Оранжевый порог должен быть ниже ${CONTEXT_LIMIT.toLocaleString('ru')} (там автосжатие).`;
+    return t.orangeBelow(CONTEXT_LIMIT.toLocaleString(lang));
   }
   return undefined;
 }
@@ -161,41 +219,46 @@ export function thresholdsError(v: unknown): string | undefined {
 export type Checked = { ok: true; value: unknown } | { ok: false; error: string };
 
 /** Проверка значения до записи; возвращает приведённое значение (строки обрезаются). */
-export function validateSetting(key: SettingKey, value: unknown): Checked {
+export function validateSetting(key: SettingKey, value: unknown, lang: ErrLang = 'ru'): Checked {
+  const t = ERRORS[lang];
   const bad = (error: string): Checked => ({ ok: false, error });
   switch (key) {
     case 'defaultPermissionMode':
-      return isDefaultMode(value) ? { ok: true, value } : bad('Неизвестный режим.');
+      return isDefaultMode(value) ? { ok: true, value } : bad(t.unknownMode);
     case 'defaultEffort':
       return value === '' || isEffort(value)
         ? { ok: true, value }
-        : bad(`Допустимо: пусто, ${EFFORT_LEVELS.join(', ')}.`);
+        : bad(t.allowedOrEmpty(EFFORT_LEVELS.join(', ')));
     case 'allowBypassPermissions':
     case 'limits.readKeychain':
     case 'sessionList.context':
     case 'sessionList.time':
-      return typeof value === 'boolean' ? { ok: true, value } : bad('Нужно да или нет.');
+      return typeof value === 'boolean' ? { ok: true, value } : bad(t.yesNo);
     case 'defaultModel':
     case 'claudeExecutable':
-      return typeof value === 'string' ? { ok: true, value: value.trim() } : bad('Нужна строка.');
+      return typeof value === 'string' ? { ok: true, value: value.trim() } : bad(t.string);
     case 'usagePollMinutes':
       if (typeof value !== 'number' || !Number.isFinite(value) || !Number.isInteger(value)) {
-        return bad('Нужно целое число минут.');
+        return bad(t.wholeMinutes);
       }
-      if (value < MIN_POLL_MINUTES) return bad(`Не меньше ${MIN_POLL_MINUTES}.`);
+      if (value < MIN_POLL_MINUTES) return bad(t.atLeast(MIN_POLL_MINUTES));
       return value <= MAX_POLL_MINUTES
         ? { ok: true, value }
-        : bad(`Не больше ${MAX_POLL_MINUTES} (сутки).`);
+        : bad(t.atMost(MAX_POLL_MINUTES));
     case 'sessionList.view':
       return isSessionListMode(value)
         ? { ok: true, value }
-        : bad(`Допустимо: ${SESSION_LIST_MODES.join(', ')}.`);
+        : bad(t.allowed(SESSION_LIST_MODES.join(', ')));
     case 'sidebar.top':
       return isSidebarTopMode(value)
         ? { ok: true, value }
-        : bad(`Допустимо: ${SIDEBAR_TOP_MODES.join(', ')}.`);
+        : bad(t.allowed(SIDEBAR_TOP_MODES.join(', ')));
+    case 'language':
+      return isLanguageMode(value)
+        ? { ok: true, value }
+        : bad(t.allowed(LANGUAGE_MODES.join(', ')));
     case 'contextThresholds': {
-      const e = thresholdsError(value);
+      const e = thresholdsError(value, lang);
       return e ? bad(e) : { ok: true, value };
     }
   }
@@ -209,6 +272,7 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
   const poll = cfg.get<unknown>('usagePollMinutes');
   const list = cfg.get<unknown>('sessionList.view');
   const top = cfg.get<unknown>('sidebar.top');
+  const lang = cfg.get<unknown>('language');
   const str = (k: string) => {
     const v = cfg.get<unknown>(k);
     return typeof v === 'string' ? v : '';
@@ -230,6 +294,7 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
     'sessionList.context': cfg.get<unknown>('sessionList.context') !== false,
     'sessionList.time': cfg.get<unknown>('sessionList.time') !== false,
     'sidebar.top': isSidebarTopMode(top) ? top : DEFAULT_SIDEBAR_TOP,
+    language: isLanguageMode(lang) ? lang : DEFAULT_LANGUAGE,
   };
 }
 

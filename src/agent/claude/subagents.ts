@@ -8,6 +8,7 @@
 import { access, readdir, readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { streamLines } from '../../data/jsonlStream';
+import { hostStrings, type Lang } from '../../shared/l10n';
 import type { AgentEvent } from '../types';
 import { arr, isObj, obj, str, timestamp, type Json } from './json';
 
@@ -157,12 +158,12 @@ export function subagentEvents(records: readonly Json[], agentId: string): Agent
 const RESULT_LINES = 30;
 const RESULT_CHARS = 3000;
 
-function clip(text: string): string {
+function clip(text: string, t: ReturnType<typeof hostStrings>): string {
   const lines = text.split('\n');
   let out = lines.slice(0, RESULT_LINES).join('\n');
   if (out.length > RESULT_CHARS) out = out.slice(0, RESULT_CHARS);
   const cut = out.length < text.length;
-  return cut ? `${out}\n… (обрезано: ${text.length} симв.)` : out;
+  return cut ? `${out}\n${t.agentClipped(text.length)}` : out;
 }
 
 function fence(text: string): string {
@@ -176,10 +177,11 @@ function fence(text: string): string {
  */
 export function subagentMarkdown(
   records: readonly Json[],
-  meta: { title: string; agentType?: string },
+  meta: { title: string; agentType?: string; lang?: Lang },
 ): string {
+  const t = hostStrings(meta.lang ?? 'ru');
   const parts: string[] = [`# ${meta.title}${meta.agentType ? ` · ${meta.agentType}` : ''}`, ''];
-  parts.push('_Транскрипт субагента только для чтения._', '');
+  parts.push(t.agentReadOnly, '');
   let prompted = false;
   for (const rec of records) {
     const msg = obj(rec['message']);
@@ -187,7 +189,7 @@ export function subagentMarkdown(
     const content = msg['content'];
     if (rec['type'] === 'user') {
       if (typeof content === 'string') {
-        parts.push(prompted ? '## Сообщение' : '## Промпт от основного', '', content, '');
+        parts.push(prompted ? t.agentMessage : t.agentPrompt, '', content, '');
         prompted = true;
         continue;
       }
@@ -195,14 +197,14 @@ export function subagentMarkdown(
         if (b['type'] === 'tool_result') {
           const text = resultText(b['content']);
           parts.push(
-            b['is_error'] === true ? '_ошибка:_' : '_результат:_',
+            b['is_error'] === true ? t.agentError : t.agentResult,
             '',
-            fence(clip(text)),
+            fence(clip(text, t)),
             '',
           );
         } else if (b['type'] === 'text') {
           parts.push(
-            prompted ? '## Сообщение' : '## Промпт от основного',
+            prompted ? t.agentMessage : t.agentPrompt,
             '',
             str(b['text']) ?? '',
             '',
@@ -215,8 +217,8 @@ export function subagentMarkdown(
     for (const b of arr(content).filter(isObj)) {
       if (b['type'] === 'text') parts.push(str(b['text']) ?? '', '');
       else if (b['type'] === 'thinking' && str(b['thinking'])) {
-        const t = (str(b['thinking']) ?? '').replace(/\s+/g, ' ').trim();
-        parts.push(`> _думает:_ ${t.length > 400 ? `${t.slice(0, 400)}…` : t}`, '');
+        const th = (str(b['thinking']) ?? '').replace(/\s+/g, ' ').trim();
+        parts.push(`> ${t.agentThinking} ${th.length > 400 ? `${th.slice(0, 400)}…` : th}`, '');
       } else if (b['type'] === 'tool_use') {
         const input = JSON.stringify(obj(b['input']) ?? {});
         parts.push(

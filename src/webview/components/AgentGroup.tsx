@@ -84,7 +84,7 @@ export function AgentGroup({
               {r.right}
               {r.stopTaskId && (
                 <button
-                  title={ui.agents.group.stop}
+                  data-tip={ui.agents.group.stop}
                   aria-label={ui.agents.group.stop}
                   onClick={() => onStop(r.stopTaskId!)}
                 >

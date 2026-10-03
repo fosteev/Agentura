@@ -1,7 +1,9 @@
 import { readFile, stat } from 'node:fs/promises';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import { hostStrings } from '../shared/l10n';
 import { previewHtml } from './previewHtml';
+import { currentLanguage } from './webviewHost';
 
 const RERENDER_DELAY_MS = 150;
 
@@ -24,7 +26,7 @@ export class PreviewPanels implements vscode.Disposable {
       () => false,
     );
     if (!exists) {
-      void vscode.window.showWarningMessage(`Agentura: файла нет — ${file}`);
+      void vscode.window.showWarningMessage(hostStrings(currentLanguage()).previewMissing(file));
       return;
     }
     const known = this.entries.get(file);
@@ -37,7 +39,7 @@ export class PreviewPanels implements vscode.Disposable {
     const base = path.basename(file);
     const panel = vscode.window.createWebviewPanel(
       'agentura.preview',
-      `превью · ${base}`,
+      hostStrings(currentLanguage()).previewTitle(base),
       { viewColumn: column, preserveFocus: true },
       {
         enableScripts: true,

@@ -90,7 +90,7 @@ describe('картинки в поле ввода (этап 4 roadmap 0.2)', () 
     );
     expect(im.querySelector('b')?.textContent).toMatch(/^скриншот \d+$/);
     expect(im.querySelector('small')?.textContent).toBe('1568×1000 · ~2.1k');
-    expect(im.querySelector('small')?.getAttribute('title')).toBe('уменьшен с 3024×1928');
+    expect(im.querySelector('small')?.getAttribute('data-tip')).toBe('уменьшен с 3024×1928');
     expect(f.querySelector('.ctx .cn .plus')?.textContent).toBe('+2.1k картинки');
     expect(f.querySelector('.ctx .hint')?.textContent).toBe(
       '⌘V — вставить картинку · перетащить с ⇧',
@@ -122,7 +122,7 @@ describe('картинки в поле ввода (этап 4 roadmap 0.2)', () 
     expect(err.querySelector('.ph')?.textContent).toBe('HEIC');
     expect(err.querySelector('b')?.textContent).toBe('IMG_2041');
     expect(err.querySelector('small')?.textContent).toBe('HEIC не берём');
-    expect(err.querySelector('small')?.getAttribute('title')).toBe(
+    expect(err.querySelector('small')?.getAttribute('data-tip')).toBe(
       'поддерживаются png, jpeg, gif, webp',
     );
     (err.querySelector('.x') as HTMLElement).click();
