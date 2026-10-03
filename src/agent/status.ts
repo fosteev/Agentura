@@ -96,8 +96,13 @@ export function statusMarker(status: ChatStatus): string {
   }
 }
 
-export function tabTitle(status: ChatStatus, title?: string): string {
+/** Длиннее — режем с «…»: VS Code показывает заголовок вкладки целиком. */
+export const TAB_TITLE_MAX = 40;
+
+/** Заголовок вкладки: маркер состояния + название сессии (или `untitled`, пока его нет). */
+export function tabTitle(status: ChatStatus, title: string | undefined, untitled: string): string {
   const marker = statusMarker(status);
-  const base = title ? `Agentura · ${title}` : 'Agentura';
+  const name = title?.trim() || untitled;
+  const base = name.length > TAB_TITLE_MAX ? `${name.slice(0, TAB_TITLE_MAX - 1).trimEnd()}…` : name;
   return marker ? `${marker} ${base}` : base;
 }

@@ -237,6 +237,10 @@ export class ChatPanel {
     const editorColumn = (): vscode.ViewColumn =>
       panel.viewColumn === vscode.ViewColumn.One ? vscode.ViewColumn.Two : vscode.ViewColumn.One;
     panel.webview.options = webviewOptions(context.extensionUri);
+    panel.iconPath = {
+      light: vscode.Uri.joinPath(context.extensionUri, 'media', 'icon-light.svg'),
+      dark: vscode.Uri.joinPath(context.extensionUri, 'media', 'icon-dark.svg'),
+    };
     this.controller = new ChatController({
       lang: currentLanguage(),
       adapter: services.adapter,

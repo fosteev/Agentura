@@ -97,7 +97,11 @@ describe('состояние чата', () => {
     expect(statusMarker('working')).toBe('●');
     expect(statusMarker('waiting')).toBe('?');
     expect(statusMarker('error')).toBe('!');
-    expect(tabTitle('idle')).toBe('Agentura');
-    expect(tabTitle('working', 'мигание')).toBe('● Agentura · мигание');
+    expect(tabTitle('idle', undefined, 'Новая сессия')).toBe('Новая сессия');
+    expect(tabTitle('working', 'мигание', 'Новая сессия')).toBe('● мигание');
+    expect(tabTitle('idle', '  ', 'New session')).toBe('New session');
+    const long = tabTitle('idle', 'а'.repeat(60), 'x');
+    expect(long).toHaveLength(40);
+    expect(long.endsWith('…')).toBe(true);
   });
 });

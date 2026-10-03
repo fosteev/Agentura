@@ -56,7 +56,11 @@
       {
         "command": "agentura.newSession",
         "title": "%command.newSession.title%",
-        "category": "Agentura"
+        "category": "Agentura",
+        "icon": {
+          "light": "media/icon-light.svg",
+          "dark": "media/icon-dark.svg"
+        }
       },
       {
         "command": "agentura.openLast",
@@ -95,6 +99,12 @@
         {
           "command": "agentura.debug.showState",
           "when": "agentura.debug"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "agentura.newSession",
+          "group": "navigation"
         }
       ]
     },

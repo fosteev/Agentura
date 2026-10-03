@@ -255,8 +255,8 @@ describe('ChatController', () => {
     s.emit({ type: 'session.title', title: 'мигание' });
     expect(posted.filter((m) => m.type === 'agent.event')).toHaveLength(2);
     expect(posted.find((m) => m.type === 'agent.event')).toMatchObject({ sessionId: 'sess-1' });
-    expect(titles).toContain('● Agentura');
-    expect(titles.at(-1)).toBe('● Agentura · мигание');
+    expect(titles).toContain('● Новая сессия');
+    expect(titles.at(-1)).toBe('● мигание');
     s.emit({
       type: 'turn.result',
       ok: true,
@@ -269,7 +269,7 @@ describe('ChatController', () => {
       permissionDenials: [],
       usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     });
-    expect(titles.at(-1)).toBe('Agentura · мигание');
+    expect(titles.at(-1)).toBe('мигание');
   });
 
   it('запрос разрешения ждёт ответа карточки: маркер «?», ответ уходит в сессию', async () => {

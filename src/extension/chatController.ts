@@ -44,7 +44,7 @@ import {
   type SessionAttach,
 } from '../shared/files';
 import { resolveDefaultEffort, resolveDefaultMode } from '../settings';
-import type { Lang } from '../shared/l10n';
+import { hostStrings, type Lang } from '../shared/l10n';
 import { appliedSides, previewOf, proposedSides, type EditSides } from './editDiff';
 import {
   buildPrompt,
@@ -342,7 +342,7 @@ export class ChatController {
       this.resumed = undefined;
       this.touched = false;
       this.title = undefined;
-      deps.setTitle(tabTitle(this.status, this.title));
+      deps.setTitle(this.tabLabel());
       deps.post({ type: 'session.reset' });
       deps.onSession?.(undefined);
       this.loading = undefined;
@@ -357,7 +357,7 @@ export class ChatController {
     this.resumed = { history, ...(title ? { title } : {}) };
     this.attached = history.attach ?? { pdfPages: 0, chars: 0 };
     this.title = title;
-    deps.setTitle(tabTitle(this.status, this.title));
+    deps.setTitle(this.tabLabel());
     deps.onSession?.(id);
     for (const e of history.events) this.trackEdit(e);
     // webview уже прислал `ready`, пока читали историю, — шлём сразу; иначе она уйдёт на его `ready`
@@ -458,12 +458,16 @@ export class ChatController {
     else this.queuedCommand = name;
   }
 
+  private tabLabel(): string {
+    return tabTitle(this.status, this.title, hostStrings(this.deps.lang ?? 'ru').untitledTab);
+  }
+
   /** Название сессии сменили снаружи (переименование в списке). */
   setTitle(title: string): void {
     const id = this.sessionId;
     this.title = title;
     if (this.resumed) this.resumed = { ...this.resumed, title };
-    this.deps.setTitle(tabTitle(this.status, this.title));
+    this.deps.setTitle(this.tabLabel());
     if (id) this.forward(id, { type: 'session.title', title });
   }
 
@@ -521,7 +525,7 @@ export class ChatController {
     this.deps.onSession?.(undefined);
     this.status = 'idle';
     this.title = undefined;
-    this.deps.setTitle(tabTitle(this.status, this.title));
+    this.deps.setTitle(this.tabLabel());
     if (notify) this.deps.post({ type: 'session.reset' });
     void this.ensureSession()
       .then((s) => this.postCapabilities(s))
@@ -1196,7 +1200,7 @@ export class ChatController {
         });
         this.forward('', { type: 'session.closed', reason: 'error', message });
         this.status = 'error';
-        deps.setTitle(tabTitle(this.status, this.title));
+        deps.setTitle(this.tabLabel());
       });
     }
     return this.session.catch(() => undefined);
@@ -1216,7 +1220,7 @@ export class ChatController {
     this.status = nextStatus(this.status, e, this.pending.length, this.inTurn);
     if (e.type === 'session.title' && !e.agentId) this.title = e.title;
     if (this.status !== prev || e.type === 'session.title') {
-      this.deps.setTitle(tabTitle(this.status, this.title));
+      this.deps.setTitle(this.tabLabel());
     }
 
     switch (e.type) {

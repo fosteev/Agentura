@@ -24,6 +24,8 @@ const ru = {
   diffTitle: (name: string, stage: 'proposed' | 'applied') =>
     `${name}: ${stage === 'proposed' ? 'предложенная правка' : 'правка агента'}`,
   settingsTitle: 'Agentura · настройки',
+  /** Заголовок вкладки чата, пока у сессии нет названия. */
+  untitledTab: 'Новая сессия',
   overriddenView:
     'Agentura: вид списка задан в настройках рабочей папки (agentura.sessionList.view) — поменяйте его там.',
   renameFailed: (e: string) => `Agentura: не удалось переименовать сессию: ${e}`,
@@ -93,6 +95,7 @@ const en: HostUi = {
   previewTitle: (base) => `preview · ${base}`,
   diffTitle: (name, stage) => `${name}: ${stage === 'proposed' ? 'proposed edit' : 'agent edit'}`,
   settingsTitle: 'Agentura · Settings',
+  untitledTab: 'New session',
   overriddenView:
     'Agentura: the list view is set in the workspace settings (agentura.sessionList.view) — change it there.',
   renameFailed: (e) => `Agentura: could not rename the session: ${e}`,
