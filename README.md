@@ -1,108 +1,111 @@
 # Agentura
 
-Расширение VS Code: чат с Claude и приборы, которые штатные клиенты прячут, — контекст в токенах,
-стоимость хода, кэш, лимиты подписки, карта агентов. Движок — Claude Agent SDK (тот же, что у Claude Code).
+**English** · [Русский](README.ru.md)
 
-Версия 0.2.0 — личный релиз, в Marketplace не публикуется.
+A VS Code extension: a Claude chat plus the gauges that stock clients hide — context in tokens, cost per turn,
+cache, subscription limits, an agent map. Powered by the Claude Agent SDK (the same engine as Claude Code).
 
-## Возможности
+Version 0.2.0 is a personal release and is not published to the Marketplace.
 
-- Чат во вкладке редактора (`Agentura: Открыть чат`, `Cmd/Ctrl+Alt+A`), несколько вкладок — по сессии на вкладку.
-- Приборы: шкала контекста (пороги настраиваются), стоимость и токены хода, кэш (таймер TTL и доля попаданий), лимиты 5 ч / 7 д.
-- Разрешения инструментов, вопросы агента, план (`ExitPlanMode`), нативный дифф правок.
-- Боковая панель: список сессий проекта, возобновление, переименование, аккаунт и лимиты.
-- Настройки во вкладке: ⚙ в боковой панели (или `Agentura: Настройки`) — модель, режим и effort новых сессий,
-  пороги контекста, период опроса лимитов, путь к `claude` с проверкой.
-- Скриншоты: `⌘V` / `Ctrl+V` в поле ввода вставляет картинку из буфера (до 10 на сообщение, уменьшаются до
-  1568 px), миниатюры в ленте и истории, клик открывает картинку во вкладке.
-- Файлы-вложения: «+» → «Изображение или файл…» или перетаскивание из проводника и вкладок VS Code **с зажатым ⇧**
-  (без него VS Code не отдаёт drop расширению). Текст (UTF-8, до 256 КБ) и pdf (до 100 страниц) уходят
-  документом; вложения считаются на сессию — 100 страниц pdf, 24 МБ и 70 % окна контекста. Перетащенная
-  папка становится ссылкой, как «Файл или папка…».
-- Агенты: параллельные субагенты группой `×N`, карта агентов (ход, промпт, итог, токены, время), «stop all»,
-  транскрипт субагента отдельным документом.
-- Состояния: идёт ход, ожидание ответа, ошибки движка, лимит. При лимите отправка отложена до сброса,
-  автоматической отправки нет (A14 — после 0.1).
+## Features
 
-## Требования
+- Chat in an editor tab (`Agentura: Open Chat`, `Cmd/Ctrl+Alt+A`), multiple tabs — one session per tab.
+- Gauges: context gauge (configurable thresholds), cost and tokens per turn, cache (TTL timer and hit rate), 5 h / 7 d limits.
+- Tool permissions, agent questions, plan (`ExitPlanMode`), native diff for edits.
+- Sidebar: the project's session list, resume, rename, account and limits.
+- Settings tab: ⚙ in the sidebar (or `Agentura: Settings`) — model, mode and effort for new sessions,
+  context thresholds, limits polling period, path to `claude` with a check.
+- Screenshots: `⌘V` / `Ctrl+V` in the input field pastes an image from the clipboard (up to 10 per message, downscaled
+  to 1568 px), thumbnails in the feed and history, a click opens the image in a tab.
+- File attachments: "+" → "Image or file…", or drag from the VS Code explorer and tabs **while holding ⇧**
+  (without it VS Code does not hand the drop to the extension). Text (UTF-8, up to 256 KB) and pdf (up to 100 pages)
+  are sent as documents; attachments are counted per session — 100 pdf pages, 24 MB and 70 % of the context window.
+  A dropped folder becomes a reference, like "File or folder…".
+- Agents: parallel subagents grouped as `×N`, an agent map (turn, prompt, result, tokens, time), "stop all",
+  a subagent's transcript as a separate document.
+- States: turn running, waiting for reply, engine errors, rate limit. When a limit is hit, sending is held until the
+  reset; there is no automatic resend (A14 — after 0.1).
+- Interface in English and Russian (`agentura.language`).
 
-- VS Code 1.138 или новее.
-- Установленный Claude Code (`claude`) версии 2.1.285 или новее и выполненный вход (`claude` → `/login`).
-  Расширение не содержит бинарника движка (он 200+ МБ) и запускает системный `claude`:
-  ищет в `PATH`, `~/.local/bin`, `~/.claude/local`, Homebrew (на Windows — `claude.exe`, ещё в
-  `%APPDATA%\npm`; npm-обёртка `claude.cmd` не подходит — SDK запускает движок без оболочки); поиск
-  асинхронный, при запуске окна идёт заранее. Нашёл — проверяет `claude --version`,
-  версию ниже 2.1.285 пишет в журнал и предупреждает. Не нашёл — движок не стартует, в ленте карточка
-  «Claude Code не найден» с кнопкой «Открыть настройки» и «Проверить снова» (перезагружать окно не нужно).
-- Node не нужен: расширение работает на Node из VS Code.
+## Requirements
 
-## Установка из `.vsix`
+- VS Code 1.138 or newer.
+- Claude Code (`claude`) 2.1.285 or newer, installed and logged in (`claude` → `/login`).
+  The extension does not bundle the engine binary (it is 200+ MB) and runs the system `claude`:
+  it looks in `PATH`, `~/.local/bin`, `~/.claude/local`, Homebrew (on Windows — `claude.exe`, also in
+  `%APPDATA%\npm`; the npm wrapper `claude.cmd` won't do — the SDK starts the engine without a shell). The lookup is
+  asynchronous and runs ahead of time when the window starts. If found, it checks `claude --version`, logs a version
+  below 2.1.285 and warns. If not found, the engine does not start and the feed shows a "Claude Code not found" card
+  with "Open settings" and "Check again" buttons (no window reload needed).
+- No Node required: the extension runs on the Node bundled with VS Code.
+
+## Installing from `.vsix`
 
 ```
 code --install-extension agentura-0.2.0.vsix
 ```
 
-или в VS Code: Extensions → `…` → «Install from VSIX…». Сборка пакета из исходников:
+or in VS Code: Extensions → `…` → "Install from VSIX…". Building the package from source:
 
 ```
 npm ci
-npm run check          # типы, линтер, юнит-тесты, сборка
-npm run package        # agentura-0.2.0.vsix в корне
+npm run check          # types, linter, unit tests, build
+npm run package        # agentura-0.2.0.vsix in the repo root
 ```
 
-## Настройки
+## Settings
 
-| Настройка                         | По умолчанию       | Что делает                                                                 |
-| --------------------------------- | ------------------ | -------------------------------------------------------------------------- |
-| `agentura.claudeExecutable`       | пусто              | Путь к `claude`; пусто — искать системный ¹                                |
-| `agentura.defaultModel`           | пусто              | Модель для новых сессий (пусто — выбор движка)                             |
-| `agentura.defaultPermissionMode`  | `manual`           | Режим новых сессий: `manual`, `acceptEdits`, `plan`, `bypassPermissions` ¹ |
-| `agentura.defaultEffort`          | пусто              | Effort новых сессий: `low` … `max` (пусто — выбор движка)                  |
-| `agentura.contextThresholds`      | `[120000, 150000]` | Жёлтая и оранжевая зоны шкалы контекста, токены                            |
-| `agentura.allowBypassPermissions` | `false`            | Разрешить режим `bypassPermissions` ¹                                      |
-| `agentura.usagePollMinutes`       | `15`               | Период опроса лимитов подписки, минут (не меньше 5)                        |
-| `agentura.limits.readKeychain`    | `true`             | Читать токен Claude Code из Keychain macOS для запроса лимитов             |
-| `agentura.sessionList.view`       | `compact`          | Вид списка: `detailed`, `compact`, `dense` (кнопка в заголовке «Сессии»)   |
-| `agentura.sessionList.context`    | `true`             | Колонка контекста сессии (`173k ctx`) в списке                             |
-| `agentura.sessionList.time`       | `true`             | Колонка времени последней активности в списке                              |
-| `agentura.sidebar.top`            | `detailed`         | Вид верха панели: `detailed`, `compact`, `dense` (аккаунт и лимиты)        |
-| `agentura.language`               | `auto`             | Язык интерфейса: `auto` (как в VS Code), `ru`, `en`; после перезагрузки    |
+| Setting                           | Default            | What it does                                                                  |
+| --------------------------------- | ------------------ | ----------------------------------------------------------------------------- |
+| `agentura.claudeExecutable`       | empty              | Path to `claude`; empty — look for the system one ¹                           |
+| `agentura.defaultModel`           | empty              | Model for new sessions (empty — engine default)                               |
+| `agentura.defaultPermissionMode`  | `manual`           | Mode for new sessions: `manual`, `acceptEdits`, `plan`, `bypassPermissions` ¹ |
+| `agentura.defaultEffort`          | empty              | Effort for new sessions: `low` … `max` (empty — engine default)               |
+| `agentura.contextThresholds`      | `[120000, 150000]` | Yellow and orange zones of the context gauge, in tokens                       |
+| `agentura.allowBypassPermissions` | `false`            | Allow the `bypassPermissions` mode ¹                                          |
+| `agentura.usagePollMinutes`       | `15`               | Subscription limits polling period, minutes (at least 5)                      |
+| `agentura.limits.readKeychain`    | `true`             | Read the Claude Code token from the macOS Keychain to request limits          |
+| `agentura.sessionList.view`       | `compact`          | List view: `detailed`, `compact`, `dense` (button in the "Sessions" header)   |
+| `agentura.sessionList.context`    | `true`             | Session context column (`173k ctx`) in the list                               |
+| `agentura.sessionList.time`       | `true`             | Last activity time column in the list                                         |
+| `agentura.sidebar.top`            | `detailed`         | Sidebar top view: `detailed`, `compact`, `dense` (account and limits)         |
+| `agentura.language`               | `auto`             | Interface language: `auto` (same as VS Code), `ru`, `en`; after a reload      |
 
-¹ Только в пользовательских настройках: значение из `.vscode/settings.json` рабочей папки игнорируется,
-чтобы чужой репозиторий не подменил запускаемый файл и не включил работу без подтверждений.
+¹ User settings only: the value from a workspace `.vscode/settings.json` is ignored, so that someone else's
+repository can't swap the executable or turn on running without confirmations.
 
-## Известные ограничения
+## Known limitations
 
-- **Вход подписки и ToS.** Документация SDK не разрешает сторонним продуктам предлагать вход через claude.ai
-  без одобрения Anthropic. Расширение для личного использования: оно не делает свой вход, а работает через
-  вход установленного CLI. Для публичной раздачи нужно либо разрешение, либо API-ключ как основной путь.
-- **Лимиты 5 ч / 7 д** берутся из недокументированного `GET /api/oauth/usage` с токеном Claude Code
-  (Keychain на macOS или `~/.claude/.credentials.json`). Может сломаться; тогда остаётся `rate_limit_event`
-  движка без типа окна.
-- **Формат транскриптов** `~/.claude/projects/*.jsonl` внутренний и меняется между версиями CLI; итоги сессий
-  (токены, стоимость) считаются разбором транскриптов, список и история — через SDK.
-- **Стоимость — оценка** (`total_cost_usd` и своя таблица цен), счёт подписки может отличаться.
-- **Память.** Каждая вкладка чата держит свой процесс `claude`. После перезагрузки окна фоновые вкладки
-  поднимают движок только при первом показе. Процессы закрываются при выгрузке расширения.
-- **Список сессий** перечитывает активный транскрипт целиком (не реже раза в 4 с): на очень длинных
-  сессиях возможны подвисания.
-- Пакет универсальный (без нативного кода), но проверялся только на macOS arm64: Windows и Linux
-  руками не проверялись. CI гоняет `npm run check` на macOS и ubuntu и интеграционный тест на ubuntu.
-- У агентов нет стоимости и токенов по отдельности — движок их не отдаёт.
-- «Повторить ход» не двоит промпт, только если оборванный ход ничего не менял (чтение и поиск); после правок
-  или команд сессия возобновляется целиком, и промпт в транскрипте окажется дважды.
+- **Subscription login and ToS.** The SDK documentation does not allow third-party products to offer claude.ai login
+  without Anthropic's approval. The extension is for personal use: it has no login of its own and works through the
+  installed CLI's login. Public distribution needs either permission or an API key as the primary path.
+- **5 h / 7 d limits** come from the undocumented `GET /api/oauth/usage` with the Claude Code token
+  (Keychain on macOS or `~/.claude/.credentials.json`). It may break; the fallback is the engine's
+  `rate_limit_event`, which has no window type.
+- **The transcript format** `~/.claude/projects/*.jsonl` is internal and changes between CLI versions; session totals
+  (tokens, cost) are computed by parsing transcripts, the list and history go through the SDK.
+- **Cost is an estimate** (`total_cost_usd` plus our own price table); the subscription bill may differ.
+- **Memory.** Every chat tab holds its own `claude` process. After a window reload, background tabs start the engine
+  only when first shown. Processes are closed when the extension is deactivated.
+- **The session list** rereads the active transcript in full (at most every 4 s): very long sessions may stutter.
+- The package is universal (no native code) but has been tested only on macOS arm64: Windows and Linux haven't been
+  tested by hand. CI runs `npm run check` on macOS and ubuntu and the integration test on ubuntu.
+- Agents have no separate cost and tokens — the engine does not report them.
+- "Retry turn" avoids duplicating the prompt only if the interrupted turn changed nothing (reads and searches); after
+  edits or commands the session is resumed in full, and the prompt appears twice in the transcript.
 
-## Для разработчиков
+## For developers
 
 ```
-npm run watch              # пересборка extension и webview
-npm test                   # юнит-тесты (vitest)
-npm run test:integration   # интеграционный тест в VS Code (@vscode/test-electron, скачивает VS Code)
-node scripts/vsix-verify.mjs [--live]   # проверка собранного .vsix: состав, загрузка, SDK; --live — один ход Haiku
+npm run watch              # rebuild extension and webview
+npm test                   # unit tests (vitest)
+npm run test:integration   # integration test in VS Code (@vscode/test-electron, downloads VS Code)
+node scripts/vsix-verify.mjs [--live]   # check the built .vsix: contents, loading, SDK; --live — one Haiku turn
 ```
 
-Команда `Agentura: Показать состояние (отладка)` открывает вкладку с фикстурами состояний без движка.
-Живые проверки движка — `scripts/*-smoke.mjs` (тратят токены, см. шапки скриптов).
+The `Agentura: Show State (debug)` command opens a tab with state fixtures, no engine needed.
+Live engine checks are `scripts/*-smoke.mjs` (they spend tokens, see the script headers).
 
-Устройство: `src/agent` — адаптер агента, `src/data` — сессии, лимиты, цены, `src/extension` — хост,
-`src/webview` — интерфейс на Preact, `prototype/` — эталон вёрстки. План и история решений — `docs/roadmap/`.
+Layout: `src/agent` — agent adapter, `src/data` — sessions, limits, prices, `src/extension` — host,
+`src/webview` — Preact UI, `prototype/` — the reference markup. The plan and decision history (in Russian) are in
+`docs/roadmap/`.

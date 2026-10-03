@@ -1,130 +1,140 @@
 # Changelog
 
-## Не выпущено
+## Unreleased
 
-### Добавлено
+### Added
 
-- **Вид списка сессий**: в боковой панели три вида — `detailed` (две строки на сессию), `compact` (по умолчанию:
-  одна строка, у текущей, идущей, ждущей ответа и упавшей — две) и `dense` (всё в одну). Переключается кнопкой
-  ☰ / ≡ / ≣ в заголовке «Сессии» и в ⚙ → «Вид»; справа колонки контекста (`173k ctx`) и времени, каждая
-  отключается. Если вид задан в настройках рабочей папки, кнопка показывает уведомление, а не меняет его.
-  Новые настройки: `agentura.sessionList.view`, `agentura.sessionList.context`, `agentura.sessionList.time`.
-- **Боковая панель**: секции «Аккаунт и лимиты» и «Сессии» сворачиваются кликом по заголовку (или Enter),
-  состояние переживает перезагрузку вида. Поиск по названию сессии работает: фильтрует на лету, без регистра,
-  «ё» = «е»; ✕ или Esc сбрасывают.
-- **Вид верха боковой панели** (`agentura.sidebar.top`, ⚙ → «Вид»): `detailed` — как раньше; `compact` — аккаунт
-  и каждый лимит в одну строку (шкала, процент, время сброса), «Новая сессия» — кнопкой ＋ в заголовке «Сессии»;
-  `dense` — лимиты мини-шкалами в заголовке панели рядом с ↻ и ⚙ (жёлтые после 70 %, красные после 85 %),
-  аккаунт — в подсказке заголовка.
-- **Английский интерфейс** (`agentura.language`, ⚙ → «Вид»): `auto` (по умолчанию — русский, если VS Code на
-  русском, иначе английский), `ru`, `en`. Применяется после перезагрузки окна (уведомление с кнопкой). Названия
-  команд и описания настроек в Settings UI следуют языку самого VS Code (`package.nls*.json`).
-- **Тултипы** на всех кнопках чата, боковой панели и настроек вместо системного `title`: в цветах hover-виджета
-  VS Code, через 0,5 с (соседние — сразу), над кнопкой у нижнего края, вторая строка приглушена, клавиша —
-  плашкой (`Enter`, `Esc`, `⌘⇧N`); показываются и при переходе по Tab, прячутся по Esc, клику, скроллу.
+- **Chat tab**: the Agentura icon instead of the default one; the title is just the session name (no
+  "Agentura ·" prefix, up to 40 characters with "…"), "New session" until it has a name. The ● / ? / ! state marker
+  stays. A "New session" button with the logo sits in the right corner of the tab bar, visible above any editor.
+- **Session list view**: three views in the sidebar — `detailed` (two lines per session), `compact` (default: one
+  line, two for the current, running, waiting-for-reply and failed sessions) and `dense` (everything on one line).
+  Switched with the ☰ / ≡ / ≣ button in the "Sessions" header and in ⚙ → "View"; context (`173k ctx`) and time
+  columns on the right, each can be turned off. If the view is set in workspace settings, the button shows a
+  notification instead of changing it. New settings: `agentura.sessionList.view`, `agentura.sessionList.context`,
+  `agentura.sessionList.time`.
+- **Sidebar**: the "Account and limits" and "Sessions" sections collapse on a header click (or Enter), and the state
+  survives a view reload. Search by session name works: filters as you type, case-insensitive, "ё" = "е"; ✕ or Esc
+  clears it.
+- **Sidebar top view** (`agentura.sidebar.top`, ⚙ → "View"): `detailed` — as before; `compact` — the account and
+  each limit on one line (gauge, percentage, reset time), "New session" as a ＋ button in the "Sessions" header;
+  `dense` — limits as mini-gauges in the panel header next to ↻ and ⚙ (yellow above 70 %, red above 85 %), the
+  account in the header tooltip.
+- **English interface** (`agentura.language`, ⚙ → "View"): `auto` (default — Russian if VS Code is in Russian,
+  English otherwise), `ru`, `en`. Applies after a window reload (notification with a button). Command titles and
+  setting descriptions in the Settings UI follow VS Code's own language (`package.nls*.json`).
+- **Tooltips** on every button in the chat, sidebar and settings instead of the native `title`: VS Code hover widget
+  colors, after 0.5 s (neighbors — instantly), above the button near the bottom edge, the second line dimmed, keys as
+  badges (`Enter`, `Esc`, `⌘⇧N`); shown on Tab focus too, hidden on Esc, click, scroll.
 
 ## 0.2.0 — 2026-10-01
 
-Личный релиз, в Marketplace не публикуется.
+Personal release, not published to the Marketplace.
 
-### Добавлено
+### Added
 
-- **Настройки во вкладке** (⚙ в боковой панели, команда `Agentura: Настройки`): модель и effort новых сессий,
-  режим новых сессий (`agentura.defaultPermissionMode`: `manual` | `acceptEdits` | `plan` | `bypassPermissions`,
-  последний — только при `allowBypassPermissions`), пороги контекста, период опроса лимитов, чтение Keychain,
-  путь к `claude` с кнопкой «проверить». Запись — в пользовательские настройки; если их перекрыли настройки рабочей
-  папки, вкладка это показывает. Новые настройки: `agentura.defaultPermissionMode`, `agentura.defaultEffort`.
-- **Скриншоты в сообщении**: вставка из буфера (⌘V / Ctrl+V), перетаскивание и «Изображение или файл…» в «+».
-  Картинки уменьшаются до 1568 пикселей по большей стороне, до 10 на сообщение; миниатюры в ленте и в истории,
-  клик открывает картинку во вкладке редактора.
-- **Файлы-вложения**: текст (до 256 КБ, UTF-8) и pdf (до 100 страниц) уходят документом, в ленте и истории это
-  чип с путём. Перетаскивание из проводника VS Code и вкладок — с зажатым ⇧ (без него VS Code не пропускает
-  drop к webview); перетащенная папка становится чипом-ссылкой, как «Файл или папка…». Вложения считаются на
-  сессию: не больше 100 страниц pdf, 24 МБ и 70 % окна контекста; в запрос уходит то, что влезает.
-- **Несколько агентов**: подряд идущие вызовы субагентов собираются в одну группу `×N` с итогами, карта агентов
-  (ход, промпт, итог, токены, время, модель выбранного), «stop all» останавливает всех идущих субагентов
-  (Esc — ход целиком), транскрипт субагента открывается документом. Бейдж «агенты» — `идут / всего`.
-  Стоимости по агенту нет: движок её не отдаёт.
-- **Поиск `claude` без блокировки хоста**: асинхронный, с прогревом при активации и таймаутом на кандидата;
-  на Windows ищется `claude.exe` (npm-обёртку `claude.cmd` SDK запустить не может — вместо неё подсказка
-  поставить нативный `claude.exe`). «Проверить» на вкладке настроек тоже асинхронная.
-- **Понятное поведение без `claude`**: движок не запускается, в ленте карточка «Claude Code не найден» с
-  инструкцией, кнопкой «Открыть настройки» и «Проверить снова» (без перезагрузки окна). Вместо ошибки SDK
-  про отсутствующий бинарник.
-- Артефакты Claude Code: движок запускается с включённым инструментом `Artifact`, вызов показан в ленте
-  карточкой со статусом (создан / обновлён · vN / опубликован) и ссылкой «открыть» на claude.ai.
-- Превью HTML: ссылка «превью» у записанных и изменённых `.html` и у артефактов открывает файл в соседней
-  вкладке и перерисовывает его при изменении файла.
-- Строка «порог пройден» в ленте, когда шкала контекста перешла жёлтую или оранжевую зону.
-- CI на GitHub Actions: `npm run check` на macOS и ubuntu, интеграционный тест в VS Code под `xvfb-run`
-  (ubuntu), сборка и проверка `.vsix`.
+- **Settings tab** (⚙ in the sidebar, `Agentura: Settings` command): model and effort for new sessions, mode for
+  new sessions (`agentura.defaultPermissionMode`: `manual` | `acceptEdits` | `plan` | `bypassPermissions`, the last
+  one only with `allowBypassPermissions`), context thresholds, limits polling period, Keychain reading, path to
+  `claude` with a "check" button. Writes to user settings; if workspace settings override them, the tab shows it.
+  New settings: `agentura.defaultPermissionMode`, `agentura.defaultEffort`.
+- **Screenshots in a message**: paste from the clipboard (⌘V / Ctrl+V), drag and drop, and "Image or file…" under
+  "+". Images are downscaled to 1568 pixels on the longer side, up to 10 per message; thumbnails in the feed and
+  history, a click opens the image in an editor tab.
+- **File attachments**: text (up to 256 KB, UTF-8) and pdf (up to 100 pages) are sent as documents, shown in the feed
+  and history as a chip with the path. Dragging from the VS Code explorer and tabs requires holding ⇧ (without it
+  VS Code does not pass the drop to the webview); a dropped folder becomes a reference chip, like "File or folder…".
+  Attachments are counted per session: at most 100 pdf pages, 24 MB and 70 % of the context window; whatever fits
+  goes into the request.
+- **Multiple agents**: consecutive subagent calls are collected into one `×N` group with totals; an agent map (turn,
+  prompt, result, tokens, time, model of the selected one); "stop all" stops all running subagents (Esc — the whole
+  turn); a subagent's transcript opens as a document. The "agents" badge shows `running / total`. No per-agent
+  cost: the engine does not report it.
+- **Non-blocking `claude` lookup**: asynchronous, warmed up on activation, with a per-candidate timeout; on Windows
+  it looks for `claude.exe` (the SDK can't run the npm wrapper `claude.cmd` — a hint to install the native
+  `claude.exe` is shown instead). "Check" in the settings tab is asynchronous too.
+- **Clear behavior without `claude`**: the engine does not start; the feed shows a "Claude Code not found" card with
+  instructions, an "Open settings" and a "Check again" button (no window reload). Replaces the SDK error about a
+  missing binary.
+- Claude Code artifacts: the engine starts with the `Artifact` tool enabled; a call is shown in the feed as a card
+  with a status (created / updated · vN / published) and an "open" link to claude.ai.
+- HTML preview: a "preview" link on written and edited `.html` files and on artifacts opens the file in a side tab
+  and redraws it when the file changes.
+- A "threshold crossed" line in the feed when the context gauge enters the yellow or orange zone.
+- CI on GitHub Actions: `npm run check` on macOS and ubuntu, the integration test in VS Code under `xvfb-run`
+  (ubuntu), building and verifying the `.vsix`.
 
-### Изменено
+### Changed
 
-- Прилипание лент к низу вынесено в общий хук, правая панель «ход / агенты» тянется по высоте; из шапки убрана
-  кнопка «состояние» (команда и `/status` остались).
-- Список сессий и история читают транскрипты потоком по сохранённому смещению: на 50 МБ транскрипте тик
-  списка ~8 мс вместо ~360 мс, поток хоста не блокируется. Название сессии, заданное вручную, не пропадает
-  при обновлении списка.
-- «Всегда» в карточке разрешения подписывает все места записи правила (`.claude/settings.local.json`,
-  `~/.claude/settings.json`), относительный `file_path` модели приводится к абсолютному от папки сессии.
-- Правка, которую вы разрешили, сохраняется автоматически; превью строится по несохранённому тексту редактора.
-- «Повторить ход» после обрыва не двоит промпт, если оборванный ход ничего не менял (только чтение и поиск);
-  если в нём были правки или команды — сессия возобновляется целиком, и промпт в транскрипте будет дважды.
-  Отказ SDK отбросить ход ловится, повтор идёт без отбрасывания. Статус «повторяю…» снимается через 20 секунд.
-- Картинки и pdf из результатов `Read` не дублируются в webview base64-копией.
-- Команда `Agentura: Показать состояние (отладка)` видна только при запуске из исходников.
+- Sticking feeds to the bottom moved into a shared hook; the right "turn / agents" panel stretches to full height;
+  the "state" button is removed from the header (the command and `/status` remain).
+- The session list and history read transcripts as a stream from a saved offset: on a 50 MB transcript a list tick
+  takes ~8 ms instead of ~360 ms, and the host thread is not blocked. A manually set session name no longer
+  disappears when the list refreshes.
+- "Always" in a permission card covers every place the rule is written to (`.claude/settings.local.json`,
+  `~/.claude/settings.json`); a relative `file_path` from the model is resolved against the session folder.
+- An edit you approved is saved automatically; the preview is built from the editor's unsaved text.
+- "Retry turn" after an interruption does not duplicate the prompt if the interrupted turn changed nothing (only reads
+  and searches); if it had edits or commands, the session is resumed in full and the prompt will appear twice in the
+  transcript. An SDK refusal to drop the turn is caught, and the retry goes without dropping. The "retrying…" status
+  clears after 20 seconds.
+- Images and pdfs from `Read` results are no longer duplicated in the webview as a base64 copy.
+- The `Agentura: Show State (debug)` command is visible only when running from source.
 
-### Исправлено
+### Fixed
 
-- Ход-пробуждение (уведомление фоновой задачи) не снимает сообщение из очереди; фоновые задачи не помечаются
-  «остановлено» при пересеве webview между ходами; Esc посреди работы субагентов не оставляет их «идущими».
-- Хост не режет вложения по окну контекста, пока движок его не прислал (после возобновления окно может быть 1M).
-- `usagePollMinutes` ограничен 1440: больше `setTimeout` превращал в 1 мс и опрос шёл без паузы.
+- A wake-up turn (background task notification) no longer removes a message from the queue; background tasks are
+  not marked "stopped" when the webview is reseeded between turns; Esc in the middle of subagent work no longer
+  leaves them "running".
+- The host no longer cuts attachments by the context window until the engine has reported it (after a resume the
+  window may be 1M).
+- `usagePollMinutes` is capped at 1440: larger values made `setTimeout` fire after 1 ms and polling ran without a
+  pause.
 
-### Безопасность
+### Security
 
-- Настройка `agentura.defaultPermissionMode` читается только из пользовательских настроек (scope `machine`),
-  как `claudeExecutable` и `allowBypassPermissions`: чужой репозиторий не выставит новым сессиям `acceptEdits`.
-  `bypassPermissions` не записывается, пока `allowBypassPermissions` выключен.
-- Перетаскиваемые и выбранные файлы хост перепроверяет сам: тип по содержимому, строгий base64, только обычные
-  файлы (не FIFO и не устройства), лимиты по размеру до чтения; зашифрованные и обрезанные pdf отклоняются.
-  Перетащенный файл читается по любому пути (решение владельца): так же, как диалог «+».
+- `agentura.defaultPermissionMode` is read only from user settings (scope `machine`), like `claudeExecutable` and
+  `allowBypassPermissions`: someone else's repository can't make new sessions start in `acceptEdits`.
+  `bypassPermissions` is not written while `allowBypassPermissions` is off.
+- The host re-validates dropped and picked files itself: type by content, strict base64, regular files only (no FIFOs
+  or devices), size limits before reading; encrypted and truncated pdfs are rejected. A dropped file is read from any
+  path (owner's decision), the same as the "+" dialog.
 
-### Требования и ограничения
+### Requirements and limitations
 
-- Прежние (Claude Code 2.1.285+ с выполненным входом, ToS подписки, недокументированный `/api/oauth/usage`).
-- `.vsix` универсальный (~5,5 МБ), без бинарника движка; проверялся только на macOS arm64. Windows и Linux
-  руками не проверялись.
-- Лимит живых вкладок не введён: каждая держит свой процесс `claude`.
-- У агентов нет стоимости и токенов «в контекст основного»; «продолжить диалог» с агентом не делается.
+- Unchanged (Claude Code 2.1.285+ logged in, subscription ToS, undocumented `/api/oauth/usage`).
+- The `.vsix` is universal (~5.5 MB) without the engine binary; tested only on macOS arm64. Windows and Linux haven't
+  been tested by hand.
+- No limit on live tabs: each holds its own `claude` process.
+- Agents have no tokens "in the main context" and no cost; "continue the conversation" with an agent is not
+  supported.
 
 ## 0.1.0 — 2026-10-01
 
-Первый релиз (личный, в Marketplace не публикуется).
+First release (personal, not published to the Marketplace).
 
-### Добавлено
+### Added
 
-- Чат с Claude во вкладке редактора на Claude Agent SDK 0.3.285: потоковый ответ, мышление, инструменты,
-  очередь сообщений, остановка хода (`Esc`), ссылки `@файл` и выделение редактора в контексте.
-- Приборы: шкала контекста (20 блоков, пороги настраиваются), кэш (таймер TTL и доля попаданий), лимиты
-  5 ч / 7 д, итог хода (токены, кэш, стоимость, длительность), панели «ход» и «агенты» (дерево субагентов,
-  остановка фоновых задач), системные строки (компакция, смена режима).
-- Разрешения инструментов, вопросы агента, план (`ExitPlanMode`) и нативный дифф правок; режимы
-  `default`/`acceptEdits`/`plan`, `bypassPermissions` — только по настройке.
-- Сессии: боковая панель со списком проекта, возобновление, переименование, несколько вкладок
-  (по сессии на вкладку), восстановление вкладок после перезагрузки окна, аккаунт и лимиты.
-- Состояния и ошибки: ход не начат, ошибка движка с «Повторить», лимит с отсчётом до сброса.
-- Команды: `Agentura: Открыть чат`, `Новая сессия`, `Открыть последнюю сессию`, `Возобновить сессию`,
-  `Обновить лимиты`, `Показать журнал`, `Показать состояние (отладка)`.
-- Упаковка `.vsix` (универсальный, ~5,5 МБ) и интеграционный тест на `@vscode/test-electron`.
+- Claude chat in an editor tab on Claude Agent SDK 0.3.285: streaming response, thinking, tools, message queue,
+  stopping a turn (`Esc`), `@file` references and the editor selection in context.
+- Gauges: context gauge (20 blocks, configurable thresholds), cache (TTL timer and hit rate), 5 h / 7 d limits, turn
+  summary (tokens, cache, cost, duration), "turn" and "agents" panels (subagent tree, stopping background tasks),
+  system lines (compaction, mode change).
+- Tool permissions, agent questions, plan (`ExitPlanMode`) and a native diff for edits; `default` / `acceptEdits` /
+  `plan` modes, `bypassPermissions` only via a setting.
+- Sessions: a sidebar with the project's list, resume, rename, multiple tabs (one session per tab), restoring tabs
+  after a window reload, account and limits.
+- States and errors: turn not started, engine error with "Retry", rate limit with a countdown to the reset.
+- Commands: `Agentura: Open Chat`, `New Session`, `Open Last Session`, `Resume Session`, `Refresh Limits`,
+  `Show Log`, `Show State (debug)`.
+- `.vsix` packaging (universal, ~5.5 MB) and an integration test on `@vscode/test-electron`.
 
-### Требования и ограничения
+### Requirements and limitations
 
-- Нужен установленный Claude Code 2.1.285+ с выполненным входом: бинарник движка (200+ МБ) в пакет не
-  входит, расширение ищет системный `claude` (PATH, `~/.local/bin`, Homebrew) или берёт путь из
-  `agentura.claudeExecutable` и проверяет версию.
-- `agentura.claudeExecutable` и `agentura.allowBypassPermissions` читаются только из пользовательских
-  настроек (scope `machine`): настройки рабочей папки их не переопределяют.
-- Вход подписки через CLI — ограничение ToS для публичной раздачи (см. README).
-- Лимиты 5 ч / 7 д — из недокументированного `/api/oauth/usage`; формат транскриптов внутренний.
+- Requires Claude Code 2.1.285+ installed and logged in: the engine binary (200+ MB) is not bundled; the extension
+  looks for the system `claude` (PATH, `~/.local/bin`, Homebrew) or takes the path from `agentura.claudeExecutable`
+  and checks the version.
+- `agentura.claudeExecutable` and `agentura.allowBypassPermissions` are read only from user settings (scope
+  `machine`): workspace settings don't override them.
+- Subscription login through the CLI is a ToS restriction for public distribution (see README).
+- 5 h / 7 d limits come from the undocumented `/api/oauth/usage`; the transcript format is internal.
