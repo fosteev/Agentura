@@ -11,7 +11,6 @@ import {
 } from '../agent/claude/__fixtures__/agentsParallel';
 import { applyEvent, initialState, seedHistory, type ChatState, type FeedRow } from './chatState';
 import { applyHud, initialHud, type HudState } from './hudState';
-import { timelineView } from './hudView';
 import {
   agentBadge,
   agentGroupView,
@@ -173,15 +172,6 @@ describe('живой прогон agents-parallel: стор и вид', () => {
     });
     expect(sel.detail?.type).toBe('general-purpose');
     expect(sel.rows[3]!.cls).toContain('sel');
-  });
-
-  it('панель «ход»: параллельные Agent — одной строкой ×3', async () => {
-    const all = await agentsParallelEvents();
-    const firstEnd = all.findIndex((e) => e.type === 'turn.result');
-    const { hud, now } = play(all.slice(0, firstEnd + 1));
-    const turn = hud.turns.find((t) => t.segs.some((g) => g.name === 'Agent'))!;
-    const rows = timelineView(turn, now).rows.map((r) => r.ev);
-    expect(rows.filter((r) => r.startsWith('agent'))).toEqual(['agent ×3 параллельно']);
   });
 });
 

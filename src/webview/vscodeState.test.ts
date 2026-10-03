@@ -51,6 +51,15 @@ describe('состояние webview', () => {
     expect(readPanel()).toEqual({ w: 260 });
   });
 
+  it('readPanel: сохранённая вкладка «turn» → «changes»; охват «сессия | ход», чужой — отброшен', () => {
+    stored = { panel: { tab: 'turn' } };
+    expect(readPanel()).toEqual({ tab: 'changes' });
+    stored = { panel: { tab: 'changes', changes: 'turn' } };
+    expect(readPanel()).toEqual({ tab: 'changes', changes: 'turn' });
+    stored = { panel: { changes: 'commit' } };
+    expect(readPanel()).toEqual({});
+  });
+
   it('readPanel отбрасывает кривые поля: не число / NaN / ≤ 0, не boolean, чужая вкладка', () => {
     stored = { panel: { w: 'abc', off: 'yes', tab: 'log' } };
     expect(readPanel()).toEqual({});

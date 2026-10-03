@@ -1,0 +1,33 @@
+/* Вкладка «изменения» правой панели — вариант А прототипа (prototype/screens/changes-pane.html#a, shared/changes.css). */
+
+.cg { font-size: 11.5px; }
+.cg .add { color: var(--add); } .cg .del { color: var(--del); } .cg .pass { color: var(--ok); } .cg .fail { color: var(--full); } .cg .run { color: var(--info); }
+.cg .mono { font-family: var(--mono); font-size: 10.5px; }
+.cg .new { font-size: 9px; color: var(--add); border: 1px solid currentColor; border-radius: 2px; padding: 0 3px; }
+
+/* шапка: охват (сессия / ход) и итог */
+.cg .scope { display: flex; gap: 0; margin: 10px 14px 0; border: 1px solid var(--line-strong); border-radius: 3px; overflow: hidden; width: max-content; }
+.cg .scope button { padding: 2px 9px; font-size: 10.5px; color: var(--fg-mute); }
+.cg .scope button + button { border-left: 1px solid var(--line-strong); }
+.cg .scope button[aria-pressed="true"] { background: var(--bg-input); color: var(--fg); }
+.cg .tot { display: flex; gap: 8px; align-items: baseline; padding: 8px 14px 6px; color: var(--fg-mute); }
+.cg .tot b { font-weight: 400; color: var(--fg); }
+.cg .tot .lnk { margin-left: auto; font-size: 11px; color: var(--link); }
+.cg .tot .lnk:hover { text-decoration: underline; }
+.cg .empty { padding: 14px; color: var(--fg-faint); }
+.cg h5 { margin: 0; padding: 10px 14px 4px; font-size: 10.5px; font-weight: 600; color: var(--fg-faint); display: flex; gap: 8px; align-items: center; }
+.cg h5::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+
+/* файлы по папкам и проверки */
+.cg .dir { padding: 6px 14px 2px; font-size: 10.5px; color: var(--fg-faint); font-family: var(--mono); }
+.cg .file { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: baseline; padding: 3px 14px 3px 24px; cursor: pointer; }
+.cg .file:hover { background: var(--bg-hover); }
+.cg .file .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); }
+.cg .file .ch { white-space: nowrap; }
+.cg .file .tn { display: flex; gap: 2px; }
+.cg .file .tn i { font-style: normal; font-family: var(--mono); font-size: 9.5px; color: var(--fg-mute); background: var(--bg-input); border-radius: 2px; padding: 0 3px; min-width: 14px; text-align: center; }
+.cg .file .tn i.live { background: var(--info); color: #fff; }
+.cg .file.live .nm { color: var(--info); }
+.cg .chk { display: grid; grid-template-columns: 14px 1fr auto; gap: 6px; align-items: baseline; padding: 3px 14px; }
+.cg .chk code { font-family: var(--mono); font-size: 10.5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); }
+.cg .chk .r { font-family: var(--mono); font-size: 10px; color: var(--fg-mute); white-space: nowrap; }

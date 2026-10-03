@@ -23,7 +23,9 @@ export interface PanelState {
   /** Свёрнута в полосу. */
   off?: boolean;
   /** Активная вкладка панели. */
-  tab?: 'turn' | 'agents';
+  tab?: 'changes' | 'agents';
+  /** Охват вкладки «изменения»: вся сессия или последний ход. */
+  changes?: 'session' | 'turn';
 }
 
 /** Всё, что webview кладёт в `setState`: id сессии (для сериализатора) и панель. Поля независимы. */
@@ -82,7 +84,10 @@ export function readPanel(): PanelState {
   const out: PanelState = {};
   if (typeof p.w === 'number' && Number.isFinite(p.w) && p.w > 0) out.w = p.w;
   if (typeof p.off === 'boolean') out.off = p.off;
-  if (p.tab === 'turn' || p.tab === 'agents') out.tab = p.tab;
+  // вкладка «ход» стала «изменениями»: сохранённое 'turn' открывает её
+  if (p.tab === 'turn' || p.tab === 'changes') out.tab = 'changes';
+  else if (p.tab === 'agents') out.tab = 'agents';
+  if (p.changes === 'session' || p.changes === 'turn') out.changes = p.changes;
   return out;
 }
 

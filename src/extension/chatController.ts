@@ -120,6 +120,8 @@ export interface ChatDeps {
   saveFile?(path: string): Promise<void>;
   /** Нативный дифф VS Code (`vscode.diff` над `agentura-diff:`). */
   openDiff?(d: OpenDiff): Promise<void>;
+  /** Мульти-дифф нескольких файлов (`vscode.changes`): заголовок и по паре сторон на файл. */
+  openChanges?(title: string, files: OpenDiff[]): Promise<void>;
   /** Текст документом только для чтения (транскрипт субагента, этап 2 roadmap 0.2). */
   openText?(d: { key: string; name: string; text: string }): Promise<void>;
   /** Превью `.html` в соседней вкладке (абсолютный путь). */
@@ -193,6 +195,16 @@ export class ChatController {
   private inTurn = false;
   /** Правки для «открыть дифф» / «diff»: предложенные (карточка) и применённые (строка ленты). */
   private readonly edits = new Map<string, { sides: EditSides; stage: OpenDiff['stage'] }>();
+  /** Файл каждой применённой правки за сессию — для «изменений»; без вытеснения (`MAX_EDITS` — только стороны). */
+  private readonly editFiles = new Map<string, string>();
+  /**
+   * По файлу — стороны первой и последней целых применённых правок сессии (одна копия на файл): дифф «изменений»
+   * за сессию верен и в длинной сессии, где ранние правки уже вытеснены из `edits`.
+   */
+  private readonly fileSpans = new Map<
+    string,
+    { firstId: string; before: string; lastId: string; after: string }
+  >();
   /** Вход Edit/Write по `toolUseId` до `tool.result` (в результате имени инструмента нет). */
   private readonly editInputs = new Map<string, { name: string; input: Record<string, unknown> }>();
   /** Возобновляемая сессия: `ensureSession` зовёт `resumeSession`, а не `createSession`. */
@@ -570,6 +582,9 @@ export class ChatController {
       case 'diff.open':
         await this.openDiff(m.toolUseId);
         return;
+      case 'diff.changes':
+        await this.openChanges(m.toolUseIds);
+        return;
       case 'agent.transcript': {
         const id = m.sessionId || this.current?.id;
         if (!id || !deps.adapter.agentTranscript || !deps.openText) return;
@@ -885,6 +900,69 @@ export class ChatController {
   }
 
   /**
+   * Дифф вкладки «изменения»: правки группируются по файлу (порядок правок), левая сторона — `before` первой правки
+   * файла, правая — `after` последней. Склеиваются только целые стороны; первая/последняя целая правка сессии
+   * берётся из `fileSpans` (её стороны могли вытеснить из `edits`). Фрагмент (правка без исходного файла) с целыми
+   * не сшить — он идёт сам, если целых нет. Предложенная, ещё не применённая правка — не изменение. Один файл —
+   * обычный дифф, несколько — мульти-дифф.
+   */
+  private async openChanges(toolUseIds: readonly string[]): Promise<void> {
+    const { deps } = this;
+    const wanted = new Set(toolUseIds);
+    const lost = [...wanted].filter((id) => !this.editFiles.has(id) && !this.edits.has(id));
+    if (lost.length)
+      this.log.warn(`diff.changes: правок не найдено — ${lost.length} (старая сессия или не Edit/Write)`);
+    const byFile = new Map<string, string[]>();
+    for (const [id, filePath] of this.editFiles) {
+      if (!wanted.has(id)) continue;
+      byFile.set(filePath, [...(byFile.get(filePath) ?? []), id]);
+    }
+    const files: OpenDiff[] = [];
+    for (const [filePath, ids] of byFile) {
+      const span = this.fileSpans.get(filePath);
+      const known = ids.flatMap((id) => {
+        const e = this.edits.get(id);
+        return e?.stage === 'applied' ? [{ id, sides: e.sides }] : [];
+      });
+      const whole = known.filter((e) => !e.sides.fragment);
+      const first =
+        span && ids.includes(span.firstId)
+          ? { id: span.firstId, text: span.before }
+          : whole[0] && { id: whole[0].id, text: whole[0].sides.before };
+      const lastWhole = whole[whole.length - 1];
+      const last =
+        span && ids.includes(span.lastId)
+          ? { id: span.lastId, text: span.after }
+          : lastWhole && { id: lastWhole.id, text: lastWhole.sides.after };
+      const fragment = known[known.length - 1];
+      if (first && last)
+        files.push({
+          key: `changes-${first.id}-${last.id}`,
+          filePath,
+          before: first.text,
+          after: last.text,
+          stage: 'applied',
+        });
+      else if (fragment)
+        files.push({
+          key: `changes-${fragment.id}-${fragment.id}`,
+          filePath,
+          before: fragment.sides.before,
+          after: fragment.sides.after,
+          stage: 'applied',
+        });
+    }
+    if (files.length === 0) return;
+    try {
+      if (files.length === 1) await deps.openDiff?.(files[0]!);
+      else
+        await deps.openChanges?.(hostStrings(deps.lang ?? 'ru').changesTitle(files.length), files);
+    } catch (e) {
+      this.log.error(`diff.changes: ${String(e)}`);
+    }
+  }
+
+  /**
    * Правки Edit/Write для «diff»: вход на `tool.start`, стороны — на `tool.result`. Те же события,
    * что у живой сессии, идут и из восстановленной истории — иначе `diff` в ней не нашёл бы правку.
    */
@@ -897,12 +975,20 @@ export class ChatController {
       if (!call) return;
       this.editInputs.delete(e.toolUseId);
       const sides = e.isError ? undefined : appliedSides(call.name, call.input, e.result);
-      if (sides)
-        this.remember(
-          e.toolUseId,
-          { ...sides, filePath: resolveFrom(this.deps.cwd, sides.filePath) },
-          'applied',
-        );
+      if (!sides) return;
+      const filePath = resolveFrom(this.deps.cwd, sides.filePath);
+      this.remember(e.toolUseId, { ...sides, filePath }, 'applied');
+      this.editFiles.set(e.toolUseId, filePath);
+      if (sides.fragment) return;
+      const span = this.fileSpans.get(filePath);
+      if (span) Object.assign(span, { lastId: e.toolUseId, after: sides.after });
+      else
+        this.fileSpans.set(filePath, {
+          firstId: e.toolUseId,
+          before: sides.before,
+          lastId: e.toolUseId,
+          after: sides.after,
+        });
     }
   }
 
@@ -1379,6 +1465,8 @@ export class ChatController {
     this.pending = [];
     this.inTurn = false;
     this.edits.clear();
+    this.editFiles.clear();
+    this.fileSpans.clear();
     this.editInputs.clear();
     this.lastInit = undefined;
     this.defaults = undefined;

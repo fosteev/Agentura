@@ -1,0 +1,92 @@
+/* Варианты вкладки «ход» правой панели (screens/turn-pane.html): .webview[data-turn="a|b|c|d"] показывает свой блок [data-tv]. */
+#pane-turn [data-tv] { display: none; }
+.webview[data-turn="a"] #pane-turn [data-tv="a"],
+.webview[data-turn="b"] #pane-turn [data-tv="b"],
+.webview[data-turn="c"] #pane-turn [data-tv="c"],
+.webview[data-turn="d"] #pane-turn [data-tv="d"] { display: block; }
+
+.side h4 .r { float: right; font-weight: 400; color: var(--fg-faint); font-family: var(--mono); }
+.side h4.live { color: var(--info); }
+
+/* Б · водопад: строка = подпись | дорожка с полосой на общей оси времени | длительность */
+.wf { padding: 0 14px 10px; font-size: 11px; }
+.wf .ax, .wf .r { display: grid; grid-template-columns: 124px 1fr 36px; gap: 6px; align-items: center; }
+.wf .ax { color: var(--fg-faint); font-family: var(--mono); font-size: 9.5px; margin-bottom: 4px; }
+.wf .ax .tk { position: relative; height: 12px; border-bottom: 1px solid var(--line); }
+.wf .ax .tk span { position: absolute; top: 0; transform: translateX(-50%); }
+.wf .ax .tk span:first-child { transform: none; }
+.wf .ax .tk span:last-child { transform: translateX(-100%); }
+.wf .r { padding: 2px 0; }
+.wf .r .l { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); }
+.wf .r .l b { font-weight: 400; font-family: var(--mono); color: var(--fg-mute); margin-right: 4px; }
+.wf .r.mute .l { color: var(--fg-mute); }
+.wf .r .t { position: relative; height: 10px; background: repeating-linear-gradient(90deg, transparent 0 calc(25% - 1px), var(--line) calc(25% - 1px) 25%); }
+.wf .r .t i { position: absolute; top: 1px; bottom: 1px; min-width: 2px; border-radius: 1px; background: var(--fg-faint); }
+.wf .r .t i.th { background: var(--bg-input); outline: 1px solid var(--line-strong); outline-offset: -1px; }
+.wf .r .t i.ed { background: var(--add); }
+.wf .r .t i.rn { background: var(--info); }
+.wf .r .t i.tx { background: var(--fg-mute); opacity: .55; }
+.wf .r .t i.gap { background: repeating-linear-gradient(135deg, var(--fg-faint) 0 2px, transparent 2px 5px); opacity: .6; }
+.wf .r .t i.live { background: linear-gradient(90deg, var(--info), color-mix(in srgb, var(--info) 30%, transparent)); }
+.wf .r .t .now { position: absolute; top: -3px; bottom: -3px; width: 1px; background: var(--info); }
+.wf .r .d { text-align: right; color: var(--fg-mute); font-family: var(--mono); font-size: 10px; }
+.wf .r.now .l, .wf .r.now .d { color: var(--info); }
+.wf .r.gaprow .l { color: var(--fg-faint); font-style: italic; }
+.split { padding: 4px 14px 14px; }
+.split .bar { display: flex; height: 6px; gap: 1px; border-radius: 2px; overflow: hidden; }
+.split .bar i { display: block; }
+.split .leg { display: flex; flex-wrap: wrap; gap: 3px 12px; margin-top: 6px; font-size: 10.5px; color: var(--fg-mute); }
+.split .leg span::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 1px; margin-right: 4px; vertical-align: 0; background: var(--c); }
+.split .leg b { font-weight: 400; color: var(--fg); font-family: var(--mono); margin-left: 3px; }
+
+/* В · итоги: «сейчас» с хвостом вывода, затем блоки «что изменилось» по ходам */
+.now-card { margin: 4px 10px 6px; border: 1px solid color-mix(in srgb, var(--info) 45%, var(--line)); border-radius: 4px; background: var(--bg); }
+.now-card .hd { display: flex; gap: 7px; align-items: center; padding: 7px 9px 6px; font-size: 11.5px; }
+.now-card .hd code { font-family: var(--mono); font-size: 11px; color: var(--fg); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.now-card .hd .dur { margin-left: auto; color: var(--info); font-family: var(--mono); font-size: 10.5px; }
+.now-card .hd .x { color: var(--fg-mute); font-size: 10px; padding: 1px 5px; border: 1px solid var(--line-strong); border-radius: 3px; }
+.now-card pre { margin: 0; padding: 6px 9px 8px; border-top: 1px solid var(--line); font: 10.5px/1.5 var(--mono); color: var(--fg-mute); white-space: pre; overflow: hidden; }
+.now-card pre .ok { color: var(--ok); }
+.now-card pre .run { color: var(--info); }
+.sm { padding: 0 14px 10px; display: grid; grid-template-columns: 62px 1fr; gap: 5px 8px; font-size: 11px; align-items: baseline; }
+.sm > .k { color: var(--fg-faint); }
+.sm > .v { min-width: 0; color: var(--fg); }
+.sm > .v .f { display: flex; gap: 6px; align-items: baseline; }
+.sm > .v .f code { font-family: var(--mono); font-size: 10.5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sm > .v .f .n { margin-left: auto; font-family: var(--mono); font-size: 10.5px; white-space: nowrap; }
+.sm > .v .f a { color: var(--link); text-decoration: none; font-size: 10.5px; }
+.sm > .v.mute { color: var(--fg-mute); }
+.sm .add { color: var(--add); } .sm .del { color: var(--del); } .sm .pass { color: var(--ok); }
+.sm .new { font-size: 9px; color: var(--add); border: 1px solid currentColor; border-radius: 2px; padding: 0 3px; margin-left: 4px; }
+.acts-row { display: flex; gap: 6px; padding: 2px 14px 14px; }
+.acts-row button { font-size: 11px; padding: 3px 8px; border: 1px solid var(--line-strong); border-radius: 3px; color: var(--fg); }
+.acts-row button.ghost { color: var(--fg-mute); }
+.sep { height: 1px; background: var(--line); margin: 2px 14px 0; }
+
+/* Г · оглавление сессии: ход — две строки (запрос; полоска и цифры), текущий раскрыт */
+.toc-hd { display: flex; gap: 10px; padding: 10px 14px 8px; font-size: 11px; color: var(--fg-mute); border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--bg-side); z-index: 1; }
+.toc-hd b { font-weight: 400; color: var(--fg); font-family: var(--mono); }
+.toc-hd .sp { margin-left: auto; }
+.turns { padding: 4px 0 10px; }
+.tn { display: grid; grid-template-columns: 22px 1fr; gap: 0 4px; padding: 5px 14px 5px 8px; border-left: 2px solid transparent; font-size: 11.5px; cursor: pointer; }
+.tn:hover { background: var(--bg-hover); }
+.tn .no { color: var(--fg-faint); font-family: var(--mono); font-size: 10.5px; text-align: right; padding-right: 2px; }
+.tn .q { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); }
+.tn .m { grid-column: 2; display: flex; gap: 8px; align-items: center; margin-top: 3px; font-size: 10px; color: var(--fg-mute); font-family: var(--mono); }
+.tn .m .ms { display: flex; gap: 1px; height: 5px; width: 64px; flex: none; }
+.tn .m .ms i { background: var(--fg-faint); border-radius: 1px; }
+.tn .m .ms i.th { background: var(--bg-input); } .tn .m .ms i.ed { background: var(--add); } .tn .m .ms i.rn { background: var(--info); } .tn .m .ms i.tx { background: var(--fg-mute); opacity: .5; }
+.tn .m .ed { color: var(--add); }
+.tn .m .c { margin-left: auto; color: var(--fg); }
+.tn.seen { border-left-color: var(--fg-faint); background: color-mix(in srgb, var(--bg-hover) 60%, transparent); }
+.tn.cur { border-left-color: var(--info); }
+.tn.cur .no, .tn.cur .m .c { color: var(--info); }
+.tn.err .no { color: var(--full); }
+.tn .steps { grid-column: 2; margin: 6px 0 2px; padding-left: 8px; border-left: 1px solid var(--line); display: grid; gap: 2px; font-size: 10.5px; }
+.tn .steps div { display: flex; gap: 6px; color: var(--fg-mute); white-space: nowrap; overflow: hidden; }
+.tn .steps div b { font-weight: 400; font-family: var(--mono); color: var(--fg-faint); width: 30px; flex: none; }
+.tn .steps div span { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--fg); }
+.tn .steps div em { margin-left: auto; font-style: normal; font-family: var(--mono); }
+.tn .steps div.now span, .tn .steps div.now em { color: var(--info); }
+.cmp { display: flex; gap: 8px; align-items: center; padding: 6px 14px 6px 34px; font-size: 10px; color: var(--fg-faint); }
+.cmp::before, .cmp::after { content: ""; flex: 1; height: 1px; background: var(--line); }

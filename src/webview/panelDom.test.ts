@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * Правая панель вкладки чата (широкий режим) в DOM: вкладки `ход | агенты`, скрыть/полоса,
+ * Правая панель вкладки чата (широкий режим) в DOM: вкладки `изменения | агенты`, скрыть/полоса,
  * ресайз за левый край, пределы, двойной клик, клавиатура, состояние из `getState` и мердж с `sessionId`.
  * Эталон разметки — `prototype/screens/agents.html`.
  */
@@ -93,19 +93,19 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('вкладки панели', () => {
-  it('ход | агенты с бейджами; активна «ход», вторая секция скрыта, стрелки переключают', async () => {
+  it('изменения | агенты с бейджами; активна «изменения», вторая секция скрыта, стрелки переключают', async () => {
     const host = mount();
     await session();
     await flush();
     const t = tabs(host);
-    expect(t.map((x) => x.id)).toEqual(['ptab-turn', 'ptab-agents']);
+    expect(t.map((x) => x.id)).toEqual(['ptab-changes', 'ptab-agents']);
     expect(t.map((x) => x.getAttribute('aria-selected'))).toEqual(['true', 'false']);
     expect(t.map((x) => x.tabIndex)).toEqual([0, -1]);
     expect(q(host, '.ptabs').getAttribute('role')).toBe('tablist');
     const badge = t[1]!.querySelector('.b');
     expect([badge?.textContent, badge?.className]).toEqual(['3 / 3', 'b live']);
-    expect(q(host, '.pane.side').getAttribute('data-active')).toBe('turn');
-    expect(q(host, '#pane-turn').hidden).toBe(false);
+    expect(q(host, '.pane.side').getAttribute('data-active')).toBe('changes');
+    expect(q(host, '#pane-changes').hidden).toBe(false);
     expect(q(host, '#pane-agents').hidden).toBe(true);
     expect(q(host, '#pane-agents').getAttribute('aria-labelledby')).toBe('ptab-agents');
 
@@ -113,21 +113,21 @@ describe('вкладки панели', () => {
     await flush();
     expect(tabs(host).map((x) => x.getAttribute('aria-selected'))).toEqual(['false', 'true']);
     expect(q(host, '.pane.side').getAttribute('data-active')).toBe('agents');
-    expect(q(host, '#pane-turn').hidden).toBe(true);
+    expect(q(host, '#pane-changes').hidden).toBe(true);
     expect(q(host, '#pane-agents').hidden).toBe(false);
     expect((stored as { panel: { tab: string } }).panel.tab).toBe('agents');
 
     key(tabs(host)[1]!, 'ArrowLeft');
     await flush();
-    expect(q(host, '.pane.side').getAttribute('data-active')).toBe('turn');
+    expect(q(host, '.pane.side').getAttribute('data-active')).toBe('changes');
   });
 
-  it('в пустой сессии вкладки панели disabled, активна «ход»', async () => {
+  it('в пустой сессии вкладки панели disabled, активна «изменения»', async () => {
     stored = { panel: { tab: 'agents' } };
     const host = mount();
     await flush();
     expect(tabs(host).map((x) => (x as HTMLButtonElement).disabled)).toEqual([true, true]);
-    expect(q(host, '.pane.side').getAttribute('data-active')).toBe('turn');
+    expect(q(host, '.pane.side').getAttribute('data-active')).toBe('changes');
   });
 
   it('«карта агентов» из ленты открывает «агентов» и разворачивает свёрнутую панель', async () => {
@@ -337,16 +337,65 @@ describe('состояние webview', () => {
     await flush();
     expect(sideW(host)).toBe('300px');
     expect(body(host).hasAttribute('data-side')).toBe(false);
-    expect(q(host, '.pane.side').getAttribute('data-active')).toBe('turn');
-    expect(q(host, '#pane-turn').hidden).toBe(false);
+    expect(q(host, '.pane.side').getAttribute('data-active')).toBe('changes');
+    expect(q(host, '#pane-changes').hidden).toBe(false);
   });
 
-  it('по умолчанию: 300 px, развёрнута, «ход»', async () => {
+  it('по умолчанию: 300 px, развёрнута, «изменения»', async () => {
     const host = mount();
     await flush();
     expect(sideW(host)).toBe('300px');
     expect(body(host).hasAttribute('data-side')).toBe(false);
-    expect(q(host, '.pane.side').getAttribute('data-active')).toBe('turn');
+    expect(q(host, '.pane.side').getAttribute('data-active')).toBe('changes');
+  });
+
+  it('сохранённое tab: «turn» (старое имя вкладки) открывает «изменения»', async () => {
+    stored = { panel: { tab: 'turn' } };
+    const host = mount();
+    await session();
+    await flush();
+    expect(q(host, '.pane.side').getAttribute('data-active')).toBe('changes');
+    expect(q(host, '#pane-changes').hidden).toBe(false);
+    expect(tabs(host)[0]!.textContent).toContain('изменения');
+  });
+
+  it('вкладка «изменения»: файлы по папкам, итог, проверки; бейдж — число файлов', async () => {
+    const host = mount();
+    const at = Date.now();
+    const ev = (e: Record<string, unknown>) => dispatchEvent(e as unknown as AgentEvent, at);
+    ev({ type: 'turn.start', at, prompt: 'поправь' });
+    ev({
+      type: 'tool.start',
+      toolUseId: 'e1',
+      name: 'Edit',
+      input: { file_path: `${chat.value.cwd}/src/a.ts`, old_string: 'x', new_string: 'y\nz' },
+      at,
+    });
+    ev({ type: 'tool.result', toolUseId: 'e1', isError: false, content: 'ok', durationMs: 5 });
+    ev({ type: 'tool.start', toolUseId: 'b1', name: 'Bash', input: { command: 'npm test' }, at });
+    ev({ type: 'tool.result', toolUseId: 'b1', isError: false, content: '', durationMs: 2100 });
+    await flush();
+    const pane = q(host, '#pane-changes');
+    expect(pane.querySelector('.dir')?.textContent).toContain('src/');
+    expect(pane.querySelector('.file .nm')?.textContent).toBe('a.ts');
+    expect(pane.querySelector('.tot')?.textContent).toContain('1');
+    expect(pane.querySelector('.chk code')?.textContent).toBe('npm test');
+    expect(tabs(host)[0]!.querySelector('.b')?.textContent).toBe('1');
+  });
+
+  it('охват «сессия | ход» переключается и сохраняется в panel.changes', async () => {
+    const host = mount();
+    await session();
+    await flush();
+    const scope = () =>
+      [...host.querySelectorAll<HTMLElement>('#pane-changes .scope button')].map((b) =>
+        b.getAttribute('aria-pressed'),
+      );
+    expect(scope()).toEqual(['true', 'false']);
+    host.querySelectorAll<HTMLElement>('#pane-changes .scope button')[1]!.click();
+    await flush();
+    expect(scope()).toEqual(['false', 'true']);
+    expect((stored as { panel: { changes: string } }).panel.changes).toBe('turn');
   });
 
   it('сохранение панели не затирает sessionId, и наоборот', async () => {
@@ -402,14 +451,14 @@ describe('узкий режим', () => {
     expect(body(host).hasAttribute('data-side')).toBe(false);
     expect([...host.querySelectorAll('.tabs [role="tab"]')].map((x) => x.id)).toEqual([
       'tab-chat',
-      'tab-turn',
+      'tab-changes',
       'tab-agents',
     ]);
-    const turn = host.querySelectorAll<HTMLElement>('.tabs [role="tab"]')[1]!;
-    turn.click();
+    const changes = host.querySelectorAll<HTMLElement>('.tabs [role="tab"]')[1]!;
+    changes.click();
     await flush();
-    expect(q(host, '#pane-turn').getAttribute('aria-labelledby')).toBe('tab-turn');
-    expect(q(host, '#pane-turn').hidden).toBe(false);
+    expect(q(host, '#pane-changes').getAttribute('aria-labelledby')).toBe('tab-changes');
+    expect(q(host, '#pane-changes').hidden).toBe(false);
     expect(stored).toEqual({ panel: { w: 420, off: true } });
   });
 });

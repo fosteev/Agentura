@@ -11,9 +11,8 @@ import {
   contextMax,
   type HudState,
   type TimelineSeg,
-  type TurnTimeline,
 } from './hudState';
-import { clock, resetLabel } from './chatState';
+import { resetLabel } from './chatState';
 
 export { resetLabel };
 import {
@@ -21,7 +20,6 @@ import {
   formatCost,
   formatDuration,
   formatInt,
-  splitPath,
   toolView,
 } from './toolView';
 import { ui } from './strings';
@@ -253,23 +251,7 @@ export function limitsView(windows: readonly LimitWindow[], now: number): Limits
   };
 }
 
-// ——— панель «ход» ———
-
-export interface TimelineRowView {
-  at: string;
-  ev: string;
-  d: string;
-  now?: boolean;
-  mute?: boolean;
-  /** Цвет строки: `warn` — ждёт разрешения, `agent` — решения по плану. */
-  tone?: 'warn' | 'agent';
-}
-
-export interface TimelineView {
-  heading: string;
-  strip: { cls?: string; flex: number }[];
-  rows: TimelineRowView[];
-}
+// ——— цвета сегментов таймлайна (деталь агента) ———
 
 export function segClass(g: TimelineSeg): string | undefined {
   if (g.kind === 'think') return 'th';
@@ -278,97 +260,6 @@ export function segClass(g: TimelineSeg): string | undefined {
   if (op === 'edit' || op === 'write') return 'ed';
   if (op === 'bash') return 'rn';
   return undefined;
-}
-
-function segLabel(g: TimelineSeg, cwd?: string): string {
-  if (g.kind === 'think') return 'think';
-  if (g.kind === 'text') return ui.turn.text;
-  const v = toolView(g.name ?? '', g.input ?? {}, cwd);
-  // у путей в панели — только имя файла, каталог лишний
-  const what = v.dim && !v.dimAfter ? splitPath(v.what).base || v.what : v.what;
-  return `${v.op} ${what}`.trim();
-}
-
-/** Вызовы `Agent`/`Task` подряд (параллельные в одном ответе) — одной строкой «agent ×N параллельно». */
-function mergeAgentSegs(segs: readonly TimelineSeg[]): TimelineSeg[] {
-  const out: TimelineSeg[] = [];
-  let run: TimelineSeg[] = [];
-  const flush = () => {
-    if (run.length === 1) out.push(run[0]!);
-    else if (run.length > 1) {
-      const open = run.some((g) => g.endAt === undefined);
-      const first = run[0]!;
-      out.push({
-        id: first.id,
-        kind: 'tool',
-        name: first.name!,
-        input: { description: ui.agents.group.parallel(run.length) },
-        at: first.at,
-        ...(open ? {} : { endAt: Math.max(...run.map((g) => g.endAt ?? g.at)) }),
-        state: open ? 'run' : run.some((g) => g.state === 'err') ? 'err' : 'ok',
-      });
-    }
-    run = [];
-  };
-  for (const g of segs) {
-    if (g.kind === 'tool' && (g.name === 'Agent' || g.name === 'Task')) run.push(g);
-    else {
-      flush();
-      out.push(g);
-    }
-  }
-  flush();
-  return out;
-}
-
-export function timelineView(t: TurnTimeline, now: number, cwd?: string): TimelineView {
-  const live = t.endedAt === undefined;
-  const end = t.endedAt ?? now;
-  const heading = `${ui.turn.turn} · ${clock(t.startedAt)} · ${live ? `${ui.turn.running} ${formatDuration(end - t.startedAt)}` : formatDuration(end - t.startedAt)}`;
-  const segs = mergeAgentSegs(t.segs);
-  const strip = segs.map((g) => {
-    const cls = segClass(g);
-    const dur = Math.max(0, (g.endAt ?? now) - g.at);
-    return { ...(cls ? { cls } : {}), flex: Math.max(1, Math.round(dur / 100)) };
-  });
-  const rows = segs.map((g): TimelineRowView => {
-    const running = g.endAt === undefined;
-    const dur = formatDuration((g.endAt ?? now) - g.at);
-    if (running && g.waiting) {
-      return {
-        at: (Math.max(0, g.at - t.startedAt) / 1000).toFixed(1),
-        ev: segLabel(g, cwd),
-        d: ui.turn.waiting[g.waiting],
-        now: true,
-        tone: g.waiting === 'plan' ? 'agent' : 'warn',
-      };
-    }
-    const tail = g.kind === 'text' && running ? ui.turn.streaming : running ? `${dur}…` : dur;
-    return {
-      at: (Math.max(0, g.at - t.startedAt) / 1000).toFixed(1),
-      ev: segLabel(g, cwd),
-      d: g.detail && !running ? `${g.detail} · ${tail}` : tail,
-      ...(running && g.kind === 'tool' ? { now: true } : {}),
-      ...(g.kind !== 'tool' ? { mute: true } : {}),
-    };
-  });
-  return { heading, strip, rows };
-}
-
-/** Ходы для панели: новейший первым; второй подписан «предыдущий». */
-export function turnsView(s: HudState, now: number, cwd?: string): TimelineView[] {
-  const last = s.turns.slice(-2).reverse();
-  return last.map((t, i) => {
-    const v = timelineView(t, now, cwd);
-    return i === 0 ? v : { ...v, heading: v.heading.replace(ui.turn.turn, ui.turn.previous) };
-  });
-}
-
-/** Число строк последнего хода — бейдж вкладки «ход». */
-export function turnBadge(s: HudState): { count: number; live: boolean } | undefined {
-  const t = s.turns[s.turns.length - 1];
-  if (!t || t.segs.length === 0) return undefined;
-  return { count: t.segs.length, live: t.endedAt === undefined };
 }
 
 // ——— панель «агенты» ———

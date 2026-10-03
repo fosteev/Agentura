@@ -16,9 +16,7 @@ import {
   limitMeter,
   limitsView,
   sessionTotals,
-  timelineView,
-  turnBadge,
-  turnsView,
+  segClass,
 } from './hudView';
 import { agentMapView } from './agentsView';
 
@@ -269,51 +267,15 @@ describe('итоги сессии и агенты', () => {
   });
 });
 
-describe('панель «ход»', () => {
-  it('строки с секундой от начала, полоса по длительности, заголовки', () => {
-    let s = initialHud();
-    const p = (e: Record<string, unknown>, now = 0) => (s = applyHud(s, ev(e), now));
-    p({ type: 'turn.start', at: 1_000 });
-    p({ type: 'thinking.start', messageId: 'm', at: 1_000 });
-    p({ type: 'thinking.stop', messageId: 'm', at: 13_000 });
-    p({
-      type: 'tool.start',
-      toolUseId: 'r',
-      name: 'Read',
-      input: { file_path: '/p/src/a.ts' },
-      at: 13_100,
-    });
-    p({ type: 'tool.result', toolUseId: 'r', isError: false, content: '', durationMs: 400 });
-    p({
-      type: 'tool.start',
-      toolUseId: 'b',
-      name: 'Bash',
-      input: { command: 'pnpm test' },
-      at: 14_000,
-    });
-    const live = timelineView(s.turns[0]!, 17_200, '/p');
-    expect(live.heading).toMatch(/^ход · \d\d:\d\d · идёт 16s$/);
-    expect(live.rows.map((r) => [r.at, r.ev, r.d])).toEqual([
-      ['0.0', 'think', '12s'],
-      ['12.1', 'read a.ts', '0.4s'],
-      ['13.0', 'bash pnpm test', '3.2s…'],
-    ]);
-    expect(live.rows[2]!.now).toBe(true);
-    expect(live.rows[0]!.mute).toBe(true);
-    expect(live.strip.map((x) => x.cls)).toEqual(['th', undefined, 'rn']);
-    expect(live.strip[0]!.flex).toBe(120);
-    expect(turnBadge(s)).toEqual({ count: 3, live: true });
-  });
-
-  it('turnsView: новейший первым, второй — «предыдущий»', () => {
-    let s = initialHud();
-    s = applyHud(s, ev({ type: 'turn.start', at: 0 }));
-    s = applyHud(s, ev({ type: 'turn.start', at: 50_000 }));
-    const v = turnsView(s, 60_000);
-    expect(v).toHaveLength(2);
-    expect(v[0]!.heading.startsWith('ход')).toBe(true);
-    expect(v[1]!.heading.startsWith('предыдущий')).toBe(true);
-    expect(turnBadge(initialHud())).toBeUndefined();
+describe('цвета сегментов таймлайна', () => {
+  it('segClass: think, текст, правки, bash; остальное без класса', () => {
+    const seg = (kind: 'think' | 'text' | 'tool', name?: string) =>
+      ({ id: 1, kind, at: 0, state: 'ok', ...(name ? { name, input: {} } : {}) }) as never;
+    expect(segClass(seg('think'))).toBe('th');
+    expect(segClass(seg('text'))).toBe('tx');
+    expect(segClass(seg('tool', 'Edit'))).toBe('ed');
+    expect(segClass(seg('tool', 'Bash'))).toBe('rn');
+    expect(segClass(seg('tool', 'Read'))).toBeUndefined();
   });
 });
 

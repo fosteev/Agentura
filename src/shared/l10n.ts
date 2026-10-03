@@ -31,6 +31,7 @@ const ru = {
   previewTitle: (base: string) => `превью · ${base}`,
   diffTitle: (name: string, stage: 'proposed' | 'applied') =>
     `${name}: ${stage === 'proposed' ? 'предложенная правка' : 'правка агента'}`,
+  changesTitle: (files: number) => `Правки агента (${files})`,
   settingsTitle: 'Agentura · настройки',
   /** Заголовок вкладки чата, пока у сессии нет названия. */
   untitledTab: 'Новая сессия',
@@ -110,6 +111,7 @@ const en: HostUi = {
   previewMissing: (file) => `Agentura: file not found — ${file}`,
   previewTitle: (base) => `preview · ${base}`,
   diffTitle: (name, stage) => `${name}: ${stage === 'proposed' ? 'proposed edit' : 'agent edit'}`,
+  changesTitle: (files) => `Agent changes (${files})`,
   settingsTitle: 'Agentura · Settings',
   untitledTab: 'New session',
   overriddenView:

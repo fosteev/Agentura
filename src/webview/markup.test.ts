@@ -186,7 +186,7 @@ describe('пустое состояние и шапка совпадают с em
     expect(compact(host.querySelector('.tips'))).toBe(compact(emptyProto.querySelector('.tips')));
   });
 
-  it('шапка: вкладки, название, sessions/new; ход и агенты отключены в пустой сессии', () => {
+  it('шапка: вкладки, название, sessions/new; изменения и агенты отключены в пустой сессии', () => {
     const host = document.createElement('div');
     render(
       h(Hud, {
@@ -205,8 +205,9 @@ describe('пустое состояние и шапка совпадают с em
     expect(skeleton(host.querySelector('header')!)).toBe(
       skeleton(emptyProto.querySelector('header.hud')!),
     );
+    // прототип empty.html ещё со вкладкой «ход»; в коде она называется «изменения» (roadmap 09)
     expect(compact(host.querySelector('header'))).toBe(
-      compact(emptyProto.querySelector('header.hud')),
+      compact(emptyProto.querySelector('header.hud')).replace('чатход', 'чатизменения'),
     );
     expect(
       [...host.querySelectorAll('.tabs button')].map((b) => b.hasAttribute('disabled')),

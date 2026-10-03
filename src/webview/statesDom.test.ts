@@ -360,28 +360,6 @@ describe('экран limit (limit.html)', () => {
   });
 });
 
-describe('состояние waiting: строка «ждёт разрешения» в панели «ход»', () => {
-  it('инструмент с запросом помечен в таймлайне и снимается ответом', async () => {
-    const host = mount();
-    play('waiting');
-    await flush();
-    const rows = [...host.querySelectorAll('#pane-turn .row.now')];
-    expect(rows.map((r) => r.textContent)).toEqual(
-      expect.arrayContaining([expect.stringContaining('ждёт разрешения')]),
-    );
-    expect(rows.some((r) => r.textContent?.includes('ждёт ответа'))).toBe(true);
-    expect(rows.some((r) => r.textContent?.includes('ждёт решения'))).toBe(true);
-    dispatchEvent({
-      type: 'permission.resolved',
-      toolUseId: 't2',
-      decision: 'allow',
-      by: 'user',
-    } as AgentEvent);
-    await flush();
-    expect(host.querySelector('#pane-turn')?.textContent).not.toContain('ждёт разрешения');
-  });
-});
-
 describe('компакция', () => {
   it('«сжимаю» у шкалы контекста и в строке хода, пока идёт сжатие; строка ленты заменяется итогом', async () => {
     const host = mount();
@@ -411,7 +389,7 @@ describe('доступность', () => {
     const tabs = [...host.querySelectorAll('.tabs [role="tab"]')] as HTMLElement[];
     expect(tabs.map((t) => t.getAttribute('aria-controls'))).toEqual([
       'pane-chat',
-      'pane-turn',
+      'pane-changes',
       'pane-agents',
     ]);
     expect(tabs.map((t) => t.tabIndex)).toEqual([0, -1, -1]);
@@ -422,7 +400,7 @@ describe('доступность', () => {
     expect(
       (host.querySelectorAll('.tabs [role="tab"]')[1] as HTMLElement).getAttribute('aria-selected'),
     ).toBe('true');
-    expect(host.querySelector('#pane-turn')?.getAttribute('role')).toBe('tabpanel');
+    expect(host.querySelector('#pane-changes')?.getAttribute('role')).toBe('tabpanel');
   });
 
   it('карточки: кнопки достижимы по Tab (нативные button), у «span-кнопок» есть tabindex и aria-label', async () => {
