@@ -1,73 +1,121 @@
 import type { AgentDetailView, AgentMapView, MapRowView } from '../agentsView';
-import type { TimelineView } from '../hudView';
+import type { ChangesScope, ChangesView } from '../changesView';
 import { ui } from '../strings';
-import { useStickToBottom } from '../useStickToBottom';
+import { formatDuration } from '../toolView';
 
-export function TurnPane({
-  turns,
+/** Вкладка «изменения»: охват, итог, файлы по папкам с номерами ходов, ниже — последние проверки. */
+export function ChangesPane({
+  view,
   hidden,
-  labelledBy = 'tab-turn',
+  labelledBy = 'tab-changes',
+  onScope,
+  onDiff,
 }: {
-  turns: TimelineView[];
+  view: ChangesView;
   hidden?: boolean;
-  /** id вкладки-подписи: шапка (`tab-turn`) или вкладка панели (`ptab-turn`). */
+  /** id вкладки-подписи: шапка (`tab-changes`) или вкладка панели (`ptab-changes`). */
   labelledBy?: string;
+  onScope: (scope: ChangesScope) => void;
+  /** Открыть дифф правок с этими `toolUseId` (файл — его правки, «дифф всего» — все). */
+  onDiff: (toolUseIds: string[]) => void;
 }) {
-  // в широкой вёрстке панель скроллится сама (hud.css) и во время хода липнет к низу, как лента
-  const { ref, onScroll } = useStickToBottom<HTMLElement>([turns]);
+  const c = ui.changes;
   return (
     <section
-      ref={ref}
-      onScroll={onScroll}
-      class="tabpane"
-      id="pane-turn"
+      class="tabpane cg"
+      id="pane-changes"
       role="tabpanel"
       aria-labelledby={labelledBy}
       hidden={hidden}
     >
-      {turns.length === 0 && (
+      <div class="scope" role="group" aria-label={c.scopeAria}>
+        <button aria-pressed={view.scope === 'session'} onClick={() => onScope('session')}>
+          {c.session}
+        </button>
+        <button aria-pressed={view.scope === 'turn'} onClick={() => onScope('turn')}>
+          {c.turn(view.lastTurn)}
+        </button>
+      </div>
+      {view.fileCount === 0 ? (
+        <div class="empty">{view.scope === 'turn' ? c.emptyTurn : c.emptySession}</div>
+      ) : (
         <>
-          <h4>{ui.tabs.turn}</h4>
-          <div class="tl">
-            <div class="row">
-              <span class="at" />
-              <span class="ev" style={{ color: 'var(--fg-faint)' }}>
-                {ui.agents.empty}
+          <div class="tot">
+            <span>
+              <b>{view.fileCount}</b> {c.files(view.fileCount)}
+            </span>
+            {(view.add > 0 || view.del > 0) && (
+              <span class="mono">
+                <span class="add">+{view.add}</span> <span class="del">−{view.del}</span>
               </span>
-            </div>
+            )}
+            <button class="lnk" data-tip={c.diffAllTitle} onClick={() => onDiff(view.ids)}>
+              {c.diffAll}
+            </button>
           </div>
+          {view.dirs.map((d) => (
+            <>
+              <div class="dir">{d.dir || c.root}</div>
+              {d.files.map((f) => (
+                <div
+                  class={f.live ? 'file live' : 'file'}
+                  role="button"
+                  tabIndex={0}
+                  data-tip={c.fileTitle}
+                  onClick={() => onDiff(f.ids)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      onDiff(f.ids);
+                    }
+                  }}
+                >
+                  <span class="nm">{f.base}</span>
+                  <span class="ch mono">
+                    {f.isNew && <span class="new">{c.newFile}</span>}
+                    {f.stats && (
+                      <>
+                        {' '}
+                        {f.stats.add > 0 && <span class="add">+{f.stats.add}</span>}
+                        {f.stats.add > 0 && f.stats.del > 0 && ' '}
+                        {f.stats.del > 0 && <span class="del">−{f.stats.del}</span>}
+                      </>
+                    )}
+                  </span>
+                  <span class="tn">
+                    {f.turns.map((n) => (
+                      <i
+                        class={f.live && n === view.lastTurn ? 'live' : undefined}
+                        data-tip={c.turnTitle(n)}
+                      >
+                        {n}
+                      </i>
+                    ))}
+                  </span>
+                </div>
+              ))}
+            </>
+          ))}
         </>
       )}
-      {turns.map((t) => (
+      {view.checks.length > 0 && (
         <>
-          <h4>{t.heading}</h4>
-          <div class="tl">
-            <div class="strip" aria-hidden="true">
-              {t.strip.map((s) => (
-                <i class={s.cls} style={{ flex: s.flex }} />
-              ))}
+          <h5>{c.checks}</h5>
+          {view.checks.map((k) => (
+            <div class="chk">
+              {k.state === 'run' ? (
+                <span class="spin" />
+              ) : (
+                <span class={k.state === 'ok' ? 'pass' : 'fail'}>{k.state === 'ok' ? '✓' : '✗'}</span>
+              )}
+              <code data-tip={k.command}>{k.command}</code>
+              <span class={k.state === 'run' ? 'r run' : 'r'}>
+                {k.state === 'run' ? `${formatDuration(k.ms)}…` : formatDuration(k.ms)} · {k.turn}
+              </span>
             </div>
-            {t.rows.map((r) => (
-              <div class={r.now ? 'row now' : 'row'}>
-                <span class="at">{r.at}</span>
-                <span
-                  class="ev"
-                  style={
-                    r.tone
-                      ? { color: r.tone === 'agent' ? 'var(--agent)' : 'var(--warn)' }
-                      : r.mute
-                        ? { color: 'var(--fg-mute)' }
-                        : undefined
-                  }
-                >
-                  {r.ev}
-                  <span class="d">{r.d}</span>
-                </span>
-              </div>
-            ))}
-          </div>
+          ))}
         </>
-      ))}
+      )}
     </section>
   );
 }

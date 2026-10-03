@@ -8,6 +8,19 @@ import { currentLanguage } from './webviewHost';
 export const DIFF_SCHEME = 'agentura-diff';
 /** Сколько пар документов держать в памяти (стороны — файлы целиком). */
 const MAX_PAIRS = 40;
+/** djb2 — короткий ключ мульти-диффа по ключам файлов. */
+function hash(s: string): string {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+
+/** Фокус группы редактора по колонке — перед `vscode.changes`, который колонку не принимает. */
+const FOCUS_GROUP: Partial<Record<number, string>> = {
+  1: 'workbench.action.focusFirstEditorGroup',
+  2: 'workbench.action.focusSecondEditorGroup',
+  3: 'workbench.action.focusThirdEditorGroup',
+};
 
 /**
  * Нативный дифф правок агента (этап 5): `TextDocumentContentProvider` над `agentura-diff:` и
@@ -79,5 +92,27 @@ export class DiffDocuments implements vscode.TextDocumentContentProvider {
       preview: true,
       ...(column !== undefined ? { viewColumn: column } : {}),
     });
+  }
+
+  /**
+   * Мульти-дифф (`vscode.changes`): аргументы — заголовок и `[ресурс, до, после][]`; ресурс — настоящий файл
+   * (подпись в редакторе), стороны — `agentura-diff:`. Все файлы — под одним ключом (`/<ключ>/<i>/…`): лимит
+   * `MAX_PAIRS` считает мульти-дифф одной парой и не вытесняет его же документы, пока VS Code их не прочёл;
+   * индекс `i` разводит файлы с одинаковым именем. `vscode.changes` не берёт колонку — сначала фокус группы.
+   */
+  async openChanges(title: string, files: OpenDiff[], column?: vscode.ViewColumn): Promise<void> {
+    // ключ — от ключей всех файлов: другой набор правок не попадёт под URI, уже прочитанные VS Code
+    const key = encodeURIComponent(`changes-${files.length}-${hash(files.map((d) => d.key).join('|'))}`);
+    this.remember(key);
+    const resources = files.map((d, i) => {
+      const name = path.basename(d.filePath) || 'file';
+      const left = vscode.Uri.from({ scheme: DIFF_SCHEME, path: `/${key}/${i}/before/${name}` });
+      const right = vscode.Uri.from({ scheme: DIFF_SCHEME, path: `/${key}/${i}/after/${name}` });
+      this.docs.set(left.toString(), d.before);
+      this.docs.set(right.toString(), d.after);
+      return [vscode.Uri.file(d.filePath), left, right];
+    });
+    if (column !== undefined) await vscode.commands.executeCommand(FOCUS_GROUP[column] ?? FOCUS_GROUP[1]!);
+    await vscode.commands.executeCommand('vscode.changes', title, resources);
   }
 }

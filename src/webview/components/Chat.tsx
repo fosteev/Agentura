@@ -25,7 +25,8 @@ import {
 } from '../store';
 import { activeCard, pendingPlan } from '../chatState';
 import { limitBanner } from '../limitView';
-import { cacheLive, turnBadge, turnsView } from '../hudView';
+import { changesView } from '../changesView';
+import { cacheLive } from '../hudView';
 import { agentBadge, agentMapView, liveSubagents, waitingAgents } from '../agentsView';
 import { ui } from '../strings';
 import { readPanel, savePanel, send, type PanelState } from '../vscode';
@@ -35,7 +36,7 @@ import { Hud, type Tab } from './Hud';
 import { TabBar, type TabItem } from './TabBar';
 import { Log } from './Log';
 import { useStickToBottom } from '../useStickToBottom';
-import { AgentsPane, TurnPane } from './SidePanes';
+import { AgentsPane, ChangesPane } from './SidePanes';
 import type { FeedRow } from '../chatState';
 import { formatDuration, toolView } from '../toolView';
 
@@ -83,7 +84,7 @@ const ICON_SHOW = (
     <path d="M10.5 3v10h3.5V3z" fill="currentColor" stroke="none" opacity=".55" />
   </svg>
 );
-const ICON_TURN = (
+const ICON_CHANGES = (
   <svg
     class="ico"
     viewBox="0 0 16 16"
@@ -92,7 +93,7 @@ const ICON_TURN = (
     stroke-width="1.2"
     aria-hidden="true"
   >
-    <path d="M2 4h12M2 8h7M2 12h10" />
+    <path d="M8 2v6M5 5h6M5 12h6" />
   </svg>
 );
 const ICON_AGENTS = (
@@ -219,7 +220,7 @@ export function Chat() {
   const { ref: paneRef, onScroll } = useStickToBottom<HTMLElement>([s.rows, tab.value]);
 
   const empty = s.rows.length === 0;
-  // в пустой сессии вкладки «ход»/«агенты» отключены — после «new» возвращаемся в чат
+  // в пустой сессии вкладки «изменения»/«агенты» отключены — после «new» возвращаемся в чат
   const t = empty ? 'chat' : tab.value;
   const now = tick.value;
   const last = s.rows[s.rows.length - 1];
@@ -236,7 +237,8 @@ export function Chat() {
   const banner = blocked ? limitBanner(blocked, now) : undefined;
   const active = activeCard(s);
 
-  const turnBdg = turnBadge(h);
+  const changes = changesView(s.rows, { scope: panel.changes ?? 'session', now, cwd: s.cwd });
+  const changesBdg = changes.badge;
   const agentsBdg = agentBadge(h);
   // основной ждёт своих субагентов: живая строка «ждёт N агентов» и «stop all»
   const awaited = working && s.status !== 'waiting' ? waitingAgents(s.rows, h) : [];
@@ -249,14 +251,14 @@ export function Chat() {
     if (wide.value) updatePanel({ tab: 'agents', off: false });
     else tab.value = 'agents';
   };
-  // вкладки панели: в пустой сессии недоступны, активна «ход»
-  const panelTab = empty ? 'turn' : (panel.tab ?? 'turn');
-  const panelItems: readonly TabItem<'turn' | 'agents'>[] = [
+  // вкладки панели: в пустой сессии недоступны, активна «изменения»
+  const panelTab = empty ? 'changes' : (panel.tab ?? 'changes');
+  const panelItems: readonly TabItem<'changes' | 'agents'>[] = [
     {
-      key: 'turn',
-      label: ui.tabs.turn,
+      key: 'changes',
+      label: ui.tabs.changes,
       disabled: empty,
-      ...(turnBdg ? { badge: { text: String(turnBdg.count), live: turnBdg.live } } : {}),
+      ...(changesBdg ? { badge: { text: String(changesBdg.count), live: changesBdg.live } } : {}),
     },
     {
       key: 'agents',
@@ -277,7 +279,7 @@ export function Chat() {
         badges={
           empty
             ? {}
-            : { ...(turnBdg ? { turn: turnBdg } : {}), ...(agentsBdg ? { agents: agentsBdg } : {}) }
+            : { ...(changesBdg ? { changes: changesBdg } : {}), ...(agentsBdg ? { agents: agentsBdg } : {}) }
         }
         sessions={recent.value}
         currentId={currentSession.value ?? (s.sessionId || undefined)}
@@ -463,10 +465,14 @@ export function Chat() {
               e.preventDefault();
             }}
           />
-          <TurnPane
-            turns={turnsView(h, now, s.cwd)}
-            hidden={wide.value ? panelTab !== 'turn' : t !== 'turn'}
-            labelledBy={wide.value ? 'ptab-turn' : 'tab-turn'}
+          <ChangesPane
+            view={changes}
+            hidden={wide.value ? panelTab !== 'changes' : t !== 'changes'}
+            labelledBy={wide.value ? 'ptab-changes' : 'tab-changes'}
+            onScope={(scope) => updatePanel({ changes: scope })}
+            onDiff={(toolUseIds) =>
+              send({ type: 'diff.changes', sessionId: s.sessionId, toolUseIds })
+            }
           />
           <AgentsPane
             view={agentMapView(h, {
@@ -487,13 +493,15 @@ export function Chat() {
         </aside>
         <nav class="rail" aria-label={ui.panel.railAria}>
           <button
-            data-tip={ui.tabs.turn}
-            aria-label={ui.panel.openTab(ui.tabs.turn)}
+            data-tip={ui.tabs.changes}
+            aria-label={ui.panel.openTab(ui.tabs.changes)}
             disabled={empty}
-            onClick={() => updatePanel({ tab: 'turn', off: false })}
+            onClick={() => updatePanel({ tab: 'changes', off: false })}
           >
-            {ICON_TURN}
-            {turnBdg && <span class={turnBdg.live ? 'b live' : 'b'}>{turnBdg.count}</span>}
+            {ICON_CHANGES}
+            {changesBdg && (
+              <span class={changesBdg.live ? 'b live' : 'b'}>{changesBdg.count}</span>
+            )}
           </button>
           <button
             data-tip={ui.tabs.agents}

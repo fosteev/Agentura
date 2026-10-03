@@ -65,7 +65,7 @@ html:is([data-width="900"],[data-width="full"],[data-width="vscode"]) .body { gr
 html:is([data-width="900"],[data-width="full"],[data-width="vscode"]) .pane.side { display: flex !important; flex-direction: column; overflow: hidden; border-left: 1px solid var(--line); background: var(--bg-side); position: relative; }
 /* видна одна вкладка панели на всю высоту и скроллится сама; «предыдущий» — внизу «хода», «за сессию» — внизу «агентов» */
 html:is([data-width="900"],[data-width="full"],[data-width="vscode"]) .pane.side .tabpane { display: none !important; }
-html:is([data-width="900"],[data-width="full"],[data-width="vscode"]) .pane.side[data-active="turn"] #pane-turn, html:is([data-width="900"],[data-width="full"],[data-width="vscode"]) .pane.side[data-active="agents"] #pane-agents { display: block !important; flex: 1; min-height: 0; overflow: auto; }
+html:is([data-width="900"],[data-width="full"],[data-width="vscode"]) .pane.side[data-active="changes"] #pane-changes, html:is([data-width="900"],[data-width="full"],[data-width="vscode"]) .pane.side[data-active="agents"] #pane-agents { display: block !important; flex: 1; min-height: 0; overflow: auto; }
 /* карта агентов в панели — всегда список над деталями */
 html:is([data-width="900"],[data-width="full"],[data-width="vscode"]) .pane.side .amap { grid-template-columns: 1fr; min-height: 0; }
 html:is([data-width="900"],[data-width="full"],[data-width="vscode"]) .pane.side .amap > .list { border-right: 0; }

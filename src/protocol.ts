@@ -245,6 +245,8 @@ export type FromWebview =
   | { type: 'file.open'; kind: string; path: string; data?: string }
   | { type: 'sessions.show' }
   | { type: 'diff.open'; sessionId: string; toolUseId: string }
+  /** Вкладка «изменения»: дифф файла (правки одного файла) или всех файлов охвата — по `toolUseId` правок. */
+  | { type: 'diff.changes'; sessionId: string; toolUseIds: string[] }
   | { type: 'preview.open'; path: string }
   | { type: 'link.open'; url: string }
   | { type: 'interrupt'; sessionId: string }

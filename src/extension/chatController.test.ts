@@ -491,6 +491,92 @@ describe('ChatController', () => {
     expect(opened).toHaveLength(2);
   });
 
+  it('diff.changes: один файл — openDiff (before первой, after последней), несколько — openChanges', async () => {
+    const { controller, sessions, deps } = setup();
+    const opened: OpenDiff[] = [];
+    const multi: { title: string; files: OpenDiff[] }[] = [];
+    deps.openDiff = async (d) => void opened.push(d);
+    deps.openChanges = async (title, files) => void multi.push({ title, files });
+    controller.start();
+    await tick();
+    const s = sessions[0]!;
+    const write = (id: string, file: string, before: string | null, content: string) => {
+      const input = { file_path: file, content };
+      s.emit({ type: 'tool.start', toolUseId: id, name: 'Write', input });
+      s.emit({
+        type: 'tool.result',
+        toolUseId: id,
+        isError: false,
+        content: 'ok',
+        result: {
+          type: before === null ? 'create' : 'update',
+          filePath: file,
+          content,
+          originalFile: before,
+        },
+      });
+    };
+    write('w1', '/p/f.ts', 'v0', 'v1');
+    write('w2', '/p/g.ts', 'g0', 'g1');
+    write('w3', '/p/f.ts', 'v1', 'v2');
+
+    await controller.handle({ type: 'diff.changes', sessionId: '', toolUseIds: ['w1', 'w3'] });
+    expect(multi).toHaveLength(0);
+    expect(opened).toHaveLength(1);
+    expect(opened[0]).toMatchObject({
+      key: 'changes-w1-w3',
+      filePath: '/p/f.ts',
+      before: 'v0',
+      after: 'v2',
+      stage: 'applied',
+    });
+
+    await controller.handle({
+      type: 'diff.changes',
+      sessionId: '',
+      toolUseIds: ['w1', 'w2', 'w3', 'нет'],
+    });
+    expect(opened).toHaveLength(1);
+    expect(multi).toHaveLength(1);
+    expect(multi[0]!.files.map((f) => [f.filePath, f.before, f.after])).toEqual([
+      ['/p/f.ts', 'v0', 'v2'],
+      ['/p/g.ts', 'g0', 'g1'],
+    ]);
+    expect(deps.log.warn).toHaveBeenCalled();
+
+    // файл создан Write и потом правлен Edit: слева пусто, справа — после Edit
+    write('c1', '/p/n.ts', null, 'a\n');
+    const edit = (id: string, file: string, result: Record<string, unknown>) => {
+      const input = { file_path: file, old_string: 'a', new_string: 'b' };
+      s.emit({ type: 'tool.start', toolUseId: id, name: 'Edit', input });
+      s.emit({ type: 'tool.result', toolUseId: id, isError: false, content: 'ok', result });
+    };
+    edit('c2', '/p/n.ts', { filePath: '/p/n.ts', originalFile: 'a\n', oldString: 'a', newString: 'b' });
+    // фрагмент (правка без исходного файла) с целыми сторонами не склеивается
+    edit('c3', '/p/n.ts', { filePath: '/p/n.ts', oldString: 'b', newString: 'c' });
+    // правка с ошибкой в this.edits не попадает
+    s.emit({ type: 'tool.start', toolUseId: 'c4', name: 'Edit', input: { file_path: '/p/n.ts' } });
+    s.emit({ type: 'tool.result', toolUseId: 'c4', isError: true, content: 'no match' });
+    await controller.handle({
+      type: 'diff.changes',
+      sessionId: '',
+      toolUseIds: ['c1', 'c2', 'c3', 'c4'],
+    });
+    expect(opened.at(-1)).toMatchObject({ key: 'changes-c1-c2', before: '', after: 'b\n' });
+    // одни фрагменты — последний сам по себе
+    await controller.handle({ type: 'diff.changes', sessionId: '', toolUseIds: ['c3'] });
+    expect(opened.at(-1)).toMatchObject({ key: 'changes-c3-c3', before: 'b', after: 'c' });
+
+    // длинная сессия: ранние правки вытеснены из сторон (MAX_EDITS), дифф за сессию всё равно от первой
+    const many = Array.from({ length: 70 }, (_, i) => `m${i}`);
+    many.forEach((id, i) => write(id, '/p/long.ts', i === 0 ? null : `L${i}`, `L${i + 1}`));
+    await controller.handle({ type: 'diff.changes', sessionId: '', toolUseIds: many });
+    expect(opened.at(-1)).toMatchObject({ key: 'changes-m0-m69', before: '', after: 'L70' });
+    // охват «ход» — свежие правки: before — первой из них
+    await controller.handle({ type: 'diff.changes', sessionId: '', toolUseIds: many.slice(65) });
+    expect(opened.at(-1)).toMatchObject({ key: 'changes-m65-m69', before: 'L65', after: 'L70' });
+  });
+
   it('preview.open: абсолютный .html — в deps, остальное отброшено с warn', async () => {
     const { controller, deps } = setup();
     const previews: string[] = [];

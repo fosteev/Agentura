@@ -5,7 +5,7 @@ import { costLabel, tokensLabel, whenLabel } from '../sessionsView';
 import { ui } from '../strings';
 import { TabBar, type TabItem } from './TabBar';
 
-export type Tab = 'chat' | 'turn' | 'agents';
+export type Tab = 'chat' | 'changes' | 'agents';
 
 export function Hud({
   project,
@@ -24,10 +24,10 @@ export function Hud({
   title?: string;
   tab: Tab;
   onTab: (t: Tab) => void;
-  /** Панели «ход» и «агенты» недоступны в пустой сессии (экран empty). */
+  /** Панели «изменения» и «агенты» недоступны в пустой сессии (экран empty). */
   sidePanesEnabled: boolean;
-  /** Бейджи вкладок: число строк хода (`live` — ход идёт) и агенты хода `идут / всего` (A6). */
-  badges: { turn?: { count: number; live: boolean }; agents?: { text: string; live: boolean } };
+  /** Бейджи вкладок: число файлов сессии (`live` — идёт правка) и агенты хода `идут / всего` (A6). */
+  badges: { changes?: { count: number; live: boolean }; agents?: { text: string; live: boolean } };
   /** Сессии проекта, коротко (`sessions.update`) — попап `sessions`. */
   sessions: SessionSummary[];
   currentId?: string | undefined;
@@ -60,11 +60,11 @@ export function Hud({
   const tabs: readonly TabItem<Tab>[] = [
     { key: 'chat', label: ui.tabs.chat },
     {
-      key: 'turn',
-      label: ui.tabs.turn,
+      key: 'changes',
+      label: ui.tabs.changes,
       disabled: !sidePanesEnabled,
-      ...(badges.turn
-        ? { badge: { text: String(badges.turn.count), live: badges.turn.live } }
+      ...(badges.changes
+        ? { badge: { text: String(badges.changes.count), live: badges.changes.live } }
         : {}),
     },
     {
