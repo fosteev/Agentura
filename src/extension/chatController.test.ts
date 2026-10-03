@@ -1613,6 +1613,17 @@ describe('ChatController: сессии (этап 6)', () => {
       true,
     );
   });
+
+  it('syncTitle: название из списка (ai-title) — во вкладку, повтор ничего не шлёт', () => {
+    const { controller, posted, deps } = setupResume({});
+    controller.syncTitle('VS Code вкладки API');
+    expect(deps.setTitle).toHaveBeenLastCalledWith('VS Code вкладки API');
+    const calls = vi.mocked(deps.setTitle).mock.calls.length;
+    const sent = posted.length;
+    controller.syncTitle('VS Code вкладки API');
+    expect(deps.setTitle).toHaveBeenCalledTimes(calls);
+    expect(posted).toHaveLength(sent);
+  });
 });
 
 // ——— этап 7: ошибки, «Повторить ход», журнал ———

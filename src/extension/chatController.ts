@@ -471,6 +471,14 @@ export class ChatController {
     if (id) this.forward(id, { type: 'session.title', title });
   }
 
+  /**
+   * Список сессий перечитан. Название, которое придумал ИИ (`ai-title` в транскрипте), движок событием
+   * не присылает — `session_title_changed` приходит только на наше переименование, — поэтому берём его из списка.
+   */
+  syncTitle(title: string): void {
+    if (title !== this.title) this.setTitle(title);
+  }
+
   /** Webview прислал `ready`: отдать ему всё, что накопилось до его готовности. */
   onReady(): void {
     const { deps } = this;

@@ -394,13 +394,17 @@ export class ChatPanel {
       },
       // список сессий — и во вкладку: попап «sessions» и экран empty
       {
-        dispose: services.sessions.onChange((rows) =>
+        dispose: services.sessions.onChange((rows) => {
+          const id = this.controller.sessionId;
           postToWebview(panel.webview, {
             type: 'sessions.update',
             sessions: rows.slice(0, CHAT_SESSIONS),
-            ...(this.controller.sessionId ? { current: this.controller.sessionId } : {}),
-          }),
-        ),
+            ...(id ? { current: id } : {}),
+          });
+          // без названия список подставляет id сессии — такое во вкладку не тянем
+          const title = id ? rows.find((r) => r.id === id)?.title : undefined;
+          if (title && title !== id) this.controller.syncTitle(title);
+        }),
       },
       panel.onDidChangeViewState((e) => {
         if (e.webviewPanel.active) ChatPanel.lastActive = this;
