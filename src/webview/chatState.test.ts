@@ -232,6 +232,30 @@ describe('редьюсер: очередь и границы хода', () => {
     expect(s.rows.map((r) => (r.kind === 'user' ? r.queued : null))).toEqual([false, true]);
   });
 
+  it('«в очереди», отправленное посреди хода, по turn.start встаёт в конец ленты — после итога прошлого хода', () => {
+    let s = applyEvent(initialState(), start('A'));
+    s = queueUser(s, 'B');
+    s = applyEvent(s, { type: 'text.delta', messageId: 'm', text: 'ответ' });
+    s = applyEvent(s, {
+      type: 'turn.result',
+      ok: true,
+      subtype: 'success',
+      interrupted: false,
+      durationMs: 1000,
+      apiDurationMs: 900,
+      numTurns: 1,
+      totalCostUsd: 0.01,
+      costUsd: 0.01,
+      usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 },
+      permissionDenials: [],
+    });
+    expect(kinds(s.rows)).toEqual(['user', 'user', 'text', 'sum']);
+    const queuedId = s.rows[1]!.id;
+    s = applyEvent(s, start('B'));
+    expect(kinds(s.rows)).toEqual(['user', 'text', 'sum', 'user']);
+    expect(s.rows[3]).toMatchObject({ id: queuedId, text: 'B', queued: false });
+  });
+
   it('склеенные движком сообщения (prompts) закрывают каждое свою строку, с контекстом', () => {
     const a = buildPrompt('раз', [{ kind: 'file', path: 'src/a.ts' }]);
     let s = queueUser(queueUser(initialState(), 'раз'), 'два');

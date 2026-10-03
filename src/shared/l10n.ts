@@ -14,6 +14,14 @@ const ru = {
   // команды и всплывашки
   noSessions: 'Agentura: в этом проекте пока нет сессий.',
   pickSessionPlaceholder: 'Какую сессию возобновить?',
+  feedStylePlaceholder: 'Вид ленты чата',
+  feedStyleCurrent: 'сейчас',
+  feedStyles: {
+    journal: ['Журнал', 'плоский список строк, как раньше'],
+    folded: ['Свёрнуто', 'завершённые ходы прячут действия в одну строку'],
+    replies: ['Реплики', 'ваше сообщение пузырём, действия чипами'],
+    cards: ['Карточки', 'каждый ход — карточка с лентой действий'],
+  } as Record<string, [string, string]>,
   turns: (n: number) => `${n} ${n === 1 ? 'ход' : 'ходов'}`,
   languageReload: 'Язык Agentura применится после перезагрузки окна.',
   reloadButton: 'Перезагрузить',
@@ -86,6 +94,14 @@ const en: HostUi = {
 
   noSessions: 'Agentura: no sessions in this project yet.',
   pickSessionPlaceholder: 'Which session to resume?',
+  feedStylePlaceholder: 'Chat feed style',
+  feedStyleCurrent: 'current',
+  feedStyles: {
+    journal: ['Journal', 'a flat log of rows, as before'],
+    folded: ['Folded', 'finished turns collapse their actions into one line'],
+    replies: ['Replies', 'your message as a bubble, actions as chips'],
+    cards: ['Cards', 'each turn is a card with a timeline of actions'],
+  } as Record<string, [string, string]>,
   turns: (n) => `${n} ${n === 1 ? 'turn' : 'turns'}`,
   languageReload: 'Agentura language will apply after the window reloads.',
   reloadButton: 'Reload',

@@ -80,6 +80,8 @@ describe('sessionList', () => {
   it('вид верха боковой панели — detailed, compact, dense', () => {
     expect(validateSetting('sidebar.top', 'dense')).toEqual({ ok: true, value: 'dense' });
     expect(validateSetting('sidebar.top', 'mini').ok).toBe(false);
+    expect(validateSetting('feed.style', 'cards')).toEqual({ ok: true, value: 'cards' });
+    expect(validateSetting('feed.style', 'grid').ok).toBe(false);
   });
 });
 
@@ -133,6 +135,7 @@ describe('readSettings', () => {
         'sessionList.view': 'tree',
         'sessionList.context': 'x',
         'sidebar.top': 'mini',
+        'feed.style': 'grid',
       }),
     );
     expect(v).toMatchObject({
@@ -140,6 +143,7 @@ describe('readSettings', () => {
       'sessionList.context': true,
       'sessionList.time': true,
       'sidebar.top': 'detailed',
+      'feed.style': 'journal',
       defaultPermissionMode: 'manual',
       defaultEffort: '',
       contextThresholds: [120_000, 150_000],

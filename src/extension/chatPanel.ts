@@ -8,7 +8,7 @@ import type { AgentAdapter } from '../agent/types';
 import type { LimitsSource } from '../data/limits';
 import type { LiveSessions, TranscriptCache } from '../data/sessions';
 import { postToWebview } from '../protocol';
-import { DEFAULT_THRESHOLDS, thresholdsError } from '../settings';
+import { DEFAULT_FEED_STYLE, DEFAULT_THRESHOLDS, isFeedStyle, thresholdsError } from '../settings';
 import type { AccountService } from './account';
 import { ChatController } from './chatController';
 import type { DiffDocuments } from './diffDocuments';
@@ -258,6 +258,7 @@ export class ChatPanel {
           contextThresholds: ((th) => (thresholdsError(th) ? [...DEFAULT_THRESHOLDS] : th))(
             cfg.get<number[]>('contextThresholds', [...DEFAULT_THRESHOLDS]),
           ),
+          feedStyle: ((v) => (isFeedStyle(v) ? v : DEFAULT_FEED_STYLE))(cfg.get<unknown>('feed.style')),
           defaultPermissionMode: cfg.get<string>('defaultPermissionMode'),
           defaultEffort: cfg.get<string>('defaultEffort'),
         };

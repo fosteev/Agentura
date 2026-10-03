@@ -43,7 +43,7 @@ import {
   sessionProblem,
   type SessionAttach,
 } from '../shared/files';
-import { resolveDefaultEffort, resolveDefaultMode } from '../settings';
+import { resolveDefaultEffort, resolveDefaultMode, type FeedStyle } from '../settings';
 import { hostStrings, type Lang } from '../shared/l10n';
 import { appliedSides, previewOf, proposedSides, type EditSides } from './editDiff';
 import {
@@ -77,6 +77,8 @@ export interface ChatDeps {
     defaultModel?: string;
     allowBypass: boolean;
     contextThresholds?: number[];
+    /** `agentura.feed.style`: вид ленты, уходит в `chat.info`. */
+    feedStyle?: FeedStyle | undefined;
     /** `agentura.defaultPermissionMode` как в настройке (`manual` | …): применяется к новым сессиям. */
     defaultPermissionMode?: string | undefined;
     /** `agentura.defaultEffort` (пусто — выбор движка): применяется к новым сессиям. */
@@ -212,6 +214,7 @@ export class ChatController {
       cwd: deps.cwd,
       allowBypass: s.allowBypass,
       ...(s.contextThresholds?.length ? { contextThresholds: s.contextThresholds } : {}),
+      ...(s.feedStyle ? { feedStyle: s.feedStyle } : {}),
     });
   }
 

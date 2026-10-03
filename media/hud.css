@@ -105,7 +105,7 @@ html:is([data-width="900"],[data-width="full"],[data-width="vscode"]) .body[data
 /* лента как журнал */
 .log { padding: 10px 14px 8px; display: grid; gap: 2px; align-content: start; }
 .log .u { display: grid; grid-template-columns: 14px 1fr auto; gap: 8px; padding: 6px 0; margin: 6px 0 4px; color: var(--fg); font-weight: 500; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
-.log .u:first-child { border-top: 0; margin-top: 0; }
+.log > .u:first-child, .log > .turn:first-child > .u:first-child { border-top: 0; margin-top: 0; }
 .log .u .p { color: var(--accent); }
 .log .u .at { color: var(--fg-faint); font-weight: 400; font-size: 11px; }
 .log .u code { color: var(--fg); }

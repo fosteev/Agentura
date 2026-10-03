@@ -28,8 +28,11 @@ export type FeedRow =
       tone?: 'ok' | 'bad';
       text: Seg[];
       at?: string;
-      /** `limit` — строка «ход не начат» (одна на упор в лимит), `retry` — повтор запроса к API (схлопываются). */
-      tag?: 'limit' | 'retry';
+      /**
+       * `limit` — строка «ход не начат» (одна на упор в лимит), `retry` — повтор запроса к API (схлопываются),
+       * `fail` — погашенная карточка ошибки (ею кончается оборванный ход, см. `feedTurns`).
+       */
+      tag?: 'limit' | 'retry' | 'fail';
     }
   | {
       id: number;
@@ -251,7 +254,9 @@ function retireFails(s: ChatState): ChatState {
   return {
     ...s,
     rows: s.rows.map((r): FeedRow =>
-      r.kind === 'fail' ? { id: r.id, kind: 'sys', tone: 'bad', text: [r.message], at: r.at } : r,
+      r.kind === 'fail'
+        ? { id: r.id, kind: 'sys', tone: 'bad', tag: 'fail', text: [r.message], at: r.at }
+        : r,
     ),
   };
 }
@@ -277,6 +282,8 @@ function deliverUser(
   atMs: number,
   images?: readonly ImageRef[],
   files?: readonly FileRef[],
+  /** Новый ход (`turn.start`): своя строка «в очереди» встаёт в конец ленты, а не остаётся посреди прошлого хода. */
+  toEnd = false,
 ): ChatState {
   const { text, context } = splitPrompt(prompt);
   const at = clock(atMs);
@@ -301,6 +308,14 @@ function deliverUser(
   if (!row.images?.length && images?.length) updated.images = [...images];
   // файлы — так же: у строки из поля ввода они с содержимым (копия для просмотра), у события — без
   if (!row.files?.length && files?.length) updated.files = [...files];
+  if (toEnd) {
+    // в конец, но перед остальными строками «в очереди» — их ходы ещё впереди
+    const rows = [...s.rows.slice(0, idx), ...s.rows.slice(idx + 1)];
+    let at = rows.length;
+    while (at > idx && rows[at - 1]?.kind === 'user' && (rows[at - 1] as { queued?: boolean }).queued) at--;
+    rows.splice(at, 0, updated);
+    return { ...s, rows };
+  }
   return replaceAt(s, idx, updated);
 }
 
@@ -412,11 +427,12 @@ function reduce(s: ChatState, e: AgentEvent, now: number): ChatState {
       const own = prompts.some((p) => queuedRow(out, p) >= 0);
       const images = own ? undefined : e.images;
       const files = own ? undefined : e.files;
+      // строка «в очереди», отправленная посреди прошлого хода, переезжает в конец — туда, где начался её ход
       return prompts.reduce(
         (acc, p, i) =>
           i === prompts.length - 1
-            ? deliverUser(acc, p, e.at, images, files)
-            : deliverUser(acc, p, e.at),
+            ? deliverUser(acc, p, e.at, images, files, true)
+            : deliverUser(acc, p, e.at, undefined, undefined, true),
         out,
       );
     }

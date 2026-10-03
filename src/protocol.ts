@@ -18,6 +18,7 @@ import type { ImageProblem } from './shared/images';
 import type { FileProblem } from './shared/files';
 import type {
   EngineCheck,
+  FeedStyle,
   SessionListMode,
   SettingKey,
   SidebarTopMode,
@@ -129,6 +130,8 @@ export type ToWebview =
       allowBypass: boolean;
       /** Пороги шкалы контекста (`agentura.contextThresholds`), токены. Добавлено на этапе 4. */
       contextThresholds?: number[];
+      /** Вид ленты (`agentura.feed.style`); нет — `journal`. */
+      feedStyle?: FeedStyle;
     }
   | { type: 'capabilities'; sessionId: string; models: ModelOption[]; commands: CommandOption[] }
   | ({ type: 'editor.context' } & EditorContext)

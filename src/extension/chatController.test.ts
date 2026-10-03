@@ -201,6 +201,15 @@ describe('ChatController', () => {
     ]);
   });
 
+  it('pushInfo: вид ленты из настроек уходит в chat.info', async () => {
+    const { controller, posted, deps } = setup();
+    await controller.handle({ type: 'ready' });
+    posted.length = 0;
+    deps.settings = () => ({ allowBypass: false, feedStyle: 'cards' });
+    controller.pushInfo();
+    expect(posted).toEqual([expect.objectContaining({ type: 'chat.info', feedStyle: 'cards' })]);
+  });
+
   it('ready: отдаёт chat.info, список недавних и возможности движка', async () => {
     const { controller, posted } = setup();
     controller.start();

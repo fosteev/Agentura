@@ -1,3 +1,4 @@
+import { Fragment } from 'preact';
 import { useMemo, useState } from 'preact/hooks';
 import type { Seg } from '../fixtures/chat';
 import type { FeedRow } from '../chatState';
@@ -16,7 +17,8 @@ import {
   toolView,
 } from '../toolView';
 import { FailCardView, PermissionCard, PlanCardView, QuestionCardView, ToolOutput } from './Cards';
-import { agentGroupView, feedItems } from '../agentsView';
+import { agentGroupView, feedItems, type FeedItem } from '../agentsView';
+import { feedTurns, foldSummary, stepRows, type FoldSummary, type Turn } from '../turnView';
 import { initialHud, type HudState } from '../hudState';
 import { AgentGroup } from './AgentGroup';
 
@@ -246,7 +248,7 @@ export function Tool({
   // красный результат раскрывается: вывод инструмента как его увидела модель
   const expandable = failed && !!t.content;
   const [open, setOpen] = useState(false);
-  const cls = ['e', v.run && 'run', running && 'now', failed && 'fail'].filter(Boolean).join(' ');
+  const cls = ['e', v.run && 'run', v.edit && 'ed', running && 'now', failed && 'fail'].filter(Boolean).join(' ');
   const toggle = () => expandable && setOpen(!open);
   return (
     <>
@@ -349,6 +351,8 @@ export function Log({
   hud,
   onStopAgent,
   onOpenAgent,
+  working,
+  turnStartedAt,
   children,
 }: {
   rows: FeedRow[];
@@ -370,93 +374,279 @@ export function Log({
   hud?: HudState;
   onStopAgent?: (taskId: string) => void;
   onOpenAgent?: (agentId: string) => void;
+  /** Движок сейчас ведёт ход: последний ход без итога — идущий (`data-state="live"`). */
+  working?: boolean;
+  /** Начало идущего хода — для «идёт Ns» в шапке карточки. */
+  turnStartedAt?: number | undefined;
   children?: preact.ComponentChildren;
 }) {
+  // развёрнутые вручную завершённые ходы (вид «свёрнуто»); не персистится. Привязаны к первой строке ленты:
+  // другая сессия или пересев истории (id строк снова с 1) — новая лента, раскрытое сбрасывается
+  const anchor = rows[0];
+  const [fold, setFold] = useState<{ anchor?: FeedRow | undefined; ids: ReadonlySet<number> }>({
+    ids: new Set(),
+  });
+  const unfolded = fold.anchor === anchor ? fold.ids : NO_IDS;
+  const toggleFold = (id: number) =>
+    setFold((cur) => {
+      const next = new Set(cur.anchor === anchor ? cur.ids : NO_IDS);
+      if (!next.delete(id)) next.add(id);
+      return { anchor, ids: next };
+    });
+  // ходы — по всем строкам (id хода не зависит от показа рассуждений), скрытые рассуждения — при рендере
   const items = feedItems(rows);
+  const visible = (its: FeedItem[]) => (showThinking ? its : its.filter((it) => it.kind !== 'think'));
   const last = rows[rows.length - 1];
+
+  const renderItem = (it: FeedItem) => {
+    switch (it.kind) {
+      case 'agents':
+        return (
+          <AgentGroup
+            key={it.id}
+            g={agentGroupView(it.rows, hud ?? initialHud(), now, cwd)}
+            onStop={(id) => onStopAgent?.(id)}
+            onOpen={(id) => onOpenAgent?.(id)}
+          />
+        );
+      case 'sys':
+        return (
+          <div class={it.tone ? `sys ${it.tone}` : 'sys'} key={it.id}>
+            <span class="p">▸</span>
+            <span>
+              <Segs s={it.text} />
+            </span>
+            {it.at && <span class="at">{it.at}</span>}
+          </div>
+        );
+      case 'user':
+        return <UserRowView key={it.id} u={it} onOpenImage={onOpenImage} onOpenFile={onOpenFile} />;
+      case 'think':
+        return showThinking ? <Think key={it.id} t={it} now={now} /> : null;
+      case 'tool':
+        return (
+          <Tool
+            key={it.id}
+            t={it}
+            cwd={cwd}
+            now={now}
+            onDiff={onDiff}
+            onPreview={onPreview}
+            onOpenUrl={onOpenUrl}
+          />
+        );
+      case 'text':
+        return <Text key={it.id} r={it} last={it === last} />;
+      case 'perm':
+        return (
+          <PermissionCard
+            key={it.id}
+            c={it}
+            cwd={cwd}
+            mode={mode}
+            active={it.id === activeId}
+            onDiff={onDiff}
+          />
+        );
+      case 'question':
+        return <QuestionCardView key={it.id} c={it} active={it.id === activeId} />;
+      case 'plan':
+        return <PlanCardView key={it.id} c={it} cwd={cwd} />;
+      case 'fail':
+        return <FailCardView key={it.id} c={it} />;
+      case 'sum':
+        return <SumView key={it.id} r={it} />;
+    }
+  };
+
+  const blocks = feedTurns(items);
+  const lastBlock = blocks[blocks.length - 1];
+  const liveTurn = working && lastBlock?.kind === 'turn' && !lastBlock.sum ? lastBlock : undefined;
+
   return (
     <div class="log" role="log" aria-label={ui.log.aria}>
-      {items.map((it) => {
-        switch (it.kind) {
-          case 'agents':
-            return (
-              <AgentGroup
-                key={it.id}
-                g={agentGroupView(it.rows, hud ?? initialHud(), now, cwd)}
-                onStop={(id) => onStopAgent?.(id)}
-                onOpen={(id) => onOpenAgent?.(id)}
+      {blocks.map((b) => {
+        if (b.kind === 'loose') return renderItem(b.item);
+        const live = b === liveTurn;
+        // ход закрыт итогом, а фоновые агенты или инструмент ещё идут — не прятать (там же их «stop»)
+        const open = live || unfolded.has(b.id) || stillRunning(b, hud, now, cwd);
+        const summary = turnFold(b, showThinking, now);
+        let foldDone = false;
+        return (
+          <section
+            class="turn"
+            key={b.id}
+            data-state={live ? 'live' : 'done'}
+            data-open={open ? 'true' : 'false'}
+          >
+            {b.user && (
+              <UserRowView
+                u={b.user}
+                onOpenImage={onOpenImage}
+                onOpenFile={onOpenFile}
+                tm={b.sum ? [b.sum.cost, b.sum.time] : live ? [ui.log.turnLive(turnStartedAt ? formatDuration(now - turnStartedAt) : '').trim()] : []}
               />
-            );
-          case 'sys':
-            return (
-              <div class={it.tone ? `sys ${it.tone}` : 'sys'} key={it.id}>
-                <span class="p">▸</span>
-                <span>
-                  <Segs s={it.text} />
-                </span>
-                {it.at && <span class="at">{it.at}</span>}
-              </div>
-            );
-          case 'user':
-            return (
-              <div class="u" key={it.id}>
-                <span class="p">&gt;</span>
-                <UserText
-                  text={it.text}
-                  images={it.images}
-                  files={it.files}
-                  onOpenImage={onOpenImage}
-                  onOpenFile={onOpenFile}
-                />
-                <span class="at">{it.queued ? ui.log.queued : it.at}</span>
-              </div>
-            );
-          case 'think':
-            return showThinking ? <Think key={it.id} t={it} now={now} /> : null;
-          case 'tool':
-            return (
-              <Tool
-                key={it.id}
-                t={it}
-                cwd={cwd}
-                now={now}
-                onDiff={onDiff}
-                onPreview={onPreview}
-                onOpenUrl={onOpenUrl}
-              />
-            );
-          case 'text':
-            return <Text key={it.id} r={it} last={it === last} />;
-          case 'perm':
-            return (
-              <PermissionCard
-                key={it.id}
-                c={it}
-                cwd={cwd}
-                mode={mode}
-                active={it.id === activeId}
-                onDiff={onDiff}
-              />
-            );
-          case 'question':
-            return <QuestionCardView key={it.id} c={it} active={it.id === activeId} />;
-          case 'plan':
-            return <PlanCardView key={it.id} c={it} cwd={cwd} />;
-          case 'fail':
-            return <FailCardView key={it.id} c={it} />;
-          case 'sum':
-            return (
-              <div class="sum" key={it.id}>
-                {it.parts.map((p) => (
-                  <span>{p}</span>
-                ))}
-                {it.cost && <b>{it.cost}</b>}
-                <span>{it.time}</span>
-              </div>
-            );
-        }
+            )}
+            <div class="who">{ui.log.who}</div>
+            {b.parts.map((p) => {
+              if (p.kind === 'item') return renderItem(p.item);
+              const its = visible(p.items);
+              if (!its.length) return null;
+              const first = !foldDone;
+              foldDone = true;
+              return (
+                <Fragment key={`s${p.id}`}>
+                  {first && summary && (
+                    <FoldRow
+                      f={summary}
+                      open={open}
+                      live={live}
+                      onToggle={() => !live && toggleFold(b.id)}
+                    />
+                  )}
+                  <div class="steps">{its.map(renderItem)}</div>
+                </Fragment>
+              );
+            })}
+            {b.sum && <SumView r={b.sum} />}
+            {live && children}
+          </section>
+        );
       })}
-      {children}
+      {!liveTurn && children}
     </div>
   );
+}
+
+const NO_IDS: ReadonlySet<number> = new Set();
+// сводка закрытого хода не меняется — считается раз на строку итога (и режим показа рассуждений)
+const foldCache = new WeakMap<object, { thinking: boolean; f: FoldSummary | undefined }>();
+
+function turnFold(b: Turn, thinking: boolean, now: number): FoldSummary | undefined {
+  const hit = b.sum && foldCache.get(b.sum);
+  if (hit && hit.thinking === thinking) return hit.f;
+  const steps = b.parts.flatMap((p) =>
+    p.kind === 'steps' ? (thinking ? p.items : p.items.filter((it) => it.kind !== 'think')) : [],
+  );
+  const f = steps.length ? foldSummary(stepRows(steps), now) : undefined;
+  if (b.sum) foldCache.set(b.sum, { thinking, f });
+  return f;
+}
+
+/** В ходе ещё что-то идёт: инструмент в работе или живая группа агентов (фоновые после итога хода). */
+function stillRunning(b: Turn, hud: HudState | undefined, now: number, cwd: string | undefined): boolean {
+  return b.parts.some(
+    (p) =>
+      p.kind === 'steps' &&
+      p.items.some((it) =>
+        it.kind === 'tool'
+          ? it.state === 'run'
+          : it.kind === 'agents' && agentGroupView(it.rows, hud ?? initialHud(), now, cwd).live,
+      ),
+  );
+}
+
+function UserRowView({
+  u,
+  tm,
+  onOpenImage,
+  onOpenFile,
+}: {
+  u: Row<'user'>;
+  /** Цена и время хода (вид «карточки»): `[cost?, time]` или `[«идёт Ns»]`. */
+  tm?: (string | undefined)[];
+  onOpenImage?: ((i: ImageRef) => void) | undefined;
+  onOpenFile?: ((f: FileRef) => void) | undefined;
+}) {
+  const tmText = tm?.filter(Boolean).join(' · ');
+  return (
+    <div class="u">
+      <span class="p">&gt;</span>
+      <UserText
+        text={u.text}
+        images={u.images}
+        files={u.files}
+        onOpenImage={onOpenImage}
+        onOpenFile={onOpenFile}
+      />
+      <span class="at">{u.queued ? ui.log.queued : u.at}</span>
+      {tm && <span class="tm">{tmText}</span>}
+    </div>
+  );
+}
+
+function SumView({ r }: { r: Row<'sum'> }) {
+  return (
+    <div class="sum">
+      {r.parts.map((p) => (
+        <span>{p}</span>
+      ))}
+      {r.cost && <b>{r.cost}</b>}
+      <span class="t">{r.time}</span>
+    </div>
+  );
+}
+
+/** Строка «▸ N действий · мини-полоса · сводка · время» (видна только в виде «свёрнуто»). */
+function FoldRow({
+  f,
+  open,
+  live,
+  onToggle,
+}: {
+  f: FoldSummary;
+  open: boolean;
+  live: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      class={open ? 'fold open' : 'fold'}
+      aria-expanded={open}
+      aria-disabled={live || undefined}
+      data-tip={live ? undefined : ui.log.foldToggle}
+      onClick={onToggle}
+    >
+      <span class="p">▸</span>
+      <span class="n">{ui.log.actions(f.count)}</span>
+      <span class="what">
+        {live ? (
+          ui.log.foldLive
+        ) : (
+          <>
+            <span class="mstrip" aria-hidden="true">
+              {f.strip.map((g) => (
+                <i class={g.cls} style={{ flex: g.flex }} />
+              ))}
+            </span>
+            {foldWords(f)}
+          </>
+        )}
+      </span>
+      <span class="r">{formatDuration(f.durationMs)}</span>
+    </button>
+  );
+}
+
+/** `think 12s · read ×2 · grep · edit +6 −2 · bash 12s`. */
+function foldWords(f: FoldSummary) {
+  const parts: preact.ComponentChildren[] = [];
+  if (f.thinkMs > 0) parts.push(`think ${Math.round(f.thinkMs / 1000)}s`);
+  for (const o of f.ops) {
+    parts.push(
+      <>
+        {o.times > 1 ? `${o.op} ×${o.times}` : o.op}
+        {o.add ? <> <span class="add">+{o.add}</span></> : null}
+        {o.del ? <> <span class="del">−{o.del}</span></> : null}
+        {o.result ? <> <span class={o.bad ? 'del' : 'pass'}>{o.result}</span></> : null}
+      </>,
+    );
+  }
+  return parts.map((p, i) => (
+    <>
+      {i > 0 && ' · '}
+      {p}
+    </>
+  ));
 }

@@ -114,17 +114,20 @@ function renderLog(
 describe('разметка ленты совпадает с chat.html', () => {
   const log = renderLog(scenario());
   const mine = (selector: string) => {
-    const el = log.querySelector(`:scope > ${selector}`);
+    const el = log.querySelector(`:scope .turn > ${selector}, :scope .steps > ${selector}`);
     if (!el) throw new Error(`в ленте нет ${selector}`);
     return skeleton(el);
   };
 
-  it('строка пользователя', () => expect(mine('.u')).toBe(firstProto('.u')));
+  // `.tm` (цена и время хода) нужен только виду «карточки» — в прототипе chat.html его нет
+  it('строка пользователя', () =>
+    expect(mine('.u').replace(/,span\.tm/, '')).toBe(firstProto('.u')));
   it('think', () => expect(mine('.e.think')).toBe(firstProto('.e.think')));
   it('инструмент', () => expect(mine('.e:not(.think)')).toBe(firstProto('.e:not(.think)')));
   it('запуск команды (bash)', () => expect(mine('.e.run')).toBe(firstProto('.e.run')));
   it('ответ', () => expect(mine('.txt')).toBe(firstProto('.txt')));
-  it('итог хода', () => expect(mine('.sum')).toBe(firstProto('.sum')));
+  it('итог хода', () =>
+    expect(mine('.sum').replace(/span\.t(?=[,\]])/, 'span')).toBe(firstProto('.sum')));
 
   it('правая колонка edit: +/− и ссылка diff', () => {
     const edit = [...log.querySelectorAll('.e')].find(

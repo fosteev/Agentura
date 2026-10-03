@@ -17,6 +17,7 @@ import {
   openFile,
   respondPermission,
   selectedAgent,
+  feedStyle,
   showThinking,
   stopAgent,
   stopAgents,
@@ -266,7 +267,7 @@ export function Chat() {
   ];
 
   return (
-    <div class="webview">
+    <div class="webview" data-feed={feedStyle.value}>
       <Hud
         project={s.project}
         title={s.title}
@@ -342,6 +343,8 @@ export function Chat() {
               onOpenImage={openImage}
               onOpenFile={openFile}
               hud={h}
+              working={working}
+              turnStartedAt={s.turnStartedAt}
               onStopAgent={stopAgent}
               onOpenAgent={openAgent}
             >

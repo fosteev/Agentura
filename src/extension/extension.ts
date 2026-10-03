@@ -12,6 +12,7 @@ import { SessionMemory } from './sessionMemory';
 import { SessionsService } from './sessionsService';
 import { showDebugState } from './debugPanel';
 import { SettingsPanel } from './settingsPanel';
+import { FEED_STYLES, readSettings, writeSetting } from '../settings';
 import { hostStrings } from '../shared/l10n';
 import { currentLanguage } from './webviewHost';
 import { WorkspaceFiles } from './workspaceFiles';
@@ -116,6 +117,36 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     if (picked) ChatPanel.resume(context, log, services, picked.id);
   };
 
+  const pickFeedStyle = async (): Promise<void> => {
+    const t = hostStrings(currentLanguage());
+    const cfg = vscode.workspace.getConfiguration('agentura');
+    const current = readSettings(cfg)['feed.style'];
+    const picked = await vscode.window.showQuickPick(
+      FEED_STYLES.map((id) => ({
+        label: `${id === current ? '$(check) ' : ''}${t.feedStyles[id]?.[0] ?? id}`,
+        description: id === current ? t.feedStyleCurrent : '',
+        detail: t.feedStyles[id]?.[1] ?? '',
+        id,
+      })),
+      { placeHolder: t.feedStylePlaceholder },
+    );
+    if (!picked) return;
+    // вид задан в настройках воркспейса — запись в Global его не перебьёт: пишем туда, где он задан
+    const set = cfg.inspect('feed.style');
+    const target =
+      set?.workspaceFolderValue !== undefined
+        ? vscode.ConfigurationTarget.WorkspaceFolder
+        : set?.workspaceValue !== undefined
+          ? vscode.ConfigurationTarget.Workspace
+          : vscode.ConfigurationTarget.Global;
+    try {
+      await writeSetting(cfg, 'feed.style', picked.id, target);
+    } catch (e) {
+      log.warn('agentura.feedStyle: не записать feed.style', e);
+      void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e));
+    }
+  };
+
   context.subscriptions.push(
     services.diffs.register(),
     services.previews,
@@ -158,6 +189,7 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
           });
       }
     }),
+    vscode.commands.registerCommand('agentura.feedStyle', () => pickFeedStyle()),
     vscode.commands.registerCommand('agentura.showLogs', () => log.show()),
     // отладка: фикстуры состояний в отдельной вкладке без движка (этап 7)
     vscode.commands.registerCommand('agentura.debug.showState', (name?: unknown) =>

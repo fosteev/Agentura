@@ -60,7 +60,8 @@ describe('группа субагентов и карта агентов', () =>
     expect(grp?.querySelector('.sa .ds small')?.textContent).toBe('read notes.md');
     expect(grp?.querySelector('.gf .sp')?.textContent).toBe('основной ждёт агентов');
     // вызовы субагентов в основную ленту не попали
-    expect(host.querySelectorAll('.log > .e:not(.think)')).toHaveLength(1); // только Bash основного
+    const own = [...host.querySelectorAll('.log .e:not(.think)')].filter((e) => !e.closest('.grp'));
+    expect(own).toHaveLength(1); // только Bash основного
     const live = host.querySelector('.log .live');
     expect(live?.textContent).toMatch(/ждёт 2 агентов/);
     const badge = host.querySelector('#tab-agents .b');

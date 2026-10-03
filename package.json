@@ -88,6 +88,11 @@
         "icon": "$(gear)"
       },
       {
+        "command": "agentura.feedStyle",
+        "title": "%command.feedStyle.title%",
+        "category": "Agentura"
+      },
+      {
         "command": "agentura.showLogs",
         "title": "%command.showLogs.title%",
         "category": "Agentura"
@@ -240,6 +245,23 @@
           ],
           "default": "detailed",
           "description": "%config.sidebar.top.description%"
+        },
+        "agentura.feed.style": {
+          "type": "string",
+          "enum": [
+            "journal",
+            "folded",
+            "replies",
+            "cards"
+          ],
+          "enumDescriptions": [
+            "%config.feed.style.enum.journal%",
+            "%config.feed.style.enum.folded%",
+            "%config.feed.style.enum.replies%",
+            "%config.feed.style.enum.cards%"
+          ],
+          "default": "journal",
+          "description": "%config.feed.style.description%"
         },
         "agentura.language": {
           "type": "string",
