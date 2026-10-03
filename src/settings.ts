@@ -33,6 +33,13 @@ export const SIDEBAR_TOP_MODES = ['detailed', 'compact', 'dense'] as const;
 export type SidebarTopMode = (typeof SIDEBAR_TOP_MODES)[number];
 export const DEFAULT_SIDEBAR_TOP: SidebarTopMode = 'detailed';
 /**
+ * Вид ленты чата (`feed.style`): `journal` — плоский журнал, как раньше; `folded` — завершённые ходы со свёрнутыми
+ * действиями; `replies` — реплики с чипами действий; `cards` — ход карточкой. DOM один, вид — `data-feed` + CSS.
+ */
+export const FEED_STYLES = ['journal', 'folded', 'replies', 'cards'] as const;
+export type FeedStyle = (typeof FEED_STYLES)[number];
+export const DEFAULT_FEED_STYLE: FeedStyle = 'journal';
+/**
  * Язык интерфейса (`language`): `auto` — как в VS Code (`vscode.env.language`), иначе явно. Применяется после
  * перезагрузки окна.
  */
@@ -54,6 +61,7 @@ export type SettingKey =
   | 'sessionList.context'
   | 'sessionList.time'
   | 'sidebar.top'
+  | 'feed.style'
   | 'language';
 
 export const SETTING_KEYS: readonly SettingKey[] = [
@@ -69,6 +77,7 @@ export const SETTING_KEYS: readonly SettingKey[] = [
   'sessionList.context',
   'sessionList.time',
   'sidebar.top',
+  'feed.style',
   'language',
 ];
 
@@ -93,6 +102,7 @@ export interface SettingsValues {
   'sessionList.context': boolean;
   'sessionList.time': boolean;
   'sidebar.top': SidebarTopMode;
+  'feed.style': FeedStyle;
   language: LanguageMode;
 }
 
@@ -122,6 +132,10 @@ export function isSessionListMode(v: unknown): v is SessionListMode {
 
 export function isSidebarTopMode(v: unknown): v is SidebarTopMode {
   return typeof v === 'string' && (SIDEBAR_TOP_MODES as readonly string[]).includes(v);
+}
+
+export function isFeedStyle(v: unknown): v is FeedStyle {
+  return typeof v === 'string' && (FEED_STYLES as readonly string[]).includes(v);
 }
 
 export function isLanguageMode(v: unknown): v is LanguageMode {
@@ -253,6 +267,8 @@ export function validateSetting(key: SettingKey, value: unknown, lang: ErrLang =
       return isSidebarTopMode(value)
         ? { ok: true, value }
         : bad(t.allowed(SIDEBAR_TOP_MODES.join(', ')));
+    case 'feed.style':
+      return isFeedStyle(value) ? { ok: true, value } : bad(t.allowed(FEED_STYLES.join(', ')));
     case 'language':
       return isLanguageMode(value)
         ? { ok: true, value }
@@ -272,6 +288,7 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
   const poll = cfg.get<unknown>('usagePollMinutes');
   const list = cfg.get<unknown>('sessionList.view');
   const top = cfg.get<unknown>('sidebar.top');
+  const feed = cfg.get<unknown>('feed.style');
   const lang = cfg.get<unknown>('language');
   const str = (k: string) => {
     const v = cfg.get<unknown>(k);
@@ -294,6 +311,7 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
     'sessionList.context': cfg.get<unknown>('sessionList.context') !== false,
     'sessionList.time': cfg.get<unknown>('sessionList.time') !== false,
     'sidebar.top': isSidebarTopMode(top) ? top : DEFAULT_SIDEBAR_TOP,
+    'feed.style': isFeedStyle(feed) ? feed : DEFAULT_FEED_STYLE,
     language: isLanguageMode(lang) ? lang : DEFAULT_LANGUAGE,
   };
 }

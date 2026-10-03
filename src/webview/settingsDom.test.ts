@@ -40,6 +40,7 @@ const values: SettingsValues = {
   'sessionList.context': true,
   'sessionList.time': true,
   'sidebar.top': 'detailed',
+  'feed.style': 'journal',
   language: 'auto',
 };
 const state = (over: Partial<SettingsValues> = {}) =>
@@ -106,6 +107,7 @@ describe('вкладка настроек', () => {
       'agentura.sessionList.context',
       'agentura.sessionList.time',
       'agentura.sidebar.top',
+      'agentura.feed.style',
       'agentura.language',
       'agentura.claudeExecutable · только эта машина',
     ]);

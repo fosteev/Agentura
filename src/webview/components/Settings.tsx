@@ -7,6 +7,7 @@ import {
   MIN_POLL_MINUTES,
   SESSION_LIST_MODES,
   SIDEBAR_TOP_MODES,
+  FEED_STYLES,
   thresholdsError,
   validateSetting,
   type SettingKey,
@@ -362,6 +363,7 @@ export function Settings() {
     T.sidebarTop.options[m] ?? m,
   ]);
 
+  const feedStyles = FEED_STYLES.map((m): [string, string] => [m, T.feedStyle.options[m] ?? m]);
   const languageModes = LANGUAGE_MODES.map((m): [string, string] => [
     m,
     T.language.options[m] ?? m,
@@ -472,6 +474,9 @@ export function Settings() {
           </Row>
           <Row name={T.sidebarTop.name} isNew desc={T.sidebarTop.desc} k="sidebar.top">
             <Select k="sidebar.top" value={v['sidebar.top']} options={topModes} />
+          </Row>
+          <Row name={T.feedStyle.name} isNew desc={T.feedStyle.desc} k="feed.style">
+            <Select k="feed.style" value={v['feed.style']} options={feedStyles} />
           </Row>
           <Row name={T.language.name} isNew desc={T.language.desc} k="language">
             <Select k="language" value={v.language} options={languageModes} />

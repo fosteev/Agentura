@@ -44,6 +44,11 @@ export const en: Ui = {
     toolError: 'error',
     toolStopped: 'stopped',
     thinkToggle: 'Show full reasoning',
+    actions: (n: number) => `${n} ${pl(n, 'action', 'actions')}`,
+    foldLive: 'running',
+    foldToggle: 'Show or hide the turn actions',
+    turnLive: (t: string) => `running ${t}`,
+    who: 'claude',
     waitingAgents: (n: number) => `waiting for ${n} ${pl(n, 'agent', 'agents')}`,
     stopAll: 'stop all · esc',
     stopAllTitle: 'Stop all running subagents of the session (Esc interrupts the whole turn)',
@@ -591,6 +596,16 @@ export const en: Ui = {
         detailed: 'detailed — as before',
         compact: 'compact — account and limits on one line each',
         dense: 'dense — limits in the panel header',
+      },
+    },
+    feedStyle: {
+      name: 'Chat feed style',
+      desc: 'How a turn looks: journal — a flat list, folded — finished turns collapse their actions into one line, replies — a bubble and action chips, cards — a turn as a framed card with a timeline. Open tabs switch immediately.',
+      options: {
+        journal: 'journal — as before',
+        folded: 'folded — actions on one line',
+        replies: 'replies — bubble and chips',
+        cards: 'cards — a turn in a frame',
       },
     },
     keychain: {
