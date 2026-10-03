@@ -353,40 +353,42 @@ export interface SessionSummary {
 /** Окно лимита: `kind`, проценты 0…100, сброс в мс. */
 export type LimitWindowSummary = LimitWindow;
 
-const FROM_WEBVIEW_TYPES: ReadonlySet<string> = new Set<FromWebview['type']>([
-  'ready',
-  'send',
-  'files.find',
-  'attach.pick',
-  'image.pick',
-  'image.open',
-  'attach.uris',
-  'file.open',
-  'sessions.show',
-  'diff.open',
-  'preview.open',
-  'link.open',
-  'interrupt',
-  'permission.respond',
-  'question.answer',
-  'plan.decide',
-  'mode.set',
-  'model.set',
-  'effort.set',
-  'compact',
-  'agent.stop',
-  'agent.transcript',
-  'session.new',
-  'limits.refresh',
-  'session.resume',
-  'session.rename',
-  'turn.retry',
-  'log.show',
-  'settings.open',
-  'settings.set',
-  'settings.checkEngine',
-  'settings.reveal',
-]);
+/** Все типы входящих от webview: `Record` по union — забытый тип не скомпилируется. */
+const FROM_WEBVIEW_TYPES: Record<FromWebview['type'], true> = {
+  'ready': true,
+  'send': true,
+  'files.find': true,
+  'attach.pick': true,
+  'image.pick': true,
+  'image.open': true,
+  'attach.uris': true,
+  'file.open': true,
+  'sessions.show': true,
+  'diff.open': true,
+  'diff.changes': true,
+  'preview.open': true,
+  'link.open': true,
+  'interrupt': true,
+  'permission.respond': true,
+  'question.answer': true,
+  'plan.decide': true,
+  'mode.set': true,
+  'model.set': true,
+  'effort.set': true,
+  'compact': true,
+  'agent.stop': true,
+  'agent.transcript': true,
+  'session.new': true,
+  'limits.refresh': true,
+  'session.resume': true,
+  'session.rename': true,
+  'turn.retry': true,
+  'log.show': true,
+  'settings.open': true,
+  'settings.set': true,
+  'settings.checkEngine': true,
+  'settings.reveal': true,
+};
 
 /** `error.code` карточки «claude не найден»: webview рисует инструкцию и «Открыть настройки». */
 export const ENGINE_MISSING_CODE = 'engine_missing';
@@ -395,7 +397,7 @@ export const ENGINE_MISSING_CODE = 'engine_missing';
 export function isFromWebview(value: unknown): value is FromWebview {
   if (typeof value !== 'object' || value === null) return false;
   const type = (value as { type?: unknown }).type;
-  return typeof type === 'string' && FROM_WEBVIEW_TYPES.has(type);
+  return typeof type === 'string' && Object.hasOwn(FROM_WEBVIEW_TYPES, type);
 }
 
 /** Минимум от `vscode.Webview`, нужный для отправки; позволяет тестировать без vscode. */

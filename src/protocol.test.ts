@@ -8,7 +8,9 @@ describe('protocol', () => {
     expect(isFromWebview({ type: 'send', sessionId: 's', text: 'привет' })).toBe(true);
     expect(isFromWebview({ type: 'preview.open', path: '/a/x.html' })).toBe(true);
     expect(isFromWebview({ type: 'link.open', url: 'https://claude.ai/artifact/1' })).toBe(true);
+    expect(isFromWebview({ type: 'diff.changes', sessionId: 's', toolUseIds: ['t'] })).toBe(true);
     expect(isFromWebview({ type: 'unknown' })).toBe(false);
+    expect(isFromWebview({ type: 'toString' })).toBe(false);
     expect(isFromWebview(null)).toBe(false);
     expect(isFromWebview('ready')).toBe(false);
   });
