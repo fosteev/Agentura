@@ -120,7 +120,7 @@ export function AgentsPane({
           {a.tokens}
           {a.stopTaskId && (
             <button
-              title={ui.agents.stopTitle}
+              data-tip={ui.agents.stopTitle}
               aria-label={ui.agents.stopTitle}
               onClick={(e) => {
                 e.stopPropagation();
@@ -214,14 +214,18 @@ function AgentDetail({
         <span class="acts">
           {d.transcript && (
             <button
-              title={ui.agents.detail.transcriptTitle}
+              data-tip={ui.agents.detail.transcriptTitle}
               onClick={() => onTranscript(d.agentId, d.taskId)}
             >
               {ui.agents.detail.transcript}
             </button>
           )}
           {d.stopTaskId && (
-            <button class="stop" onClick={() => onStop(d.stopTaskId!)}>
+            <button
+              class="stop"
+              data-tip={ui.agents.stopTitle}
+              onClick={() => onStop(d.stopTaskId!)}
+            >
               {ui.agents.detail.stop}
             </button>
           )}

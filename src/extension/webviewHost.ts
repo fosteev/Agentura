@@ -44,6 +44,7 @@ export function renderWebview(
       uri('media', 'agents.css'),
       uri('media', 'attach.css'),
       uri('media', 'webview.css'),
+      uri('media', 'tooltip.css'),
       ...(surface === 'settings' ? [uri('media', 'settings.css')] : []),
     ],
   });

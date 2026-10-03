@@ -1,7 +1,7 @@
 # Тултипы на элементах управления и язык интерфейса ru/en
 
 > Статус: в работе · создан 2026-10-02 по запросу владельца · этап 1 — в галерее (v21), ждёт выбора владельца ·
-> этапы 2–3 приняты (ветка `stage-2-i18n-webview`) · этап 4 ждёт решения по виду тултипа.
+> этапы 2–3 приняты (ветка `stage-2-i18n-webview`) · этап 1 принят владельцем 2026-10-03 · этап 4 принят · этап 5 — доки сделаны, ждёт F5 владельца.
 > Исполнитель отмечает чекбоксы по ходу работы. Дизайн владелец принимает только картинками в галерее-артефакте.
 
 ## Цель
@@ -41,7 +41,7 @@
 - [x] Строка «Язык интерфейса» в `prototype/screens/settings.html`, раздел «Вид»
 - [x] Галерея v21: раздел «Тултипы и язык» — вырезки у ⚙ (прижим к краю панели), ↻ (две строки), вида списка
   (перенос), «скрыть панель» (правый край), «отправить» (переворот вверх, клавиша плашкой); обе темы
-- [ ] Владелец принял вид
+- [x] Владелец принял вид (2026-10-03, как в галерее v21)
 
 **Готово, когда:** владелец выбрал/принял вид по галерее.
 **Сессия:** opus, в чате (вёрстка на выбор владельца). Параллельно с этапом 2 — файлы не пересекаются.
@@ -95,15 +95,23 @@
   таймаутов (`executable.ts:109`, `adapter.ts:349` — только в журнал), debug-панель. Если всплывут на F5 — доводка.
 
 ### 4. Тултипы в расширении
-- [ ] `media/tooltip.css` (= `prototype/shared/tooltip.css`), подключение в `webviewHost.ts`
-- [ ] Компонент-слой `Tooltip` в корне каждой поверхности
-- [ ] Все `title=` в `src/webview/components/*.tsx` → `data-tip=`; кнопкам «stop» без подсказки — подсказка
-- [ ] Иконкам без текста — `aria-label` (тултип не заменяет доступное имя)
-- [ ] DOM-тест слоя: показ по задержке, скрытие по Esc/уходу, переворот у края
+- [x] `media/tooltip.css` (= `prototype/shared/tooltip.css`), подключение в `webviewHost.ts`
+- [x] Компонент-слой `Tooltip` в корне каждой поверхности
+- [x] Все `title=` в `src/webview/components/*.tsx` → `data-tip=`; кнопкам «stop» без подсказки — подсказка
+- [x] Иконкам без текста — `aria-label` (тултип не заменяет доступное имя)
+- [x] DOM-тест слоя: показ по задержке, скрытие по Esc/уходу, переворот у края
 
 **Готово, когда:** `npm run check` зелёный; `grep -n ' title=' src/webview/components` пуст (кроме осознанных
 исключений, перечисленных в отчёте).
 **Сессия:** sonnet, high. После этапа 1 (вид принят) и приёмки 3.
+
+**Решения (2026-10-03, по итогам сессии 4, приняты на приёмке):**
+- `title` остался только пропом компонентов (`Hud`, `LimitMeterView`) — в DOM они уходят как `data-tip`.
+- Stop в детали агента (`SidePanes.tsx`) — «Остановить агента» (`ui.agents.group.stop`): гасит субагента, не ход.
+- `Esc` плашкой у stop хода — только пока ход не ждёт ответа: в `waiting` Esc отклоняет карточку.
+- «Новая сессия»: `⌘⇧N` плашкой; «Сбросить поиск (Esc)» и «…(Esc — прервать ход целиком)» оставлены текстом.
+- Приёмка: `show` не показывает тултип элемента, исчезнувшего за время задержки (`isConnected`).
+- `scripts/vsix-verify.mjs` проверяет `media/tooltip.css` в пакете.
 
 ### 5. Документация и приёмка владельца
 - [ ] README (настройка `agentura.language`), CHANGELOG, `docs/features.md`
@@ -238,6 +246,63 @@ DoD: `npm run check > $SCRATCH/check.log 2>&1; tail -30 $SCRATCH/check.log` зе
 этап 4; prototype/ не трогать; браузер не запускать; «заодно улучшить» — нет. Вопрос без ответа — в отчёт.
 
 Отметь чекбоксы этапа 3 по факту. Не коммить, не пушь.
+Последним сообщением — отчёт до 30 строк: сделано (файлы) / отклонения от плана / не проверено / открытые вопросы.
+```
+
+### Промт 4
+
+```
+Модель: sonnet, effort: high.
+
+Репозиторий /Users/fost/Projects/Agentura, ветка stage-2-i18n-webview (этапы 1–3 приняты и закоммичены) — работай на ней.
+Задача — этап 4 из docs/roadmap/07-tooltips-i18n.md: тултипы вместо нативного title во всех webview.
+Прочитай в этом файле «Решения» и «### 4.». Вид принят владельцем по прототипу — переносить его ДОСЛОВНО:
+prototype/shared/tooltip.css и prototype/shared/tooltip.js (логика: задержка 500, тёплый показ 300, GAP 6,
+EDGE 4, переворот вверх, прижим, стрелка через --ax, первая строка обычная, следующие через \n приглушены,
+data-tip-key → <kbd> справа, скрытие на pointerout без relatedTarget/focusout/pointerdown/scroll/Esc, показ по
+focusin только при :focus-visible, aria-describedby на время показа).
+
+1. media/tooltip.css — копия prototype/shared/tooltip.css (правила темы: в расширении светлая тема задаётся
+   переменными VS Code, поэтому блок `:root[data-theme='light'] .tip` убрать — `--vscode-editorHoverWidget-*`
+   уже приходят от темы; запасные значения оставить тёмные). Подключить в src/extension/webviewHost.ts:
+   styleUris у renderWebview (все поверхности, рядом с webview.css).
+2. src/webview/tooltip.ts — `installTooltips(doc: Document = document): () => void` (возвращает снятие
+   слушателей и удаление слоя — для тестов). Логика tooltip.js без прототипных частей: без adopt() title→data-tip,
+   без PRESETS/хэша, без прижима к .sidebar-view/.webview — границы = вьюпорт (каждая поверхность — свой webview).
+   Вызов — в src/webview/chat/index.tsx, sidebar/index.tsx, settings/index.tsx перед render(...).
+   Текст читается из data-tip при каждом показе (кнопка вида меняет подсказку по клику).
+3. Все ` title=` в src/webview/components/*.tsx (54 шт., `grep -n ' title=' src/webview/components`) →
+   `data-tip=`. Иконкам без видимого текста (⚙, ↻, ☰/≡/≣, скрыть/показать панель, ✕ и т.п.) — `aria-label`
+   с тем же текстом, если его ещё нет. Исключения не трогать: src/webview/markdown.ts (ссылки из markdown —
+   нативный title), `<title>` страницы в src/extension/html.ts.
+4. Подсказки, которых нет: кнопки stop в Chat.tsx:370 и SidePanes.tsx:224 — data-tip из словаря (ru
+   «Остановить ход», en «Stop the turn»), data-tip-key="Esc" у той, что останавливает по Esc (проверь по коду).
+   Ключи — в src/webview/strings.ts и strings.en.ts (тип Ui проверит пару).
+5. Клавиши плашкой: `ui.compose.sendTitle` («Отправить (Enter)» / «Send (Enter)») → текст без скобок +
+   data-tip-key="Enter" на кнопке отправки. Других «(клавиша)» в словаре — так же, если кнопка одна и клавиша
+   очевидна; список таких мест — в отчёт.
+6. Две строки: Sidebar.tsx refreshTitle() — части соединять '\n' вместо ' · ' (первая — «Обновить лимиты»,
+   дальше время данных / ошибка); hudView.ts limitsView — части 5ч и недели тоже через '\n'. Больше нигде
+   разделители не менять.
+7. Тесты:
+   - существующие DOM-тесты, читающие title (≈14 мест: `grep -n "title" src/webview/*Dom.test.ts`), — на
+     getAttribute('data-tip'); ожидаемые тексты не менять, кроме тех, что поменял п.5–6;
+   - новый src/webview/tooltip.test.ts (// @vitest-environment jsdom, vi.useFakeTimers): показ через 500 мс по
+     pointerover; второй элемент сразу (тёплый); Esc и pointerdown скрывают; '\n' → две .tl; data-tip-key →
+     kbd; у нижнего края data-side='top' (getBoundingClientRect замокать, innerHeight/clientHeight задать);
+     uninstall удаляет слой. В jsdom нет PointerEvent — диспатчить `new Event('pointerover', {bubbles:true})`
+     или MouseEvent, в коде не завязываться на поля PointerEvent.
+   - проверка, что в components не осталось ` title=`: тест на чтение исходников не нужен — достаточно grep в DoD.
+
+DoD: `npm run check > $SCRATCH/check.log 2>&1; tail -30 $SCRATCH/check.log` зелёный;
+`grep -n ' title=' src/webview/components` пуст; `grep -n 'tooltip.css' src/extension/webviewHost.ts` есть.
+$SCRATCH = /private/tmp/claude-501/-Users-fost-Projects-Agentura/22b242b3-f05e-4f9f-8a33-9fc898fee400/scratchpad.
+Длинный вывод — только в файл, в контекст хвост и grep по FAIL|error.
+
+Не делать: вид тултипа не «улучшать» (размеры, цвета, задержки — как в прототипе); prototype/ не трогать;
+markdown.ts не трогать; браузер не запускать; README/CHANGELOG — этап 5. Вопрос без ответа — в отчёт.
+
+Отметь чекбоксы этапа 4 по факту. Не коммить, не пушь.
 Последним сообщением — отчёт до 30 строк: сделано (файлы) / отклонения от плана / не проверено / открытые вопросы.
 ```
 

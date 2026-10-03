@@ -374,10 +374,10 @@ export function Settings() {
           Agentura · <b>{T.title.toLowerCase()}</b>
         </span>
         <span class="acts">
-          <button type="button" title={T.openUiTitle} onClick={() => reveal('ui')}>
+          <button type="button" data-tip={T.openUiTitle} onClick={() => reveal('ui')}>
             {T.openUi}
           </button>
-          <button type="button" title={T.openJsonTitle} onClick={() => reveal('json')}>
+          <button type="button" data-tip={T.openJsonTitle} onClick={() => reveal('json')}>
             {T.openJson}
           </button>
         </span>

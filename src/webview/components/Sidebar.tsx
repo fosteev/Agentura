@@ -65,7 +65,7 @@ function refreshTitle(): string {
     parts.push(`${ui.sidebar.updatedAt} ${new Date(u.updatedAt).toLocaleTimeString(uiLang)}`);
   }
   if (u.error) parts.push(`${ui.sidebar.refreshFailed}: ${u.error}`);
-  return parts.join(' · ');
+  return parts.join('\n');
 }
 
 function accountRows(a: AccountSummary | undefined): [string, string][] {
@@ -85,12 +85,12 @@ function AccountLine({ a }: { a: AccountSummary | undefined }) {
   const parts = [a?.plan, a?.engine].filter((x): x is string => !!x);
   const ok = !!a?.login && !a.error;
   return (
-    <div class="who" title={rows.map(([k, v]) => `${k}: ${v}`).join('\n')}>
+    <div class="who" data-tip={rows.map(([k, v]) => `${k}: ${v}`).join('\n')}>
       <b>{a?.email ?? ui.sidebar.unknown}</b>
       {parts.map((x) => (
         <span key={x}>· {x}</span>
       ))}
-      {ok && <i class="okd" title={ui.sidebar.loginOk} />}
+      {ok && <i class="okd" data-tip={ui.sidebar.loginOk} />}
     </div>
   );
 }
@@ -129,7 +129,7 @@ function SessionRow({ s }: { s: SessionSummary }) {
             ref={input}
             class="rename"
             value={s.title}
-            title={ui.sidebar.renameHint}
+            data-tip={ui.sidebar.renameHint}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.isComposing) finish(true);
               else if (e.key === 'Escape') finish(false);
@@ -146,7 +146,7 @@ function SessionRow({ s }: { s: SessionSummary }) {
   return (
     <button
       class={cls}
-      title={`${s.title}\n${subLabel(s)}\n${ui.sidebar.renameTitle}`}
+      data-tip={`${s.title}\n${subLabel(s)}\n${ui.sidebar.renameTitle}`}
       onClick={() => {
         clearTimeout(timer.current);
         timer.current = setTimeout(
@@ -207,7 +207,7 @@ function ListModeButton() {
     <button
       type="button"
       class="view"
-      title={title}
+      data-tip={title}
       aria-label={title}
       onClick={() => {
         listMode.value = next; // сразу, не дожидаясь записи настройки; хост пришлёт фактическое
@@ -272,7 +272,7 @@ export function Sidebar() {
     >
       <div
         class="head"
-        title={
+        data-tip={
           top === 'dense'
             ? accountRows(account.value)
                 .map(([k, v]) => `${k}: ${v}`)
@@ -289,7 +289,7 @@ export function Sidebar() {
                 <span
                   class={`m ${levelClass(l.percent)}`.trim()}
                   key={l.key}
-                  title={[l.label, l.note].filter(Boolean).join(' · ')}
+                  data-tip={[l.label, l.note].filter(Boolean).join(' · ')}
                 >
                   {l.mini}
                   <i>
@@ -301,7 +301,7 @@ export function Sidebar() {
             <button
               type="button"
               class={u.pending ? 'refresh busy' : 'refresh'}
-              title={refreshTitle()}
+              data-tip={refreshTitle()}
               aria-label={ui.sidebar.refreshTitle}
               aria-busy={u.pending}
               disabled={u.pending}
@@ -314,7 +314,7 @@ export function Sidebar() {
         <button
           type="button"
           class="gear"
-          title={ui.sidebar.settings}
+          data-tip={ui.sidebar.settings}
           aria-label={ui.sidebar.settings}
           onClick={() => send({ type: 'settings.open' })}
         >
@@ -327,7 +327,7 @@ export function Sidebar() {
           {ui.sidebar.account}
           <button
             class={u.pending ? 'refresh busy' : 'refresh'}
-            title={refreshTitle()}
+            data-tip={refreshTitle()}
             aria-label={ui.sidebar.refreshTitle}
             aria-busy={u.pending}
             disabled={u.pending}
@@ -340,14 +340,14 @@ export function Sidebar() {
           {accountRows(account.value).map(([k, v]) => (
             <>
               <span>{k}</span>
-              <b title={v}>{v}</b>
+              <b data-tip={v}>{v}</b>
             </>
           ))}
         </div>
         {top === 'compact' && <AccountLine a={account.value} />}
         <div class="lim">
           {limits.map((l) => (
-            <div class="row" key={l.key} title={[l.label, l.note].filter(Boolean).join(' · ')}>
+            <div class="row" key={l.key} data-tip={[l.label, l.note].filter(Boolean).join(' · ')}>
               <span>{l.label}</span>
               <span class={l.full ? 'n full' : 'n'}>{l.percent} %</span>
               <span class="bar">
@@ -370,7 +370,8 @@ export function Sidebar() {
             <button
               type="button"
               class="add"
-              title={`${ui.sidebar.newSession} · ${ui.sidebar.newSessionKey}`}
+              data-tip={ui.sidebar.newSession}
+              data-tip-key={ui.sidebar.newSessionKey}
               aria-label={ui.sidebar.newSession}
               onClick={() => send({ type: 'session.new' })}
             >
@@ -405,7 +406,7 @@ export function Sidebar() {
         />
         <button
           type="button"
-          title={q ? ui.sidebar.searchClear : ui.sidebar.searchFocus}
+          data-tip={q ? ui.sidebar.searchClear : ui.sidebar.searchFocus}
           aria-label={q ? ui.sidebar.searchClear : ui.sidebar.searchFocus}
           onClick={(e) => {
             const input = e.currentTarget.previousElementSibling as HTMLInputElement | null;

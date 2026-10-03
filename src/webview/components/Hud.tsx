@@ -90,7 +90,7 @@ export function Hud({
       </span>
       <span class="acts" ref={pop} onKeyDown={menuKeys}>
         <button
-          title={ui.hud.sessionsTitle}
+          data-tip={ui.hud.sessionsTitle}
           style={open ? { color: 'var(--fg)' } : undefined}
           aria-haspopup="menu"
           aria-expanded={open}

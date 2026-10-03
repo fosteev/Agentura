@@ -294,13 +294,13 @@ export function Chat() {
           </span>
           <span class="acts">
             {banner.canRetry && (
-              <button class="btn" title={ui.limit.retryTitle} onClick={releaseLimit}>
+              <button class="btn" data-tip={ui.limit.retryTitle} onClick={releaseLimit}>
                 {ui.limit.retry}
               </button>
             )}
             <button
               class="btn ghost"
-              title={ui.limit.limitsTitle}
+              data-tip={ui.limit.limitsTitle}
               onClick={() => send({ type: 'sessions.show' })}
             >
               {ui.limit.limits}
@@ -361,13 +361,18 @@ export function Chat() {
                     // Esc по-прежнему останавливает ход целиком (interrupt), кнопка — только агентов
                     <button
                       class="stop"
-                      title={ui.log.stopAllTitle}
+                      data-tip={ui.log.stopAllTitle}
                       onClick={() => stopAgents(liveSubagents(h).map((a) => a.taskId))}
                     >
                       {ui.log.stopAll}
                     </button>
                   ) : (
-                    <button class="stop" onClick={interrupt}>
+                    <button
+                      class="stop"
+                      data-tip={ui.log.stopTip}
+                      data-tip-key={s.status === 'waiting' ? undefined : 'Esc'}
+                      onClick={interrupt}
+                    >
                       {/* пока ждёт ответа, Esc отклоняет карточку, а не останавливает ход */}
                       {s.status === 'waiting' ? ui.log.stopOnly : ui.log.stop}
                     </button>
@@ -392,7 +397,7 @@ export function Chat() {
           >
             <button
               class="phide"
-              title={ui.panel.hide}
+              data-tip={ui.panel.hide}
               aria-label={ui.panel.hide}
               onClick={() => updatePanel({ off: true })}
             >
@@ -407,7 +412,7 @@ export function Chat() {
             aria-valuenow={panelW}
             aria-valuemin={PANEL_MIN}
             aria-valuemax={bodyW > 0 ? clampPanel(Infinity, bodyW) : undefined}
-            title={ui.panel.gripTitle}
+            data-tip={ui.panel.gripTitle}
             tabIndex={0}
             onPointerDown={(e) => {
               if (e.button !== 0) return;
@@ -479,7 +484,7 @@ export function Chat() {
         </aside>
         <nav class="rail" aria-label={ui.panel.railAria}>
           <button
-            title={ui.tabs.turn}
+            data-tip={ui.tabs.turn}
             aria-label={ui.panel.openTab(ui.tabs.turn)}
             disabled={empty}
             onClick={() => updatePanel({ tab: 'turn', off: false })}
@@ -488,7 +493,7 @@ export function Chat() {
             {turnBdg && <span class={turnBdg.live ? 'b live' : 'b'}>{turnBdg.count}</span>}
           </button>
           <button
-            title={ui.tabs.agents}
+            data-tip={ui.tabs.agents}
             aria-label={ui.panel.openTab(ui.tabs.agents)}
             disabled={empty}
             onClick={() => updatePanel({ tab: 'agents', off: false })}
@@ -500,7 +505,7 @@ export function Chat() {
           </button>
           <button
             class="show"
-            title={ui.panel.show}
+            data-tip={ui.panel.show}
             aria-label={ui.panel.show}
             onClick={() => updatePanel({ off: false })}
           >

@@ -1,0 +1,78 @@
+/* Тултип элементов управления: один слой на страницу, цвета hover-виджета VS Code.
+   Первая строка — основной текст, следующие (через \n) приглушены; data-tip-key — клавиша справа. */
+.tip {
+  --tip-bg: var(--vscode-editorHoverWidget-background, #202020);
+  --tip-fg: var(--vscode-editorHoverWidget-foreground, #cccccc);
+  --tip-line: var(--vscode-editorHoverWidget-border, #454545);
+  --tip-shadow: var(--vscode-widget-shadow, rgba(0, 0, 0, 0.36));
+  position: fixed;
+  z-index: 1000;
+  top: 0;
+  left: 0;
+  max-width: 300px;
+  padding: 4px 8px;
+  border: 1px solid var(--tip-line);
+  border-radius: 4px;
+  background: var(--tip-bg);
+  color: var(--tip-fg);
+  box-shadow: 0 2px 8px var(--tip-shadow);
+  font: 12px/1.45 var(--font);
+  pointer-events: none;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  opacity: 0;
+  transition: opacity 0.08s ease-out;
+}
+.tip[hidden] {
+  display: block;
+  visibility: hidden;
+}
+.tip.on {
+  opacity: 1;
+}
+.tip .tl {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+.tip .tl + .tl {
+  color: var(--fg-mute);
+}
+.tip kbd {
+  margin-left: auto;
+  padding: 0 4px;
+  border: 1px solid var(--tip-line);
+  border-radius: 3px;
+  font: 11px/1.4 var(--mono);
+  color: var(--fg-mute);
+  white-space: nowrap;
+}
+/* стрелка: --ax — центр элемента относительно левого края тултипа */
+.tip::before,
+.tip::after {
+  content: '';
+  position: absolute;
+  left: calc(var(--ax, 50%) - 5px);
+  border: 5px solid transparent;
+}
+.tip[data-side='bottom']::before {
+  bottom: 100%;
+  border-bottom-color: var(--tip-line);
+}
+.tip[data-side='bottom']::after {
+  bottom: calc(100% - 1px);
+  border-bottom-color: var(--tip-bg);
+}
+.tip[data-side='top']::before {
+  top: 100%;
+  border-top-color: var(--tip-line);
+}
+.tip[data-side='top']::after {
+  top: calc(100% - 1px);
+  border-top-color: var(--tip-bg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .tip {
+    transition: none;
+  }
+}
