@@ -13,7 +13,7 @@ import { SessionsService } from './sessionsService';
 import { showDebugState } from './debugPanel';
 import { SettingsPanel } from './settingsPanel';
 import { AGENTS_GRAPH_VIEW_TYPE } from './agentsGraphPanel';
-import { AGENTS_VIEWS, FEED_STYLES, readSettings, writeSetting, type SettingKey } from '../settings';
+import { AGENTS_VIEWS, FEED_STYLES, GIT_LAYOUTS, readSettings, writeSetting, type SettingKey } from '../settings';
 import { hostStrings } from '../shared/l10n';
 import { currentLanguage, setUserFonts, userFontsDir } from './webviewHost';
 import { UserFonts } from './googleFonts';
@@ -175,6 +175,28 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     }
   };
 
+  const pickGitLayout = async (): Promise<void> => {
+    const t = hostStrings(currentLanguage());
+    const cfg = vscode.workspace.getConfiguration('agentura');
+    const current = readSettings(cfg)['git.layout'];
+    const picked = await vscode.window.showQuickPick(
+      GIT_LAYOUTS.map((id) => ({
+        label: `${id === current ? '$(check) ' : ''}${t.gitLayouts[id]?.[0] ?? id}`,
+        description: id === current ? t.feedStyleCurrent : '',
+        detail: t.gitLayouts[id]?.[1] ?? '',
+        id,
+      })),
+      { placeHolder: t.gitLayoutPlaceholder },
+    );
+    if (!picked) return;
+    try {
+      await writeWhereSet('git.layout', picked.id);
+    } catch (e) {
+      log.warn('agentura.gitLayout: не записать git.layout', e);
+      void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e));
+    }
+  };
+
   const pickFeedStyle = async (): Promise<void> => {
     const t = hostStrings(currentLanguage());
     const cfg = vscode.workspace.getConfiguration('agentura');
@@ -247,6 +269,7 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     }),
     vscode.commands.registerCommand('agentura.feedStyle', () => pickFeedStyle()),
     vscode.commands.registerCommand('agentura.agentsView', () => pickAgentsView()),
+    vscode.commands.registerCommand('agentura.gitLayout', () => pickGitLayout()),
     // второй аргумент — назначение из вкладки настроек (`fonts.add`); из палитры приходит пустым
     vscode.commands.registerCommand('agentura.addGoogleFont', (kind?: unknown) =>
       addGoogleFont(

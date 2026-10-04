@@ -128,6 +128,7 @@ function fakeUi(confirm = true) {
     input: vi.fn(async () => undefined),
     diff: vi.fn(async () => {}),
     open: vi.fn(async () => {}),
+    openRepository: vi.fn(async () => {}),
     empty: vi.fn((name: string) => ({ scheme: 'empty', fsPath: name })),
   };
 }
@@ -367,6 +368,17 @@ describe('GitService: действия', () => {
     expect(repo.add).toHaveBeenCalledWith(['/w/a.ts', '/w/sub/c.ts']);
     await cl.c.handle({ type: 'git.unstage', root: '/w', paths: ['a.ts'] });
     expect(repo.revert).toHaveBeenCalledWith(['/w/a.ts']);
+  });
+
+  it('git.openRepository: команда VS Code через ui, сбой — git.error', async () => {
+    const ui = fakeUi();
+    const { service } = setup([repo], { ui });
+    const cl = client(service, '/w');
+    await cl.c.handle({ type: 'git.openRepository' });
+    expect(ui.openRepository).toHaveBeenCalledTimes(1);
+    ui.openRepository.mockRejectedValueOnce(new Error('нет команды'));
+    await cl.c.handle({ type: 'git.openRepository' });
+    expect(cl.errors()).toEqual([{ type: 'git.error', op: 'open', message: 'нет команды' }]);
   });
 
   it('путь вне репозитория и чужой root отклонены — git.error, git не зовётся', async () => {

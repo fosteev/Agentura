@@ -47,6 +47,13 @@ export const AGENTS_VIEWS = ['list', 'tree', 'lanes', 'cards', 'graph'] as const
 export type AgentsView = (typeof AGENTS_VIEWS)[number];
 export const DEFAULT_AGENTS_VIEW: AgentsView = 'list';
 /**
+ * Раскладка вкладки «git» при нескольких репозиториях (`git.layout`): `stack` — стопка разделов, `picker` — выбор
+ * репозитория сверху, `unified` — общий список и один коммит в несколько репо. Один репозиторий от неё не зависит.
+ */
+export const GIT_LAYOUTS = ['stack', 'picker', 'unified'] as const;
+export type GitLayout = (typeof GIT_LAYOUTS)[number];
+export const DEFAULT_GIT_LAYOUT: GitLayout = 'stack';
+/**
  * Язык интерфейса (`language`): `auto` — как в VS Code (`vscode.env.language`), иначе явно. Применяется после
  * перезагрузки окна.
  */
@@ -77,6 +84,7 @@ export type SettingKey =
   | 'sidebar.top'
   | 'feed.style'
   | 'agents.view'
+  | 'git.layout'
   | 'feed.fontSize'
   | 'ui.fontSize'
   | 'font.interface'
@@ -99,6 +107,7 @@ export const SETTING_KEYS: readonly SettingKey[] = [
   'sidebar.top',
   'feed.style',
   'agents.view',
+  'git.layout',
   'feed.fontSize',
   'ui.fontSize',
   'font.interface',
@@ -130,6 +139,7 @@ export interface SettingsValues {
   'sidebar.top': SidebarTopMode;
   'feed.style': FeedStyle;
   'agents.view': AgentsView;
+  'git.layout': GitLayout;
   'feed.fontSize': number;
   /** Размер интерфейса (всё, кроме ленты), px; 13 — как есть, иначе всё масштабируется (`--ui-zoom`). */
   'ui.fontSize': number;
@@ -172,6 +182,10 @@ export function isSidebarTopMode(v: unknown): v is SidebarTopMode {
 
 export function isFeedStyle(v: unknown): v is FeedStyle {
   return typeof v === 'string' && (FEED_STYLES as readonly string[]).includes(v);
+}
+
+export function isGitLayout(v: unknown): v is GitLayout {
+  return typeof v === 'string' && (GIT_LAYOUTS as readonly string[]).includes(v);
 }
 
 export function isAgentsView(v: unknown): v is AgentsView {
@@ -334,6 +348,8 @@ export function validateSetting(key: SettingKey, value: unknown, lang: ErrLang =
       return isFeedStyle(value) ? { ok: true, value } : bad(t.allowed(FEED_STYLES.join(', ')));
     case 'agents.view':
       return isAgentsView(value) ? { ok: true, value } : bad(t.allowed(AGENTS_VIEWS.join(', ')));
+    case 'git.layout':
+      return isGitLayout(value) ? { ok: true, value } : bad(t.allowed(GIT_LAYOUTS.join(', ')));
     case 'language':
       return isLanguageMode(value)
         ? { ok: true, value }
@@ -355,6 +371,7 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
   const top = cfg.get<unknown>('sidebar.top');
   const feed = cfg.get<unknown>('feed.style');
   const agv = cfg.get<unknown>('agents.view');
+  const gl = cfg.get<unknown>('git.layout');
   const lang = cfg.get<unknown>('language');
   const fz = cfg.get<unknown>('feed.fontSize');
   const uz = cfg.get<unknown>('ui.fontSize');
@@ -381,6 +398,7 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
     'sidebar.top': isSidebarTopMode(top) ? top : DEFAULT_SIDEBAR_TOP,
     'feed.style': isFeedStyle(feed) ? feed : DEFAULT_FEED_STYLE,
     'agents.view': isAgentsView(agv) ? agv : DEFAULT_AGENTS_VIEW,
+    'git.layout': isGitLayout(gl) ? gl : DEFAULT_GIT_LAYOUT,
     'feed.fontSize': isFeedFontSize(fz) ? fz : DEFAULT_FEED_FONT_SIZE,
     'ui.fontSize': isFeedFontSize(uz) ? uz : DEFAULT_FEED_FONT_SIZE,
     'font.interface': str('font.interface'),

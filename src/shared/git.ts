@@ -93,7 +93,9 @@ export type GitRequest =
   | { type: 'git.sync'; root?: string; op: GitSyncOp }
   | { type: 'git.branch'; root: string }
   | { type: 'git.open'; root: string; path: string; staged: boolean }
-  | { type: 'git.openFile'; root: string; path: string };
+  | { type: 'git.openFile'; root: string; path: string }
+  /** Пустое состояние: команда VS Code `git.openRepository` (выбрать папку с репозиторием). */
+  | { type: 'git.openRepository' };
 
 /** Итог коммита в одном репозитории. */
 export interface GitCommitResult {

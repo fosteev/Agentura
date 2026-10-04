@@ -456,6 +456,16 @@ const ru = {
     commitAll: 'Коммит всех изменений',
     errorClose: 'Скрыть',
     errorOp: (op: string, message: string) => `${op}: ${message}`,
+    openRepo: 'Открыть репозиторий…',
+    commitCompact: 'Коммит',
+    targetsLabel: 'в',
+    targetsAria: 'В какие репозитории коммитить',
+    commitTo: (n: number) => `Коммит в ${n} ${plural(n, 'репозиторий', 'репозитория', 'репозиториев')}`,
+    needTarget: 'Отметьте репозиторий с файлами в индексе',
+    committed: (names: string) => `Закоммичено: ${names}`,
+    repoPick: 'Репозитории',
+    cleanHeading: 'чистые',
+    fetchAll: 'Fetch во всех',
   },
   compose: {
     mode: 'режим',
@@ -764,6 +774,15 @@ const ru = {
         lanes: 'дорожки — ось времени',
         cards: 'карточки — агент карточкой',
         graph: 'граф — вкладка редактора',
+      } as Record<string, string>,
+    },
+    gitLayout: {
+      name: 'Вкладка git: несколько репозиториев',
+      desc: 'Вкладка git, когда в рабочей папке несколько репозиториев (один репозиторий от настройки не зависит): стопка разделов, выбор репозитория сверху или общий список с одним коммитом в несколько репо. Открытые вкладки меняют раскладку сразу.',
+      options: {
+        stack: 'стопка — раздел на репозиторий',
+        picker: 'выбор — по одному репозиторию',
+        unified: 'общий список — один коммит',
       } as Record<string, string>,
     },
     fontInterface: {

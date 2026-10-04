@@ -75,6 +75,8 @@ export interface GitUi {
   ): Promise<string | undefined>;
   diff(left: vscode.Uri, right: vscode.Uri, title: string): Promise<void>;
   open(uri: vscode.Uri): Promise<void>;
+  /** Команда VS Code `git.openRepository`: выбрать папку с репозиторием (пустое состояние вкладки). */
+  openRepository(): Promise<void>;
   /** Пустой документ для стороны диффа удалённого файла. */
   empty(name: string): vscode.Uri;
 }
@@ -508,6 +510,14 @@ export class GitService implements vscode.Disposable {
       const was = client.watch;
       client.watch = m.on;
       if (m.on && !was) this.schedule(0);
+      return;
+    }
+    if (m.type === 'git.openRepository') {
+      try {
+        await this.deps.ui.openRepository();
+      } catch (e) {
+        this.fail(client, 'open', undefined, e);
+      }
       return;
     }
     if (m.type === 'git.commit') return this.commit(client, m);

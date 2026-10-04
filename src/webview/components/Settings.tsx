@@ -10,6 +10,7 @@ import {
   SIDEBAR_TOP_MODES,
   FEED_STYLES,
   AGENTS_VIEWS,
+  GIT_LAYOUTS,
   DEFAULT_FEED_FONT_SIZE,
   MAX_FEED_FONT_SIZE,
   MIN_FEED_FONT_SIZE,
@@ -30,7 +31,7 @@ import {
   settingsValues,
 } from '../settingsStore';
 import { ui, uiLang } from '../strings';
-import { AgentsPreview, ChoiceCards, FeedPreview, SidebarPreview } from './SettingsPreview';
+import { AgentsPreview, ChoiceCards, FeedPreview, GitPreview, SidebarPreview } from './SettingsPreview';
 import { fontStack } from '../appearance';
 import { codeFonts, installedFonts, uiFonts, userFonts } from '../fonts';
 import {
@@ -727,6 +728,23 @@ export function Settings() {
                     options={cardOptions(AGENTS_VIEWS, T.agentsView.options)}
                     preview={(view) => <AgentsPreview view={view} />}
                     onPick={(view) => commit('agents.view', view)}
+                  />
+                }
+              >
+                {null}
+              </Row>
+              <Row
+                name={T.gitLayout.name}
+                isNew
+                desc={T.gitLayout.desc}
+                k="git.layout"
+                below={
+                  <ChoiceCards
+                    label={T.gitLayout.name}
+                    value={v['git.layout']}
+                    options={cardOptions(GIT_LAYOUTS, T.gitLayout.options)}
+                    preview={(layout) => <GitPreview layout={layout} />}
+                    onPick={(layout) => commit('git.layout', layout)}
                   />
                 }
               >

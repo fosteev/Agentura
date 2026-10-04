@@ -85,6 +85,7 @@ describe('protocol', () => {
       { type: 'git.branch', root: '/w' },
       { type: 'git.open', root: '/w', path: 'a.ts', staged: false },
       { type: 'git.openFile', root: '/w', path: 'a.ts' },
+      { type: 'git.openRepository' },
     ];
     for (const m of ok) expect(isFromWebview(m), JSON.stringify(m)).toBe(true);
     const bad = [

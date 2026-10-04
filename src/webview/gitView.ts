@@ -232,3 +232,94 @@ export function commitWhen(at: number, now: number): string {
   if (d.toDateString() === n.toDateString()) return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
   return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}`;
 }
+
+/** Репозиторий, выбранный в раскладке `picker`: сохранённый, иначе первый с изменениями, иначе первый. */
+export function pickedRepo(s: GitSnapshot, root: string | undefined): GitRepoView | undefined {
+  return (
+    s.repos.find((r) => r.root === root) ?? s.repos.find((r) => repoCount(r) > 0) ?? s.repos[0]
+  );
+}
+
+/** Репозитории без изменений — строками внизу раскладки `unified`. */
+export function cleanRepos(s: GitSnapshot): GitRepoView[] {
+  return s.repos.filter((r) => repoCount(r) === 0);
+}
+
+/** Репозиторий со своими строками секции в раскладке `unified`. */
+export interface UnifiedGroup {
+  repo: GitRepoView;
+  rows: GitRow[];
+}
+
+/**
+ * Секция `unified` («неиндексированные» / «в индексе») на все репозитории: подзаголовок на каждый репо, в котором
+ * в этой секции что-то осталось после фильтра «агент». `total` — файлов в секции до фильтра (счётчик заголовка).
+ */
+export function unifiedSection(
+  s: GitSnapshot,
+  staged: boolean,
+  agentPaths: ReadonlySet<string>,
+  agentOnly: boolean,
+  tree: boolean,
+  cwd?: string,
+): { total: number; groups: UnifiedGroup[] } {
+  let total = 0;
+  const groups: UnifiedGroup[] = [];
+  for (const repo of s.repos) {
+    const files = staged ? repo.staged : repo.unstaged;
+    total += files.length;
+    const rows = fileRows(files, repo, agentPaths, agentOnly, cwd);
+    if (rows.length > 0) groups.push({ repo, rows: sectionRows(rows, tree) });
+  }
+  return { total, groups };
+}
+
+/** Чип «в: ☑ repo N» над общим полем коммита. */
+export interface CommitTarget {
+  root: string;
+  name: string;
+  files: number;
+  on: boolean;
+}
+
+/** Цели общего коммита: репозитории с непустым индексом; отмечены по умолчанию, `picked` — явный выбор. */
+export function commitTargets(
+  s: GitSnapshot,
+  picked: Readonly<Record<string, boolean>>,
+): CommitTarget[] {
+  return s.repos
+    .filter((r) => r.staged.length > 0)
+    .map((r) => ({
+      root: r.root,
+      name: r.name,
+      files: r.staged.length,
+      on: picked[r.root] ?? true,
+    }));
+}
+
+export interface UnifiedButton {
+  disabled: boolean;
+  why?: 'no-targets' | 'empty-message' | 'busy';
+  /** Отмеченных репозиториев и файлов в них. */
+  repos: number;
+  files: number;
+  roots: string[];
+}
+
+/** Кнопка общего коммита: «Коммит в N репозитория · M файлов». */
+export function unifiedButton(
+  s: GitSnapshot,
+  targets: readonly CommitTarget[],
+  opts: { message: string },
+): UnifiedButton {
+  const on = targets.filter((t) => t.on);
+  const roots = on.map((t) => t.root);
+  const files = on.reduce((n, t) => n + t.files, 0);
+  const base = { repos: on.length, files, roots };
+  if (on.length === 0) return { disabled: true, why: 'no-targets', ...base };
+  if (s.repos.some((r) => r.busy && roots.includes(r.root))) {
+    return { disabled: true, why: 'busy', ...base };
+  }
+  if (!opts.message.trim()) return { disabled: true, why: 'empty-message', ...base };
+  return { disabled: false, ...base };
+}

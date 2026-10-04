@@ -224,6 +224,15 @@ describe('ChatController', () => {
     expect(posted).toEqual([expect.objectContaining({ type: 'chat.info', agentsView: 'lanes' })]);
   });
 
+  it('pushInfo: раскладка вкладки «git» из настроек уходит в chat.info', async () => {
+    const { controller, posted, deps } = setup();
+    await controller.handle({ type: 'ready' });
+    posted.length = 0;
+    deps.settings = () => ({ allowBypass: false, gitLayout: 'unified' });
+    controller.pushInfo();
+    expect(posted).toEqual([expect.objectContaining({ type: 'chat.info', gitLayout: 'unified' })]);
+  });
+
   it('ready: отдаёт chat.info, список недавних и возможности движка', async () => {
     const { controller, posted } = setup();
     controller.start();

@@ -1,7 +1,8 @@
 import type { ComponentChildren } from 'preact';
 import type { FeedRow } from '../chatState';
 import type { SessionSummary } from '../../protocol';
-import type { AgentsView, FeedStyle } from '../../settings';
+import type { AgentsView, FeedStyle, GitLayout } from '../../settings';
+import type { GitFileStatus, GitFileView, GitRepoView, GitSnapshot } from '../../shared/git';
 import { agentMapView } from '../agentsView';
 import { agentGraphView, agentsViewPane, defaultScope } from '../agentViews';
 import { graphModel } from '../agentsGraph/model';
@@ -11,6 +12,7 @@ import { uiLang } from '../strings';
 import { Log } from './Log';
 import { SidebarView, type SidebarData, type SidebarLook } from './Sidebar';
 import { AgentsPane } from './SidePanes';
+import { GitPane } from './GitPane';
 
 /**
  * Миниатюры вида во вкладке настроек: настоящие `Log` и `SidebarView` на фикстуре, уменьшенные CSS-`zoom`.
@@ -299,6 +301,79 @@ export function AgentsPreview({ view }: { view: AgentsView }) {
             onStop={noop}
             onTranscript={noop}
             onScope={noop}
+          />
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+const gitFile = (path: string, status: GitFileStatus, add: number, del: number): GitFileView => ({
+  path,
+  status,
+  add,
+  del,
+});
+
+/** Три репозитория рабочей папки (фикстура превью раскладок вкладки «git»). */
+function gitFixture(): GitSnapshot {
+  const at = Date.now() - 3_600_000;
+  const repo = (r: Partial<GitRepoView> & { name: string }): GitRepoView => ({
+    root: `${CWD}/${r.name}`,
+    rel: r.name,
+    published: true,
+    unstaged: [],
+    staged: [],
+    log: [],
+    ...r,
+  });
+  return {
+    state: 'ok',
+    repos: [
+      repo({
+        name: 'board',
+        branch: 'fix/board-blink',
+        ahead: 1,
+        behind: 0,
+        unstaged: [gitFile('.env.local', 'M', 1, 1)],
+        staged: [
+          gitFile('src/__tests__/Counter.test.tsx', 'A', 31, 0),
+          gitFile('src/Counter.tsx', 'M', 6, 2),
+        ],
+        log: [{ hash: '7be04d1', subject: 'Counter reads snapshot', at, unpushed: true }],
+      }),
+      repo({
+        name: 'ws-client',
+        branch: 'fix/reconnect',
+        published: false,
+        unstaged: [gitFile('README.md', 'M', 12, 0), gitFile('src/reconnect.test.ts', 'M', 18, 4)],
+        staged: [gitFile('src/backoff.ts', 'A', 40, 0), gitFile('src/reconnect.ts', 'M', 27, 7)],
+        log: [{ hash: 'c81e0b4', subject: 'Reconnect on close code 1006', at, unpushed: false }],
+      }),
+      repo({ name: 'infra', branch: 'main', ahead: 0, behind: 3 }),
+    ],
+  };
+}
+
+/** Вкладка «git» в раскладке `layout`: настоящий `GitPane` на трёх репозиториях. */
+export function GitPreview({ layout }: { layout: GitLayout }) {
+  const snapshot = gitFixture();
+  return (
+    <div class="pv pv-git" inert aria-hidden="true">
+      <div class="webview" data-git={layout}>
+        <aside class="pane side" data-active="git">
+          <GitPane
+            snapshot={snapshot}
+            agentPaths={new Set()}
+            cwd={CWD}
+            tree={false}
+            agentOnly={false}
+            now={Date.now()}
+            layout={layout}
+            repoRoot={snapshot.repos[1]!.root}
+            onTree={noop}
+            onAgentOnly={noop}
+            onRepo={noop}
           />
         </aside>
       </div>

@@ -198,3 +198,29 @@ html:is([data-width="900"],[data-width="full"],[data-width="vscode"]) .pane.side
 .gt .rh { cursor: default; }
 .gt .rh .sync { margin-left: auto; }
 .gt .rh .sb { margin-left: 2px; }
+
+/* раскладки нескольких репозиториев (roadmap 12, этап 3): data-git="stack|picker|unified" на .webview */
+.gt .empty.big .open-repo { margin-top: 10px; padding: 4px 12px; border-radius: 3px; background: var(--btn); color: var(--btn-fg); font-size: 11.5px; }
+.gt .empty.big .open-repo:hover { filter: brightness(1.08); }
+
+/* стопка: компактный коммит — строка, раскрывается на фокус */
+.gt .cml .in { font: inherit; color: var(--fg); outline: none; }
+.gt .cml .in::placeholder { color: var(--fg-faint); }
+.gt .cml .in:focus { border-color: var(--accent); }
+.gt .cml .go-min:disabled { color: var(--fg-faint); }
+.gt .cml .go-min.pri { background: var(--btn); color: var(--btn-fg); }
+
+/* выбор сверху */
+.gt .pick .p .nm { background: none; padding: 0; text-align: left; font: inherit; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gt .pick .p .sb { margin-left: 0; }
+.gt .pick .p:has(.sb) { grid-template-columns: 14px minmax(0, auto) minmax(0, 1fr) auto auto auto; }
+
+/* общий список */
+.gt .rg .nm.dim { color: var(--fg-mute); }
+.gt .rg .sync { margin-left: auto; }
+.gt .rg .sb { margin-left: 2px; }
+.gt .cm .tg .to { cursor: pointer; }
+.gt .cm .tg .to input { width: 11px; height: 11px; margin: 0; accent-color: var(--btn); }
+.gt .cm .ok { display: flex; align-items: flex-start; gap: 6px; margin: 0 0 8px; padding: 4px 6px 4px 8px; border: 1px solid var(--g-add); border-radius: 3px; color: var(--fg); font-size: 11px; line-height: 1.4; }
+.gt .cm .ok span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.gt .cm .ok .ib { width: 18px; height: 18px; flex: none; }
