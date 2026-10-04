@@ -25,6 +25,10 @@
   real view); the feed text size shows a sample feed at the chosen size. Fonts are picked from cards too: installed
   ones out of a list of popular interface and monospace fonts, each card drawn in its font; hovering a card tries the
   font on the sample feed, a custom name can still be typed.
+- **Bundled fonts**: Inter, IBM Plex Sans, Manrope, Onest, Golos Text, JetBrains Mono, IBM Plex Mono, Fira Code and
+  Source Code Pro ship inside the extension (woff2, Latin and Cyrillic, ~0.7 MB, OFL licenses alongside) and are
+  always offered in the font cards, installed or not. The list lives in `scripts/fonts.json`;
+  `node scripts/fetch-fonts.mjs` re-downloads them from Google Fonts.
 - **Panel font** (`agentura.font.panels`, ⚙ → "Appearance"): one font for the header, the input box and the right
   and left panels. Empty keeps the current look (monospace chat chrome, the sidebar in the interface font); numbers,
   paths and code inside the panels stay on the code font.

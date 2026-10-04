@@ -1,11 +1,15 @@
 /**
  * Шрифты для выбора во вкладке настроек. Список системных шрифтов webview не получить, поэтому — популярные
- * кандидаты, из которых показываются установленные (проверка шириной текста на canvas).
+ * кандидаты, из которых показываются установленные (проверка шириной текста на canvas), плюс шрифты из расширения
+ * (`media/fonts`, `scripts/fonts.json`) — они есть всегда и идут в списке первыми после системного.
  */
+import { BUNDLED_CODE_FONTS, BUNDLED_UI_FONTS } from './bundledFonts';
 
-/** Интерфейсные; `system-ui` — системный шрифт ОС (родовое имя CSS, без кавычек). */
-export const UI_FONTS = [
-  'system-ui',
+const BUNDLED = new Set([...BUNDLED_UI_FONTS, ...BUNDLED_CODE_FONTS]);
+const merge = (...lists: readonly (readonly string[])[]): readonly string[] => [...new Set(lists.flat())];
+
+/** Интерфейсные из системы; в общем списке впереди `system-ui` — системный шрифт ОС (родовое имя CSS, без кавычек). */
+const SYSTEM_UI_FONTS = [
   'Inter',
   'SF Pro Text',
   'Helvetica Neue',
@@ -25,7 +29,7 @@ export const UI_FONTS = [
   'Georgia',
 ] as const;
 
-export const CODE_FONTS = [
+const SYSTEM_CODE_FONTS = [
   'JetBrains Mono',
   'Fira Code',
   'SF Mono',
@@ -48,6 +52,9 @@ export const CODE_FONTS = [
   'Courier New',
 ] as const;
 
+export const UI_FONTS = merge(['system-ui'], BUNDLED_UI_FONTS, SYSTEM_UI_FONTS);
+export const CODE_FONTS = merge(BUNDLED_CODE_FONTS, SYSTEM_CODE_FONTS);
+
 /** Родовые имена CSS: в стеке `font-family` пишутся без кавычек и всегда «установлены». */
 export const GENERIC_FONTS: readonly string[] = [
   'system-ui',
@@ -65,10 +72,10 @@ const cache = new Map<string, boolean>();
 
 /**
  * Установлен ли шрифт: ширина образца со шрифтом отличается от ширины родового запасного хотя бы для одного
- * из трёх. Без canvas (тесты) — считаем установленным, решит запасной шрифт в стеке.
+ * из трёх. Родовые и шрифты из расширения — всегда. Без canvas (тесты) — считаем установленным, решит запасной шрифт в стеке.
  */
 export function isInstalled(name: string, ctx?: CanvasRenderingContext2D | null): boolean {
-  if (GENERIC_FONTS.includes(name)) return true;
+  if (GENERIC_FONTS.includes(name) || BUNDLED.has(name)) return true;
   const hit = cache.get(name);
   if (hit !== undefined) return hit;
   const c = ctx === undefined ? canvas() : ctx;

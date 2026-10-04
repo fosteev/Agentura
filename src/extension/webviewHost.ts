@@ -39,6 +39,7 @@ export function renderWebview(
     nonce: makeNonce(),
     scriptUri: uri('dist', 'webview', `${surface}.js`),
     styleUris: [
+      uri('media', 'fonts', 'fonts.css'),
       uri('media', 'tokens.css'),
       uri('media', 'hud.css'),
       uri('media', 'agents.css'),
