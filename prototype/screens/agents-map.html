@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="ru" data-theme="dark" data-width="vscode">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agentura · карта агентов · варианты</title>
+<link rel="stylesheet" href="../shared/tokens.css">
+<link rel="stylesheet" href="../shared/preview.css">
+<link rel="stylesheet" href="../shared/hud.css">
+<link rel="stylesheet" href="../shared/agents.css">
+<link rel="stylesheet" href="../shared/tooltip.css">
+<link rel="stylesheet" href="../shared/agents-map.css">
+</head>
+<body>
+<div class="preview-bar">
+  <b>Карта агентов · варианты</b>
+  <span class="grp"><button data-am-set="a">А список + детали</button><button data-am-set="b">Б дерево</button><button data-am-set="c">В дорожки</button><button data-am-set="d">Г карточки</button><button data-am-set="e">Д граф во вкладке</button></span>
+  <span class="grp"><button data-set-theme="dark">Тёмная</button><button data-set-theme="light">Светлая</button></span>
+  <span class="grp"><button data-set-width="vscode">боковая панель + вкладка</button><button data-set-width="900">900 · вкладка</button><button data-set-width="380">380 · сплит</button><button data-set-width="full">во всю ширину</button></span>
+  <a href="../index.html">← оглавление</a>
+</div>
+<div class="preview-stage">
+<div class="webview" data-sidebar="live" data-am="a">
+
+  <header class="hud" aria-label="Сессия">
+    <nav class="tabs" role="tablist">
+      <button role="tab" aria-selected="true" data-tab="chat">чат</button>
+      <button role="tab" aria-selected="false" data-tab="turn">изменения <span class="b">4</span></button>
+      <button role="tab" aria-selected="false" data-tab="agents">агенты <span class="b live">2 / 4</span></button>
+    </nav>
+    <span class="sess">queue-board · <b>мигание счётчика талонов</b></span>
+    <span class="acts"><button title="Сессии">sessions</button></span>
+  </header>
+
+  <div class="body" style="--side-w:360px">
+    <main class="pane" id="pane-chat">
+      <div class="log">
+        <div class="u"><span class="p">&gt;</span><span>Добавь тест на переподключение, чтобы это не вернулось.</span><span class="at">14:51</span></div>
+        <div class="e"><span class="p">▸</span><span class="op">edit</span><span class="what"><span class="dim">apps/board/src/__tests__/</span>Counter.test.tsx</span><span class="r"><span class="add">+31</span> · <a href="#">diff</a></span></div>
+        <div class="e run"><span class="p">▸</span><span class="op">bash</span><span class="what">pnpm test --filter board</span><span class="r"><span class="pass">13 ✓</span> · 9.1s</span></div>
+        <div class="sum"><span>in 610</span><span>out 1 044</span><span>cache r131 200 w1 120</span><b>$0.09</b><span>22s</span></div>
+
+        <div class="u"><span class="p">&gt;</span><span>Проверь, где ещё теряется состояние при переподключении: табло, киоск, пульт оператора. Каждое приложение — отдельным агентом, параллельно. И воспроизведи разрыв в <code>ws-client</code>.</span><span class="at">15:02</span></div>
+        <div class="e think"><span class="p">▸</span><span class="op">think</span><span class="what">три независимых приложения — разведка параллельно, воспроизведение отдельно</span><span class="r">6s</span></div>
+
+        <div class="grp">
+          <div class="gh"><span class="p"><span class="spin"></span></span><span class="op">agent</span><span class="what">×4 параллельно <span class="dim">· 2 идут · 1 готов · 1 ошибка</span></span><span class="r"><b>31.6k</b> ток · 1:12</span></div>
+          <div class="sa ok"><span class="st">✓</span><span class="ty">Explore</span><span class="ds">apps/board — где сбрасывается состояние<small><span class="dim">→</span> 1 место: Queue.tsx:58, сброс в onOpen</small></span><span class="r">9.4k · 41s<a href="#">итог</a></span></div>
+          <div class="sa busy"><span class="st"><span class="spin"></span></span><span class="ty">Explore</span><span class="ds">apps/kiosk — где сбрасывается состояние<small>grep <span class="dim">on('open'</span> · 14-й вызов</small></span><span class="r">12.3k · 1:12<button title="Остановить агента">■</button></span></div>
+          <div class="sa busy"><span class="st"><span class="spin"></span></span><span class="ty">Explore</span><span class="ds">apps/operator — где сбрасывается состояние<small>read <span class="dim">src/panel/</span>OperatorPanel.tsx</small></span><span class="r">7.8k · 58s<button title="Остановить агента">■</button></span></div>
+          <div class="sa err"><span class="st">✕</span><span class="ty">general-purpose</span><span class="ds">ws-client — воспроизвести разрыв<small>bash pnpm test:e2e — ECONNREFUSED 127.0.0.1:4100</small></span><span class="r">2.1k · 22s<a href="#">лог</a></span></div>
+          <div class="gf"><span>фоном: <b style="color:var(--fg);font-weight:500">pnpm dev --filter board</b> · 6m</span><a href="#agents" data-open-tab="agents">карта агентов</a><span class="sp">основной ждёт агентов</span></div>
+        </div>
+
+        <div class="live"><span class="spin"></span> ждёт 2 агентов · 1:12 <button class="stop">stop all · esc</button></div>
+      </div>
+    </main>
+    <aside class="pane side" data-active="agents">
+      <div class="ptabs" role="tablist" aria-label="Панель изменений и агентов">
+        <button role="tab" id="ptab-turn" data-ptab="turn" aria-selected="false" aria-controls="pane-turn">изменения <span class="b">4</span></button>
+        <button role="tab" id="ptab-agents" data-ptab="agents" aria-selected="true" aria-controls="pane-agents">агенты <span class="b live">2 / 4</span></button>
+        <button class="phide" data-panel="hide" title="Скрыть панель" aria-label="Скрыть панель"><svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1"/><path d="M10 2.5v11" stroke-dasharray="1.6 1.4"/></svg></button>
+      </div>
+      <div class="grip" role="separator" aria-orientation="vertical" aria-label="Ширина панели" title="Тяни, чтобы изменить ширину; двойной клик — 300 px"></div>
+      <section class="tabpane" id="pane-turn" role="tabpanel" aria-labelledby="ptab-turn"></section>
+      <section class="tabpane" id="pane-agents" role="tabpanel" aria-labelledby="ptab-agents">
+
+        <!-- А · список + детали (как сейчас): список агентов хода, под ним — выбранный -->
+        <div data-av="a">
+        <div class="amap">
+          <div class="list">
+            <h4>агенты · 15:02 · идёт 1:18</h4>
+            <div class="ag">
+              <div class="a main"><span class="st">●</span><span class="nm">основной<small>opus-5.5 · ждёт 2 агентов</small></span><span class="tk">136k</span></div>
+              <div class="a sub ok"><span class="st">✓</span><span class="nm">Explore: apps/board<small>sonnet-5.5 · готово за 41s</small></span><span class="tk">9.4k</span></div>
+              <div class="a sub busy sel"><span class="st"><span class="spin"></span></span><span class="nm">Explore: apps/kiosk<small>grep on('open' · 14-й вызов · 1:12</small></span><span class="tk">12.3k<button title="Остановить">■</button></span></div>
+              <div class="a sub busy"><span class="st"><span class="spin"></span></span><span class="nm">Explore: apps/operator<small>read OperatorPanel.tsx · 58s</small></span><span class="tk">7.8k<button title="Остановить">■</button></span></div>
+              <div class="a sub err"><span class="st">✕</span><span class="nm">general-purpose: ws-client<small>ошибка · ECONNREFUSED · 22s</small></span><span class="tk">2.1k</span></div>
+              <h5>фоновые задачи</h5>
+              <div class="a busy"><span class="st">◐</span><span class="nm">pnpm dev --filter board<small>shell · 6m · порт 5173</small></span><span class="tk">—<button title="Остановить">■</button></span></div>
+            </div>
+          </div>
+          <div class="det">
+            <div class="hd">
+              <span class="t">apps/kiosk — где сбрасывается состояние <span class="ty">· Explore</span></span>
+              <span class="meta"><span class="live">◐ идёт 1:12</span><span>sonnet-5.5</span><span>токены <b>12.3k</b></span><span>вызовов <b>14</b></span></span>
+              <span class="acts"><button>транскрипт</button><button class="stop">остановить</button></span>
+            </div>
+            <h6>промпт от основного</h6>
+            <div class="prm">В apps/kiosk найди все места, где при переподключении сокета (packages/ws-client, событие open) сбрасывается или пересоздаётся состояние очереди и талонов. Только чтение.</div>
+          </div>
+        </div>
+        </div>
+
+        <!-- Б · дерево сессии: ходы с агентами; выбранный агент раскрывается на месте -->
+        <div data-av="b" class="am">
+          <div class="top"><span class="seg"><button aria-pressed="false">ход</button><button aria-pressed="true">сессия</button></span><span class="r">агенты <b>72.2k</b> · $0.24</span></div>
+          <div class="turn">
+            <div class="th"><span class="mute">▾</span><span><b>ход 14</b> · 15:02 · <span class="run">идёт 1:18</span></span><span>31.6k</span></div>
+            <div class="nd main"><span class="ok">●</span><span class="nm">основной <span class="ty">· opus-5.5</span><small>ждёт 2 агентов · контекст 136k</small></span><span class="tk">1:18</span></div>
+            <ul class="kids">
+              <li><div class="nd is-ok"><span class="ok">✓</span><span class="nm"><span class="ty">Explore ·</span> apps/board<small>→ 1 место: Queue.tsx:58, сброс в onOpen</small></span><span class="tk">9.4k · 41s</span></div></li>
+              <li class="sel"><div class="nd is-busy"><span class="run"><span class="spin"></span></span><span class="nm"><span class="ty">Explore ·</span> apps/kiosk<small>grep on('open' · 14-й вызов</small></span><span class="tk">12.3k · 1:12</span></div>
+                <div class="open">
+                  <div class="lbl">промпт от основного · 0.6k</div>
+                  <div class="q">В apps/kiosk найди все места, где при переподключении сокета (packages/ws-client, событие open) сбрасывается или пересоздаётся состояние очереди и талонов. Только чтение.</div>
+                  <div class="lbl">последние вызовы · 14</div>
+                  <div class="c"><span class="at">48.0</span><span class="op">read</span><span><span class="faint">src/store/</span>ticketSlice.ts</span><span class="d">0.4s</span></div>
+<div class="c"><span class="at">61.3</span><span class="op">grep</span><span>reset\( <span class="faint">в src/store</span></span><span class="d">3 · 0.2s</span></div>
+<div class="c now"><span class="at">71.2</span><span class="op">grep</span><span>on('open' <span class="faint">в apps/kiosk</span></span><span class="d">идёт</span></div>
+                  <div class="ac"><button class="btn">транскрипт</button><button class="btn stop">остановить</button></div>
+                </div>
+              </li>
+              <li><div class="nd is-busy"><span class="run"><span class="spin"></span></span><span class="nm"><span class="ty">Explore ·</span> apps/operator<small>read OperatorPanel.tsx</small></span><span class="tk">7.8k · 58s</span></div></li>
+              <li><div class="nd is-err"><span class="err">✕</span><span class="nm"><span class="ty">general-purpose ·</span> ws-client<small>ECONNREFUSED 127.0.0.1:4100</small></span><span class="tk">2.1k · 22s</span></div></li>
+            </ul>
+            <ul class="kids bg">
+              <li><div class="nd"><span class="run">◐</span><span class="nm"><span class="ty">shell ·</span> pnpm dev --filter board<small>с хода 11 · 6m · порт 5173</small></span><span class="tk"><button class="err">■</button></span></div></li>
+            </ul>
+          </div>
+          <div class="turn"><div class="th"><span class="mute">▸</span><span><b>ход 12</b> · 14:30 · Explore ×2 <span class="ok">✓✓</span></span><span>18.2k</span></div></div>
+          <div class="turn"><div class="th"><span class="mute">▸</span><span><b>ход 9</b> · 14:05 · Plan <span class="ok">✓</span></span><span>22.4k</span></div></div>
+          <div class="turn"><div class="th"><span class="mute">▸</span><span><b>ход 4</b> · 13:12 · monitor <span class="mute">○</span></span><span>—</span></div></div>
+        </div>
+
+        <!-- В · дорожки времени: агент — строка, полоса — сколько шёл, засечки — вызовы; видно параллельность и простой основного -->
+        <div data-av="c" class="am">
+          <div class="top"><span class="seg"><button aria-pressed="true">ход 14</button><button aria-pressed="false">сессия</button></span><span class="r">1:18 · <b>31.6k</b></span></div>
+          <div class="lanes">
+            <div class="ax"><span></span><span class="sc"><span style="left:0">0</span><span style="left:30%">0:30</span><span style="left:60%">1:00</span><span style="left:90%">1:30</span></span></div>
+            <div class="ln"><span class="lb"><b>основной</b><span>ждёт 2 агентов</span></span><span class="trk"><i class="bar think" style="left:0;width:6%"></i><i class="bar wait" style="left:6.2%;width:71.8%"></i><i class="now" style="left:78%"></i></span></div>
+            <div class="ln"><span class="lb"><b>apps/board</b><span class="ok">✓</span> <span>9.4k · 41s</span></span><span class="trk"><i class="bar" style="left:6.2%;width:41%"><i style="left:6%"></i><i style="left:14%"></i><i style="left:22%"></i><i style="left:31%"></i><i style="left:40%"></i><i style="left:52%"></i><i style="left:60%"></i><i style="left:71%"></i><i style="left:80%"></i><i style="left:92%"></i></i><i class="now" style="left:78%"></i></span></div>
+            <div class="ln sel"><span class="lb"><b>apps/kiosk</b><span class="run">◐</span> <span>12.3k · 1:12</span></span><span class="trk"><i class="bar busy" style="left:6.2%;width:71.8%"><i style="left:4%"></i><i style="left:9%"></i><i style="left:15%"></i><i style="left:19%"></i><i style="left:27%"></i><i style="left:33%"></i><i style="left:41%"></i><i style="left:48%"></i><i style="left:58%"></i><i style="left:63%"></i><i style="left:70%"></i><i style="left:78%"></i><i style="left:86%"></i><i style="left:98%"></i></i><i class="now" style="left:78%"></i></span></div>
+            <div class="ln"><span class="lb"><b>apps/operator</b><span class="run">◐</span> <span>7.8k · 58s</span></span><span class="trk"><i class="bar busy" style="left:20%;width:58%"><i style="left:5%"></i><i style="left:16%"></i><i style="left:28%"></i><i style="left:37%"></i><i style="left:52%"></i><i style="left:66%"></i><i style="left:81%"></i><i style="left:95%"></i></i><i class="now" style="left:78%"></i></span></div>
+            <div class="ln"><span class="lb"><b>ws-client</b><span class="err">✕</span> <span>2.1k · 22s</span></span><span class="trk"><i class="bar err" style="left:6.2%;width:22%"><i style="left:18%"></i><i style="left:45%"></i><i style="left:80%"></i></i><i class="now" style="left:78%"></i></span></div>
+            <div class="ln"><span class="lb"><b>dev board</b><span>shell · 5173</span></span><span class="trk"><i class="bar sh" style="left:0;width:78%"></i><i class="now" style="left:78%"></i></span></div>
+          </div>
+          <div class="ldet">
+            <div class="t">apps/kiosk — где сбрасывается состояние <span class="ty">· Explore</span></div>
+            <div class="m"><span class="run">◐ идёт 1:12</span><span>sonnet-5.5</span><span>токены <b>12.3k</b></span><span>вызовов <b>14</b></span></div>
+            <div class="q">В apps/kiosk найди все места, где при переподключении сокета (packages/ws-client, событие open) сбрасывается или пересоздаётся состояние очереди и талонов. Только чтение.</div>
+            <div class="lbl">последние вызовы</div>
+            <div class="c"><span class="at">48.0</span><span class="op">read</span><span><span class="faint">src/store/</span>ticketSlice.ts</span><span class="d">0.4s</span></div>
+<div class="c"><span class="at">61.3</span><span class="op">grep</span><span>reset\( <span class="faint">в src/store</span></span><span class="d">3 · 0.2s</span></div>
+<div class="c now"><span class="at">71.2</span><span class="op">grep</span><span>on('open' <span class="faint">в apps/kiosk</span></span><span class="d">идёт</span></div>
+            <div class="ac"><button class="btn">транскрипт</button><button class="btn stop">остановить</button></div>
+          </div>
+        </div>
+
+        <!-- Г · карточки: каждый агент — карточка с итогом или живой строкой; деталей отдельно нет, клик — транскрипт -->
+        <div data-av="d" class="am">
+          <div class="top"><span class="seg"><button aria-pressed="true">ход 14</button><button aria-pressed="false">сессия</button></span><span class="r">2 идут · 1 готов · 1 ошибка</span></div>
+          <div class="mainl"><span class="ok">●</span><span>основной <span class="mute">· opus-5.5</span><small>ждёт 2 агентов · контекст 136k · итоги вернутся в него</small></span><span class="mute">1:18</span></div>
+          <div class="cards">
+            <div class="card is-busy">
+              <div class="ch"><span class="run"><span class="spin"></span></span><span>Explore · sonnet-5.5</span><span class="r"><b>12.3k</b> · 1:12</span></div>
+              <div class="ct">apps/kiosk — где сбрасывается состояние</div>
+              <div class="cb">grep on('open' в apps/kiosk · 14-й вызов</div>
+              <div class="prog"><i class="rd"></i><i class="rd"></i><i class="rd"></i><i class="rd"></i><i class="rd"></i><i class="rd"></i><i class="rd"></i><i class="rd"></i><i class="rd"></i><i class="rd"></i><i class="rd"></i><i class="rd"></i><i class="rd"></i><i class="gr"></i></div>
+              <div class="cf"><span>14 вызовов</span><span class="sp"><a href="#">транскрипт</a><a href="#" class="err">■ стоп</a></span></div>
+            </div>
+            <div class="card is-busy">
+              <div class="ch"><span class="run"><span class="spin"></span></span><span>Explore · sonnet-5.5</span><span class="r"><b>7.8k</b> · 58s</span></div>
+              <div class="ct">apps/operator — где сбрасывается состояние</div>
+              <div class="cb">read src/panel/OperatorPanel.tsx · 8-й вызов</div>
+              <div class="prog"><i class="rd"></i><i class="rd"></i><i class="rd"></i><i class="rd"></i><i class="rd"></i><i class="rd"></i><i class="rd"></i><i class="gr"></i></div>
+              <div class="cf"><span>8 вызовов</span><span class="sp"><a href="#">транскрипт</a><a href="#" class="err">■ стоп</a></span></div>
+            </div>
+            <div class="card is-err">
+              <div class="ch"><span class="err">✕</span><span>general-purpose · sonnet-5.5</span><span class="r"><b>2.1k</b> · 22s</span></div>
+              <div class="ct">ws-client — воспроизвести разрыв</div>
+              <div class="cb">bash pnpm test:e2e — ECONNREFUSED 127.0.0.1:4100</div>
+              <div class="cf"><span>ws-сервер не поднят</span><span class="sp"><a href="#">лог</a><a href="#">перезапустить</a></span></div>
+            </div>
+            <div class="card">
+              <div class="ch"><span class="ok">✓</span><span>Explore · sonnet-5.5</span><span class="r"><b>9.4k</b> · 41s</span></div>
+              <div class="ct">apps/board — где сбрасывается состояние</div>
+              <div class="cb">1 место: <code>Queue.tsx:58</code> — сброс очереди в <code>onOpen</code> до прихода снимка.</div>
+              <div class="cf"><span>итог 0.4k → в основной</span><span class="sp"><a href="#">транскрипт</a><a href="#">продолжить</a></span></div>
+            </div>
+          </div>
+          <h5>фоном</h5>
+          <div class="chips"><span class="chip"><span class="run">◐</span><b>pnpm dev --filter board</b> 6m · 5173 <button title="Остановить">■</button></span><span class="chip"><span class="mute">○</span>monitor: логи ws · завершён</span></div>
+        </div>
+
+      </section>
+    </aside>
+
+    <!-- Д · граф во вкладке редактора: «карта агентов» открывается отдельной вкладкой VS Code -->
+    <div class="gmap">
+      <div class="cv">
+        <div class="bar"><span>ход</span><span class="turns"><button>4 · monitor</button><button>9 · Plan</button><button>12 · Explore ×2</button><button aria-pressed="true">14 · идёт</button></span><span class="r">агенты <b>31.6k</b> · 1:18</span></div>
+        <svg class="edges" aria-hidden="true">
+          <path class="ok" d="M190 320 C245 320 245 124 300 124"/>
+          <path class="busy" d="M190 320 C245 320 245 224 300 224"/>
+          <path class="busy" d="M190 320 C245 320 245 324 300 324"/>
+          <path class="err" d="M190 320 C245 320 245 424 300 424"/>
+          <path class="bg" d="M190 340 C245 340 245 550 300 550"/>
+        </svg>
+        <div class="n main" style="left:20px;top:270px;width:170px">
+          <div class="h"><span class="ok">●</span><span>основной</span><span class="r">opus-5.5</span></div>
+          <div class="t">ждёт 2 агентов</div>
+          <div class="s">контекст 136k / 200k</div>
+          <div class="ctxb"><i></i></div>
+          <div class="s">вернулось итогов: 0.4k</div>
+        </div>
+        <span class="lab" style="left:206px;top:100px"><span class="up">↗ 0.5k</span> · <span class="dn">↙ 0.4k</span></span>
+        <span class="lab" style="left:206px;top:200px"><span class="up">↗ 0.6k</span> · <span class="run">…</span></span>
+        <span class="lab" style="left:206px;top:300px"><span class="up">↗ 0.6k</span> · <span class="run">…</span></span>
+        <span class="lab" style="left:206px;top:400px"><span class="up">↗ 0.7k</span> · <span class="err">✕</span></span>
+        <div class="n ok" style="left:300px;top:90px;width:280px">
+          <div class="h"><span class="st">✓</span><span>Explore · sonnet-5.5</span><span class="r"><b>9.4k</b> · 41s</span></div>
+          <div class="t">apps/board</div>
+          <div class="s">→ 1 место: Queue.tsx:58</div>
+        </div>
+        <div class="n busy sel" style="left:300px;top:190px;width:280px">
+          <div class="h"><span class="st"><span class="spin"></span></span><span>Explore · sonnet-5.5</span><span class="r"><b>12.3k</b> · 1:12</span></div>
+          <div class="t">apps/kiosk</div>
+          <div class="s">grep on('open' · 14-й вызов</div>
+        </div>
+        <div class="n busy" style="left:300px;top:290px;width:280px">
+          <div class="h"><span class="st"><span class="spin"></span></span><span>Explore · sonnet-5.5</span><span class="r"><b>7.8k</b> · 58s</span></div>
+          <div class="t">apps/operator</div>
+          <div class="s">read OperatorPanel.tsx</div>
+        </div>
+        <div class="n err" style="left:300px;top:390px;width:280px">
+          <div class="h"><span class="st">✕</span><span>general-purpose · sonnet-5.5</span><span class="r"><b>2.1k</b> · 22s</span></div>
+          <div class="t">ws-client</div>
+          <div class="s">ECONNREFUSED 127.0.0.1:4100</div>
+        </div>
+        <div class="n shell" style="left:300px;top:516px;width:280px">
+          <div class="h"><span class="run">◐</span><span>shell · фоном</span><span class="r">6m</span></div>
+          <div class="t">pnpm dev --filter board</div>
+          <div class="s">порт 5173 · с хода 11</div>
+        </div>
+        <div class="legend"><span>↗ промпт агенту</span><span>↙ итог в основной</span><span>пунктир — фон</span></div>
+      </div>
+      <div class="gd am">
+        <div class="hd">
+          <div class="t">apps/kiosk — где сбрасывается состояние <span class="ty">· Explore</span></div>
+          <div class="m"><span class="run">◐ идёт 1:12</span><span>sonnet-5.5</span><span>токены <b>12.3k</b></span><span>вызовов <b>14</b></span></div>
+          <div class="ac"><button>транскрипт</button><button class="stop">остановить</button></div>
+        </div>
+        <div class="lbl">промпт от основного · 0.6k</div>
+        <div class="q">В <code>apps/kiosk</code> найди все места, где при переподключении сокета (<code>packages/ws-client</code>, событие <code>open</code>) сбрасывается или пересоздаётся состояние очереди и талонов. Только чтение. Верни список файл:строка и одну фразу на каждое место.</div>
+        <div class="lbl">последние вызовы · 14</div>
+        <div class="c"><span class="at">0.0</span><span class="op">glob</span><span>apps/kiosk/src/**/*.tsx</span><span class="d">38</span></div>
+        <div class="c"><span class="at">0.6</span><span class="op">grep</span><span>useSocket</span><span class="d">6</span></div>
+        <div class="c"><span class="at">—</span><span class="op">…</span><span class="faint">ещё 9 вызовов</span><span class="d"></span></div>
+        <div class="c"><span class="at">48.0</span><span class="op">read</span><span><span class="faint">src/store/</span>ticketSlice.ts</span><span class="d">0.4s</span></div>
+<div class="c"><span class="at">61.3</span><span class="op">grep</span><span>reset\( <span class="faint">в src/store</span></span><span class="d">3 · 0.2s</span></div>
+<div class="c now"><span class="at">71.2</span><span class="op">grep</span><span>on('open' <span class="faint">в apps/kiosk</span></span><span class="d">идёт</span></div>
+        <div class="lbl">итог · появится, когда агент закончит</div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="compose">
+    <div class="blocks" aria-hidden="true"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on t"></i><i class="on w"></i><i class="on w"></i><i class="t"></i><i></i><i></i><i></i><i></i><i></i></div>
+    <div class="ctx"><span class="cn" title="Контекст основного агента: пороги 120k 150k, автосжатие при 200k. Субагенты в него не входят — у каждого своё окно.">контекст <b class="warn">136 080</b> / 200 000 · <button>сжать</button></span></div>
+    <div class="prompt"><span class="p">$</span><span class="text">задача, @файл, /команда</span></div>
+    <div class="opts">
+      <button class="mode">режим <b>manual</b></button>
+      <button class="agent" title="Агент: Claude · Codex, Gemini — скоро">агент <b>claude</b></button>
+      <button>модель <b>opus-5.5</b></button>
+      <button>effort <b>high</b></button>
+      <span class="meters"><span class="m"><span class="clock"></span>кэш <b>04:51</b> · <b>89%</b></span><span class="m" title="5-часовое окно · сброс 17:00"><span class="cells"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i></span>5ч <b>66%</b></span></span>
+      <button class="send" title="Отправить (Enter)">enter ↵</button>
+    </div>
+  </footer>
+
+</div>
+</div>
+<script src="../shared/preview.js"></script>
+<script src="../shared/sidebar.js"></script>
+<script src="../shared/limits.js"></script>
+<script src="../shared/hud.js"></script>
+<script>
+// Вариант карты агентов: хэш #a–#e, кнопки в полосе предпросмотра.
+(function () {
+  var w = document.querySelector('.webview');
+  function set(v) { w.setAttribute('data-am', v); }
+  var m = location.hash.match(/^#([a-e])\b/); if (m) set(m[1]);
+  document.querySelectorAll('[data-am-set]').forEach(function (b) { b.addEventListener('click', function () { set(b.getAttribute('data-am-set')); }); });
+})();
+</script>
+<script src="../shared/tooltip.js"></script>
+</body>
+</html>
