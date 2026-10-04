@@ -263,6 +263,23 @@
           "default": "journal",
           "description": "%config.feed.style.description%"
         },
+        "agentura.font.interface": {
+          "type": "string",
+          "default": "",
+          "description": "%config.font.interface.description%"
+        },
+        "agentura.font.code": {
+          "type": "string",
+          "default": "",
+          "description": "%config.font.code.description%"
+        },
+        "agentura.feed.fontSize": {
+          "type": "integer",
+          "default": 13,
+          "minimum": 10,
+          "maximum": 20,
+          "description": "%config.feed.fontSize.description%"
+        },
         "agentura.language": {
           "type": "string",
           "enum": [

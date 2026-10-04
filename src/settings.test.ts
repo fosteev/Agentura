@@ -85,6 +85,33 @@ describe('sessionList', () => {
   });
 });
 
+describe('шрифты и размер ленты', () => {
+  it('validateSetting: имя шрифта обрезается, без ; { } < >', () => {
+    expect(validateSetting('font.code', '  JetBrains Mono ')).toEqual({
+      ok: true,
+      value: 'JetBrains Mono',
+    });
+    expect(validateSetting('font.interface', '')).toEqual({ ok: true, value: '' });
+    expect(validateSetting('font.code', 'a; color: red').ok).toBe(false);
+    expect(validateSetting('font.code', 5).ok).toBe(false);
+  });
+  it('validateSetting: размер — целое 10…20', () => {
+    expect(validateSetting('feed.fontSize', 15)).toEqual({ ok: true, value: 15 });
+    expect(validateSetting('feed.fontSize', 9).ok).toBe(false);
+    expect(validateSetting('feed.fontSize', 21).ok).toBe(false);
+    expect(validateSetting('feed.fontSize', 13.5).ok).toBe(false);
+    expect(validateSetting('feed.fontSize', '14').ok).toBe(false);
+  });
+  it('readSettings: мусор → пусто и 13', () => {
+    expect(readSettings(cfgOf({ 'feed.fontSize': 99, 'font.code': 1 }))).toMatchObject({
+      'feed.fontSize': 13,
+      'font.code': '',
+      'font.interface': '',
+    });
+    expect(readSettings(cfgOf({ 'feed.fontSize': 16 }))['feed.fontSize']).toBe(16);
+  });
+});
+
 describe('язык интерфейса', () => {
   it('validateSetting: auto, ru, en', () => {
     expect(validateSetting('language', 'en')).toEqual({ ok: true, value: 'en' });

@@ -20,6 +20,10 @@
   each limit on one line (gauge, percentage, reset time), "New session" as a ＋ button in the "Sessions" header;
   `dense` — limits as mini-gauges in the panel header next to ↻ and ⚙ (yellow above 70 %, red above 85 %), the
   account in the header tooltip.
+- **Fonts and feed text size** (⚙ → "View"): `agentura.font.interface` and `agentura.font.code` set the panel and
+  monospace fonts (empty — VS Code's interface and editor fonts, which are also the fallback if the font is not
+  installed); `agentura.feed.fontSize` (10–20 px, default 13) scales the whole chat feed. Open tabs, the sidebar and
+  settings update immediately.
 - **English interface** (`agentura.language`, ⚙ → "View"): `auto` (default — Russian if VS Code is in Russian,
   English otherwise), `ru`, `en`. Applies after a window reload (notification with a button). Command titles and
   setting descriptions in the Settings UI follow VS Code's own language (`package.nls*.json`).

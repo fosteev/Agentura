@@ -8,6 +8,9 @@ import {
   SESSION_LIST_MODES,
   SIDEBAR_TOP_MODES,
   FEED_STYLES,
+  DEFAULT_FEED_FONT_SIZE,
+  MAX_FEED_FONT_SIZE,
+  MIN_FEED_FONT_SIZE,
   thresholdsError,
   validateSetting,
   type SettingKey,
@@ -162,6 +165,35 @@ function TextField({
         if (e.key === 'Enter') send((e.currentTarget as HTMLInputElement).value);
       }}
     />
+  );
+}
+
+/** Первое имя из font-family VS Code — для подсказки в пустом поле шрифта. */
+function vscodeFont(cssVar: string): string {
+  const v = getComputedStyle(document.documentElement).getPropertyValue(cssVar);
+  return (v.split(',')[0] ?? '').trim().replace(/^["']|["']$/g, '');
+}
+
+function FontSizeSelect({ value }: { value: number }) {
+  void errors.value['feed.fontSize'];
+  const sizes: number[] = [];
+  for (let n = MIN_FEED_FONT_SIZE; n <= MAX_FEED_FONT_SIZE; n++) sizes.push(n);
+  return (
+    <span class="dd">
+      <select
+        aria-label="feed.fontSize"
+        value={String(value)}
+        onChange={(e) =>
+          commit('feed.fontSize', Number((e.currentTarget as HTMLSelectElement).value))
+        }
+      >
+        {sizes.map((n) => (
+          <option key={n} value={String(n)}>
+            {n === DEFAULT_FEED_FONT_SIZE ? `${n} px — ${T.feedFontSize.def}` : `${n} px`}
+          </option>
+        ))}
+      </select>
+    </span>
   );
 }
 
@@ -477,6 +509,25 @@ export function Settings() {
           </Row>
           <Row name={T.feedStyle.name} isNew desc={T.feedStyle.desc} k="feed.style">
             <Select k="feed.style" value={v['feed.style']} options={feedStyles} />
+          </Row>
+          <Row name={T.fontInterface.name} isNew desc={T.fontInterface.desc} k="font.interface">
+            <TextField
+              k="font.interface"
+              value={v['font.interface']}
+              placeholder={T.fontPlaceholder(vscodeFont('--vscode-font-family'))}
+              wide
+            />
+          </Row>
+          <Row name={T.fontCode.name} isNew desc={T.fontCode.desc} k="font.code">
+            <TextField
+              k="font.code"
+              value={v['font.code']}
+              placeholder={T.fontPlaceholder(vscodeFont('--vscode-editor-font-family'))}
+              wide
+            />
+          </Row>
+          <Row name={T.feedFontSize.name} isNew desc={T.feedFontSize.desc} k="feed.fontSize">
+            <FontSizeSelect value={v['feed.fontSize']} />
           </Row>
           <Row name={T.language.name} isNew desc={T.language.desc} k="language">
             <Select k="language" value={v.language} options={languageModes} />

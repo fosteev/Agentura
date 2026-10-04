@@ -41,6 +41,9 @@ const values: SettingsValues = {
   'sessionList.time': true,
   'sidebar.top': 'detailed',
   'feed.style': 'journal',
+  'feed.fontSize': 13,
+  'font.interface': '',
+  'font.code': '',
   language: 'auto',
 };
 const state = (over: Partial<SettingsValues> = {}) =>
@@ -108,6 +111,9 @@ describe('вкладка настроек', () => {
       'agentura.sessionList.time',
       'agentura.sidebar.top',
       'agentura.feed.style',
+      'agentura.font.interface',
+      'agentura.font.code',
+      'agentura.feed.fontSize',
       'agentura.language',
       'agentura.claudeExecutable · только эта машина',
     ]);

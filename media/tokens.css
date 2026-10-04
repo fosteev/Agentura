@@ -4,8 +4,11 @@
    выглядела и в обычном браузере. Внутри webview запасные значения не нужны. */
 
 :root {
-  --font: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif);
-  --mono: var(--vscode-editor-font-family, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace);
+  /* --font/--mono перекрывает appearance.ts (agentura.font.*): «шрифт из настройки, затем шрифт VS Code» */
+  --font-vscode: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif);
+  --mono-vscode: var(--vscode-editor-font-family, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace);
+  --font: var(--font-vscode);
+  --mono: var(--mono-vscode);
   --fs: var(--vscode-font-size, 13px);
 
   --bg: var(--vscode-editor-background, #1f1f1f);

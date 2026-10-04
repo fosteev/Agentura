@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { buildWebviewHtml, makeNonce } from './html';
 import { isFromWebview, postToWebview, type FromWebview } from '../protocol';
 import type { Logger } from './logger';
-import { resolveLanguage } from '../settings';
+import { readSettings, resolveLanguage } from '../settings';
 
 /** Общая часть обеих поверхностей: настройки webview, HTML, приём сообщений. */
 export function webviewOptions(extensionUri: vscode.Uri): vscode.WebviewOptions {
@@ -52,6 +52,19 @@ export function renderWebview(
   });
 }
 
+/** Ключи, от которых зависит сообщение `appearance`. */
+const APPEARANCE_KEYS = ['agentura.font.interface', 'agentura.font.code', 'agentura.feed.fontSize'];
+
+function postAppearance(webview: vscode.Webview): void {
+  const v = readSettings(vscode.workspace.getConfiguration('agentura'));
+  postToWebview(webview, {
+    type: 'appearance',
+    fontInterface: v['font.interface'],
+    fontCode: v['font.code'],
+    feedFontSize: v['feed.fontSize'],
+  });
+}
+
 export function attachMessaging(
   webview: vscode.Webview,
   surface: 'chat' | 'sidebar' | 'settings',
@@ -59,13 +72,23 @@ export function attachMessaging(
   log: Logger,
   onMessage?: (m: FromWebview) => void,
 ): vscode.Disposable {
-  return webview.onDidReceiveMessage((raw: unknown) => {
-    if (!isFromWebview(raw)) {
-      log.warn(`[${surface}] неизвестное сообщение от webview`, raw);
-      return;
-    }
-    log.debug(`[${surface}] ← ${raw.type}`);
-    if (raw.type === 'ready') postToWebview(webview, { type: 'init', surface, version });
-    onMessage?.(raw);
-  });
+  let ready = false;
+  return vscode.Disposable.from(
+    webview.onDidReceiveMessage((raw: unknown) => {
+      if (!isFromWebview(raw)) {
+        log.warn(`[${surface}] неизвестное сообщение от webview`, raw);
+        return;
+      }
+      log.debug(`[${surface}] ← ${raw.type}`);
+      if (raw.type === 'ready') {
+        ready = true;
+        postToWebview(webview, { type: 'init', surface, version });
+        postAppearance(webview);
+      }
+      onMessage?.(raw);
+    }),
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (ready && APPEARANCE_KEYS.some((k) => e.affectsConfiguration(k))) postAppearance(webview);
+    }),
+  );
 }

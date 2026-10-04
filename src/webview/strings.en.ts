@@ -611,6 +611,20 @@ export const en: Ui = {
         cards: 'cards — a turn in a frame',
       },
     },
+    fontInterface: {
+      name: 'Interface font',
+      desc: 'Reply text, settings, the sidebar. Empty — same as VS Code; also used if the font is not installed.',
+    },
+    fontCode: {
+      name: 'Code font',
+      desc: 'Monospace: code, the action log in the feed, numbers. Empty — the VS Code editor font.',
+    },
+    fontPlaceholder: (vscode: string) => (vscode ? `same as VS Code: ${vscode}` : 'same as VS Code'),
+    feedFontSize: {
+      name: 'Feed text size',
+      desc: 'The whole chat feed scales: replies, actions, code, cards. Open tabs update immediately.',
+      def: 'default',
+    },
     keychain: {
       name: 'Read token from macOS Keychain',
       desc: 'Needed only to request limits. Without it, percentages appear after the first turn.',

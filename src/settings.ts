@@ -46,6 +46,13 @@ export const DEFAULT_FEED_STYLE: FeedStyle = 'journal';
 export const LANGUAGE_MODES = ['auto', 'ru', 'en'] as const;
 export type LanguageMode = (typeof LANGUAGE_MODES)[number];
 export const DEFAULT_LANGUAGE: LanguageMode = 'auto';
+/**
+ * Размер текста ленты (`feed.fontSize`), px: базовый текст ответа. Остальные размеры ленты масштабируются
+ * от него (`--fz` в CSS), так что 13 — вёрстка как есть.
+ */
+export const DEFAULT_FEED_FONT_SIZE = 13;
+export const MIN_FEED_FONT_SIZE = 10;
+export const MAX_FEED_FONT_SIZE = 20;
 
 /** Ключи без префикса `agentura.` — те же, что в `getConfiguration('agentura')`. */
 export type SettingKey =
@@ -62,6 +69,9 @@ export type SettingKey =
   | 'sessionList.time'
   | 'sidebar.top'
   | 'feed.style'
+  | 'feed.fontSize'
+  | 'font.interface'
+  | 'font.code'
   | 'language';
 
 export const SETTING_KEYS: readonly SettingKey[] = [
@@ -78,6 +88,9 @@ export const SETTING_KEYS: readonly SettingKey[] = [
   'sessionList.time',
   'sidebar.top',
   'feed.style',
+  'feed.fontSize',
+  'font.interface',
+  'font.code',
   'language',
 ];
 
@@ -103,6 +116,11 @@ export interface SettingsValues {
   'sessionList.time': boolean;
   'sidebar.top': SidebarTopMode;
   'feed.style': FeedStyle;
+  'feed.fontSize': number;
+  /** Пусто — шрифт интерфейса VS Code. */
+  'font.interface': string;
+  /** Пусто — шрифт редактора VS Code. */
+  'font.code': string;
   language: LanguageMode;
 }
 
@@ -136,6 +154,15 @@ export function isSidebarTopMode(v: unknown): v is SidebarTopMode {
 
 export function isFeedStyle(v: unknown): v is FeedStyle {
   return typeof v === 'string' && (FEED_STYLES as readonly string[]).includes(v);
+}
+
+export function isFeedFontSize(v: unknown): v is number {
+  return (
+    typeof v === 'number' &&
+    Number.isInteger(v) &&
+    v >= MIN_FEED_FONT_SIZE &&
+    v <= MAX_FEED_FONT_SIZE
+  );
 }
 
 export function isLanguageMode(v: unknown): v is LanguageMode {
@@ -188,6 +215,8 @@ const ERRORS = {
     wholeMinutes: 'Нужно целое число минут.',
     atLeast: (n: number) => `Не меньше ${n}.`,
     atMost: (n: number) => `Не больше ${n} (сутки).`,
+    pxRange: (a: number, b: number) => `Нужно целое число от ${a} до ${b}.`,
+    fontName: 'Без символов ; { } < >.',
   },
   en: {
     twoNumbers: 'Two numbers are required: the yellow and orange thresholds.',
@@ -204,6 +233,8 @@ const ERRORS = {
     wholeMinutes: 'A whole number of minutes is required.',
     atLeast: (n: number) => `At least ${n}.`,
     atMost: (n: number) => `At most ${n} (one day).`,
+    pxRange: (a: number, b: number) => `A whole number from ${a} to ${b} is required.`,
+    fontName: 'No ; { } < > characters.',
   },
 } as const;
 
@@ -251,6 +282,14 @@ export function validateSetting(key: SettingKey, value: unknown, lang: ErrLang =
     case 'defaultModel':
     case 'claudeExecutable':
       return typeof value === 'string' ? { ok: true, value: value.trim() } : bad(t.string);
+    case 'font.interface':
+    case 'font.code':
+      if (typeof value !== 'string') return bad(t.string);
+      return /[;{}<>]/.test(value) ? bad(t.fontName) : { ok: true, value: value.trim() };
+    case 'feed.fontSize':
+      return isFeedFontSize(value)
+        ? { ok: true, value }
+        : bad(t.pxRange(MIN_FEED_FONT_SIZE, MAX_FEED_FONT_SIZE));
     case 'usagePollMinutes':
       if (typeof value !== 'number' || !Number.isFinite(value) || !Number.isInteger(value)) {
         return bad(t.wholeMinutes);
@@ -290,6 +329,7 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
   const top = cfg.get<unknown>('sidebar.top');
   const feed = cfg.get<unknown>('feed.style');
   const lang = cfg.get<unknown>('language');
+  const fz = cfg.get<unknown>('feed.fontSize');
   const str = (k: string) => {
     const v = cfg.get<unknown>(k);
     return typeof v === 'string' ? v : '';
@@ -312,6 +352,9 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
     'sessionList.time': cfg.get<unknown>('sessionList.time') !== false,
     'sidebar.top': isSidebarTopMode(top) ? top : DEFAULT_SIDEBAR_TOP,
     'feed.style': isFeedStyle(feed) ? feed : DEFAULT_FEED_STYLE,
+    'feed.fontSize': isFeedFontSize(fz) ? fz : DEFAULT_FEED_FONT_SIZE,
+    'font.interface': str('font.interface'),
+    'font.code': str('font.code'),
     language: isLanguageMode(lang) ? lang : DEFAULT_LANGUAGE,
   };
 }
