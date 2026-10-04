@@ -59,6 +59,7 @@ export function renderWebview(
       uri('media', 'agents.css'),
       uri('media', 'agents-map.css'),
       uri('media', 'changes.css'),
+      uri('media', 'git.css'),
       uri('media', 'feed.css'),
       uri('media', 'attach.css'),
       uri('media', 'webview.css'),

@@ -93,16 +93,16 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('вкладки панели', () => {
-  it('изменения | агенты с бейджами; активна «изменения», вторая секция скрыта, стрелки переключают', async () => {
+  it('изменения | git | агенты с бейджами; активна «изменения», вторая секция скрыта, стрелки переключают', async () => {
     const host = mount();
     await session();
     await flush();
     const t = tabs(host);
-    expect(t.map((x) => x.id)).toEqual(['ptab-changes', 'ptab-agents']);
-    expect(t.map((x) => x.getAttribute('aria-selected'))).toEqual(['true', 'false']);
-    expect(t.map((x) => x.tabIndex)).toEqual([0, -1]);
+    expect(t.map((x) => x.id)).toEqual(['ptab-changes', 'ptab-git', 'ptab-agents']);
+    expect(t.map((x) => x.getAttribute('aria-selected'))).toEqual(['true', 'false', 'false']);
+    expect(t.map((x) => x.tabIndex)).toEqual([0, -1, -1]);
     expect(q(host, '.ptabs').getAttribute('role')).toBe('tablist');
-    const badge = t[1]!.querySelector('.b');
+    const badge = t[2]!.querySelector('.b');
     expect([badge?.textContent, badge?.className]).toEqual(['3 / 3', 'b live']);
     expect(q(host, '.pane.side').getAttribute('data-active')).toBe('changes');
     expect(q(host, '#pane-changes').hidden).toBe(false);
@@ -111,22 +111,30 @@ describe('вкладки панели', () => {
 
     key(t[0]!, 'ArrowRight');
     await flush();
-    expect(tabs(host).map((x) => x.getAttribute('aria-selected'))).toEqual(['false', 'true']);
+    expect(q(host, '.pane.side').getAttribute('data-active')).toBe('git');
+    expect(q(host, '#pane-git').hidden).toBe(false);
+    key(tabs(host)[1]!, 'ArrowRight');
+    await flush();
+    expect(tabs(host).map((x) => x.getAttribute('aria-selected'))).toEqual([
+      'false',
+      'false',
+      'true',
+    ]);
     expect(q(host, '.pane.side').getAttribute('data-active')).toBe('agents');
     expect(q(host, '#pane-changes').hidden).toBe(true);
     expect(q(host, '#pane-agents').hidden).toBe(false);
     expect((stored as { panel: { tab: string } }).panel.tab).toBe('agents');
 
-    key(tabs(host)[1]!, 'ArrowLeft');
+    key(tabs(host)[2]!, 'ArrowLeft');
     await flush();
-    expect(q(host, '.pane.side').getAttribute('data-active')).toBe('changes');
+    expect(q(host, '.pane.side').getAttribute('data-active')).toBe('git');
   });
 
   it('в пустой сессии вкладки панели disabled, активна «изменения»', async () => {
     stored = { panel: { tab: 'agents' } };
     const host = mount();
     await flush();
-    expect(tabs(host).map((x) => (x as HTMLButtonElement).disabled)).toEqual([true, true]);
+    expect(tabs(host).map((x) => (x as HTMLButtonElement).disabled)).toEqual([true, true, true]);
     expect(q(host, '.pane.side').getAttribute('data-active')).toBe('changes');
   });
 
@@ -159,13 +167,13 @@ describe('скрыть и полоса', () => {
     expect(stored).toMatchObject({ panel: { off: true } });
     const rail = q(host, 'nav.rail');
     const btns = [...rail.querySelectorAll('button')];
-    expect(btns).toHaveLength(3);
+    expect(btns).toHaveLength(4);
     // у агентов в полосе только число идущих, без « / »
-    expect(btns[1]!.querySelector('.b')?.textContent).toBe('3');
-    expect(btns[1]!.querySelector('.b')?.className).toBe('b live');
-    expect(btns[2]!.classList.contains('show')).toBe(true);
+    expect(btns[2]!.querySelector('.b')?.textContent).toBe('3');
+    expect(btns[2]!.querySelector('.b')?.className).toBe('b live');
+    expect(btns[3]!.classList.contains('show')).toBe(true);
 
-    btns[1]!.click();
+    btns[2]!.click();
     await flush();
     expect(body(host).hasAttribute('data-side')).toBe(false);
     expect(q(host, '.pane.side').getAttribute('data-active')).toBe('agents');
@@ -262,9 +270,7 @@ describe('ресайз', () => {
     await flush();
     expect(sideW(host)).toBe('600px');
     expect(q(host, '.grip').getAttribute('aria-valuemax')).toBe(`${BODY_W - 360}`);
-    vi.mocked(Element.prototype.getBoundingClientRect).mockImplementation(function (
-      this: Element,
-    ) {
+    vi.mocked(Element.prototype.getBoundingClientRect).mockImplementation(function (this: Element) {
       if (this.classList.contains('body'))
         return { left: 0, right: 800, width: 800, top: 0, bottom: 600, height: 600 } as DOMRect;
       return realRect.call(this);
@@ -339,6 +345,21 @@ describe('состояние webview', () => {
     expect(body(host).hasAttribute('data-side')).toBe(false);
     expect(q(host, '.pane.side').getAttribute('data-active')).toBe('changes');
     expect(q(host, '#pane-changes').hidden).toBe(false);
+  });
+
+  it('git: tab, gitTree, gitRepo, gitAgent читаются, кривые отбрасываются; savePanel не трогает остальное', () => {
+    stored = { panel: { tab: 'git', gitTree: true, gitRepo: '/w/a', gitAgent: false } };
+    expect(vscode.readPanel()).toEqual({
+      tab: 'git',
+      gitTree: true,
+      gitRepo: '/w/a',
+      gitAgent: false,
+    });
+    stored = { panel: { gitTree: 'yes', gitRepo: 5, gitAgent: 1 } };
+    expect(vscode.readPanel()).toEqual({});
+    stored = { sessionId: 's1', panel: { w: 420 } };
+    vscode.savePanel({ gitTree: true });
+    expect(stored).toEqual({ sessionId: 's1', panel: { w: 420, gitTree: true } });
   });
 
   it('agScope: валидные охваты читаются, кривые поля и виды отбрасываются', () => {
@@ -467,6 +488,7 @@ describe('узкий режим', () => {
     expect([...host.querySelectorAll('.tabs [role="tab"]')].map((x) => x.id)).toEqual([
       'tab-chat',
       'tab-changes',
+      'tab-git',
       'tab-agents',
     ]);
     const changes = host.querySelectorAll<HTMLElement>('.tabs [role="tab"]')[1]!;

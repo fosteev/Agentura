@@ -19,6 +19,7 @@ import {
   respondPermission,
   selectedAgent,
   feedStyle,
+  gitSnapshot,
   agentsView,
   showThinking,
   stopAgent,
@@ -39,6 +40,8 @@ import { TabBar, type TabItem } from './TabBar';
 import { Log } from './Log';
 import { useStickToBottom } from '../useStickToBottom';
 import { AgentsPane, ChangesPane, type AgentsPaneModel } from './SidePanes';
+import { GitPane } from './GitPane';
+import { agentPathSet, gitBadge } from '../gitView';
 import { agentsViewPane, defaultScope } from '../agentViews';
 import type { FeedRow } from '../chatState';
 import { formatDuration, toolView } from '../toolView';
@@ -97,6 +100,21 @@ const ICON_CHANGES = (
     aria-hidden="true"
   >
     <path d="M8 2v6M5 5h6M5 12h6" />
+  </svg>
+);
+const ICON_GIT = (
+  <svg
+    class="ico"
+    viewBox="0 0 16 16"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="1.2"
+    aria-hidden="true"
+  >
+    <circle cx="4.5" cy="3.5" r="1.6" />
+    <circle cx="4.5" cy="12.5" r="1.6" />
+    <circle cx="11.5" cy="5.5" r="1.6" />
+    <path d="M4.5 5.1v5.8M11.5 7.1c0 2.4-2 3-7 3.8" />
   </svg>
 );
 const ICON_AGENTS = (
@@ -246,6 +264,14 @@ export function Chat() {
 
   const changes = changesView(s.rows, { scope: panel.changes ?? 'session', now, cwd: s.cwd });
   const changesBdg = changes.badge;
+  // вкладка «git»: метка агента — файл есть среди правок ленты за всю сессию (охват вкладки «изменения» не важен)
+  const sessionChanges =
+    changes.scope === 'session'
+      ? changes
+      : changesView(s.rows, { scope: 'session', now, cwd: s.cwd });
+  const agentPaths = agentPathSet(sessionChanges.dirs);
+  const gitSnap = gitSnapshot.value;
+  const gitBdg = gitBadge(gitSnap);
   const agentsBdg = agentBadge(h);
   // основной ждёт своих субагентов: живая строка «ждёт N агентов» и «stop all»
   const awaited = working && s.status !== 'waiting' ? waitingAgents(s.rows, h) : [];
@@ -291,12 +317,18 @@ export function Chat() {
   };
   // вкладки панели: в пустой сессии недоступны, активна «изменения»
   const panelTab = empty ? 'changes' : (panel.tab ?? 'changes');
-  const panelItems: readonly TabItem<'changes' | 'agents'>[] = [
+  const panelItems: readonly TabItem<'changes' | 'git' | 'agents'>[] = [
     {
       key: 'changes',
       label: ui.tabs.changes,
       disabled: empty,
       ...(changesBdg ? { badge: { text: String(changesBdg.count), live: changesBdg.live } } : {}),
+    },
+    {
+      key: 'git',
+      label: ui.tabs.git,
+      disabled: empty,
+      ...(gitBdg ? { badge: { text: String(gitBdg.count), live: false } } : {}),
     },
     {
       key: 'agents',
@@ -305,6 +337,10 @@ export function Chat() {
       ...(agentsBdg ? { badge: agentsBdg } : {}),
     },
   ];
+
+  // вкладка «git» видна: широкая — активна и панель не свёрнута, узкая — открыта вкладка шапки
+  const gitShown = wide.value ? panelTab === 'git' && !panelOff : t === 'git';
+  useGitWatch(gitShown);
 
   return (
     <div class="webview" data-feed={feedStyle.value} data-agents={agentsView.value}>
@@ -319,6 +355,7 @@ export function Chat() {
             ? {}
             : {
                 ...(changesBdg ? { changes: changesBdg } : {}),
+                ...(gitBdg ? { git: gitBdg } : {}),
                 ...(agentsBdg ? { agents: agentsBdg } : {}),
               }
         }
@@ -515,6 +552,18 @@ export function Chat() {
               send({ type: 'diff.changes', sessionId: s.sessionId, toolUseIds })
             }
           />
+          <GitPane
+            snapshot={gitSnap}
+            agentPaths={agentPaths}
+            cwd={s.cwd}
+            tree={!!panel.gitTree}
+            agentOnly={!!panel.gitAgent}
+            now={now}
+            hidden={!gitShown}
+            labelledBy={wide.value ? 'ptab-git' : 'tab-git'}
+            onTree={(on) => updatePanel({ gitTree: on })}
+            onAgentOnly={(on) => updatePanel({ gitAgent: on })}
+          />
           <AgentsPane
             model={agentsModel(wide.value ? panelTab !== 'agents' : t !== 'agents')}
             now={now}
@@ -541,6 +590,15 @@ export function Chat() {
             {changesBdg && <span class={changesBdg.live ? 'b live' : 'b'}>{changesBdg.count}</span>}
           </button>
           <button
+            data-tip={ui.tabs.git}
+            aria-label={ui.panel.openTab(ui.tabs.git)}
+            disabled={empty}
+            onClick={() => updatePanel({ tab: 'git', off: false })}
+          >
+            {ICON_GIT}
+            {gitBdg && <span class="b">{gitBdg.count}</span>}
+          </button>
+          <button
             data-tip={ui.tabs.agents}
             aria-label={ui.panel.openTab(ui.tabs.agents)}
             disabled={empty}
@@ -564,6 +622,25 @@ export function Chat() {
       <Composer />
     </div>
   );
+}
+
+/**
+ * `git.watch` хосту, пока вкладка «git» видна: только тогда он считает +/− и читает лог. Скрытая панель
+ * webview (вкладка редактора ушла в фон) — тоже «не видна».
+ */
+function useGitWatch(shown: boolean): void {
+  const [docVisible, setDocVisible] = useState(document.visibilityState !== 'hidden');
+  useEffect(() => {
+    const onVis = () => setDocVisible(document.visibilityState !== 'hidden');
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, []);
+  const on = shown && docVisible;
+  useEffect(() => {
+    if (!on) return;
+    send({ type: 'git.watch', on: true });
+    return () => send({ type: 'git.watch', on: false });
+  }, [on]);
 }
 
 /** Фокус там, где печатают или жмут кнопку: Enter и цифры принадлежат им, а не карточке. */

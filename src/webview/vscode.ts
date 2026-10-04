@@ -23,7 +23,13 @@ export interface PanelState {
   /** Свёрнута в полосу. */
   off?: boolean;
   /** Активная вкладка панели. */
-  tab?: 'changes' | 'agents';
+  tab?: 'changes' | 'git' | 'agents';
+  /** Вкладка «git»: файлы деревом (иначе списком путей). */
+  gitTree?: boolean;
+  /** Вкладка «git»: выбранный репозиторий (`root`) в раскладке «выбор сверху». */
+  gitRepo?: string;
+  /** Вкладка «git»: показывать только файлы, которые правил агент. */
+  gitAgent?: boolean;
   /** Охват вкладки «изменения»: вся сессия или последний ход. */
   changes?: 'session' | 'turn';
   /** Охват вкладки «агенты» по видам (список охвата не имеет): последний ход или вся сессия. */
@@ -102,7 +108,11 @@ export function readPanel(): PanelState {
   if (typeof p.off === 'boolean') out.off = p.off;
   // вкладка «ход» стала «изменениями»: сохранённое 'turn' открывает её
   if (p.tab === 'turn' || p.tab === 'changes') out.tab = 'changes';
+  else if (p.tab === 'git') out.tab = 'git';
   else if (p.tab === 'agents') out.tab = 'agents';
+  if (typeof p.gitTree === 'boolean') out.gitTree = p.gitTree;
+  if (typeof p.gitRepo === 'string' && p.gitRepo) out.gitRepo = p.gitRepo;
+  if (typeof p.gitAgent === 'boolean') out.gitAgent = p.gitAgent;
   if (p.changes === 'session' || p.changes === 'turn') out.changes = p.changes;
   const sc = p.agScope as Record<string, unknown> | undefined;
   if (sc && typeof sc === 'object') {
@@ -153,7 +163,10 @@ export function readGraphState(): { sessionId?: string; graph: GraphViewState } 
     if (typeof g.turn === 'number' && Number.isFinite(g.turn)) graph.turn = g.turn;
     if (typeof g.selected === 'string' && g.selected) graph.selected = g.selected;
   }
-  return { ...(typeof st.sessionId === 'string' && st.sessionId ? { sessionId: st.sessionId } : {}), graph };
+  return {
+    ...(typeof st.sessionId === 'string' && st.sessionId ? { sessionId: st.sessionId } : {}),
+    graph,
+  };
 }
 
 /**

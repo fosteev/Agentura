@@ -62,6 +62,7 @@ import {
   type QuestionCard,
 } from './chatState';
 import type { AgentsView, FeedStyle } from '../settings';
+import type { GitOp, GitSnapshot } from '../shared/git';
 import { pushHistory } from './composer';
 import { applyHud, contextMax, initialHud, resetHud, type HudState } from './hudState';
 import { cacheView, contextFullAt, contextView, kilo, limitsView } from './hudView';
@@ -115,6 +116,45 @@ export const feedStyle = signal<FeedStyle>('journal');
 /** Вид вкладки «агенты» (`agentura.agents.view`, `chat.info`): `data-agents` на корне чата. */
 export const agentsView = signal<AgentsView>('list');
 export const history = signal<string[]>([]);
+
+/** Вкладка «git» (roadmap 12): последний снимок хоста; `undefined` — хост ещё не прислал («git загружается…»). */
+export const gitSnapshot = signal<GitSnapshot | undefined>(undefined);
+/** Отказ действия вкладки «git»: строка над полем коммита репозитория `root` (без `root` — над первым). */
+export const gitErrors = signal<Readonly<Record<string, GitErrorView>>>({});
+/** Черновики коммита по корню репозитория: переживают скрытие вкладки, но не окно. */
+export const gitDrafts = signal<Readonly<Record<string, GitDraft>>>({});
+
+export interface GitErrorView {
+  op: GitOp;
+  message: string;
+}
+
+export interface GitDraft {
+  summary: string;
+  desc: string;
+  amend: boolean;
+  push: boolean;
+}
+
+export const EMPTY_DRAFT: GitDraft = { summary: '', desc: '', amend: false, push: false };
+
+/** Ключ ошибки без репозитория. */
+export const GIT_ANY = '';
+
+export function setGitDraft(root: string, patch: Partial<GitDraft>): void {
+  gitDrafts.value = {
+    ...gitDrafts.value,
+    [root]: { ...EMPTY_DRAFT, ...gitDrafts.value[root], ...patch },
+  };
+}
+
+export function clearGitError(root: string): void {
+  if (!(root in gitErrors.value) && !(GIT_ANY in gitErrors.value)) return;
+  const rest = { ...gitErrors.value };
+  delete rest[root];
+  delete rest[GIT_ANY];
+  gitErrors.value = rest;
+}
 export const fileHits = signal<{ requestId: number; items: FileHit[] }>({
   requestId: 0,
   items: [],
@@ -281,6 +321,33 @@ export function handleHostMessage(m: ToWebview): void {
       hudState.value = resetHud(hudState.value);
       selectedAgent.value = undefined;
       extra.value = [];
+      break;
+    case 'git.state': {
+      gitSnapshot.value = m.snapshot;
+      // репозиторий исчез — его черновик и ошибка больше не нужны
+      const roots = new Set(m.snapshot.repos.map((r) => r.root));
+      const drafts = Object.keys(gitDrafts.value).filter((r) => !roots.has(r));
+      if (drafts.length) {
+        gitDrafts.value = Object.fromEntries(
+          Object.entries(gitDrafts.value).filter(([r]) => roots.has(r)),
+        );
+      }
+      break;
+    }
+    case 'git.error':
+      gitErrors.value = {
+        ...gitErrors.value,
+        [m.root ?? GIT_ANY]: { op: m.op, message: m.message },
+      };
+      break;
+    case 'git.commit.result':
+      // удачный коммит: черновик репозитория сброшен (push остаётся — выбор пользователя), ошибка снята
+      for (const r of m.results) {
+        if (!r.ok) continue;
+        const d = gitDrafts.value[r.root];
+        if (d) setGitDraft(r.root, { summary: '', desc: '', amend: false });
+        clearGitError(r.root);
+      }
       break;
     default:
       break;

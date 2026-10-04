@@ -1,0 +1,200 @@
+/* Вкладка «git» правой панели: рабочее дерево по git — индекс, коммит, синхронизация (roadmap 12).
+   Перенос prototype/shared/git.css; разметку собирает GitPane.tsx. Цвета статусов — gitDecoration темы VS Code. */
+:root {
+  --g-mod: var(--vscode-gitDecoration-modifiedResourceForeground, #e2c08d);
+  --g-unt: var(--vscode-gitDecoration-untrackedResourceForeground, #73c991);
+  --g-add: var(--vscode-gitDecoration-addedResourceForeground, #81b88b);
+  --g-del: var(--vscode-gitDecoration-deletedResourceForeground, #c74e39);
+  --g-cfl: var(--vscode-gitDecoration-conflictingResourceForeground, #e4676b);
+}
+:root[data-theme="light"] {
+  --g-mod: var(--vscode-gitDecoration-modifiedResourceForeground, #895503);
+  --g-unt: var(--vscode-gitDecoration-untrackedResourceForeground, #007100);
+  --g-add: var(--vscode-gitDecoration-addedResourceForeground, #587c0c);
+  --g-del: var(--vscode-gitDecoration-deletedResourceForeground, #ad0707);
+  --g-cfl: var(--vscode-gitDecoration-conflictingResourceForeground, #ad0707);
+}
+
+html:is([data-width="900"],[data-width="full"],[data-width="vscode"]) .pane.side[data-active="git"] #pane-git:not([hidden]) { display: flex !important; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
+.gt:not([hidden]) { display: flex; flex-direction: column; min-height: 0; }
+
+.gt { font-size: 11.5px; }
+.gt .ico { width: 14px; height: 14px; flex: none; }
+.gt .mono { font-family: var(--mono); font-size: 10.5px; }
+.gt .add { color: var(--add); } .gt .del { color: var(--del); }
+.gt .scroll { flex: 1; min-height: 0; overflow: auto; padding-bottom: 6px; }
+.gt .ib { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 3px; color: var(--fg-mute); }
+.gt .ib:hover, .gt .ib.on { background: var(--bg-hover); color: var(--fg); }
+
+/* репозиторий: ветка и синхронизация */
+.gt .gh { display: flex; align-items: center; gap: 6px; padding: 8px 8px 6px 12px; border-bottom: 1px solid var(--line); }
+.gt .gh .rp { color: var(--fg-mute); }
+.gt .br { display: inline-flex; align-items: center; gap: 4px; max-width: 170px; padding: 1px 6px 1px 4px; border: 1px solid var(--line-strong); border-radius: 3px; color: var(--fg); font-family: var(--mono); font-size: 10.5px; white-space: nowrap; overflow: hidden; }
+.gt .br span { overflow: hidden; text-overflow: ellipsis; }
+.gt .br .car { color: var(--fg-faint); }
+.gt .sync { margin-left: auto; display: inline-flex; gap: 6px; font-family: var(--mono); font-size: 10.5px; color: var(--fg-mute); }
+.gt .sync b { font-weight: 400; color: var(--fg); }
+.gt .sync .pend { color: var(--info); }
+.gt .unpub { white-space: nowrap; font-size: 10px; color: var(--fg-mute); border: 1px dashed var(--line-strong); border-radius: 2px; padding: 0 4px; }
+
+/* строка над списками: итог, фильтр «агент», путь / дерево */
+.gt .bar { display: flex; align-items: center; gap: 8px; padding: 6px 8px 4px 12px; color: var(--fg-mute); }
+.gt .bar b { font-weight: 400; color: var(--fg); }
+.gt .seg { display: inline-flex; margin-left: auto; border: 1px solid var(--line-strong); border-radius: 3px; overflow: hidden; }
+.gt .seg button { padding: 1px 7px; font-size: 10.5px; color: var(--fg-mute); }
+.gt .seg button + button { border-left: 1px solid var(--line-strong); }
+.gt .seg button[aria-pressed="true"] { background: var(--bg-input); color: var(--fg); }
+.gt .flt { display: inline-flex; align-items: center; gap: 4px; padding: 0 6px; border: 1px solid var(--line-strong); border-radius: 9px; font-size: 10.5px; color: var(--fg-mute); }
+.gt .flt i, .gt .adot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--agent); }
+
+/* секции «неиндексированные» / «в индексе» */
+.gt .sh { display: flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px 0 6px; font-size: 10.5px; font-weight: 600; color: var(--fg-mute); text-transform: uppercase; letter-spacing: .04em; }
+.gt .sh .chev { width: 14px; text-align: center; color: var(--fg-faint); font-weight: 400; }
+.gt .sh .n { font-weight: 400; color: var(--fg-faint); }
+.gt .sh .all { margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 400; font-size: 10.5px; padding: 1px 7px; border-radius: 3px; border: 1px solid var(--line-strong); color: var(--fg); }
+.gt .sh .all.pri { border-color: transparent; background: var(--btn); color: var(--btn-fg); }
+.gt .empty { padding: 2px 12px 8px 26px; color: var(--fg-faint); font-size: 11px; }
+.gt .empty.big { padding: 16px 14px; line-height: 1.5; }
+.gt .empty.big b { display: block; font-weight: 600; color: var(--fg); margin-bottom: 4px; }
+
+/* файл: имя (цвет — статус git), папка, метка агента, +/−, буква статуса; на наведении — действия */
+.gt .f { display: grid; grid-template-columns: minmax(0, 1fr) auto auto 12px; gap: 8px; align-items: center; height: 22px; padding: 0 10px 0 26px; cursor: pointer; }
+.gt .f:hover, .gt .f:focus-within { background: var(--bg-hover); }
+.gt .f.sel { background: var(--sel); }
+.gt .f .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gt .f .nm .d { margin-left: 6px; color: var(--fg-faint); font-size: 10.5px; }
+.gt .f .adot { justify-self: center; }
+.gt .f .st { font-family: var(--mono); font-size: 10.5px; text-align: center; }
+.gt .f .acts { display: none; gap: 0; }
+.gt .f:hover .acts, .gt .f:focus-within .acts { display: inline-flex; }
+.gt .f:hover .ch, .gt .f:focus-within .ch { display: none; }
+.gt .f:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.gt .f .acts .ib { width: 20px; height: 20px; }
+.gt .s-M { color: var(--g-mod); } .gt .s-U { color: var(--g-unt); } .gt .s-A { color: var(--g-add); } .gt .s-D { color: var(--g-del); } .gt .s-C { color: var(--g-cfl); }
+.gt .f.s-D .nm b { text-decoration: line-through; }
+.gt .f .nm b { font-weight: 400; }
+.gt .dr { display: flex; align-items: center; gap: 4px; height: 20px; padding: 0 10px 0 calc(12px + var(--lv, 0) * 12px); color: var(--fg-mute); font-size: 11px; }
+.gt .dr .chev { width: 12px; color: var(--fg-faint); }
+.gt .f.tr { padding-left: calc(26px + var(--lv, 0) * 12px); }
+
+/* коммит */
+.gt .cm { flex: none; border-top: 1px solid var(--line); padding: 8px 10px 10px; background: var(--bg-side); }
+.gt .cm .box { border: 1px solid var(--line-strong); border-radius: 3px; background: var(--bg-input); }
+.gt .cm .box.focus { border-color: var(--accent); }
+.gt .cm .sum { display: flex; align-items: center; gap: 6px; padding: 5px 4px 3px 8px; color: var(--fg); }
+.gt .cm .sum .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gt .cm .sum .t.ph { color: var(--fg-faint); }
+.gt .cm .sum .n { font-family: var(--mono); font-size: 10px; color: var(--fg-faint); }
+.gt .cm .sum .gen { color: var(--agent); }
+.gt .cm .desc { padding: 2px 8px 6px; color: var(--fg-mute); font-size: 11px; line-height: 1.45; border-top: 1px dashed var(--line); }
+.gt .cm .desc.ph { color: var(--fg-faint); }
+.gt .cm .opt { display: flex; align-items: center; gap: 12px; padding: 6px 2px; font-size: 11px; color: var(--fg-mute); }
+.gt .cm .opt label { display: inline-flex; align-items: center; gap: 5px; }
+.gt .cm .opt .cb { width: 11px; height: 11px; border: 1px solid var(--line-strong); border-radius: 2px; background: var(--bg-input); display: inline-grid; place-items: center; font-size: 9px; line-height: 1; color: var(--fg); }
+.gt .cm .opt .cb.on { background: var(--btn); border-color: var(--btn); color: var(--btn-fg); }
+.gt .cm .opt .r { margin-left: auto; }
+.gt .cm .go { display: flex; }
+.gt .cm .go button { padding: 5px 10px; background: var(--btn); color: var(--btn-fg); font-size: 11.5px; }
+.gt .cm .go .main { flex: 1; border-radius: 3px 0 0 3px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gt .cm .go .main small { opacity: .8; font-size: 10.5px; }
+.gt .cm .go .more { border-radius: 0 3px 3px 0; border-left: 1px solid color-mix(in srgb, var(--btn-fg) 30%, transparent); padding: 5px 7px; }
+.gt .cm .go.off button { background: var(--btn-2); color: var(--fg-faint); }
+.gt .cm .tg { display: flex; flex-wrap: wrap; gap: 4px 6px; padding: 2px 2px 8px; font-size: 11px; color: var(--fg-mute); }
+.gt .cm .tg .to { display: inline-flex; align-items: center; gap: 5px; padding: 1px 6px 1px 4px; border: 1px solid var(--line-strong); border-radius: 3px; color: var(--fg); }
+.gt .cm .tg .to.off { color: var(--fg-faint); border-style: dashed; }
+.gt .cm .tg .to .mono { color: var(--fg-mute); }
+
+/* компактный коммит внутри репозитория (вариант А) */
+.gt .cml { display: flex; gap: 6px; padding: 4px 10px 8px 26px; }
+.gt .cml .in { flex: 1; min-width: 0; padding: 3px 7px; border: 1px solid var(--line-strong); border-radius: 3px; background: var(--bg-input); color: var(--fg-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gt .cml button { padding: 3px 9px; border-radius: 3px; background: var(--btn-2); color: var(--btn-2-fg); font-size: 11px; }
+
+/* история */
+.gt .hs { padding: 0 10px 0 12px; }
+.gt .hs .c { display: grid; grid-template-columns: 12px 52px minmax(0, 1fr) auto; gap: 6px; align-items: center; height: 21px; color: var(--fg); }
+.gt .hs .c .dot { width: 7px; height: 7px; border-radius: 50%; border: 1.5px solid var(--fg-mute); justify-self: center; }
+.gt .hs .c.up .dot { border-color: var(--info); background: var(--info); }
+.gt .hs .c .h { font-family: var(--mono); font-size: 10px; color: var(--fg-faint); }
+.gt .hs .c .m { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gt .hs .c .w { font-size: 10px; color: var(--fg-faint); white-space: nowrap; }
+.gt .hs .c.up .w { color: var(--info); }
+
+/* несколько репозиториев: шапка рабочей папки */
+.gt .ws { display: flex; align-items: center; gap: 6px; padding: 8px 8px 7px 12px; border-bottom: 1px solid var(--line); color: var(--fg-mute); }
+.gt .ws b { font-weight: 400; color: var(--fg); }
+.gt .ws .r { margin-left: auto; display: inline-flex; gap: 2px; }
+
+/* А · стопка репозиториев */
+.gt .rh { display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px 0 6px; border-top: 1px solid var(--line); background: color-mix(in srgb, var(--bg-hover) 45%, transparent); }
+.gt .rh:first-child { border-top: 0; }
+.gt .rh .chev { width: 14px; text-align: center; color: var(--fg-faint); }
+.gt .rh .nm { color: var(--fg); font-weight: 600; white-space: nowrap; }
+.gt .rh .br { max-width: 130px; }
+.gt .rh .n { min-width: 16px; padding: 0 4px; border-radius: 8px; background: var(--badge); color: var(--badge-fg); font-size: 10px; text-align: center; }
+.gt .rh .clean { color: var(--fg-faint); font-size: 10.5px; }
+.gt .rh .sync { margin-left: auto; }
+.gt .rh.dim .nm { color: var(--fg-mute); font-weight: 400; }
+.gt .rh .acts { display: inline-flex; }
+
+/* Б · список репозиториев сверху */
+.gt .pick { padding: 4px 0; border-bottom: 1px solid var(--line); }
+.gt .pick .p { display: grid; grid-template-columns: 14px minmax(0, auto) minmax(0, 1fr) auto auto; gap: 6px; align-items: center; height: 26px; padding: 0 10px 0 8px; cursor: pointer; }
+.gt .pick .p:hover { background: var(--bg-hover); }
+.gt .pick .p.on { background: var(--sel); }
+.gt .pick .p .rd { width: 9px; height: 9px; border-radius: 50%; border: 1px solid var(--fg-mute); justify-self: center; }
+.gt .pick .p.on .rd { border-color: var(--fg); background: radial-gradient(var(--fg) 0 2.5px, transparent 3px); }
+.gt .pick .p .nm { color: var(--fg); }
+.gt .pick .p .br { justify-self: start; max-width: 140px; }
+.gt .pick .p .sync { margin-left: 0; }
+.gt .pick .p .n { min-width: 16px; padding: 0 4px; border-radius: 8px; background: var(--badge); color: var(--badge-fg); font-size: 10px; text-align: center; }
+.gt .pick .p .n.z { background: none; color: var(--fg-faint); }
+
+/* В · общий список: подзаголовок репозитория внутри секции */
+.gt .rg { display: flex; align-items: center; gap: 6px; height: 22px; padding: 0 10px 0 14px; color: var(--fg-mute); font-size: 11px; }
+.gt .rg .nm { color: var(--fg); }
+.gt .rg .br { border: 0; padding: 0; color: var(--fg-mute); }
+.gt h6 { display: flex; align-items: center; gap: 8px; margin: 0; padding: 10px 12px 4px; font-size: 10.5px; font-weight: 600; color: var(--fg-faint); }
+.gt h6::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+
+/* ---- поправки под живую разметку (кнопки и поля вместо макетных span) ---- */
+.gt .gh .rn { font-weight: 600; }
+.gt .gh .sync { margin-left: auto; }
+.gt .gh .op, .gt .rh .op { font-size: 10px; color: var(--warn); border: 1px solid currentColor; border-radius: 2px; padding: 0 4px; white-space: nowrap; }
+.gt .sb { display: inline-flex; }
+.gt button.br { cursor: pointer; }
+.gt button.br:hover:not(:disabled) { background: var(--bg-hover); }
+.gt button:disabled { cursor: default; opacity: .5; }
+.gt .ib:disabled { opacity: .4; }
+.gt .flt { cursor: pointer; }
+.gt .flt[aria-pressed="true"] { border-color: var(--agent); color: var(--fg); background: color-mix(in srgb, var(--agent) 14%, transparent); }
+.gt .seg button { cursor: pointer; }
+.gt .sh .chev, .gt .rh .chev { padding: 0; cursor: pointer; color: var(--fg-faint); font-weight: 400; }
+.gt .sh .tt { white-space: nowrap; }
+.gt .sh .all { cursor: pointer; }
+.gt .sh .all:disabled { cursor: default; }
+.gt button:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+.gt .f .nm b { font-weight: 400; }
+.gt .f .ch { text-align: right; white-space: nowrap; }
+
+/* поле коммита: настоящие input / textarea в рамке прототипа */
+.gt .cm { position: relative; }
+.gt .cm .sum input.t { flex: 1; min-width: 0; padding: 0; border: 0; outline: 0; background: none; color: var(--fg); font: inherit; }
+.gt .cm .sum input.t::placeholder, .gt .cm textarea.desc::placeholder { color: var(--fg-faint); }
+.gt .cm .sum .n.over { color: var(--warn); }
+.gt .cm .sum .gen { cursor: default; }
+.gt .cm textarea.desc { display: block; width: 100%; box-sizing: border-box; resize: vertical; min-height: 34px; border: 0; border-top: 1px dashed var(--line); outline: 0; background: none; font: inherit; font-size: 11px; line-height: 1.45; }
+.gt .cm .opt input[type="checkbox"] { width: 11px; height: 11px; margin: 0; accent-color: var(--btn); }
+.gt .cm .go { position: relative; }
+.gt .cm .go.off .more:not(:disabled) { background: var(--btn); color: var(--btn-fg); }
+.gt .cm .go .main:disabled { opacity: 1; }
+.gt .cm .go .menu { left: auto; right: 0; min-width: 190px; }
+.gt .cm .go .menu .it:disabled { color: var(--fg-faint); }
+.gt .cm .err { display: flex; align-items: flex-start; gap: 6px; margin: 0 0 8px; padding: 4px 6px 4px 8px; border: 1px solid var(--warn); border-radius: 3px; color: var(--fg); font-size: 11px; line-height: 1.4; }
+.gt .cm .err span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.gt .cm .err .ib { width: 18px; height: 18px; flex: none; }
+
+/* несколько репозиториев подряд (стопка; раскладки — этап 3) */
+.gt .rb .cm { border-top: 0; padding: 4px 10px 10px 26px; background: none; }
+.gt .rh { cursor: default; }
+.gt .rh .sync { margin-left: auto; }
+.gt .rh .sb { margin-left: 2px; }
