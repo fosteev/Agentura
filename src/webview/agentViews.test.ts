@@ -11,7 +11,10 @@ import {
   estTokens,
   laneView,
   pickSelected,
+  agentGraphView,
+  hudOfGraph,
 } from './agentViews';
+import { GRAPH_SEGS, isAgentGraphView } from '../shared/agentsGraph';
 import { initialHud, type AgentNode, type HudState, type TimelineSeg } from './hudState';
 
 const T0 = 1_000_000;
@@ -432,5 +435,67 @@ describe('agentOpen / agentsViewPane', () => {
     const lanes = agentsViewPane(h, 'lanes', 'turn', opts);
     expect(lanes.laneOf(0)!.lanes).toHaveLength(3);
     expect(lanes.laneOf(5)).toBeUndefined();
+  });
+});
+
+describe('agentGraphView / hudOfGraph (снимок для графа, этап 2)', () => {
+  const many = Array.from({ length: 30 }, (_, i) => seg(`s${i}`, T0 + 6_000 + i * 100, T0 + 6_050 + i * 100));
+  const big = 'x'.repeat(10_000);
+  const agents = [
+    agent('a', { turnNo: 12, prompt: 'найди', summary: 'нашёл', model: 'claude-sonnet-5-5' }),
+    agent('b', {
+      status: 'running',
+      endedAt: undefined,
+      durationMs: undefined,
+      segs: [
+        ...many,
+        seg('w', T0 + 9_000, undefined, {
+          name: 'Write',
+          input: { file_path: '/repo/big.ts', content: big, edits: [{ old: 'a' }] },
+        }),
+      ],
+      calls: 31,
+    }),
+    agent('c', { parentAgentId: 'b' }),
+    shell('s'),
+  ];
+  const h = hud(agents, { context: { used: 136_080, max: 200_000 } });
+
+  it('основной, ходы без сегментов, все агенты с ≤ 8 последними сегментами; длинный вход обрезан', () => {
+    const v = agentGraphView(h, { state: 'waiting', model: 'claude-opus-5-5', title: 'табло', cwd: '/repo' });
+    expect(v.main).toEqual({ model: 'claude-opus-5-5', used: 136_080, limit: 200_000, state: 'waiting', turnNo: 14 });
+    expect(v.title).toBe('табло');
+    expect(v.turns).toEqual([{ turnNo: 14, startedAt: T0 }]);
+    expect(v.agents.map((a) => a.agentId)).toEqual(['a', 'b', 'c', 's']);
+    const b = v.agents[1]!;
+    expect(b.segs).toHaveLength(GRAPH_SEGS);
+    expect(b.segs.at(-1)!.id).toBe('w');
+    expect(b.calls).toBe(31);
+    const input = b.segs.at(-1)!.input!;
+    expect(input.file_path).toBe('/repo/big.ts');
+    expect((input.content as string).length).toBeLessThanOrEqual(300);
+    expect(input.edits).toBeUndefined();
+    expect(v.agents[0]).toMatchObject({ prompt: 'найди', summary: 'нашёл', model: 'claude-sonnet-5-5' });
+    expect(v.agents[2]!.parentAgentId).toBe('b');
+    // сериализуемый и проходит проверку протокола
+    expect(JSON.parse(JSON.stringify(v))).toEqual(v);
+    expect(isAgentGraphView(v)).toBe(true);
+    // исходное состояние не тронуто
+    expect(h.agents[1]!.segs).toHaveLength(31);
+    expect((h.agents[1]!.segs.at(-1)!.input!.content as string).length).toBe(10_000);
+  });
+
+  it('обратно в HudState: те же ходы и строки агентов, что у панели', () => {
+    const back = hudOfGraph(agentGraphView(h, { state: 'idle' }));
+    const strip = (g: ReturnType<typeof agentTurns>) =>
+      g.map((x) => ({ turnNo: x.turnNo, startedAt: x.startedAt, ids: x.agents.map((a) => [a.agentId, a.depth]), tasks: x.tasks.map((t) => t.agentId) }));
+    expect(strip(agentTurns(back, 'session', o))).toEqual(strip(agentTurns(h, 'session', o)));
+    expect(back.context).toEqual({ used: 136_080, max: 200_000 });
+    expect(back.turnNo).toBe(14);
+  });
+
+  it('пустая сессия: агентов нет, контекста нет', () => {
+    const v = agentGraphView(initialHud(), { state: 'idle' });
+    expect(v).toEqual({ main: { limit: 200_000, state: 'idle', turnNo: 0 }, turns: [], agents: [] });
   });
 });

@@ -453,6 +453,18 @@ html[data-width='380'] .num.wide {
   --pz: 0.55;
   height: 190px;
 }
+.pv-graph {
+  --pz: 0.3;
+}
+/* граф в карточке: только холст, высота — под раскладку превью (GRAPH_PREVIEW + полоса ходов) */
+.pv-graph .gmap {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  height: 600px;
+}
+.pv-graph .gmap .gd {
+  display: none;
+}
 .pv-agents .pane.side {
   display: block;
   overflow: hidden;

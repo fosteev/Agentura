@@ -16,6 +16,7 @@ import type {
 import type { Attachment, FileHit } from './shared/prompt';
 import type { ImageProblem } from './shared/images';
 import type { FileProblem } from './shared/files';
+import { isAgentGraphView, type AgentGraphView } from './shared/agentsGraph';
 import type {
   EngineCheck,
   AgentsView,
@@ -34,7 +35,11 @@ export type {
   ModelOption,
   PermissionDecision,
   PermissionMode,
+  AgentGraphView,
 };
+
+/** Поверхности webview: вкладка чата, боковая панель, настройки, граф агентов (roadmap 11, этап 2). */
+export type Surface = 'chat' | 'sidebar' | 'settings' | 'agents';
 
 /**
  * Превью правки для карточки разрешения (этап 5): хост читает файл, строит дифф «до → после»
@@ -115,7 +120,7 @@ void _allEventTypesListed;
  * текущую сессию вкладки (до первого `session.init` id ещё пуст).
  */
 export type ToWebview =
-  | { type: 'init'; surface: 'chat' | 'sidebar' | 'settings'; version: string }
+  | { type: 'init'; surface: Surface; version: string }
   /**
    * Шрифты, размер ленты и интерфейса (`agentura.font.*`, `agentura.feed.fontSize`, `agentura.ui.fontSize`): всем поверхностям после `init` и при
    * смене настройки. Пустой шрифт — как в VS Code.
@@ -140,6 +145,15 @@ export type ToWebview =
   /** Ответ на «проверить» у пути к claude. */
   | { type: 'settings.engine'; result: EngineCheck }
   | { type: 'agent.event'; sessionId: string; event: AgentEvent }
+  /**
+   * Граф агентов (roadmap 11, этап 2). Чату: открыта ли (и видна ли) его вкладка графа — пока да, чат шлёт
+   * `agents.snapshot`; `open: true` повторно — просьба прислать свежий снимок сразу.
+   */
+  | { type: 'agents.graph'; open: boolean }
+  /** Вкладке графа: снимок от её чата (хост пересылает как есть). `sessionId` пуст — у чата ещё нет сессии. */
+  | { type: 'agents.snapshot'; sessionId: string; graph: AgentGraphView }
+  /** Вкладке графа: выбрать агента (клик по агенту в ленте чата). */
+  | { type: 'agents.focus'; agentId: string }
   | {
       type: 'chat.info';
       /** Имя папки воркспейса и путь к ней. */
@@ -300,6 +314,10 @@ export type FromWebview =
    * движка (имя файла `subagents/agent-<taskId>.jsonl`), `agentId` — id вызова `Agent` (заголовок).
    */
   | { type: 'agent.transcript'; sessionId: string; agentId: string; taskId: string }
+  /** Чат: открыть (или показать) его вкладку графа, `agentId` — выбрать в ней агента. */
+  | { type: 'agents.openGraph'; agentId?: string }
+  /** Чат: снимок карты агентов для его вкладки графа — только пока граф открыт (`agents.graph`). */
+  | { type: 'agents.snapshot'; sessionId: string; graph: AgentGraphView }
   | { type: 'session.new' }
   | { type: 'limits.refresh' }
   | { type: 'session.resume'; sessionId: string }
@@ -402,6 +420,8 @@ const FROM_WEBVIEW_TYPES: Record<FromWebview['type'], true> = {
   'compact': true,
   'agent.stop': true,
   'agent.transcript': true,
+  'agents.openGraph': true,
+  'agents.snapshot': true,
   'session.new': true,
   'limits.refresh': true,
   'session.resume': true,
@@ -419,11 +439,25 @@ const FROM_WEBVIEW_TYPES: Record<FromWebview['type'], true> = {
 /** `error.code` карточки «claude не найден»: webview рисует инструкцию и «Открыть настройки». */
 export const ENGINE_MISSING_CODE = 'engine_missing';
 
+/**
+ * Поля сообщений, которые хост не разбирает сам, а пересылает в другой webview (граф агентов): их форма
+ * проверяется здесь. Остальные сообщения проверяет по полям обработчик.
+ */
+const FIELD_CHECKS: Partial<Record<FromWebview['type'], (m: Record<string, unknown>) => boolean>> = {
+  'agents.openGraph': (m) => m.agentId === undefined || typeof m.agentId === 'string',
+  'agents.snapshot': (m) => typeof m.sessionId === 'string' && isAgentGraphView(m.graph),
+  'agent.stop': (m) => typeof m.sessionId === 'string' && typeof m.taskId === 'string',
+  'agent.transcript': (m) =>
+    typeof m.sessionId === 'string' && typeof m.agentId === 'string' && typeof m.taskId === 'string',
+};
+
 /** Проверка входящего от webview сообщения: снаружи приходит `unknown`. */
 export function isFromWebview(value: unknown): value is FromWebview {
   if (typeof value !== 'object' || value === null) return false;
   const type = (value as { type?: unknown }).type;
-  return typeof type === 'string' && Object.hasOwn(FROM_WEBVIEW_TYPES, type);
+  if (typeof type !== 'string' || !Object.hasOwn(FROM_WEBVIEW_TYPES, type)) return false;
+  const check = FIELD_CHECKS[type as FromWebview['type']];
+  return !check || check(value as Record<string, unknown>);
 }
 
 /** Минимум от `vscode.Webview`, нужный для отправки; позволяет тестировать без vscode. */

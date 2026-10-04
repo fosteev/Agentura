@@ -278,10 +278,15 @@ export function Chat() {
   const liveText = awaited.length
     ? `${ui.log.waitingAgents(awaited.length)}${s.turnStartedAt ? ` · ${formatDuration(now - s.turnStartedAt)}` : ''}`
     : live;
-  // «карта агентов», «итог», «лог» в группе: выбрать агента и показать вкладку (в широкой она и так видна)
+  // граф агентов во вкладке редактора (roadmap 11, этап 2): хост открывает или показывает вкладку графа этого чата
+  const openGraph = (agentId?: string) =>
+    send({ type: 'agents.openGraph', ...(agentId ? { agentId } : {}) });
+  // «карта агентов», «итог», «лог» в группе: выбрать агента и показать вкладку (в широкой она и так видна);
+  // при виде `graph` — открыть граф с этим агентом
   const openAgent = (agentId: string) => {
     selectedAgent.value = agentId;
-    if (wide.value) updatePanel({ tab: 'agents', off: false });
+    if (agentsView.value === 'graph') openGraph(agentId);
+    else if (wide.value) updatePanel({ tab: 'agents', off: false });
     else tab.value = 'agents';
   };
   // вкладки панели: в пустой сессии недоступны, активна «изменения»
@@ -522,6 +527,7 @@ export function Chat() {
             onSelect={(id) => (selectedAgent.value = id)}
             onStop={stopAgent}
             onTranscript={openAgentTranscript}
+            onGraph={() => openGraph(selectedAgent.value)}
           />
         </aside>
         <nav class="rail" aria-label={ui.panel.railAria}>

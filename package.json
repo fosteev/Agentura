@@ -19,7 +19,8 @@
   ],
   "main": "./dist/extension.js",
   "activationEvents": [
-    "onWebviewPanel:agentura.chat"
+    "onWebviewPanel:agentura.chat",
+    "onWebviewPanel:agentura.agentsGraph"
   ],
   "scripts": {
     "build": "node esbuild.mjs",

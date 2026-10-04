@@ -149,6 +149,10 @@ export interface ChatDeps {
   engine?: { ready(): Promise<{ ok: true } | { ok: false; problem: string }> };
   /** Карточка «claude не найден» и `settings.open`: вкладка настроек (`agentura.openSettings`). */
   openSettings?(): void;
+  /** Граф агентов во вкладке редактора (roadmap 11, этап 2): открыть или показать, выбрать агента. */
+  openGraph?(agentId?: string): void;
+  /** Снимок карты агентов от webview чата — в его вкладку графа (если она открыта). */
+  graphSnapshot?(m: Extract<FromWebview, { type: 'agents.snapshot' }>): void;
 }
 
 export interface OpenDiff {
@@ -675,6 +679,13 @@ export class ChatController {
         return;
       case 'turn.retry':
         await this.retry(m.turn);
+        return;
+      // граф агентов: сессия движка для этого не нужна
+      case 'agents.openGraph':
+        deps.openGraph?.(m.agentId);
+        return;
+      case 'agents.snapshot':
+        deps.graphSnapshot?.(m);
         return;
       default:
         break;

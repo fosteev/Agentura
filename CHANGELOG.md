@@ -8,7 +8,15 @@
   panel can be a `list` (default, as before), a session `tree`, time `lanes` (one lane per agent on a shared axis,
   call ticks, the main agent's waiting) or `cards` (live call, summary excerpt, failure text). Tree, lanes and cards
   have a "turn / session" scope; past turns are collapsed to one line. Prompt and summary sizes are estimates
-  (`≈0.4k`, by text length). `graph` is accepted by the setting but not implemented yet: the panel keeps the list.
+  (`≈0.4k`, by text length).
+- **Agents graph in an editor tab** ("↗ graph" in the header of the agents tab, in every view): the main agent on
+  the left, the turn's subagents in a column to the right (nested ones further right, background tasks below, dashed),
+  edges labelled with the prompt sent and the summary returned (`↗ ≈0.6k · ↙ ≈0.4k`, estimates by text length), a
+  turn bar on top and the selected agent's prompt, last calls and summary on the right with "transcript" / "stop".
+  One graph tab per chat tab, opened beside it; it follows the chat's session, updates while agents run and closes
+  with the chat. With `agentura.agents.view: graph` the panel keeps the list, and "agent map" or a click on an agent
+  in the feed opens the graph with that agent selected. After a window reload the graph returns to its chat tab (or
+  closes if that chat is gone).
 - **Chat tab**: the Agentura icon instead of the default one; the title is just the session name (no
   "Agentura ·" prefix, up to 40 characters with "…"), "New session" until it has a name. The ● / ? / ! state marker
   stays. A "New session" button with the logo sits in the right corner of the tab bar, visible above any editor.

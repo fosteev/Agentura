@@ -18,6 +18,7 @@ import {
 } from '../settings';
 import type { AccountService } from './account';
 import { ChatController } from './chatController';
+import { AgentsGraphPanel, ChatGraphSlot, graphSerializer } from './agentsGraphPanel';
 import type { DiffDocuments } from './diffDocuments';
 import type { PreviewPanels } from './previewPanels';
 import { EditorContextTracker } from './editorContext';
@@ -126,6 +127,8 @@ export class ChatPanel {
   private readonly controller: ChatController;
   private started = false;
   private lazy = false;
+  /** Вкладка графа агентов этой вкладки чата (roadmap 11, этап 2): одна на чат. */
+  private readonly graph: ChatGraphSlot;
 
   /** Id сессии активной (или последней активной) вкладки — строка `cur` боковой панели. */
   static currentSessionId(): string | undefined {
@@ -229,6 +232,11 @@ export class ChatPanel {
         });
       },
     };
+  }
+
+  /** Сериализатор вкладки графа агентов: к вкладке чата той же сессии или закрыть (`graphSerializer`). */
+  static graphSerializer(context: vscode.ExtensionContext, log: Logger): vscode.WebviewPanelSerializer {
+    return graphSerializer(context, log, () => ChatPanel.panels.map((p) => p.graph));
   }
 
   private constructor(
@@ -381,13 +389,27 @@ export class ChatPanel {
       ...(open.resumeId ? { resumeId: open.resumeId } : {}),
       openSession: (id) => ChatPanel.resume(context, log, services, id, this),
       titleOf: async (id) => (await services.sessions.list()).find((r) => r.id === id)?.title,
-      onSession: () => ChatPanel.sessionsChanged(services),
+      onSession: () => {
+        this.graph.claimPending();
+        ChatPanel.sessionsChanged(services);
+      },
+      openGraph: (agentId) => this.graph.show(agentId),
+      graphSnapshot: (m) => this.graph.snapshot(m),
       onEngineVersion: (v) => {
         services.account.noteEngine(v);
         services.memory.setEngineVersion(`claude ${v}`);
       },
     });
 
+    this.graph = new ChatGraphSlot(
+      {
+        sessionId: () => this.controller.sessionId,
+        post: (m) => postToWebview(panel.webview, m),
+        // действия графа — тому же контроллеру, что и сообщения webview этой вкладки
+        handle: (m) => this.controller.handle(m),
+      },
+      () => AgentsGraphPanel.create(context, log),
+    );
     ChatPanel.panels.push(this);
     ChatPanel.lastActive = this;
     panel.webview.html = renderWebview(panel.webview, context.extensionUri, 'chat', 'Agentura', currentLanguage());
@@ -395,6 +417,8 @@ export class ChatPanel {
       attachMessaging(panel.webview, 'chat', version, log, (m) => {
         // 'ready' уже обработан в attachMessaging (init); остальное — контроллеру
         void this.controller.handle(m).catch((e) => log.error(`${m.type}: ${String(e)}`));
+        // webview чата пересоздан — он не помнит, что граф открыт
+        if (m.type === 'ready') this.graph.chatReady();
       }),
       // автоопрос лимитов (раз в `usagePollMinutes`) доходит и до открытого чата
       {
@@ -427,6 +451,7 @@ export class ChatPanel {
       { dispose: () => this.controller.dispose() },
     );
     panel.onDidDispose(() => this.dispose(), null, this.disposables);
+    this.graph.claimPending();
     if (open.lazy) {
       // историю читаем сразу (дёшево), процесс движка — когда вкладка станет видимой
       this.lazy = true;
@@ -479,6 +504,8 @@ export class ChatPanel {
     const i = ChatPanel.panels.indexOf(this);
     if (i >= 0) ChatPanel.panels.splice(i, 1);
     if (ChatPanel.lastActive === this) ChatPanel.lastActive = ChatPanel.panels.at(-1);
+    // граф показывает данные этой вкладки — без неё ему нечего показывать
+    this.graph.close();
     this.disposables.forEach((d) => d.dispose());
     ChatPanel.sessionsChanged(this.services);
   }

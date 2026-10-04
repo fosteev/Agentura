@@ -50,6 +50,8 @@ const ru = {
     `${name}: ${stage === 'proposed' ? 'предложенная правка' : 'правка агента'}`,
   changesTitle: (files: number) => `Правки агента (${files})`,
   settingsTitle: 'Agentura · настройки',
+  /** Вкладка графа агентов (roadmap 11): «Агенты · <название сессии>». */
+  agentsGraphTitle: (session?: string) => (session ? `Агенты · ${session}` : 'Агенты'),
   /** Заголовок вкладки чата, пока у сессии нет названия. */
   untitledTab: 'Новая сессия',
   overriddenView:
@@ -147,6 +149,7 @@ const en: HostUi = {
   diffTitle: (name, stage) => `${name}: ${stage === 'proposed' ? 'proposed edit' : 'agent edit'}`,
   changesTitle: (files) => `Agent changes (${files})`,
   settingsTitle: 'Agentura · Settings',
+  agentsGraphTitle: (session) => (session ? `Agents · ${session}` : 'Agents'),
   untitledTab: 'New session',
   overriddenView:
     'Agentura: the list view is set in the workspace settings (agentura.sessionList.view) — change it there.',
