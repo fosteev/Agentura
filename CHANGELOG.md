@@ -25,6 +25,12 @@
   real view); the feed text size shows a sample feed at the chosen size. Fonts are picked from cards too: installed
   ones out of a list of popular interface and monospace fonts, each card drawn in its font; hovering a card tries the
   font on the sample feed, a custom name can still be typed.
+- **Google Fonts on demand**: "Agentura: Add Google Font…" (and "Add from Google Fonts…" under the font cards in
+  ⚙ → "Look") opens a QuickPick with the whole Google Fonts catalog — name, category, a "Cyrillic" mark, already
+  downloaded ones with ✓. The picked family is downloaded (woff2; Latin, Latin Extended and Cyrillic; weights
+  400–700 where available) into the extension's data folder and shows up in the font cards right away in every open
+  tab; a downloaded font has a ✕ to remove it. A notification offers "Apply" (sets it as the interface or code
+  font, or as the panel font when started from the panel font cards). The catalog is cached for 7 days; the network is used only when you run the command.
 - **Bundled fonts**: Inter, IBM Plex Sans, Manrope, Onest, Golos Text, JetBrains Mono, IBM Plex Mono, Fira Code and
   Source Code Pro ship inside the extension (woff2, Latin and Cyrillic, ~0.7 MB, OFL licenses alongside) and are
   always offered in the font cards, installed or not. The list lives in `scripts/fonts.json`;

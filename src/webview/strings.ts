@@ -633,6 +633,8 @@ const ru = {
     fontVscode: (name: string) => (name ? `как в VS Code · ${name}` : 'как в VS Code'),
     fontSystem: 'системный',
     fontOwn: 'свой шрифт',
+    fontAdd: 'Добавить из Google Fonts…',
+    fontRemove: 'Удалить скачанный шрифт',
     fontSampleUi: 'Счётчик талонов 42',
     fontSampleCode: 'count ?? prev;',
     sampleTrying: (name: string) => `образец — примеряю ${name}`,

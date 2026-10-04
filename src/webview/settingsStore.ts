@@ -45,6 +45,16 @@ export function checkEngine(path: string): void {
   send({ type: 'settings.checkEngine', path });
 }
 
+/** «Добавить из Google Fonts…»: хост открывает QuickPick (`kind` — интерфейсные, моноширинные или все — для панелей). */
+export function addFont(kind: 'ui' | 'code' | 'panels'): void {
+  send({ type: 'fonts.add', kind });
+}
+
+/** ✕ у скачанного шрифта. */
+export function removeFont(family: string): void {
+  send({ type: 'fonts.remove', family });
+}
+
 export function reveal(target: 'ui' | 'json'): void {
   send({ type: 'settings.reveal', target });
 }

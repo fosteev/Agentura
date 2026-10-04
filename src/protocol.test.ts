@@ -9,6 +9,9 @@ describe('protocol', () => {
     expect(isFromWebview({ type: 'preview.open', path: '/a/x.html' })).toBe(true);
     expect(isFromWebview({ type: 'link.open', url: 'https://claude.ai/artifact/1' })).toBe(true);
     expect(isFromWebview({ type: 'diff.changes', sessionId: 's', toolUseIds: ['t'] })).toBe(true);
+    expect(isFromWebview({ type: 'fonts.add', kind: 'code' })).toBe(true);
+    expect(isFromWebview({ type: 'fonts.add', kind: 'panels' })).toBe(true);
+    expect(isFromWebview({ type: 'fonts.remove', family: 'Onest' })).toBe(true);
     expect(isFromWebview({ type: 'unknown' })).toBe(false);
     expect(isFromWebview({ type: 'toString' })).toBe(false);
     expect(isFromWebview(null)).toBe(false);

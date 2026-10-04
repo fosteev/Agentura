@@ -7,7 +7,7 @@ import type { SessionsService } from './sessionsService';
 import type { Logger } from './logger';
 import type { UsageService } from './usage';
 import { hostStrings } from '../shared/l10n';
-import { attachMessaging, currentLanguage, renderWebview, webviewOptions } from './webviewHost';
+import { attachMessaging, currentLanguage, renderWebview, userFontsDir, webviewOptions } from './webviewHost';
 
 export const SIDEBAR_VIEW_ID = 'agentura.sidebar';
 
@@ -32,7 +32,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   resolveWebviewView(view: vscode.WebviewView): void {
     this.view = view;
     const { webview } = view;
-    webview.options = webviewOptions(this.context.extensionUri);
+    webview.options = webviewOptions(this.context.extensionUri, userFontsDir(this.context));
     webview.html = renderWebview(webview, this.context.extensionUri, 'sidebar', 'Agentura', currentLanguage());
     const version = String(this.context.extension.packageJSON.version);
     const sub = attachMessaging(webview, 'sidebar', version, this.log, (m) => {

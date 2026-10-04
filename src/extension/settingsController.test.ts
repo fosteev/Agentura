@@ -155,6 +155,19 @@ describe('SettingsController', () => {
     expect(deps.reveal).toHaveBeenNthCalledWith(2, 'ui');
   });
 
+  it('fonts.add / fonts.remove: передаёт хосту kind и имя; мусор — нет', async () => {
+    const addFont = vi.fn();
+    const removeFont = vi.fn();
+    const { c } = setup({}, { addFont, removeFont });
+    await c.handle({ type: 'fonts.add', kind: 'code' });
+    await c.handle({ type: 'fonts.add', kind: 'ui' });
+    await c.handle({ type: 'fonts.add', kind: 'panels' });
+    await c.handle({ type: 'fonts.remove', family: 'Onest' });
+    await c.handle({ type: 'fonts.remove', family: 5 as unknown as string });
+    expect(addFont.mock.calls).toEqual([['code'], ['ui'], ['panels']]);
+    expect(removeFont.mock.calls).toEqual([['Onest']]);
+  });
+
   it('pushState после правки снаружи (onDidChangeConfiguration) показывает новое значение', () => {
     const { c, posted } = setup({ usagePollMinutes: 30 });
     c.pushState();

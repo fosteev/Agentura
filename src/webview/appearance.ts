@@ -1,6 +1,6 @@
 import type { ToWebview } from '../protocol';
 import { DEFAULT_FEED_FONT_SIZE, isFeedFontSize } from '../settings';
-import { GENERIC_FONTS } from './fonts';
+import { GENERIC_FONTS, userFonts } from './fonts';
 import { onHostMessage } from './vscode';
 
 export type Appearance = Extract<ToWebview, { type: 'appearance' }>;
@@ -30,7 +30,27 @@ export function appearanceVars(m: Appearance): Record<string, string | undefined
   };
 }
 
+/** Один `<link id="user-fonts">` на страницу: ставится, перенаправляется на новый css или снимается. */
+export function applyUserFontsLink(css: string | undefined, doc: Document = document): void {
+  const link = doc.getElementById('user-fonts');
+  if (!css) {
+    link?.remove();
+    return;
+  }
+  if (link) {
+    if (link.getAttribute('href') !== css) link.setAttribute('href', css);
+    return;
+  }
+  const el = doc.createElement('link');
+  el.id = 'user-fonts';
+  el.rel = 'stylesheet';
+  el.href = css;
+  doc.head.append(el);
+}
+
 export function applyAppearance(m: Appearance, root: HTMLElement = document.documentElement): void {
+  userFonts.value = { ui: m.userFonts.ui, code: m.userFonts.code };
+  applyUserFontsLink(m.userFonts.css, root.ownerDocument);
   // через CSSOM: CSP вебвью запрещает inline-стили в разметке, но не style.setProperty
   for (const [prop, value] of Object.entries(appearanceVars(m))) {
     if (value === undefined) root.style.removeProperty(prop);

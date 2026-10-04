@@ -1,16 +1,30 @@
 import * as vscode from 'vscode';
 import { buildWebviewHtml, makeNonce } from './html';
-import { isFromWebview, postToWebview, type FromWebview } from '../protocol';
+import { stat } from 'node:fs/promises';
+import { isFromWebview, postToWebview, type FromWebview, type ToWebview } from '../protocol';
 import type { Logger } from './logger';
 import { readSettings, resolveLanguage } from '../settings';
+import type { UserFonts } from './googleFonts';
+
+/** Папка скачанных шрифтов: `<globalStorage>/fonts`. */
+export function userFontsDir(context: vscode.ExtensionContext): vscode.Uri {
+  return vscode.Uri.joinPath(context.globalStorageUri, 'fonts');
+}
+
+/** Скачанные шрифты: ставится в `activate`, читается каждой поверхностью при отправке `appearance`. */
+let userFonts: UserFonts | undefined;
+export function setUserFonts(fonts: UserFonts | undefined): void {
+  userFonts = fonts;
+}
 
 /** Общая часть обеих поверхностей: настройки webview, HTML, приём сообщений. */
-export function webviewOptions(extensionUri: vscode.Uri): vscode.WebviewOptions {
+export function webviewOptions(extensionUri: vscode.Uri, fontsDir?: vscode.Uri): vscode.WebviewOptions {
   return {
     enableScripts: true,
     localResourceRoots: [
       vscode.Uri.joinPath(extensionUri, 'dist', 'webview'),
       vscode.Uri.joinPath(extensionUri, 'media'),
+      ...(fontsDir ? [fontsDir] : []),
     ],
   };
 }
@@ -61,15 +75,39 @@ const APPEARANCE_KEYS = [
   'agentura.feed.fontSize',
 ];
 
-function postAppearance(webview: vscode.Webview): void {
-  const v = readSettings(vscode.workspace.getConfiguration('agentura'));
-  postToWebview(webview, {
-    type: 'appearance',
-    fontInterface: v['font.interface'],
-    fontPanels: v['font.panels'],
-    fontCode: v['font.code'],
-    feedFontSize: v['feed.fontSize'],
-  });
+/** Скачанные шрифты для `appearance`: имена и ссылка на fonts.css (`?v=` — mtime, чтобы webview не держал старый). */
+async function userFontsState(webview: vscode.Webview): Promise<Extract<ToWebview, { type: 'appearance' }>['userFonts']> {
+  if (!userFonts) return { ui: [], code: [] };
+  const list = await userFonts.list();
+  const names = (kind: 'ui' | 'code') => list.filter((f) => f.kind === kind).map((f) => f.family);
+  const state = { ui: names('ui'), code: names('code') };
+  if (list.length === 0) return state;
+  try {
+    const { mtimeMs } = await stat(userFonts.cssPath);
+    const uri = webview.asWebviewUri(vscode.Uri.file(userFonts.cssPath));
+    return { ...state, css: `${uri.toString()}?v=${Math.round(mtimeMs)}` };
+  } catch {
+    return state;
+  }
+}
+
+/** `isLatest` — запрос ещё последний: чтение шрифтов асинхронное, и устаревшее состояние не должно прийти позже свежего. */
+async function postAppearance(webview: vscode.Webview, isLatest: () => boolean, log: Logger): Promise<void> {
+  try {
+    const v = readSettings(vscode.workspace.getConfiguration('agentura'));
+    const userFonts = await userFontsState(webview);
+    if (!isLatest()) return;
+    postToWebview(webview, {
+      type: 'appearance',
+      fontInterface: v['font.interface'],
+      fontPanels: v['font.panels'],
+      fontCode: v['font.code'],
+      feedFontSize: v['feed.fontSize'],
+      userFonts,
+    });
+  } catch (e) {
+    log.warn('appearance: не отправить', e);
+  }
 }
 
 export function attachMessaging(
@@ -80,6 +118,11 @@ export function attachMessaging(
   onMessage?: (m: FromWebview) => void,
 ): vscode.Disposable {
   let ready = false;
+  let appearanceSeq = 0;
+  const sendAppearance = (): void => {
+    const seq = ++appearanceSeq;
+    void postAppearance(webview, () => seq === appearanceSeq, log);
+  };
   return vscode.Disposable.from(
     webview.onDidReceiveMessage((raw: unknown) => {
       if (!isFromWebview(raw)) {
@@ -90,12 +133,16 @@ export function attachMessaging(
       if (raw.type === 'ready') {
         ready = true;
         postToWebview(webview, { type: 'init', surface, version });
-        postAppearance(webview);
+        sendAppearance();
       }
       onMessage?.(raw);
     }),
     vscode.workspace.onDidChangeConfiguration((e) => {
-      if (ready && APPEARANCE_KEYS.some((k) => e.affectsConfiguration(k))) postAppearance(webview);
+      if (ready && APPEARANCE_KEYS.some((k) => e.affectsConfiguration(k))) sendAppearance();
     }),
+    // скачали или удалили шрифт — все открытые webview получают новый список и ссылку на css
+    userFonts?.onDidChange(() => {
+      if (ready) sendAppearance();
+    }) ?? { dispose: () => {} },
   );
 }

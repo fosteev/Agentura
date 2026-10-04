@@ -4,7 +4,7 @@ import { postToWebview } from '../protocol';
 import { hostStrings } from '../shared/l10n';
 import type { Logger } from './logger';
 import { SettingsController } from './settingsController';
-import { attachMessaging, currentLanguage, renderWebview, webviewOptions } from './webviewHost';
+import { attachMessaging, currentLanguage, renderWebview, userFontsDir, webviewOptions } from './webviewHost';
 
 export const SETTINGS_VIEW_TYPE = 'agentura.settings';
 
@@ -21,7 +21,7 @@ export class SettingsPanel {
       SETTINGS_VIEW_TYPE,
       hostStrings(currentLanguage()).settingsTitle,
       vscode.ViewColumn.Active,
-      webviewOptions(context.extensionUri),
+      webviewOptions(context.extensionUri, userFontsDir(context)),
     );
     SettingsPanel.current = new SettingsPanel(panel, context, log);
   }
@@ -55,6 +55,8 @@ export class SettingsPanel {
         );
       },
       warn: (m) => log.warn(m),
+      addFont: (kind) => void vscode.commands.executeCommand('agentura.addGoogleFont', kind),
+      removeFont: (family) => void vscode.commands.executeCommand('agentura.removeGoogleFont', family),
       lang: currentLanguage,
     });
     webview.html = renderWebview(

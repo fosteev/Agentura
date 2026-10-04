@@ -16,11 +16,13 @@ import {
   type SettingKey,
 } from '../../settings';
 import {
+  addFont,
   checkEngine,
   commit,
   engineCheck,
   errors,
   overridden,
+  removeFont,
   reveal,
   setError,
   settingsValues,
@@ -28,7 +30,7 @@ import {
 import { ui, uiLang } from '../strings';
 import { ChoiceCards, FeedPreview, SidebarPreview } from './SettingsPreview';
 import { fontStack } from '../appearance';
-import { CODE_FONTS, UI_FONTS, installedFonts } from '../fonts';
+import { codeFonts, installedFonts, uiFonts, userFonts } from '../fonts';
 import {
   SETTINGS_SECTIONS,
   readSettingsSection,
@@ -208,6 +210,7 @@ function FontCards({
   fallback,
   sample,
   onTry,
+  addKind,
 }: {
   k: FontKey;
   value: string;
@@ -217,8 +220,11 @@ function FontCards({
   fallback: string;
   sample: string;
   onTry: (name: string | undefined) => void;
+  /** Для чего добавляется шрифт из Google Fonts (`panels` — из всех семейств); нет — без кнопки. */
+  addKind?: 'ui' | 'code' | 'panels';
 }) {
   const fonts = installedFonts(candidates);
+  const user = userFonts.value;
   const own = value.trim();
   if (own && !fonts.includes(own)) fonts.push(own);
   const options: [string, string][] = [
@@ -226,19 +232,31 @@ function FontCards({
     ...fonts.map((f): [string, string] => [f, f === 'system-ui' ? T.fontSystem : f]),
   ];
   return (
-    <ChoiceCards
-      kind="fonts"
-      label={k}
-      value={own}
-      options={options}
-      preview={(f) => (
-        <span class="fs" style={{ fontFamily: fontStack(f, fallback) ?? fallback }}>
-          {sample}
-        </span>
+    <>
+      <ChoiceCards
+        kind="fonts"
+        label={k}
+        value={own}
+        options={options}
+        preview={(f) => (
+          <span class="fs" style={{ fontFamily: fontStack(f, fallback) ?? fallback }}>
+            {sample}
+          </span>
+        )}
+        onPick={(f) => commit(k, f)}
+        onTry={onTry}
+        removable={{
+          has: (f) => user.ui.includes(f) || user.code.includes(f),
+          label: T.fontRemove,
+          onRemove: removeFont,
+        }}
+      />
+      {addKind && (
+        <button type="button" class="fonts-add" onClick={() => addFont(addKind)}>
+          {T.fontAdd}
+        </button>
       )}
-      onPick={(f) => commit(k, f)}
-      onTry={onTry}
-    />
+    </>
   );
 }
 
@@ -714,7 +732,8 @@ export function Settings() {
                   <FontCards
                     k="font.interface"
                     value={v['font.interface']}
-                    candidates={UI_FONTS}
+                    candidates={uiFonts()}
+                    addKind="ui"
                     defaultLabel={T.fontVscode(vscodeFont('--vscode-font-family'))}
                     fallback="var(--font-vscode)"
                     sample={T.fontSampleUi}
@@ -734,7 +753,8 @@ export function Settings() {
                     <FontCards
                       k="font.panels"
                       value={v['font.panels']}
-                      candidates={[...UI_FONTS, ...CODE_FONTS]}
+                      candidates={[...uiFonts(), ...codeFonts()]}
+                      addKind="panels"
                       defaultLabel={T.fontAsBefore}
                       fallback="var(--mono)"
                       sample={T.fontSamplePanels}
@@ -758,7 +778,8 @@ export function Settings() {
                   <FontCards
                     k="font.code"
                     value={v['font.code']}
-                    candidates={CODE_FONTS}
+                    candidates={codeFonts()}
+                    addKind="code"
                     defaultLabel={T.fontVscode(vscodeFont('--vscode-editor-font-family'))}
                     fallback="var(--mono-vscode)"
                     sample={T.fontSampleCode}

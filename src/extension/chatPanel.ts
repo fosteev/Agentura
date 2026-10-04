@@ -27,7 +27,7 @@ import type { SessionsService } from './sessionsService';
 import type { UsageService } from './usage';
 import type { Logger } from './logger';
 import { hostStrings } from '../shared/l10n';
-import { attachMessaging, currentLanguage, renderWebview, webviewOptions } from './webviewHost';
+import { attachMessaging, currentLanguage, renderWebview, userFontsDir, webviewOptions } from './webviewHost';
 import { WorkspaceFiles } from './workspaceFiles';
 import { writeImageTemp } from './imageFiles';
 import { fileName } from '../shared/files';
@@ -158,7 +158,7 @@ export class ChatPanel {
       const panel =
         open.panel ??
         vscode.window.createWebviewPanel(CHAT_VIEW_TYPE, 'Agentura', column, {
-          ...webviewOptions(context.extensionUri),
+          ...webviewOptions(context.extensionUri, userFontsDir(context)),
           retainContextWhenHidden: true,
         });
       return new ChatPanel(panel, context, log, services, folder, open);
@@ -236,7 +236,7 @@ export class ChatPanel {
     const files = new WorkspaceFiles(folder.uri);
     const editorColumn = (): vscode.ViewColumn =>
       panel.viewColumn === vscode.ViewColumn.One ? vscode.ViewColumn.Two : vscode.ViewColumn.One;
-    panel.webview.options = webviewOptions(context.extensionUri);
+    panel.webview.options = webviewOptions(context.extensionUri, userFontsDir(context));
     panel.iconPath = {
       light: vscode.Uri.joinPath(context.extensionUri, 'media', 'icon-light.svg'),
       dark: vscode.Uri.joinPath(context.extensionUri, 'media', 'icon-dark.svg'),

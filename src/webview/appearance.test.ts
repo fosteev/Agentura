@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { applyAppearance, appearanceVars, fontStack } from './appearance';
+import { userFonts } from './fonts';
 
 const msg = (
   over: Partial<{
@@ -8,6 +9,7 @@ const msg = (
     fontPanels: string;
     fontCode: string;
     feedFontSize: number;
+    userFonts: { ui: string[]; code: string[]; css?: string };
   }> = {},
 ) => ({
   type: 'appearance' as const,
@@ -15,6 +17,7 @@ const msg = (
   fontPanels: '',
   fontCode: '',
   feedFontSize: 13,
+  userFonts: { ui: [], code: [] },
   ...over,
 });
 
@@ -64,5 +67,30 @@ describe('appearanceVars / applyAppearance', () => {
     applyAppearance(msg(), root);
     expect(root.style.getPropertyValue('--mono')).toBe('');
     expect(root.style.getPropertyValue('--feed-zoom')).toBe('');
+  });
+});
+
+describe('скачанные шрифты', () => {
+  const link = () => document.querySelectorAll<HTMLLinkElement>('link#user-fonts');
+  const root = document.createElement('div');
+  afterEach(() => applyAppearance(msg(), root));
+
+  it('ссылка на css ставится, меняется на новую и снимается; всегда одна', () => {
+    applyAppearance(msg({ userFonts: { ui: ['Onest'], code: [], css: 'https://x/fonts.css?v=1' } }), root);
+    expect(link()).toHaveLength(1);
+    expect(link()[0]!.getAttribute('href')).toBe('https://x/fonts.css?v=1');
+    expect(link()[0]!.rel).toBe('stylesheet');
+    applyAppearance(msg({ userFonts: { ui: ['Onest'], code: [], css: 'https://x/fonts.css?v=2' } }), root);
+    expect(link()).toHaveLength(1);
+    expect(link()[0]!.getAttribute('href')).toBe('https://x/fonts.css?v=2');
+    applyAppearance(msg(), root);
+    expect(link()).toHaveLength(0);
+  });
+
+  it('имена попадают в список «установленных» шрифтов', () => {
+    applyAppearance(msg({ userFonts: { ui: ['Onest'], code: ['Fira Code'], css: 'https://x/f.css' } }), root);
+    expect(userFonts.value).toEqual({ ui: ['Onest'], code: ['Fira Code'] });
+    applyAppearance(msg(), root);
+    expect(userFonts.value).toEqual({ ui: [], code: [] });
   });
 });
