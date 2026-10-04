@@ -17,6 +17,7 @@ import {
   gitCommitted,
   gitDrafts,
   gitErrors,
+  gitGenerating,
   gitTargets,
   gitSnapshot,
   handleHostMessage,
@@ -136,6 +137,7 @@ beforeEach(async () => {
   gitDrafts.value = {};
   gitTargets.value = {};
   gitCommitted.value = [];
+  gitGenerating.value = {};
   handleHostMessage({ type: 'chat.info', project: 'w', cwd: '/w', allowBypass: false });
 });
 afterEach(() => vi.restoreAllMocks());
@@ -412,11 +414,47 @@ describe('вкладка «git»: коммит', () => {
     expect(q(pane, '.cm .err')).toBeNull();
   });
 
-  it('✦ виден, но disabled с подсказкой «скоро»', async () => {
+  it('✦: запрос по индексу, крутится до ответа, повторный клик — ничего; ответ заменяет черновик', async () => {
     const host = await open(ok(repo()));
-    const gen = q<HTMLButtonElement>(q(host, '#pane-git'), '.cm .gen');
+    const pane = q(host, '#pane-git');
+    type(q<HTMLInputElement>(pane, '.cm input.t'), 'old');
+    type(q<HTMLTextAreaElement>(pane, '.cm textarea.desc'), 'old body');
+    await flush();
+    const gen = () => q<HTMLButtonElement>(pane, '.cm .gen');
+    expect(gen().disabled).toBe(false);
+    gen().click();
+    await flush();
+    expect(gitSent().at(-1)).toEqual({ type: 'git.message', roots: ['/w'] });
+    expect(gen().classList.contains('busy')).toBe(true);
+    expect(gen().getAttribute('aria-busy')).toBe('true');
+    gen().click();
+    await flush();
+    expect(gitSent().filter((m) => m.type === 'git.message')).toHaveLength(1);
+    handleHostMessage({ type: 'git.message.result', roots: ['/w'], summary: 'Add backoff', desc: 'Why.' });
+    await flush();
+    expect(q<HTMLInputElement>(pane, '.cm input.t').value).toBe('Add backoff');
+    expect(q<HTMLTextAreaElement>(pane, '.cm textarea.desc').value).toBe('Why.');
+    expect(gen().classList.contains('busy')).toBe(false);
+  });
+
+  it('✦: отказ — строка ошибки и кнопка снова доступна; пустой индекс — выключена', async () => {
+    const host = await open(ok(repo()));
+    const pane = q(host, '#pane-git');
+    q<HTMLButtonElement>(pane, '.cm .gen').click();
+    await flush();
+    handleHostMessage({ type: 'git.error', root: '/w', op: 'message', message: 'нет ответа' });
+    await flush();
+    expect(q(pane, '.cm .err').textContent).toContain('нет ответа');
+    expect(q(pane, '.cm .gen').classList.contains('busy')).toBe(false);
+    q<HTMLButtonElement>(pane, '.cm .gen').click();
+    expect(gitSent().filter((m) => m.type === 'git.message')).toHaveLength(2);
+    handleHostMessage({ type: 'git.message.result', roots: ['/w'], summary: 'S', desc: '' });
+
+    push(ok(repo({ staged: [] })));
+    await flush();
+    const gen = q<HTMLButtonElement>(pane, '.cm .gen');
     expect(gen.disabled).toBe(true);
-    expect(gen.getAttribute('data-tip')).toContain('Скоро');
+    expect(gen.getAttribute('data-tip')).toBe('Сначала в индекс');
   });
 });
 
@@ -652,6 +690,27 @@ describe('вкладка «git»: несколько репозиториев, �
     await flush();
     expect(gitDrafts.value[GIT_UNIFIED]?.summary).toBe('');
     expect(q<HTMLInputElement>(pane, '.cm input.t').value).toBe('');
+  });
+
+  it('unified: ✦ — индекс всех отмеченных одним запросом, ответ — в общий черновик', async () => {
+    const host = await layout('unified');
+    const pane = q(host, '#pane-git');
+    q<HTMLButtonElement>(pane, '.cm .gen').click();
+    await flush();
+    expect(gitSent().at(-1)).toEqual({ type: 'git.message', roots: ['/w/a', '/w/b'] });
+    handleHostMessage({ type: 'git.message.result', roots: ['/w/a', '/w/b'], summary: 'Both', desc: '' });
+    await flush();
+    expect(gitDrafts.value[GIT_UNIFIED]?.summary).toBe('Both');
+    expect(gitDrafts.value['/w/a']).toBeUndefined();
+    expect(q<HTMLInputElement>(pane, '.cm input.t').value).toBe('Both');
+    // отказ без root (несколько репо) — снимает ожидание общего черновика
+    q<HTMLButtonElement>(pane, '.cm .gen').click();
+    await flush();
+    expect(gitGenerating.value[GIT_UNIFIED]).toEqual(['/w/a', '/w/b']);
+    handleHostMessage({ type: 'git.error', op: 'message', message: 'boom' });
+    await flush();
+    expect(gitGenerating.value).toEqual({});
+    expect(q(pane, '.cm .err').textContent).toContain('boom');
   });
 
   it('unified: «и push» и amend применяются ко всем отмеченным', async () => {

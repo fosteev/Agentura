@@ -244,7 +244,7 @@ export type ToWebview =
     }
   /**
    * Вкладка «git» (roadmap 12): `git.state` — снимок на каждое изменение и на `ready`, `git.error` — отказ
-   * действия, `git.commit.result` — итог коммита по каждому репозиторию.
+   * действия, `git.commit.result` — итог коммита по каждому репозиторию, `git.message.result` — ✦ сообщение.
    */
   | GitNotice;
 
@@ -352,7 +352,7 @@ export type FromWebview =
   | { type: 'fonts.add'; kind: 'ui' | 'code' | 'panels' }
   /** ✕ у скачанного шрифта. */
   | { type: 'fonts.remove'; family: string }
-  /** Вкладка «git» (roadmap 12): `git.watch|stage|unstage|discard|commit|sync|branch|open|openFile`. */
+  /** Вкладка «git» (roadmap 12): `git.watch|stage|unstage|discard|commit|sync|branch|open|openFile|message`. */
   | GitRequest;
 
 /** Картинка из диалога «+»: исходный файл или причина, почему не прочитан. */
@@ -455,6 +455,7 @@ const FROM_WEBVIEW_TYPES: Record<FromWebview['type'], true> = {
   'git.open': true,
   'git.openFile': true,
   'git.openRepository': true,
+  'git.message': true,
 };
 
 /** `error.code` карточки «claude не найден»: webview рисует инструкцию и «Открыть настройки». */
@@ -490,6 +491,7 @@ const FIELD_CHECKS: Partial<Record<FromWebview['type'], (m: Record<string, unkno
   'git.open': (m) => str(m.root) && str(m.path) && bool(m.staged),
   'git.openFile': (m) => str(m.root) && str(m.path),
   'git.openRepository': () => true,
+  'git.message': (m) => strings(m.roots),
 };
 
 /** Проверка входящего от webview сообщения: снаружи приходит `unknown`. */

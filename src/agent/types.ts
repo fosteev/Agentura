@@ -465,6 +465,20 @@ export interface AccountInfo {
 }
 
 /**
+ * Одноразовый запрос к модели вне сессии (✦ сообщение коммита, roadmap 12): без инструментов, один ход,
+ * без транскрипта — в список сессий не попадает.
+ */
+export interface CompletionRequest {
+  /** Системный промпт целиком (не пресет Claude Code). */
+  system: string;
+  prompt: string;
+  /** Модель или алиас (`sonnet`); нет — модель по умолчанию движка. */
+  model?: string;
+  /** Нет ответа за это время — ошибка; по умолчанию 60 с. */
+  timeoutMs?: number;
+}
+
+/**
  * Восстановленная история сессии (этап 6): события, которыми её видела лента, — те же `AgentEvent`,
  * что у живой сессии (`turn.start`, `text.delta`, `tool.start/result`, `usage.message`, `turn.result`…).
  */
@@ -527,4 +541,6 @@ export interface AgentAdapter {
     title: string,
   ): Promise<string | undefined>;
   accountInfo(cwd: string): Promise<AccountInfo>;
+  /** Одноразовый запрос (`CompletionRequest`): текст ответа модели. Нет — у адаптера такой возможности нет. */
+  complete?(cwd: string, request: CompletionRequest): Promise<string>;
 }

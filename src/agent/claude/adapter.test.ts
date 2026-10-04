@@ -1,10 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { AgentEvent } from '../types';
 import { AsyncQueue } from '../stream';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ClaudeAdapter, engineEnv, promptParent, userContent } from './adapter';
+import { projectDir } from '../../data/sessions';
 
 /** Поддельный SDK: запоминает опции `query()`, отдаёт входящие сообщения и выдаёт заданный поток. */
 function fakeSdk(extra: Record<string, unknown> = {}) {
@@ -494,6 +495,125 @@ describe('ClaudeAdapter', () => {
     await check;
     vi.useRealTimers();
     expect(hang.control).toEqual(['close']);
+  });
+
+  it('complete: один ход без инструментов и MCP, persistSession: false; текст ответа; процесс закрыт', async () => {
+    const f = fakeSdk();
+    f.push(init, {
+      type: 'assistant',
+      session_id: 's-1',
+      message: { content: [{ type: 'text', text: 'Fix it' }] },
+    });
+    f.push({
+      type: 'result',
+      subtype: 'success',
+      is_error: false,
+      result: 'Fix it\n\nBody',
+      session_id: 's-1',
+    });
+    f.end();
+    const adapter = new ClaudeAdapter({ loadSdk: async () => f.sdk, env: { PATH: '/bin' } });
+    await expect(
+      adapter.complete('/w', { system: 'You write commits.', prompt: 'diff', model: 'sonnet' }),
+    ).resolves.toBe('Fix it\n\nBody');
+    const { prompt, options } = f.calls[0]!;
+    expect(prompt).toBe('diff');
+    expect(options).toMatchObject({
+      cwd: '/w',
+      systemPrompt: 'You write commits.',
+      model: 'sonnet',
+      tools: [],
+      mcpServers: {},
+      strictMcpConfig: true,
+      maxTurns: 1,
+      thinking: { type: 'disabled' },
+      permissionMode: 'default',
+      // главное: движок не пишет транскрипт — сессия не появится в списке (он читается из ~/.claude/projects)
+      persistSession: false,
+    });
+    expect(options['canUseTool']).toBeUndefined();
+    expect(options['resume']).toBeUndefined();
+    expect(f.control).toEqual(['close']);
+    expect((options['abortController'] as AbortController).signal.aborted).toBe(true);
+  });
+
+  it('complete: ошибка движка и пустой поток — исключение; нет ответа — таймаут и закрытие', async () => {
+    const err = fakeSdk();
+    err.push(init, {
+      type: 'result',
+      subtype: 'error_during_execution',
+      is_error: true,
+      errors: ['overloaded'],
+      session_id: 's-1',
+    });
+    err.end();
+    await expect(
+      new ClaudeAdapter({ loadSdk: async () => err.sdk }).complete('/w', {
+        system: 's',
+        prompt: 'p',
+      }),
+    ).rejects.toThrow('overloaded');
+
+    const apiErr = fakeSdk();
+    apiErr.push({ type: 'result', subtype: 'success', is_error: true, result: 'Invalid API key' });
+    apiErr.end();
+    await expect(
+      new ClaudeAdapter({ loadSdk: async () => apiErr.sdk }).complete('/w', {
+        system: 's',
+        prompt: 'p',
+      }),
+    ).rejects.toThrow('Invalid API key');
+
+    const none = fakeSdk();
+    none.end();
+    await expect(
+      new ClaudeAdapter({ loadSdk: async () => none.sdk }).complete('/w', {
+        system: 's',
+        prompt: 'p',
+      }),
+    ).rejects.toThrow(/без ответа/);
+
+    const hang = fakeSdk();
+    vi.useFakeTimers();
+    const p = new ClaudeAdapter({ loadSdk: async () => hang.sdk }).complete('/w', {
+      system: 's',
+      prompt: 'p',
+      timeoutMs: 1000,
+    });
+    const check = expect(p).rejects.toThrow(/не ответил/);
+    await vi.advanceTimersByTimeAsync(1000);
+    await check;
+    vi.useRealTimers();
+    expect(hang.control).toEqual(['close']);
+  });
+
+  it('complete: движок записал транскрипт вопреки persistSession — файл удалён, в каталоге проекта сессий нет', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'agentura-complete-'));
+    try {
+      const dir = projectDir('/w/repo', home);
+      await mkdir(dir, { recursive: true });
+      await writeFile(join(dir, 'other.jsonl'), '{}\n');
+      const f = fakeSdk();
+      const adapter = new ClaudeAdapter({
+        loadSdk: async () => f.sdk,
+        env: { PATH: '/bin', CLAUDE_CONFIG_DIR: home },
+        log: () => {},
+      });
+      // «старый» движок: пишет транскрипт, как обычная сессия
+      await writeFile(join(dir, 's-1.jsonl'), '{"type":"user"}\n');
+      f.push(init, {
+        type: 'result',
+        subtype: 'success',
+        is_error: false,
+        result: 'ok',
+        session_id: 's-1',
+      });
+      f.end();
+      await expect(adapter.complete('/w/repo', { system: 's', prompt: 'p' })).resolves.toBe('ok');
+      expect((await readdir(dir)).sort()).toEqual(['other.jsonl']);
+    } finally {
+      await rm(home, { recursive: true, force: true });
+    }
   });
 
   it('capabilities: модели и команды движка; сбой одного запроса не роняет второй', async () => {
