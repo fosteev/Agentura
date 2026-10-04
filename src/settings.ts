@@ -40,6 +40,13 @@ export const FEED_STYLES = ['journal', 'folded', 'replies', 'cards'] as const;
 export type FeedStyle = (typeof FEED_STYLES)[number];
 export const DEFAULT_FEED_STYLE: FeedStyle = 'journal';
 /**
+ * Вид вкладки «агенты» правой панели (`agents.view`): `list` — список с деталями, `tree` — дерево сессии, `lanes` —
+ * дорожки времени, `cards` — карточки; `graph` — граф во вкладке редактора (панель при нём показывает `list`).
+ */
+export const AGENTS_VIEWS = ['list', 'tree', 'lanes', 'cards', 'graph'] as const;
+export type AgentsView = (typeof AGENTS_VIEWS)[number];
+export const DEFAULT_AGENTS_VIEW: AgentsView = 'list';
+/**
  * Язык интерфейса (`language`): `auto` — как в VS Code (`vscode.env.language`), иначе явно. Применяется после
  * перезагрузки окна.
  */
@@ -69,6 +76,7 @@ export type SettingKey =
   | 'sessionList.time'
   | 'sidebar.top'
   | 'feed.style'
+  | 'agents.view'
   | 'feed.fontSize'
   | 'ui.fontSize'
   | 'font.interface'
@@ -90,6 +98,7 @@ export const SETTING_KEYS: readonly SettingKey[] = [
   'sessionList.time',
   'sidebar.top',
   'feed.style',
+  'agents.view',
   'feed.fontSize',
   'ui.fontSize',
   'font.interface',
@@ -120,6 +129,7 @@ export interface SettingsValues {
   'sessionList.time': boolean;
   'sidebar.top': SidebarTopMode;
   'feed.style': FeedStyle;
+  'agents.view': AgentsView;
   'feed.fontSize': number;
   /** Размер интерфейса (всё, кроме ленты), px; 13 — как есть, иначе всё масштабируется (`--ui-zoom`). */
   'ui.fontSize': number;
@@ -162,6 +172,10 @@ export function isSidebarTopMode(v: unknown): v is SidebarTopMode {
 
 export function isFeedStyle(v: unknown): v is FeedStyle {
   return typeof v === 'string' && (FEED_STYLES as readonly string[]).includes(v);
+}
+
+export function isAgentsView(v: unknown): v is AgentsView {
+  return typeof v === 'string' && (AGENTS_VIEWS as readonly string[]).includes(v);
 }
 
 export function isFeedFontSize(v: unknown): v is number {
@@ -318,6 +332,8 @@ export function validateSetting(key: SettingKey, value: unknown, lang: ErrLang =
         : bad(t.allowed(SIDEBAR_TOP_MODES.join(', ')));
     case 'feed.style':
       return isFeedStyle(value) ? { ok: true, value } : bad(t.allowed(FEED_STYLES.join(', ')));
+    case 'agents.view':
+      return isAgentsView(value) ? { ok: true, value } : bad(t.allowed(AGENTS_VIEWS.join(', ')));
     case 'language':
       return isLanguageMode(value)
         ? { ok: true, value }
@@ -338,6 +354,7 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
   const list = cfg.get<unknown>('sessionList.view');
   const top = cfg.get<unknown>('sidebar.top');
   const feed = cfg.get<unknown>('feed.style');
+  const agv = cfg.get<unknown>('agents.view');
   const lang = cfg.get<unknown>('language');
   const fz = cfg.get<unknown>('feed.fontSize');
   const uz = cfg.get<unknown>('ui.fontSize');
@@ -363,6 +380,7 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
     'sessionList.time': cfg.get<unknown>('sessionList.time') !== false,
     'sidebar.top': isSidebarTopMode(top) ? top : DEFAULT_SIDEBAR_TOP,
     'feed.style': isFeedStyle(feed) ? feed : DEFAULT_FEED_STYLE,
+    'agents.view': isAgentsView(agv) ? agv : DEFAULT_AGENTS_VIEW,
     'feed.fontSize': isFeedFontSize(fz) ? fz : DEFAULT_FEED_FONT_SIZE,
     'ui.fontSize': isFeedFontSize(uz) ? uz : DEFAULT_FEED_FONT_SIZE,
     'font.interface': str('font.interface'),

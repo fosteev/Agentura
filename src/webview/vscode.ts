@@ -26,6 +26,8 @@ export interface PanelState {
   tab?: 'changes' | 'agents';
   /** Охват вкладки «изменения»: вся сессия или последний ход. */
   changes?: 'session' | 'turn';
+  /** Охват вкладки «агенты» по видам (список охвата не имеет): последний ход или вся сессия. */
+  agScope?: Partial<Record<'tree' | 'lanes' | 'cards', 'turn' | 'session'>>;
 }
 
 /** Всё, что webview кладёт в `setState`: id сессии (для сериализатора) и панель. Поля независимы. */
@@ -94,6 +96,14 @@ export function readPanel(): PanelState {
   if (p.tab === 'turn' || p.tab === 'changes') out.tab = 'changes';
   else if (p.tab === 'agents') out.tab = 'agents';
   if (p.changes === 'session' || p.changes === 'turn') out.changes = p.changes;
+  const sc = p.agScope as Record<string, unknown> | undefined;
+  if (sc && typeof sc === 'object') {
+    const agScope: NonNullable<PanelState['agScope']> = {};
+    for (const k of ['tree', 'lanes', 'cards'] as const) {
+      if (sc[k] === 'turn' || sc[k] === 'session') agScope[k] = sc[k];
+    }
+    if (Object.keys(agScope).length) out.agScope = agScope;
+  }
   return out;
 }
 

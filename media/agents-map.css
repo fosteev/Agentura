@@ -1,0 +1,142 @@
+/* Карта агентов: виды вкладки «агенты» правой панели (roadmap 11): `agentura.agents.view` → `data-agents` на `.webview`.
+   Б дерево, В дорожки, Г карточки — свои компоненты с корнем `.am`; А список — `agents.css`. Значения — из
+   prototype/shared/agents-map.css (селекторы `[data-am]` там переключали макет, здесь вид выбирает компонент).
+   Классы состояний контейнеров — `is-ok / is-busy / is-err`, иначе цвет каскадом красит имя. Поверх hud.css и agents.css. */
+.am { font-size: 11.5px; color: var(--fg); }
+.am .ok { color: var(--ok); } .am .err { color: var(--full); } .am .run { color: var(--info); } .am .mute { color: var(--fg-mute); } .am .faint { color: var(--fg-faint); }
+.am a { color: var(--link); text-decoration: none; }
+.am code { font-family: var(--mono); font-size: 10.5px; }
+.am h5 { margin: 0; padding: 10px 14px 4px; font-size: 10.5px; font-weight: 600; color: var(--fg-faint); display: flex; gap: 8px; align-items: center; }
+.am h5::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+/* шапка: охват ход / сессия и итог */
+.am .top { display: flex; align-items: center; gap: 10px; padding: 10px 14px 4px; }
+.am .seg { display: flex; border: 1px solid var(--line-strong); border-radius: 3px; overflow: hidden; }
+.am .seg button { padding: 2px 9px; font-size: 10.5px; color: var(--fg-mute); }
+.am .seg button + button { border-left: 1px solid var(--line-strong); }
+.am .seg button[aria-pressed="true"] { background: var(--bg-input); color: var(--fg); }
+.am .top .r { margin-left: auto; color: var(--fg-mute); font-size: 11px; }
+.am .top .r b { color: var(--fg); font-weight: 500; }
+.am .btn { padding: 2px 9px; border: 1px solid var(--line-strong); border-radius: 3px; color: var(--fg); font-size: 10.5px; }
+.am .btn.stop::before { content: "■ "; color: var(--full); }
+
+/* Б · дерево сессии: ходы, в ходе — основной и ветки агентов; выбранный раскрыт на месте */
+.am .turn { padding: 0 14px; }
+.am .turn .th { display: grid; grid-template-columns: 12px 1fr auto; gap: 6px; padding: 6px 0; align-items: baseline; color: var(--fg-mute); cursor: pointer; }
+.am .turn .th b { color: var(--fg); font-weight: 500; }
+.am .turn + .turn { border-top: 1px solid var(--line); }
+.am .nd { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto; gap: 6px; align-items: baseline; padding: 3px 0; }
+.am .nd .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.am .nd .nm .ty { color: var(--fg-mute); }
+.am .nd small { display: block; color: var(--fg-mute); font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.am .nd.is-busy small { color: var(--info); } .am .nd.is-err small { color: var(--full); }
+.am .nd .tk { color: var(--fg-mute); font-size: 10.5px; text-align: right; white-space: nowrap; }
+.am .kids { list-style: none; margin: 0 0 4px 5px; padding: 0 0 0 13px; border-left: 1px solid var(--line-strong); }
+.am .kids > li { position: relative; }
+.am .kids > li::before { content: ""; position: absolute; left: -13px; top: 11px; width: 9px; border-top: 1px solid var(--line-strong); }
+.am .kids > li:last-child::after { content: ""; position: absolute; left: -14px; top: 12px; bottom: 0; width: 2px; background: var(--bg-side); }
+.am .kids.bg { border-left-style: dashed; } .am .kids.bg > li::before { border-top-style: dashed; }
+.am .kids > li.sel > .nd { background: var(--bg-raise); box-shadow: inset 2px 0 0 var(--accent); margin: 0 -14px 0 -4px; padding: 3px 14px 3px 4px; }
+.am .open { margin: 2px 0 6px; padding: 6px 0 4px 18px; border-left: 2px solid var(--accent); margin-left: -15px; background: color-mix(in srgb, var(--bg-raise) 60%, transparent); }
+.am .open .lbl { font-size: 10px; color: var(--fg-faint); padding: 4px 0 2px; }
+.am .open .q { font-family: var(--font); font-size: 11.5px; line-height: 1.45; color: var(--fg); padding-right: 12px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.am .open .c { display: grid; grid-template-columns: 34px 30px minmax(0, 1fr) auto; gap: 6px; font-size: 10.5px; padding: 1px 12px 1px 0; }
+.am .open .c > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.am .open .c .at, .am .open .c .op, .am .open .c .d { color: var(--fg-mute); }
+.am .open .c.now .op, .am .open .c.now .d { color: var(--info); }
+.am .open .ac { display: flex; gap: 6px; padding: 8px 12px 2px 0; flex-wrap: wrap; }
+.am .sum { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; margin: 6px 14px 12px; padding-top: 8px; border-top: 1px solid var(--line); color: var(--fg-mute); font-size: 11px; }
+.am .sum b { color: var(--fg); font-weight: 500; }
+
+/* В · дорожки времени: строка на агента, полоса — сколько шёл, засечки — вызовы инструментов */
+.am .lanes { padding: 4px 14px 0; }
+.am .ax, .am .ln { display: grid; grid-template-columns: 96px 1fr; gap: 8px; align-items: center; }
+.am .ax .sc { position: relative; height: 14px; font-size: 9.5px; color: var(--fg-faint); }
+.am .ax .sc span { position: absolute; transform: translateX(-50%); }
+.am .ax .sc span:first-child { transform: none; }
+.am .ln { padding: 4px 0; border-top: 1px dashed var(--line); cursor: pointer; }
+.am .ln .lb { min-width: 0; font-size: 10.5px; line-height: 1.3; }
+.am .ln .lb b { display: block; font-weight: 500; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.am .ln .lb span { color: var(--fg-mute); white-space: nowrap; }
+.am .ln.sel { background: var(--bg-raise); box-shadow: inset 2px 0 0 var(--accent); margin: 0 -14px; padding-left: 14px; padding-right: 14px; }
+.am .trk { position: relative; height: 22px; background: repeating-linear-gradient(90deg, transparent 0 calc(30% - 1px), var(--line) calc(30% - 1px) 30%); }
+.am .trk .bar { position: absolute; top: 5px; height: 12px; border-radius: 2px; background: color-mix(in srgb, var(--ok) 28%, transparent); border: 1px solid color-mix(in srgb, var(--ok) 60%, transparent); }
+.am .trk .bar.busy { background: color-mix(in srgb, var(--info) 22%, transparent); border-color: var(--info); border-right-width: 0; border-radius: 2px 0 0 2px; }
+.am .trk .bar.err { background: color-mix(in srgb, var(--full) 22%, transparent); border-color: color-mix(in srgb, var(--full) 70%, transparent); }
+.am .trk .bar.err::after { content: "✕"; position: absolute; right: -11px; top: -3px; font-size: 10px; color: var(--full); }
+.am .trk .bar.wait { background: repeating-linear-gradient(135deg, transparent 0 3px, var(--line-strong) 3px 4px); border-color: var(--line-strong); }
+.am .trk .bar.think { background: var(--bg-input); border-color: var(--line-strong); }
+.am .trk .bar.sh { background: transparent; border: 0; border-top: 2px dotted var(--fg-mute); top: 10px; height: 0; border-radius: 0; }
+.am .trk .bar i { position: absolute; top: 1px; bottom: 1px; width: 1px; background: currentColor; opacity: .7; }
+.am .trk .bar { color: var(--ok); } .am .trk .bar.busy { color: var(--info); } .am .trk .bar.err { color: var(--full); }
+.am .trk .now { position: absolute; top: -2px; bottom: -2px; width: 0; border-left: 1px solid var(--info); }
+.am .lanes .now-l { position: absolute; top: -12px; transform: translateX(-50%); font-size: 9.5px; color: var(--info); }
+.am .ldet { margin: 8px 0 0; border-top: 1px solid var(--line); padding: 8px 14px 12px; }
+.am .ldet .t { font-weight: 600; font-size: 12px; }
+.am .ldet .t .ty { color: var(--fg-mute); font-weight: 400; }
+.am .ldet .m { display: flex; flex-wrap: wrap; gap: 2px 12px; color: var(--fg-mute); font-size: 10.5px; padding: 2px 0 6px; }
+.am .ldet .m b { color: var(--fg); font-weight: 500; }
+.am .ldet .q { font-family: var(--font); font-size: 11.5px; line-height: 1.45; background: var(--bg-code); border-left: 2px solid var(--line-strong); padding: 6px 10px; border-radius: 0 3px 3px 0; max-height: calc(1.45em * 3 + 12px); overflow: hidden; }
+.am .ldet .c { display: grid; grid-template-columns: 34px 30px minmax(0, 1fr) auto; gap: 6px; font-size: 10.5px; padding: 1px 0; }
+.am .ldet .c > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.am .ldet .c .at, .am .ldet .c .op, .am .ldet .c .d { color: var(--fg-mute); }
+.am .ldet .c.now .op, .am .ldet .c.now .d { color: var(--info); }
+.am .ldet .lbl { font-size: 10px; color: var(--fg-faint); padding: 8px 0 3px; }
+.am .ldet .ac { display: flex; gap: 6px; padding-top: 8px; flex-wrap: wrap; }
+
+/* Г · карточки: каждый агент — самодостаточная карточка, без отдельной панели деталей */
+.am .mainl { display: grid; grid-template-columns: 12px 1fr auto; gap: 6px; align-items: baseline; margin: 2px 14px 4px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 3px; }
+.am .mainl small { display: block; color: var(--fg-mute); font-size: 10.5px; }
+.am .cards { display: grid; gap: 8px; padding: 4px 14px 4px; }
+.am .card { border: 1px solid var(--line-strong); border-radius: 4px; background: var(--bg); overflow: hidden; }
+.am .card.is-busy { border-color: color-mix(in srgb, var(--info) 55%, var(--line-strong)); }
+.am .card.is-err { border-color: color-mix(in srgb, var(--full) 55%, var(--line-strong)); }
+.am .card .ch { display: flex; gap: 6px; align-items: baseline; padding: 6px 10px 0; font-size: 10.5px; color: var(--fg-mute); }
+.am .card .ch .r { margin-left: auto; }
+.am .card .ch .r b { color: var(--fg); font-weight: 500; }
+.am .card .ct { padding: 2px 10px 0; font-weight: 600; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.am .card .cb { padding: 4px 10px 6px; font-family: var(--font); font-size: 11.5px; line-height: 1.4; color: var(--fg-mute); }
+.am .card .cb code { color: var(--fg); }
+.am .card.is-busy .cb { font-family: var(--mono); font-size: 10.5px; color: var(--info); }
+.am .card.is-err .cb { font-family: var(--mono); font-size: 10.5px; color: var(--full); }
+.am .card .prog { height: 3px; display: flex; gap: 1px; margin: 0 10px 6px; }
+.am .card .prog i { flex: 1; background: var(--fg-faint); border-radius: 1px; }
+.am .card .prog i.rd { background: var(--fg-mute); } .am .card .prog i.gr { background: var(--info); }
+.am .card .cf { display: flex; gap: 10px; align-items: center; padding: 5px 10px; border-top: 1px solid var(--line); background: var(--bg-side); font-size: 10.5px; color: var(--fg-mute); }
+.am .card .cf .sp { margin-left: auto; display: flex; gap: 10px; }
+.am .chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 14px 12px; }
+.am .chip { display: inline-flex; gap: 6px; align-items: baseline; padding: 2px 8px; border: 1px dashed var(--line-strong); border-radius: 10px; font-size: 10.5px; color: var(--fg-mute); }
+.am .chip b { color: var(--fg); font-weight: 500; }
+.am .chip button { color: var(--full); }
+.am .card .cf .sp { white-space: nowrap; }
+
+/* ── то, чего нет в прототипе: контейнерный запрос, кликабельность, кнопки-ссылки ── */
+.am { container-type: inline-size; }
+/* панель уже 280 px: подпись дорожки 80 px */
+@container (max-width: 280px) {
+  .am .ax, .am .ln { grid-template-columns: 80px 1fr; }
+}
+.am button { cursor: pointer; }
+.am .turn .th[role="button"] { cursor: pointer; }
+.am .kids > li > .nd, .am .ln { cursor: pointer; }
+.am .nd.main { cursor: default; }
+.am :is(.th, .nd, .ln):focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.am .nd .tk button, .am .chip button { color: var(--full); margin-left: 6px; }
+.am .card .cf button { color: var(--link); }
+.am .card .cf button.err { color: var(--full); }
+.am .lanes { position: relative; }
+.am .ldet .q, .am .open .q { white-space: pre-wrap; overflow-wrap: anywhere; }
+.am .empty { padding: 12px 14px; color: var(--fg-faint); }
+
+/* дорожки и карточки лежат внутри `.turn` (у него свои 14 px по бокам) */
+.am .turn > .lanes, .am .turn > .cards, .am .turn > .chips, .am .turn > h5 { padding-left: 0; padding-right: 0; }
+.am .turn > .mainl { margin-left: 0; margin-right: 0; }
+.am .turn > .ldet { margin-left: -14px; margin-right: -14px; }
+.am .ln .lb { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.am .trk .bar.stop { background: color-mix(in srgb, var(--fg-mute) 22%, transparent); border-color: var(--fg-mute); color: var(--fg-mute); }
+.am .trk .bar.tool { background: color-mix(in srgb, var(--accent) 16%, transparent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.am .trk .bar .bf { position: absolute; left: 2px; top: -1px; font-size: 10px; color: var(--fg-mute); }
+.am .card .prog i.er { background: var(--full); }
+.side .amap h4 .lnk { margin-left: 10px; color: var(--link); font-weight: 400; font-size: 10.5px; }
+/* settings.css (⚙, превью вида) задаёт глобальные `.th` и `.card` — у видов они свои */
+.am .turn .th { height: auto; margin-top: 0; grid-column: auto; }
+.am .card { display: block; gap: 0; color: var(--fg); text-align: left; }

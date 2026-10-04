@@ -1,6 +1,6 @@
 # Карта агентов: пять видов переключателем
 
-> Статус: в работе · следующий — этап 1 · создан 2026-10-04 по запросу владельца («реализуем все варианты, переключать в настройках»).
+> Статус: в работе · этап 1 принят 2026-10-04 (ручная проверка — `11-agents-map.pending.md`), следующий — этап 2 · создан 2026-10-04 по запросу владельца («реализуем все варианты, переключать в настройках»).
 > Прототип: `prototype/screens/agents-map.html#a…e`, `prototype/shared/agents-map.css`; галерея — раздел «Карта агентов:
 > варианты» (артефакт v27, `#amap`). Дизайн владелец принимает картинками в галерее.
 > Исполнитель отмечает чекбоксы этого файла по ходу работы. Строки кода — по разведке 2026-10-04, перед правкой сверять.
@@ -117,27 +117,83 @@
 
 Модель видов, три новых компонента, переключатель охвата, настройка end-to-end, команда, превью в ⚙.
 
-- [ ] `TurnTimeline.turnNo` в `hudState.ts` + тест
-- [ ] `src/webview/agentViews.ts`: `agentTurns`, `laneView`, `cardView`, `estTokens` + `agentViews.test.ts` (охват
+- [x] `TurnTimeline.turnNo` в `hudState.ts` + тест
+- [x] `src/webview/agentViews.ts`: `agentTurns`, `laneView`, `cardView`, `estTokens` + `agentViews.test.ts` (охват
       ход/сессия, ход без агентов не попадает, деления оси 3–5, засечки ≤ 60, фоновая задача раньше оси — «↤», порядок
       карточек, оценка токенов)
-- [ ] `PanelState.agScope` + `readPanel`/`savePanel` + тест в `panelDom.test.ts`
-- [ ] компоненты `AgentsTree`, `AgentsLanes`, `AgentsCards` (новый `src/webview/components/AgentViews.tsx`), общий
+- [x] `PanelState.agScope` + `readPanel`/`savePanel` + тест в `panelDom.test.ts`
+- [x] компоненты `AgentsTree`, `AgentsLanes`, `AgentsCards` (новый `src/webview/components/AgentViews.tsx`), общий
       блок выбранного агента; `AgentsPane` выбирает вид; кнопка ↗ «граф» (до этапа 2 — скрыта, если поверхности нет)
-- [ ] `media/agents-map.css` + подключение в `webviewHost.ts`
-- [ ] настройка `agentura.agents.view` end-to-end (package.json, nls, `settings.ts`, `chat.info`, сигнал, `data-agents`)
-- [ ] команда `agentura.agentsView` + строки `l10n.ts`
-- [ ] строка «Карта агентов» в ⚙ → «Вид» с `AgentsPreview`; строки `strings.ts`/`strings.en.ts`
-- [ ] DOM-тесты: новый `agentsMapDom.test.ts` (jsdom, фикстура `agentsParallel`): `data-agents` из `chat.info`; в `tree`
+- [x] `media/agents-map.css` + подключение в `webviewHost.ts` (подключение — по коду и сборке; вид — пользователь, см. ниже)
+- [x] настройка `agentura.agents.view` end-to-end (package.json, nls, `settings.ts`, `chat.info`, сигнал, `data-agents`)
+- [ ] команда `agentura.agentsView` + строки `l10n.ts` — написана по образцу `pickFeedStyle`, typecheck и manifest-тест
+      (команда объявлена, enum совпадает с кодом) зелёные; сам QuickPick не прогонялся — пользователь
+- [x] строка «Карта агентов» в ⚙ → «Вид» с `AgentsPreview`; строки `strings.ts`/`strings.en.ts`
+- [x] DOM-тесты: новый `agentsMapDom.test.ts` (jsdom, фикстура `agentsParallel`): `data-agents` из `chat.info`; в `tree`
       раскрыт выбранный и клик переносит раскрытие; в `lanes` есть дорожка на каждого агента и линия «сейчас» у идущего;
       в `cards` порядок идущие → упавшие → готовые и «■ стоп» шлёт `agent.stop`; охват «сессия» показывает прошлые ходы
       свёрнутыми. Существующие `agentsDom.test.ts`/`panelDom.test.ts` зелёные без правки ожиданий
-- [ ] `npm run check` зелёный
+- [x] `npm run check` зелёный (72 файла, 871 тест)
+- [ ] **пользователь:** вид дерева / дорожек / карточек глазами в VS Code при 220, 300 и 600 px и в светлой теме; превью в ⚙ → «Вид»; QuickPick «Agents View…»; смена `agentura.agents.view` в settings.json у открытой вкладки
 
 **Готово, когда:** `npm run check` зелёный; в `list` существующие DOM-тесты агентов проходят без правок; смена
 `agentura.agents.view` в settings.json меняет `data-agents` открытой вкладки без переоткрытия.
 
 **Сессия:** sonnet, high; первым, последовательно (одно репо). Промт — «Сессия 1».
+
+**Решения (2026-10-04, по итогам сессии 1):**
+
+- **Раскладка.** Модель — `src/webview/agentViews.ts` (чистые функции) + `agentViews.test.ts` (22 теста); компоненты —
+  `src/webview/components/AgentViews.tsx` (`AgentsTree`, `AgentsLanes`, `AgentsCards`, общий `AgentOpen` — блок
+  выбранного агента в двух обличьях: `.open` в дереве, `.ldet` под дорожками); `AgentsPane` (`SidePanes.tsx`) принимает
+  `model: {mode:'list', view} | {mode:'views', view: ViewsPane}`, `now`, `onScope`, необязательный `onGraph`. Сборка модели
+  вида — `agentsViewPane(h, mode, scope, o)`; `Chat.tsx` считает `agentsMode` (`graph` → `list`) и охват из
+  `panel.agScope?.[mode] ?? defaultScope(mode)`. CSS — `media/agents-map.css` (+ `scripts/vsix-verify.mjs`).
+- **`agentsView.ts` — только вынос, поведение списка не менялось:** экспортированы `elapsed`, `currentCall`, `mapRow`;
+  выделены `mainRow`, `backgroundTasks`, `taskRow`, `detailRows` (строки хода агента из `agentDetail`).
+- **Контракт `agentViews.ts`.**
+  - `agentTurns(h, scope, {now, cwd?})` — `now` добавлен (нужны строки со временем). `scope='turn'`: последний ход с
+    агентами (`lastAgentTurn`) + все идущие агенты и фоновые задачи; `'session'`: каждый ход, где есть агенты или задачи,
+    новые сверху. Идущая фоновая задача показана под последним ходом с пометкой `since` («с хода N»), а не в ходе запуска
+    (так в прототипе); в `session` идущий субагент старого хода остаётся в своём (свёрнутом) ходе. Группа хранит и
+    исходные узлы (`nodes`/`taskNodes`) — по ним строятся дорожки и карточки.
+  - `laneView(h, group, now)` — вместо `(h, turnNo, now)` берёт группу: состав дорожек должен совпадать с составом
+    хода при обоих охватах. Ось: старт — первый таймлайн основного с этим `turnNo`, иначе самый ранний агент хода; конец —
+    последнее окончание или `now`. Вызов `Agent`/`Task` в дорожке основного не рисуется (он и есть «ждёт»).
+  - Деления оси: ряд `10s…30m` из плана расширен часами (`1h, 2h, 6h, 12h, 24h`) и суточным шагом — иначе при многодневном
+    ходе (восстановленная история) получались тысячи меток и вкладка вешалась. До суток — 3–5 меток (тест).
+  - `cardView(a, now, cwd?, hasSession?)` отдаёт ещё `line`/`kind`/`calls`/`transcript`; `cardList` — порядок идущие →
+    упавшие и остановленные → готовые, внутри по старту.
+  - `estTokens(len/4)`, `estLabel`: `≈85`, `≈0.4k`, `≈2.1k`.
+  - `TurnTimeline.turnNo` — необязательное поле (у таймлайнов агентов его нет), ставится в `turn.start` и в `ensureTurn`.
+- **Выбранный агент** — прежний сигнал `selectedAgent`; `pickSelected`: заданный, если он на экране, иначе первый идущий,
+  иначе первый. В `cards` деталей нет (только кнопки «транскрипт»/«лог» и «■ стоп»).
+- **`data-agents`** ставится на `.webview` (контракт), но CSS по нему не переключается: вид выбирает компонент, корень видов —
+  `.am`; селекторы `[data-am]` и `.gmap` прототипа не переносились. Привязка осталась для этапа 2 и для превью в ⚙.
+- **Кнопка ↗ «граф»** — `AgentsPane.onGraph?`: в шапке видов (`.top`) и в `h4` списка; `Chat` его не передаёт, пока нет
+  поверхности `agents`, поэтому кнопки нет ни в одном виде. Строки `ui.agents.view.graph/graphTitle` уже есть.
+- **Превью в ⚙** — `AgentsPreview({view})` (`SettingsPreview.tsx`) на ручной `HudState` (ход 14: готов / два идут / упал + dev-сервер
+  из хода 11). Для `graph` показывает список без ↗ (не заглушка-картинка из плана: настоящий компонент проще и не расходится).
+  `prototype/screens/settings.html` дополнен строкой «Карта агентов» — на нём построен тест `settingsDom` (классы `.set`).
+- **Отступления от плана.** (1) В `settingsDom.test.ts` селектор `.set .ok` сужен до `.set .ok[role="status"]`: в превью
+  теперь есть настоящие `.ok`-пометки агентов. (2) Ключ `agentura.agents.view` добавлен в ожидаемый список строк ⚙.
+  (3) Охват хранится так: `agScope` пишется целиком (`{...panel.agScope, [mode]: scope}`), `readPanel` отбрасывает чужие виды и значения.
+  (4) CHANGELOG: добавлена запись про виды вкладки.
+- **Узкая панель:** подпись дорожки 80 px при ширине `.am` ≤ 280 px — контейнерным запросом (`container-type: inline-size` на `.am`),
+  а не по `--side-w`.
+**Приёмка этапа 1 (2026-10-04, plan-review, два прохода):** починено — превью в ⚙ ломали глобальные `.th`/`.card` из
+`settings.css` (перекрыты под `.am`); старт хода без таймлайна брался по всем узлам группы (фоновые и идущие агенты
+других ходов) — теперь по узлам своего хода, таймлайн со `startedAt ≤ 0` (история без времени) не берётся; дорожка фоновой
+задачи всегда рисовала ◐ — теперь метка и статус задачи; нет `key` у узлов дерева, карточек, задач и чипов (пересортировка
+карточек → «■ стоп» мог попасть не тому) — ключи по `agentId`; цикл в `parentAgentId` терял агентов — `treeLines`
+линейный, с защитой; полосы могли выходить за 100 % — `clampBar`; ось для ходов < 20 с — шаги `1s, 2s, 5s`;
+`pickSelected` ищет идущего сначала в верхнем ходе. Производительность: виды Б/В/Г на скрытой вкладке модель не строят
+(`AgentsPaneModel {mode:'hidden'}`), дорожки и карточки считаются лениво только для раскрытых ходов
+(`ViewsPane.laneOf(i)`/`cardsOf(i)` вместо массивов `lanes`/`cards`), выдержка итога и `oneLine` режут текст до регулярки.
+
+- **Не проверено (только пользователь, в VS Code):** вёрстка видов (линии дерева, штриховка «ждёт», засечки, строка «сейчас»),
+  поведение при 220/300/600 px и в светлой теме, превью в ⚙, QuickPick команды, живая смена настройки в settings.json
+  (доставка проверена по коду: `onDidChangeConfiguration` → `ChatPanel.settingsChanged` → `chat.info`, и DOM-тестом на `chat.info`).
 
 ### 2. Граф во вкладке редактора
 
@@ -227,6 +283,13 @@ dev-процессы не запускать; `.vsix` не собирать. В�
 же); прототип `prototype/screens/agents-map.html#e` и блок `.gmap` в `prototype/shared/agents-map.css`; эталон
 вкладки-webview — `src/extension/settingsPanel.ts`, `src/webview/settings/index.tsx`, `webviewHost.ts`, `esbuild.mjs`.
 
+Уже есть после этапа 1 (точки входа, не переписывать): `AgentsPane.onGraph?` — кнопка ↗ рисуется, если колбэк передан
+(`Chat.tsx` его пока не передаёт — передать и открывать граф); в `Chat.tsx` `agentsMode = agentsView.value === 'graph' ?
+'list' : …` — при `graph` панель остаётся списком; `AgentsPreview` (`SettingsPreview.tsx`) для `graph` рисует список —
+заменить на компонент графа; `estTokens`/`estLabel`, `agentTurns`, `agentOpen` из `src/webview/agentViews.ts` и компонент `AgentOpen` из
+`src/webview/components/AgentViews.tsx` годятся для графа; CSS видов — `media/agents-map.css` под корнем `.am`
+(граф — свой корень `.gmap` в `media/agents-graph.css`).
+
 Уже решено, не переспрашивать: поверхность `agents`, одна вкладка графа на вкладку чата (Beside, reveal, закрывается
 с чатом), данные — снимок `AgentGraphView` от webview чата через хост с дебаунсом 250 мс только пока граф открыт,
 действия — те же `agent.stop`/`agent.transcript` в контроллер своего чата, раскладка — чистая `graphLayout`, оценки
@@ -253,6 +316,9 @@ dev-процессы не запускать; `.vsix` не собирать.
   картинках этапа 3 и в ручной проверке; запас — подпись дорожки 80 px и перенос меты в карточках.
 - **Время живых агентов — время приёма в webview**, а не движка: на дорожках возможен сдвиг в доли секунды. Терпимо;
   при восстановлении из истории время точное.
+  Сильнее при Remote SSH / WSL: `agent.start` живого агента без `at` (`mapper.ts:~299`) берёт `Date.now()` webview, а
+  таймлайн хода — `e.at` хоста (`mapper.ts:~749`); при расхождении часов — ложные «↤» и сдвиг полос. Лечится `at:
+  this.now()` в маппере для `agent.start` и сегментов — вне этапа 1 (протокол хоста), при жалобах — отдельной правкой.
 - **Модель субагента может отсутствовать** до первого ответа — во всех видах показывать без неё, не «undefined».
 - **Длинные сессии:** охват «сессия» в дереве с десятками ходов — прошлые ходы свёрнуты, но список длинный; если тормозит —
   показывать последние 20 ходов и «ещё N».

@@ -61,7 +61,7 @@ import {
   type ChatState,
   type QuestionCard,
 } from './chatState';
-import type { FeedStyle } from '../settings';
+import type { AgentsView, FeedStyle } from '../settings';
 import { pushHistory } from './composer';
 import { applyHud, contextMax, initialHud, resetHud, type HudState } from './hudState';
 import { cacheView, contextFullAt, contextView, kilo, limitsView } from './hudView';
@@ -112,6 +112,8 @@ export const autoSelection = signal(true);
 export const showThinking = signal(true);
 /** Вид ленты (`agentura.feed.style`, приходит в `chat.info`): `data-feed` на корне чата. */
 export const feedStyle = signal<FeedStyle>('journal');
+/** Вид вкладки «агенты» (`agentura.agents.view`, `chat.info`): `data-agents` на корне чата. */
+export const agentsView = signal<AgentsView>('list');
 export const history = signal<string[]>([]);
 export const fileHits = signal<{ requestId: number; items: FileHit[] }>({
   requestId: 0,
@@ -209,6 +211,7 @@ export function handleHostMessage(m: ToWebview): void {
     case 'chat.info':
       chat.value = { ...chat.value, project: m.project, cwd: m.cwd, allowBypass: m.allowBypass };
       feedStyle.value = m.feedStyle ?? 'journal';
+      agentsView.value = m.agentsView ?? 'list';
       if (m.contextThresholds?.length) {
         hudState.value = { ...hudState.value, thresholds: [...m.contextThresholds] };
       }

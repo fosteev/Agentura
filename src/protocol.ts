@@ -18,6 +18,7 @@ import type { ImageProblem } from './shared/images';
 import type { FileProblem } from './shared/files';
 import type {
   EngineCheck,
+  AgentsView,
   FeedStyle,
   SessionListMode,
   SettingKey,
@@ -149,6 +150,8 @@ export type ToWebview =
       contextThresholds?: number[];
       /** Вид ленты (`agentura.feed.style`); нет — `journal`. */
       feedStyle?: FeedStyle;
+      /** Вид вкладки «агенты» (`agentura.agents.view`); нет — `list`. */
+      agentsView?: AgentsView;
     }
   | { type: 'capabilities'; sessionId: string; models: ModelOption[]; commands: CommandOption[] }
   | ({ type: 'editor.context' } & EditorContext)

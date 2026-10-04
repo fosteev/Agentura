@@ -4,6 +4,11 @@
 
 ### Added
 
+- **Agents tab views** (`agentura.agents.view`, ⚙ → "Look", command "Agents View…"): the "agents" tab of the right
+  panel can be a `list` (default, as before), a session `tree`, time `lanes` (one lane per agent on a shared axis,
+  call ticks, the main agent's waiting) or `cards` (live call, summary excerpt, failure text). Tree, lanes and cards
+  have a "turn / session" scope; past turns are collapsed to one line. Prompt and summary sizes are estimates
+  (`≈0.4k`, by text length). `graph` is accepted by the setting but not implemented yet: the panel keeps the list.
 - **Chat tab**: the Agentura icon instead of the default one; the title is just the session name (no
   "Agentura ·" prefix, up to 40 characters with "…"), "New session" until it has a name. The ● / ? / ! state marker
   stays. A "New session" button with the logo sits in the right corner of the tab bar, visible above any editor.

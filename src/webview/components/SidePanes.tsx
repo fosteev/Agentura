@@ -1,4 +1,6 @@
 import type { AgentDetailView, AgentMapView, MapRowView } from '../agentsView';
+import type { AgentScope, ViewsPane } from '../agentViews';
+import { AgentsCards, AgentsLanes, AgentsTree } from './AgentViews';
 import type { ChangesScope, ChangesView } from '../changesView';
 import { ui } from '../strings';
 import { formatDuration } from '../toolView';
@@ -106,7 +108,9 @@ export function ChangesPane({
               {k.state === 'run' ? (
                 <span class="spin" />
               ) : (
-                <span class={k.state === 'ok' ? 'pass' : 'fail'}>{k.state === 'ok' ? '✓' : '✗'}</span>
+                <span class={k.state === 'ok' ? 'pass' : 'fail'}>
+                  {k.state === 'ok' ? '✓' : '✗'}
+                </span>
               )}
               <code data-tip={k.command}>{k.command}</code>
               <span class={k.state === 'run' ? 'r run' : 'r'}>
@@ -120,22 +124,74 @@ export function ChangesPane({
   );
 }
 
-/** Вкладка «агенты» (A6): слева дерево агентов хода, справа (в узкой — ниже) выбранный агент. */
+/** Что показывает вкладка «агенты»: список (А) со своей моделью или один из видов Б/В/Г. */
+export type AgentsPaneModel =
+  | { mode: 'list'; view: AgentMapView }
+  | { mode: 'views'; view: ViewsPane }
+  /** Вид Б/В/Г на скрытой вкладке: модель не строится. */
+  | { mode: 'hidden' };
+
+/**
+ * Вкладка «агенты» (A6, roadmap 11): вид выбирает `agentura.agents.view` — список (слева агенты хода,
+ * справа выбранный), дерево сессии, дорожки времени или карточки.
+ */
 export function AgentsPane({
-  view,
+  model,
+  now,
   hidden,
   labelledBy = 'tab-agents',
   onSelect,
   onStop,
   onTranscript,
+  onScope,
+  onGraph,
 }: {
-  view: AgentMapView;
+  model: AgentsPaneModel;
+  now: number;
   hidden?: boolean;
   labelledBy?: string;
   onSelect: (agentId: string) => void;
   onStop: (taskId: string) => void;
   onTranscript: (agentId: string, taskId: string) => void;
+  /** Охват «ход / сессия» видов Б/В/Г. */
+  onScope: (scope: AgentScope) => void;
+  /** Открыть граф во вкладке редактора; нет — кнопки «↗ граф» нет (поверхности графа ещё нет). */
+  onGraph?: () => void;
 }) {
+  const act = { onSelect, onStop, onTranscript };
+  if (model.mode === 'hidden') {
+    return (
+      <section
+        class="tabpane"
+        id="pane-agents"
+        role="tabpanel"
+        aria-labelledby={labelledBy}
+        hidden
+      />
+    );
+  }
+  if (model.mode === 'views') {
+    const pane = model.view;
+    const common = { pane, now, act, onScope, ...(onGraph ? { onGraph } : {}) };
+    return (
+      <section
+        class="tabpane"
+        id="pane-agents"
+        role="tabpanel"
+        aria-labelledby={labelledBy}
+        hidden={hidden}
+      >
+        {pane.mode === 'tree' ? (
+          <AgentsTree {...common} />
+        ) : pane.mode === 'lanes' ? (
+          <AgentsLanes {...common} />
+        ) : (
+          <AgentsCards {...common} />
+        )}
+      </section>
+    );
+  }
+  const view = model.view;
   const row = (a: MapRowView) => {
     const pick = a.agentId && a.cls.includes('sub') ? a.agentId : undefined;
     return (
@@ -193,7 +249,14 @@ export function AgentsPane({
     >
       <div class="amap">
         <div class="list">
-          <h4>{view.heading}</h4>
+          <h4>
+            {view.heading}
+            {onGraph && (
+              <button class="lnk" data-tip={ui.agents.view.graphTitle} onClick={onGraph}>
+                {ui.agents.view.graph}
+              </button>
+            )}
+          </h4>
           <div class="ag">
             {view.rows.map(row)}
             {view.tasks.length > 0 && <h5>{ui.agents.tasks}</h5>}

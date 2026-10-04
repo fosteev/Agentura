@@ -386,7 +386,8 @@ html[data-width='380'] .num.wide {
   gap: 12px;
   margin-top: 10px;
 }
-.set > .cards:has(.pv-feed) {
+.set > .cards:has(.pv-feed),
+.set > .cards:has(.pv-agents) {
   grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
 }
 .card {
@@ -447,6 +448,15 @@ html[data-width='380'] .num.wide {
 /* в карточках масштаб свой; размер текста из настройки — только в образце */
 .pv-feed:not(.pv-sized) .log {
   zoom: 1;
+}
+.pv-agents {
+  --pz: 0.55;
+  height: 190px;
+}
+.pv-agents .pane.side {
+  display: block;
+  overflow: hidden;
+  background: var(--bg-side);
 }
 .pv-side {
   height: 176px;

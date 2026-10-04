@@ -82,6 +82,11 @@ describe('sessionList', () => {
     expect(validateSetting('sidebar.top', 'mini').ok).toBe(false);
     expect(validateSetting('feed.style', 'cards')).toEqual({ ok: true, value: 'cards' });
     expect(validateSetting('feed.style', 'grid').ok).toBe(false);
+    for (const v of ['list', 'tree', 'lanes', 'cards', 'graph']) {
+      expect(validateSetting('agents.view', v)).toEqual({ ok: true, value: v });
+    }
+    expect(validateSetting('agents.view', 'grid').ok).toBe(false);
+    expect(validateSetting('agents.view', 3).ok).toBe(false);
   });
 });
 
@@ -168,6 +173,7 @@ describe('readSettings', () => {
         'sessionList.context': 'x',
         'sidebar.top': 'mini',
         'feed.style': 'grid',
+        'agents.view': 'map',
       }),
     );
     expect(v).toMatchObject({
@@ -176,6 +182,7 @@ describe('readSettings', () => {
       'sessionList.time': true,
       'sidebar.top': 'detailed',
       'feed.style': 'journal',
+      'agents.view': 'list',
       defaultPermissionMode: 'manual',
       defaultEffort: '',
       contextThresholds: [120_000, 150_000],

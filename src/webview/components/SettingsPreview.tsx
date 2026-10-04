@@ -1,10 +1,14 @@
 import type { ComponentChildren } from 'preact';
 import type { FeedRow } from '../chatState';
 import type { SessionSummary } from '../../protocol';
-import type { FeedStyle } from '../../settings';
+import type { AgentsView, FeedStyle } from '../../settings';
+import { agentMapView } from '../agentsView';
+import { agentsViewPane, defaultScope } from '../agentViews';
+import { initialHud, type AgentNode, type HudState, type TimelineSeg } from '../hudState';
 import { uiLang } from '../strings';
 import { Log } from './Log';
 import { SidebarView, type SidebarData, type SidebarLook } from './Sidebar';
+import { AgentsPane } from './SidePanes';
 
 /**
  * Миниатюры вида во вкладке настроек: настоящие `Log` и `SidebarView` на фикстуре, уменьшенные CSS-`zoom`.
@@ -130,6 +134,151 @@ export function FeedPreview({ style, scaled }: { style: FeedStyle; scaled?: bool
           onPreview={noop}
           onOpenUrl={noop}
         />
+      </div>
+    </div>
+  );
+}
+
+// ——— вкладка «агенты»: момент прототипа (ход 14 идёт 1:18, два агента идут, один готов, один упал, фоном dev-сервер) ———
+
+const AGENTS_TEXT = {
+  ru: {
+    board: 'apps/board — где сбрасывается состояние',
+    kiosk: 'apps/kiosk — где сбрасывается состояние',
+    operator: 'apps/operator — где сбрасывается состояние',
+    ws: 'ws-client — воспроизвести разрыв',
+    prompt:
+      'Найди все места, где при переподключении сокета сбрасывается состояние очереди и талонов. Только чтение.',
+    done: '1 место: Queue.tsx:58 — сброс очереди в onOpen до прихода снимка.',
+    err: 'bash pnpm test:e2e — ECONNREFUSED 127.0.0.1:4100',
+    dev: 'pnpm dev --filter board',
+  },
+  en: {
+    board: 'apps/board — where the state is reset',
+    kiosk: 'apps/kiosk — where the state is reset',
+    operator: 'apps/operator — where the state is reset',
+    ws: 'ws-client — reproduce the disconnect',
+    prompt:
+      'Find every place where the queue and ticket state is reset when the socket reconnects. Read only.',
+    done: '1 place: Queue.tsx:58 — the queue is reset in onOpen before the snapshot arrives.',
+    err: 'bash pnpm test:e2e — ECONNREFUSED 127.0.0.1:4100',
+    dev: 'pnpm dev --filter board',
+  },
+}[uiLang];
+
+/** Фикстура `HudState` для превью: те же агенты, что в прототипе `agents-map.html`. */
+function agentsHud(now: number): HudState {
+  const t0 = now - 78_000;
+  const call = (id: string, name: string, input: Record<string, unknown>, at: number, endAt?: number): TimelineSeg => ({
+    id,
+    kind: 'tool',
+    name,
+    input,
+    at,
+    ...(endAt !== undefined ? { endAt } : {}),
+    state: endAt === undefined ? 'run' : 'ok',
+  });
+  const sub = (
+    n: string,
+    description: string,
+    status: AgentNode['status'],
+    from: number,
+    to: number | undefined,
+    tokens: number,
+    calls: number,
+    segs: TimelineSeg[],
+    extra: Partial<AgentNode> = {},
+  ): AgentNode => ({
+    agentId: `tool-${n}`,
+    taskId: `task-${n}`,
+    description,
+    taskType: 'local_agent',
+    subagentType: 'Explore',
+    background: false,
+    status,
+    startedAt: from,
+    ...(to !== undefined ? { endedAt: to, durationMs: to - from } : {}),
+    tokens,
+    toolUses: calls,
+    turnNo: 14,
+    prompt: AGENTS_TEXT.prompt,
+    model: 'claude-sonnet-5-5',
+    segs,
+    calls,
+    ...extra,
+  });
+  const read = (id: string, from: number) => call(id, 'Read', { file_path: '/repo/src/store.ts' }, from, from + 400);
+  const grep = (id: string, from: number, open = false) =>
+    call(id, 'Grep', { pattern: 'on\\(open' }, from, open ? undefined : from + 200);
+  return {
+    ...initialHud(),
+    context: { used: 136_080, max: 200_000 },
+    turnNo: 14,
+    turns: [
+      {
+        turnNo: 14,
+        startedAt: t0,
+        segs: [{ id: 'th', kind: 'think', at: t0, endAt: t0 + 6_000, state: 'ok' }],
+      },
+    ],
+    agents: [
+      sub('a', AGENTS_TEXT.board, 'completed', t0 + 5_000, t0 + 46_000, 9_400, 6, [
+        read('a1', t0 + 6_000),
+        read('a2', t0 + 14_000),
+        grep('a3', t0 + 22_000),
+      ], { summary: AGENTS_TEXT.done }),
+      sub('b', AGENTS_TEXT.kiosk, 'running', t0 + 5_000, undefined, 12_300, 14, [
+        read('b1', t0 + 20_000),
+        grep('b2', t0 + 40_000),
+        grep('b3', t0 + 70_000, true),
+      ]),
+      sub('c', AGENTS_TEXT.operator, 'running', t0 + 20_000, undefined, 7_800, 8, [
+        read('c1', t0 + 30_000),
+        read('c2', t0 + 60_000, ),
+        call('c3', 'Read', { file_path: '/repo/src/panel/OperatorPanel.tsx' }, t0 + 74_000),
+      ]),
+      sub('d', AGENTS_TEXT.ws, 'failed', t0 + 5_000, t0 + 27_000, 2_100, 3, [
+        call('d1', 'Bash', { command: 'pnpm test:e2e' }, t0 + 8_000, t0 + 26_000),
+      ], { subagentType: 'general-purpose', summary: AGENTS_TEXT.err }),
+      {
+        agentId: 'tool-dev',
+        taskId: 'task-dev',
+        description: AGENTS_TEXT.dev,
+        taskType: 'local_bash',
+        background: true,
+        status: 'running',
+        startedAt: t0 - 6 * 60_000,
+        turnNo: 11,
+        segs: [],
+        calls: 0,
+      },
+    ],
+  };
+}
+
+/** Вкладка «агенты» в виде `view`: настоящий `AgentsPane` на фикстуре; `graph` (этап 2) — пока список. */
+export function AgentsPreview({ view }: { view: AgentsView }) {
+  const now = Date.now();
+  const h = agentsHud(now);
+  const mode = view === 'graph' ? 'list' : view;
+  const o = { working: true, waiting: true, now, cwd: CWD, hasSession: true, model: 'claude-opus-5-5' };
+  return (
+    <div class="pv pv-agents" inert aria-hidden="true">
+      <div class="webview" data-agents={view}>
+        <aside class="pane side">
+          <AgentsPane
+            model={
+              mode === 'list'
+                ? { mode: 'list', view: agentMapView(h, o) }
+                : { mode: 'views', view: agentsViewPane(h, mode, defaultScope(mode), o) }
+            }
+            now={now}
+            onSelect={noop}
+            onStop={noop}
+            onTranscript={noop}
+            onScope={noop}
+          />
+        </aside>
       </div>
     </div>
   );
