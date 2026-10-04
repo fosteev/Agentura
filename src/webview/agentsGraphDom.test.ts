@@ -222,4 +222,15 @@ describe('превью в ⚙ → «Вид»', () => {
     expect(q(host, '.pv-graph .gmap .n.sel').dataset['agent']).toBe('tool-b');
     expect(qa(host, '.pv-graph .gmap .amap, .pv-graph #pane-agents')).toHaveLength(0);
   });
+
+  it('панельные превью помечены активной вкладкой — иначе широкая вёрстка hud.css их прячет', () => {
+    for (const view of ['list', 'tree', 'lanes', 'cards'] as const) {
+      const host = document.createElement('div');
+      mounted.push(host);
+      document.body.append(host);
+      render(h(AgentsPreview, { view }), host);
+      expect(q(host, '.pv-agents .pane.side').dataset['active']).toBe('agents');
+      expect(q<HTMLElement>(host, '#pane-agents').hidden).toBe(false);
+    }
+  });
 });

@@ -286,7 +286,8 @@ export function AgentsPreview({ view }: { view: AgentsView }) {
   return (
     <div class="pv pv-agents" inert aria-hidden="true">
       <div class="webview" data-agents={view}>
-        <aside class="pane side">
+        {/* data-active: в широкой вёрстке (html[data-width]) hud.css прячет вкладки панели, кроме активной */}
+        <aside class="pane side" data-active="agents">
           <AgentsPane
             model={
               view === 'list'
