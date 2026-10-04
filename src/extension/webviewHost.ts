@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { buildWebviewHtml, makeNonce } from './html';
 import { stat } from 'node:fs/promises';
-import { isFromWebview, postToWebview, type FromWebview, type ToWebview } from '../protocol';
+import { isFromWebview, postToWebview, type FromWebview, type Surface, type ToWebview } from '../protocol';
 import type { Logger } from './logger';
 import { readSettings, resolveLanguage } from '../settings';
 import type { UserFonts } from './googleFonts';
@@ -40,7 +40,7 @@ export function currentLanguage(): 'ru' | 'en' {
 export function renderWebview(
   webview: vscode.Webview,
   extensionUri: vscode.Uri,
-  surface: 'chat' | 'sidebar' | 'settings',
+  surface: Surface,
   title: string,
   lang: 'ru' | 'en',
 ): string {
@@ -64,6 +64,8 @@ export function renderWebview(
       uri('media', 'webview.css'),
       uri('media', 'tooltip.css'),
       ...(surface === 'settings' ? [uri('media', 'settings.css')] : []),
+      // граф агентов: своя вкладка и превью в ⚙ → «Вид»
+      ...(surface === 'agents' || surface === 'settings' ? [uri('media', 'agents-graph.css')] : []),
     ],
   });
 }
@@ -115,7 +117,7 @@ async function postAppearance(webview: vscode.Webview, isLatest: () => boolean, 
 
 export function attachMessaging(
   webview: vscode.Webview,
-  surface: 'chat' | 'sidebar' | 'settings',
+  surface: Surface,
   version: string,
   log: Logger,
   onMessage?: (m: FromWebview) => void,
@@ -129,7 +131,9 @@ export function attachMessaging(
   return vscode.Disposable.from(
     webview.onDidReceiveMessage((raw: unknown) => {
       if (!isFromWebview(raw)) {
-        log.warn(`[${surface}] неизвестное сообщение от webview`, raw);
+        // только тип: кривой снимок графа (до четырёх в секунду) не должен целиком попадать в журнал
+        const type = typeof raw === 'object' && raw !== null ? (raw as { type?: unknown }).type : typeof raw;
+        log.warn(`[${surface}] неизвестное сообщение от webview: ${String(type)}`);
         return;
       }
       log.debug(`[${surface}] ← ${raw.type}`);

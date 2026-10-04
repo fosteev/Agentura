@@ -142,14 +142,29 @@ describe('data-agents и вид списка', () => {
     expect(qa(host, '#pane-agents .amap')).toHaveLength(1);
   });
 
-  it('graph: значение настройки, панель показывает список; кнопки «граф» пока нет', async () => {
+  it('graph: значение настройки, панель показывает список с ↗; «карта агентов» в ленте открывает граф с агентом', async () => {
     const host = mount();
     await play();
     info('graph');
     await flush();
     expect(q(host, '.webview').getAttribute('data-agents')).toBe('graph');
     expect(qa(host, '#pane-agents .amap .ag .a.sub')).toHaveLength(3);
-    expect(qa(host, '#pane-agents .lnk')).toHaveLength(0);
+    expect(qa(host, '#pane-agents .amap h4 .lnk')).toHaveLength(1);
+    const map = qa(host, '.log .grp .gf a').find((a) => a.textContent === 'карта агентов')!;
+    map.click();
+    await flush();
+    const open = posted.filter((m) => m['type'] === 'agents.openGraph');
+    expect(open).toHaveLength(1);
+    expect(open[0]!['agentId']).toBe(selectedAgent.value);
+    expect(typeof open[0]!['agentId']).toBe('string');
+  });
+
+  it('list: «карта агентов» в ленте открывает вкладку панели, а не граф', async () => {
+    const host = mount();
+    await play();
+    qa(host, '.log .grp .gf a').find((a) => a.textContent === 'карта агентов')!.click();
+    await flush();
+    expect(posted.filter((m) => m['type'] === 'agents.openGraph')).toHaveLength(0);
   });
 });
 
@@ -285,11 +300,13 @@ describe('кнопка «↗ граф»', () => {
   const noop = () => {};
   const base = { now: Date.now(), onSelect: noop, onStop: noop, onTranscript: noop, onScope: noop };
 
-  it('есть, только если передан onGraph (поверхности графа ещё нет — Chat его не передаёт)', async () => {
+  it('есть, только если передан onGraph; в Chat — во всех видах, шлёт agents.openGraph', async () => {
     info('tree');
     const host = mount();
     await play();
-    expect(qa(host, '#pane-agents .top .btn')).toHaveLength(0); // в Chat кнопки нет
+    q(host, '#pane-agents .top .btn').click();
+    await flush();
+    expect(posted.filter((m) => m['type'] === 'agents.openGraph')).toHaveLength(1);
     const hud = hudState.value;
     const o = { working: true, waiting: true, now: base.now };
     const opened: string[] = [];

@@ -20,7 +20,8 @@ import {
   type DetailRowView,
   type MapRowView,
 } from './agentsView';
-import type { AgentNode, HudState, TimelineSeg, TurnTimeline } from './hudState';
+import { contextMax, initialHud, type AgentNode, type HudState, type TimelineSeg, type TurnTimeline } from './hudState';
+import { GRAPH_SEGS, type AgentGraphView, type GraphAgent, type GraphSeg } from '../shared/agentsGraph';
 import { ui } from './strings';
 import { compactTokens, formatDuration, shortModel } from './toolView';
 
@@ -289,6 +290,8 @@ export function agentOpen(
   now: number,
   cwd?: string,
   hasSession = true,
+  /** Сколько последних вызовов показать (граф показывает все из снимка). */
+  shown = OPEN_CALLS,
 ): AgentOpenView {
   const d = agentDetail(a, now, cwd, hasSession);
   const calls = Math.max(a.calls, a.toolUses ?? 0);
@@ -311,7 +314,7 @@ export function agentOpen(
     callsLabel: ui.agents.view.callsLabel(calls),
     rows: detailRows(a, now, cwd)
       .filter((r) => !r.mute)
-      .slice(-OPEN_CALLS),
+      .slice(-shown),
     ...(d.stopTaskId ? { stopTaskId: d.stopTaskId } : {}),
     transcript: d.transcript,
   };
@@ -683,5 +686,66 @@ export function agentsViewPane(
           .filter(Boolean)
           .join(' · ')
       : '',
+  };
+}
+
+// ——— Д · снимок для графа во вкладке редактора (этап 2) ———
+
+/** Сколько символов строкового входа инструмента оставить в снимке (подписи хватает начала). */
+const SNAPSHOT_INPUT_CHARS = 300;
+
+function slimSeg(g: TimelineSeg): GraphSeg {
+  if (!g.input) return g;
+  const input: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(g.input)) {
+    if (typeof v === 'string') input[k] = v.length > SNAPSHOT_INPUT_CHARS ? v.slice(0, SNAPSHOT_INPUT_CHARS) : v;
+    else if (v === null || typeof v !== 'object') input[k] = v;
+    // вложенные объекты и массивы (Edit с правками, TodoWrite) подписи вызова не нужны
+  }
+  return { ...g, input };
+}
+
+function graphAgent(a: AgentNode): GraphAgent {
+  const { segs, ...rest } = a;
+  return { ...rest, segs: segs.slice(-GRAPH_SEGS).map(slimSeg) };
+}
+
+/**
+ * Снимок карты агентов для вкладки графа: основной (модель, контекст, чем занят), начала ходов, все агенты и
+ * фоновые задачи сессии, у агента — последние `GRAPH_SEGS` строк хода. Сериализуемый: уходит через хост.
+ */
+export function agentGraphView(
+  h: HudState,
+  o: { state: AgentGraphView['main']['state']; model?: string; title?: string; cwd?: string },
+): AgentGraphView {
+  return {
+    ...(o.title ? { title: o.title } : {}),
+    ...(o.cwd ? { cwd: o.cwd } : {}),
+    main: {
+      ...(o.model ? { model: o.model } : {}),
+      ...(h.context ? { used: h.context.used } : {}),
+      limit: contextMax(h),
+      state: o.state,
+      turnNo: h.turnNo,
+    },
+    turns: h.turns.map((t) => ({
+      ...(t.turnNo !== undefined ? { turnNo: t.turnNo } : {}),
+      startedAt: t.startedAt,
+      ...(t.endedAt !== undefined ? { endedAt: t.endedAt } : {}),
+    })),
+    agents: h.agents.map(graphAgent),
+  };
+}
+
+/** Обратно — `HudState` для общих функций видов (`agentTurns`, `agentOpen`); чего в снимке нет — пусто. */
+export function hudOfGraph(v: AgentGraphView): HudState {
+  const agents: AgentNode[] = v.agents;
+  return {
+    ...initialHud([]),
+    ...(v.main.used !== undefined ? { context: { used: v.main.used, max: v.main.limit } } : {}),
+    contextWindow: v.main.limit,
+    turns: v.turns.map((t) => ({ ...t, segs: [] })),
+    agents,
+    turnNo: v.main.turnNo,
   };
 }

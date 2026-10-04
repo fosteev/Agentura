@@ -27,6 +27,8 @@ import {
   type ChatDeps,
   type OpenDiff,
 } from './chatController';
+import { AgentsGraphLink } from './agentsGraphLink';
+import type { AgentGraphView } from '../shared/agentsGraph';
 
 class FakeSession implements AgentSession {
   readonly events = new EventHub<AgentEvent>();
@@ -71,7 +73,10 @@ class FakeSession implements AgentSession {
     this.compacts++;
     return true;
   }
-  async stopTask() {}
+  stopped: string[] = [];
+  async stopTask(taskId: string) {
+    this.stopped.push(taskId);
+  }
   async contextUsage() {
     return undefined;
   }
@@ -2479,5 +2484,123 @@ describe('файлы в сообщении (этап 8 roadmap 0.2)', () => {
     });
     expect(t.deps.openFile).toHaveBeenNthCalledWith(2, { kind: 'pdf', path: '/abs/b.pdf' });
     expect(t.deps.openFile).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('граф агентов во вкладке редактора (roadmap 11, этап 2)', () => {
+  const graph = (n: number): AgentGraphView => ({
+    title: 'сессия',
+    main: { limit: 200_000, state: 'working', turnNo: 1 },
+    turns: [],
+    agents: Array.from({ length: n }, (_, i) => ({
+      agentId: `tool-${i}`,
+      taskId: `task-${i}`,
+      description: `агент ${i}`,
+      taskType: 'local_agent',
+      background: false,
+      status: 'running' as const,
+      startedAt: 1,
+      turnNo: 1,
+      calls: 0,
+      segs: [],
+    })),
+  });
+  const init = (s: FakeSession, sessionId: string) =>
+    s.emit({
+      type: 'session.init',
+      sessionId,
+      model: 'sonnet',
+      cwd: '/p',
+      tools: [],
+      permissionMode: 'default',
+      slashCommands: [],
+      skills: [],
+      agents: [],
+      apiKeySource: 'none',
+    } as unknown as AgentEvent);
+
+  it('agents.openGraph и agents.snapshot уходят менеджеру вкладок, сессию движка не поднимают', async () => {
+    const t = setup();
+    const openGraph = vi.fn();
+    const graphSnapshot = vi.fn();
+    const controller = new ChatController({ ...t.deps, openGraph, graphSnapshot });
+    await controller.handle({ type: 'agents.openGraph', agentId: 'tool-0' });
+    await controller.handle({ type: 'agents.openGraph' });
+    const snap = { type: 'agents.snapshot' as const, sessionId: '', graph: graph(0) };
+    await controller.handle(snap);
+    expect(openGraph.mock.calls).toEqual([['tool-0'], [undefined]]);
+    expect(graphSnapshot).toHaveBeenCalledWith(snap);
+    expect(t.created).toHaveLength(0);
+  });
+
+  /** Чат с живой сессией `sess-1` и привязанный к нему граф — как их связывает `ChatPanel`. */
+  async function linked(extra: Partial<ChatDeps> = {}) {
+    const t = setup();
+    const toGraph: ToWebview[] = [];
+    const warn = vi.fn();
+    const link = new AgentsGraphLink({ post: (m) => toGraph.push(m), setTitle: vi.fn(), warn });
+    const controller = new ChatController({
+      ...t.deps,
+      ...extra,
+      graphSnapshot: (m) => link.snapshot(m),
+    });
+    controller.start();
+    await tick();
+    const s = t.sessions[0]!;
+    init(s, 'sess-1');
+    expect(controller.sessionId).toBe('sess-1');
+    link.bind({
+      sessionId: () => controller.sessionId,
+      post: (m) => t.posted.push(m),
+      handle: (m) => controller.handle(m),
+    });
+    return { ...t, controller, link, toGraph, warn, s };
+  }
+
+  it('снимок чата доходит до вкладки графа; граф готов позже — получает последний', async () => {
+    const { controller, link, toGraph, posted } = await linked();
+    // привязка просит у чата снимок
+    expect(posted.filter((m) => m.type === 'agents.graph')).toEqual([{ type: 'agents.graph', open: true }]);
+    await controller.handle({ type: 'agents.snapshot', sessionId: 'sess-1', graph: graph(1) });
+    expect(toGraph).toHaveLength(0); // webview графа ещё не готов
+    link.fromGraph({ type: 'ready' });
+    expect(toGraph).toEqual([{ type: 'agents.snapshot', sessionId: 'sess-1', graph: graph(1) }]);
+    // агенты идут — новые снимки сразу доходят
+    await controller.handle({ type: 'agents.snapshot', sessionId: 'sess-1', graph: graph(2) });
+    expect(toGraph.at(-1)).toEqual({ type: 'agents.snapshot', sessionId: 'sess-1', graph: graph(2) });
+  });
+
+  it('agent.stop из графа доходит до сессии своего чата; для другой сессии — отброшен', async () => {
+    const { link, s, warn } = await linked();
+    link.fromGraph({ type: 'ready' });
+    link.fromGraph({ type: 'agent.stop', sessionId: 'sess-1', taskId: 'task-0' });
+    await tick();
+    expect(s.stopped).toEqual(['task-0']);
+    link.fromGraph({ type: 'agent.stop', sessionId: 'sess-old', taskId: 'task-9' });
+    link.fromGraph({ type: 'agent.stop', sessionId: '', taskId: 'task-9' });
+    await tick();
+    expect(s.stopped).toEqual(['task-0']);
+    expect(warn).toHaveBeenCalledTimes(2);
+  });
+
+  it('agent.transcript из графа — тот же обработчик чата', async () => {
+    const openText = vi.fn().mockResolvedValue(undefined);
+    const { link, deps } = await linked({ openText });
+    const agentTranscript = vi.fn().mockResolvedValue('# транскрипт');
+    (deps.adapter as { agentTranscript?: unknown }).agentTranscript = agentTranscript;
+    link.fromGraph({ type: 'agent.transcript', sessionId: 'sess-1', agentId: 'tool-0', taskId: 'task-0' });
+    await tick();
+    expect(agentTranscript).toHaveBeenCalledWith('sess-1', '/p', 'task-0', '');
+    expect(openText).toHaveBeenCalledWith(expect.objectContaining({ text: '# транскрипт' }));
+  });
+
+  it('вкладку графа закрыли — чату «граф закрыт», снимки больше не пересылаются', async () => {
+    const { controller, link, toGraph, posted } = await linked();
+    link.fromGraph({ type: 'ready' });
+    link.dispose();
+    expect(posted.filter((m) => m.type === 'agents.graph').at(-1)).toEqual({ type: 'agents.graph', open: false });
+    toGraph.length = 0;
+    await controller.handle({ type: 'agents.snapshot', sessionId: 'sess-1', graph: graph(1) });
+    expect(toGraph).toHaveLength(0);
   });
 });

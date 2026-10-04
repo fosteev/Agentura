@@ -1,0 +1,72 @@
+/* Граф агентов во вкладке редактора (roadmap 11, вид Д): значения — блок `.gmap` прототипа
+   `prototype/shared/agents-map.css`. Отличия: холст прокручивается (`.sc` → `.pl` с размерами раскладки),
+   полоса ходов — строкой над холстом, а не поверх него. Подключается для поверхности `agents` и превью в ⚙. */
+#root > .gmap { height: calc(100vh / var(--ui-zoom, 1)); }
+.gmap { display: grid; grid-template-columns: minmax(0, 1fr) 300px; min-height: 0; color: var(--fg); background: var(--bg); font-size: 11.5px; }
+.gmap .cv { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; border-right: 1px solid var(--line); }
+.gmap .cv .bar { display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-bottom: 1px solid var(--line); background: var(--bg); font-size: 11px; color: var(--fg-mute); flex: none; min-width: 0; }
+.gmap .cv .bar .turns { display: flex; gap: 4px; min-width: 0; overflow-x: auto; scrollbar-width: thin; }
+.gmap .cv .bar .turns button { flex: none; padding: 2px 8px; border: 1px solid var(--line); border-radius: 3px; font-size: 10.5px; color: var(--fg-mute); background: none; cursor: pointer; white-space: nowrap; }
+.gmap .cv .bar .turns button.live { color: var(--info); }
+.gmap .cv .bar .turns button[aria-pressed="true"] { border-color: var(--accent); color: var(--fg); }
+.gmap .cv .bar .r { margin-left: auto; flex: none; white-space: nowrap; }
+.gmap .cv .bar .r b { color: var(--fg); font-weight: 500; }
+.gmap .sc { position: relative; flex: 1; min-height: 0; overflow: auto; background-image: radial-gradient(var(--line) 1px, transparent 1px); background-size: 16px 16px; }
+.gmap .pl { position: relative; }
+.gmap .none { padding: 24px 16px; color: var(--fg-mute); }
+.gmap svg.edges { position: absolute; left: 0; top: 0; z-index: 0; overflow: visible; }
+.gmap svg.edges path { fill: none; stroke: var(--line-strong); stroke-width: 1.2; }
+.gmap svg.edges path.ok { stroke: color-mix(in srgb, var(--ok) 65%, transparent); }
+.gmap svg.edges path.busy { stroke: var(--info); stroke-dasharray: 5 4; }
+.gmap svg.edges path.err { stroke: color-mix(in srgb, var(--full) 70%, transparent); }
+.gmap svg.edges path.bg { stroke-dasharray: 2 3; }
+.gmap .n { position: absolute; z-index: 1; box-sizing: border-box; background: var(--bg); border: 1px solid var(--line-strong); border-radius: 4px; padding: 7px 10px; font-size: 11px; }
+.gmap .n[role="button"] { cursor: pointer; }
+.gmap .n[role="button"]:hover { border-color: var(--fg-faint); }
+.gmap .n[role="button"]:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
+.gmap .n .h { display: flex; gap: 6px; align-items: baseline; color: var(--fg-mute); font-size: 10.5px; white-space: nowrap; }
+.gmap .n .h > span:nth-child(2) { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.gmap .n .h .r { margin-left: auto; flex: none; }
+.gmap .n .h .r b { color: var(--fg); font-weight: 500; }
+.gmap .n .h .x { margin-left: 6px; padding: 0 4px; border: 1px solid var(--line-strong); border-radius: 3px; background: none; color: var(--full); font-size: 9px; line-height: 14px; cursor: pointer; }
+.gmap .n .t { font-weight: 600; font-size: 12px; padding: 2px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gmap .n .s { color: var(--fg-mute); font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gmap .n.busy { border-color: var(--info); } .gmap .n.busy .s { color: var(--info); }
+.gmap .n.err { border-color: color-mix(in srgb, var(--full) 70%, transparent); } .gmap .n.err .s { color: var(--full); }
+.gmap .n.ok .h .st { color: var(--ok); } .gmap .n.err .h .st { color: var(--full); } .gmap .n.busy .h .st { color: var(--info); }
+.gmap .n.stop .h .st { color: var(--fg-mute); }
+.gmap .n.sel { box-shadow: 0 0 0 2px var(--accent); }
+.gmap .n.main { border-width: 1px 1px 1px 3px; border-left-color: var(--accent); }
+.gmap .n.main.busy .s { color: var(--fg-mute); }
+.gmap .n.main .ctxb { height: 4px; background: var(--bg-input); border-radius: 2px; margin: 6px 0 2px; overflow: hidden; }
+.gmap .n.main .ctxb i { display: block; height: 100%; background: var(--info); }
+.gmap .n.main .ctxb i.warn { background: var(--warn); }
+.gmap .n.main .ctxb i.full { background: var(--full); }
+.gmap .n.shell { border-style: dashed; background: var(--bg-side); }
+.gmap .n.shell .s { color: var(--fg-mute); }
+.gmap .lab { position: absolute; z-index: 1; font-size: 9.5px; color: var(--fg-mute); background: var(--bg); padding: 0 4px; border-radius: 2px; white-space: nowrap; }
+.gmap .lab .up { color: var(--fg-mute); } .gmap .lab .dn { color: var(--ok); } .gmap .lab .mute { color: var(--fg-faint); }
+.gmap .legend { position: absolute; left: 14px; bottom: 10px; z-index: 2; font-size: 10px; color: var(--fg-faint); display: flex; flex-wrap: wrap; gap: 4px 14px; background: var(--bg); padding: 2px 6px; pointer-events: none; }
+.gmap .gd { min-width: 0; min-height: 0; overflow: auto; background: var(--bg-side); padding-bottom: 12px; }
+.gmap .gd .hd { padding: 10px 14px 8px; border-bottom: 1px solid var(--line); }
+.gmap .gd .hd .t { font-size: 12.5px; font-weight: 600; overflow-wrap: anywhere; }
+.gmap .gd .hd .t .ty { color: var(--fg-mute); font-weight: 400; }
+.gmap .gd .hd .m { display: flex; flex-wrap: wrap; gap: 2px 12px; color: var(--fg-mute); font-size: 10.5px; padding-top: 3px; }
+.gmap .gd .hd .m b { color: var(--fg); font-weight: 500; }
+.gmap .gd .hd .ac { display: flex; gap: 6px; padding-top: 8px; flex-wrap: wrap; }
+.gmap .gd .hd .ac:empty { display: none; }
+.gmap .gd .hd .ac button { padding: 2px 9px; border: 1px solid var(--line-strong); border-radius: 3px; font-size: 10.5px; color: var(--fg); background: none; cursor: pointer; }
+.gmap .gd .hd .ac button.stop::before { content: "■ "; color: var(--full); }
+.gmap .gd .lbl { font-size: 10px; color: var(--fg-faint); padding: 10px 14px 3px; }
+.gmap .gd .q { margin: 0 14px; font-family: var(--font); font-size: 11.5px; line-height: 1.45; background: var(--bg-code); border-left: 2px solid var(--line-strong); padding: 6px 10px; border-radius: 0 3px 3px 0; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 240px; overflow: auto; }
+.gmap .gd .q.err { border-left-color: var(--full); color: var(--full); }
+.gmap .gd .c { display: grid; grid-template-columns: 34px 30px minmax(0, 1fr) auto; gap: 6px; font-size: 10.5px; padding: 1px 14px; }
+.gmap .gd .c > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gmap .gd .c .at, .gmap .gd .c .op, .gmap .gd .c .d { color: var(--fg-mute); }
+.gmap .gd .c.now .op, .gmap .gd .c.now .d { color: var(--info); }
+.gmap .ok { color: var(--ok); } .gmap .run { color: var(--info); } .gmap .err { color: var(--full); } .gmap .mute { color: var(--fg-mute); } .gmap .faint { color: var(--fg-faint); }
+/* узкая вкладка: детали под холстом */
+@media (max-width: 640px) {
+  .gmap { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 40%); }
+  .gmap .cv { border-right: 0; border-bottom: 1px solid var(--line); }
+}

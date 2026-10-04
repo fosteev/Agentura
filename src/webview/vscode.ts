@@ -38,6 +38,14 @@ export interface WebviewState {
   fold?: SidebarFold;
   /** Вкладка настроек: открытый раздел. */
   settingsSection?: SettingsSection;
+  /** Вкладка графа агентов: выбранные ход и агент (`sessionId` — сессия, которую граф показывал). */
+  graph?: GraphViewState;
+}
+
+/** Выбор во вкладке графа агентов: переживает скрытие вкладки и перезагрузку окна. */
+export interface GraphViewState {
+  turn?: number;
+  selected?: string;
 }
 
 /** Разделы вкладки настроек (страницы, порядок в навигации). */
@@ -134,6 +142,26 @@ export function readSettingsSection(): SettingsSection {
 
 export function saveSettingsSection(section: SettingsSection): void {
   writeState({ ...readState(), settingsSection: section });
+}
+
+/** Состояние вкладки графа: сессия и выбор; кривые поля — как отсутствующие. */
+export function readGraphState(): { sessionId?: string; graph: GraphViewState } {
+  const st = readState();
+  const g = st.graph as Record<string, unknown> | undefined;
+  const graph: GraphViewState = {};
+  if (g && typeof g === 'object') {
+    if (typeof g.turn === 'number' && Number.isFinite(g.turn)) graph.turn = g.turn;
+    if (typeof g.selected === 'string' && g.selected) graph.selected = g.selected;
+  }
+  return { ...(typeof st.sessionId === 'string' && st.sessionId ? { sessionId: st.sessionId } : {}), graph };
+}
+
+/**
+ * Запомнить, что показывает граф: по `sessionId` сериализатор после перезагрузки окна вернёт вкладку к чату
+ * той же сессии (пусто — у чата сессии нет, такой граф закрывается).
+ */
+export function saveGraphState(sessionId: string, graph: GraphViewState): void {
+  writeState({ ...(sessionId ? { sessionId } : {}), graph });
 }
 
 /** Сообщения от хоста; возвращает отписку. */

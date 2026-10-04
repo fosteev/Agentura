@@ -4,10 +4,13 @@ import { handleHostMessage } from '../store';
 import { installAppearance } from '../appearance';
 import { installTooltips } from '../tooltip';
 import { forgetSession, host, onHostMessage, send } from '../vscode';
+import { installGraphSync } from '../graphSync';
 
 // Слушатель ставим до первого рендера и до `ready`: эффекты Preact выполняются позже, а хост
 // отвечает на `ready` сразу — ответ не должен потеряться.
 onHostMessage(handleHostMessage);
+// снимки для вкладки графа агентов — только пока она открыта
+installGraphSync();
 installAppearance();
 installTooltips();
 render(<Chat />, document.getElementById('root')!);

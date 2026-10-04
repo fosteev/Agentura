@@ -3,7 +3,9 @@ import type { FeedRow } from '../chatState';
 import type { SessionSummary } from '../../protocol';
 import type { AgentsView, FeedStyle } from '../../settings';
 import { agentMapView } from '../agentsView';
-import { agentsViewPane, defaultScope } from '../agentViews';
+import { agentGraphView, agentsViewPane, defaultScope } from '../agentViews';
+import { graphModel } from '../agentsGraph/model';
+import { AgentsGraph } from './AgentsGraph';
 import { initialHud, type AgentNode, type HudState, type TimelineSeg } from '../hudState';
 import { uiLang } from '../strings';
 import { Log } from './Log';
@@ -256,11 +258,30 @@ function agentsHud(now: number): HudState {
   };
 }
 
-/** Вкладка «агенты» в виде `view`: настоящий `AgentsPane` на фикстуре; `graph` (этап 2) — пока список. */
+/** Размер холста графа в превью (до уменьшения `zoom`). */
+const GRAPH_PREVIEW = { w: 620, h: 560 };
+
+/** Вкладка «агенты» в виде `view`: настоящий `AgentsPane` на фикстуре; `graph` — настоящий граф (холст без деталей). */
 export function AgentsPreview({ view }: { view: AgentsView }) {
   const now = Date.now();
   const h = agentsHud(now);
-  const mode = view === 'graph' ? 'list' : view;
+  if (view === 'graph') {
+    const snap = agentGraphView(h, { state: 'waiting', model: 'claude-opus-5-5', cwd: CWD });
+    return (
+      <div class="pv pv-agents pv-graph" inert aria-hidden="true">
+        <div class="webview" data-agents={view}>
+          <AgentsGraph
+            model={graphModel(snap, { now, hasSession: true, selected: 'tool-b' })}
+            size={GRAPH_PREVIEW}
+            onTurn={noop}
+            onSelect={noop}
+            onStop={noop}
+            onTranscript={noop}
+          />
+        </div>
+      </div>
+    );
+  }
   const o = { working: true, waiting: true, now, cwd: CWD, hasSession: true, model: 'claude-opus-5-5' };
   return (
     <div class="pv pv-agents" inert aria-hidden="true">
@@ -268,9 +289,9 @@ export function AgentsPreview({ view }: { view: AgentsView }) {
         <aside class="pane side">
           <AgentsPane
             model={
-              mode === 'list'
+              view === 'list'
                 ? { mode: 'list', view: agentMapView(h, o) }
-                : { mode: 'views', view: agentsViewPane(h, mode, defaultScope(mode), o) }
+                : { mode: 'views', view: agentsViewPane(h, view, defaultScope(view), o) }
             }
             now={now}
             onSelect={noop}

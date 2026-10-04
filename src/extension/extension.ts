@@ -12,6 +12,7 @@ import { SessionMemory } from './sessionMemory';
 import { SessionsService } from './sessionsService';
 import { showDebugState } from './debugPanel';
 import { SettingsPanel } from './settingsPanel';
+import { AGENTS_GRAPH_VIEW_TYPE } from './agentsGraphPanel';
 import { AGENTS_VIEWS, FEED_STYLES, readSettings, writeSetting, type SettingKey } from '../settings';
 import { hostStrings } from '../shared/l10n';
 import { currentLanguage, setUserFonts, userFontsDir } from './webviewHost';
@@ -193,6 +194,11 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     vscode.window.registerWebviewPanelSerializer(
       'agentura.chat',
       ChatPanel.serializer(context, log, services),
+    ),
+    // граф агентов (roadmap 11): после перезагрузки окна — к своей вкладке чата или закрыть
+    vscode.window.registerWebviewPanelSerializer(
+      AGENTS_GRAPH_VIEW_TYPE,
+      ChatPanel.graphSerializer(context, log),
     ),
     vscode.commands.registerCommand('agentura.open', () => ChatPanel.show(context, log, services)),
     vscode.commands.registerCommand('agentura.newSession', () =>
