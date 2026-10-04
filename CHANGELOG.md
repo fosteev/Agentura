@@ -9,22 +9,25 @@
   stays. A "New session" button with the logo sits in the right corner of the tab bar, visible above any editor.
 - **Session list view**: three views in the sidebar — `detailed` (two lines per session), `compact` (default: one
   line, two for the current, running, waiting-for-reply and failed sessions) and `dense` (everything on one line).
-  Switched with the ☰ / ≡ / ≣ button in the "Sessions" header and in ⚙ → "View"; context (`173k ctx`) and time
+  Switched with the ☰ / ≡ / ≣ button in the "Sessions" header and in ⚙ → "Sidebar"; context (`173k ctx`) and time
   columns on the right, each can be turned off. If the view is set in workspace settings, the button shows a
   notification instead of changing it. New settings: `agentura.sessionList.view`, `agentura.sessionList.context`,
   `agentura.sessionList.time`.
 - **Sidebar**: the "Account and limits" and "Sessions" sections collapse on a header click (or Enter), and the state
   survives a view reload. Search by session name works: filters as you type, case-insensitive, "ё" = "е"; ✕ or Esc
   clears it.
-- **Sidebar top view** (`agentura.sidebar.top`, ⚙ → "View"): `detailed` — as before; `compact` — the account and
+- **Sidebar top view** (`agentura.sidebar.top`, ⚙ → "Sidebar"): `detailed` — as before; `compact` — the account and
   each limit on one line (gauge, percentage, reset time), "New session" as a ＋ button in the "Sessions" header;
   `dense` — limits as mini-gauges in the panel header next to ↻ and ⚙ (yellow above 70 %, red above 85 %), the
   account in the header tooltip.
-- **Fonts and feed text size** (⚙ → "View"): `agentura.font.interface` and `agentura.font.code` set the panel and
+- **Settings tab sections are pages**: a section list on the left (arrow keys switch too; a tab strip above the page
+  in a narrow split) instead of anchors on one long page; the open section is remembered. Six sections regrouped into
+  five: New session, Context and limits, Sidebar, Appearance, Engine.
+- **Fonts and feed text size** (⚙ → "Appearance"): `agentura.font.interface` and `agentura.font.code` set the panel and
   monospace fonts (empty — VS Code's interface and editor fonts, which are also the fallback if the font is not
   installed); `agentura.feed.fontSize` (10–20 px, default 13) scales the whole chat feed. Open tabs, the sidebar and
   settings update immediately.
-- **English interface** (`agentura.language`, ⚙ → "View"): `auto` (default — Russian if VS Code is in Russian,
+- **English interface** (`agentura.language`, ⚙ → "Appearance"): `auto` (default — Russian if VS Code is in Russian,
   English otherwise), `ru`, `en`. Applies after a window reload (notification with a button). Command titles and
   setting descriptions in the Settings UI follow VS Code's own language (`package.nls*.json`).
 - **Tooltips** on every button in the chat, sidebar and settings instead of the native `title`: VS Code hover widget

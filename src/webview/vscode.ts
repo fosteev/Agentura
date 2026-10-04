@@ -34,7 +34,13 @@ export interface WebviewState {
   panel?: PanelState;
   /** Боковая панель: свёрнутые секции. */
   fold?: SidebarFold;
+  /** Вкладка настроек: открытый раздел. */
+  settingsSection?: SettingsSection;
 }
+
+/** Разделы вкладки настроек (страницы, порядок в навигации). */
+export const SETTINGS_SECTIONS = ['session', 'limits', 'sidebar', 'look', 'engine'] as const;
+export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 
 /** Свёрнутые секции боковой панели (нет поля — развёрнута). */
 export interface SidebarFold {
@@ -108,6 +114,16 @@ export function readFold(): SidebarFold {
 
 export function saveFold(fold: SidebarFold): void {
   writeState({ ...readState(), fold });
+}
+
+/** Открытый раздел настроек; неизвестный (старые id до страниц) — первый. */
+export function readSettingsSection(): SettingsSection {
+  const v = readState().settingsSection;
+  return (SETTINGS_SECTIONS as readonly unknown[]).includes(v) ? (v as SettingsSection) : 'session';
+}
+
+export function saveSettingsSection(section: SettingsSection): void {
+  writeState({ ...readState(), settingsSection: section });
 }
 
 /** Сообщения от хоста; возвращает отписку. */

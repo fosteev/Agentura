@@ -520,19 +520,10 @@ const ru = {
     openJsonLink: 'открыть settings.json',
     navAria: 'Разделы настроек',
     sections: {
-      perm: 'Разрешения',
-      model: 'Модель',
-      ctx: 'Контекст',
-      lim: 'Лимиты подписки',
-      view: 'Вид',
-      engine: 'Движок',
-    },
-    navShort: {
-      perm: 'Разрешения',
-      model: 'Модель',
-      ctx: 'Контекст',
-      lim: 'Лимиты',
-      view: 'Вид',
+      session: 'Новая сессия',
+      limits: 'Контекст и лимиты',
+      sidebar: 'Боковая панель',
+      look: 'Внешний вид',
       engine: 'Движок',
     },
     source:

@@ -26,12 +26,18 @@ import {
   settingsValues,
 } from '../settingsStore';
 import { ui, uiLang } from '../strings';
+import {
+  SETTINGS_SECTIONS,
+  readSettingsSection,
+  saveSettingsSection,
+  type SettingsSection as Section,
+} from '../vscode';
 
 const T = ui.settings;
-/** Ширина вкладки, с которой слева появляется навигация по разделам (в узком сплите она скрыта). */
+/** Ширина вкладки, с которой разделы — колонкой слева (уже — полосой вкладок над страницей). */
 const NAV_PX = 600;
-const SECTIONS = ['perm', 'model', 'ctx', 'lim', 'view', 'engine'] as const;
-type Section = (typeof SECTIONS)[number];
+/** Разделы — отдельные страницы (не якоря одной ленты); открытый раздел помнит состояние webview. */
+const SECTIONS = SETTINGS_SECTIONS;
 
 /** Черновик поля: пока человек печатает, показываем его; пришло новое значение из хоста — берём его. */
 function useDraft<V>(value: V): [V, (v: V) => void] {
@@ -344,10 +350,11 @@ function EngineRow({ value }: { value: string }) {
 
 export function Settings() {
   const v = settingsValues.value;
-  const [active, setActive] = useState<Section>('perm');
+  const [active, setActive] = useState<Section>(readSettingsSection);
   const body = useRef<HTMLDivElement>(null);
+  const nav = useRef<HTMLElement>(null);
 
-  // hud.css переключает вёрстку по html[data-width]; в узком сплите навигация скрыта (как в прототипе)
+  // hud.css переключает вёрстку по html[data-width]; в узком сплите разделы — полосой над страницей
   useEffect(() => {
     const apply = () =>
       document.documentElement.setAttribute(
@@ -359,17 +366,28 @@ export function Settings() {
     return () => window.removeEventListener('resize', apply);
   }, []);
 
-  const go = (id: Section) => {
+  const go = (id: Section, focus = false) => {
     setActive(id);
-    document.getElementById(id)?.scrollIntoView({ block: 'start' });
+    saveSettingsSection(id);
+    if (body.current) body.current.scrollTop = 0;
+    if (focus) nav.current?.querySelector<HTMLElement>(`[data-section="${id}"]`)?.focus();
   };
-  const onScroll = () => {
-    const top = (body.current?.getBoundingClientRect().top ?? 0) + 40;
-    let cur: Section = SECTIONS[0];
-    for (const id of SECTIONS) {
-      if ((document.getElementById(id)?.getBoundingClientRect().top ?? Infinity) <= top) cur = id;
-    }
-    setActive(cur);
+  // стрелки, Home, End — как у вкладок (role="tablist")
+  const onNavKey = (e: KeyboardEvent) => {
+    const i = SECTIONS.indexOf(active);
+    const to =
+      e.key === 'ArrowDown' || e.key === 'ArrowRight'
+        ? SECTIONS[(i + 1) % SECTIONS.length]
+        : e.key === 'ArrowUp' || e.key === 'ArrowLeft'
+          ? SECTIONS[(i - 1 + SECTIONS.length) % SECTIONS.length]
+          : e.key === 'Home'
+            ? SECTIONS[0]
+            : e.key === 'End'
+              ? SECTIONS[SECTIONS.length - 1]
+              : undefined;
+    if (!to) return;
+    e.preventDefault();
+    go(to, true);
   };
 
   if (!v) return <div class="webview settings" aria-busy="true" />;
@@ -401,6 +419,20 @@ export function Settings() {
     T.language.options[m] ?? m,
   ]);
 
+  // все страницы в DOM, видна одна: черновик поля переживает переход в другой раздел и обратно
+  const page = (id: Section, children: ComponentChildren) => (
+    <section
+      class="st-page"
+      id={id}
+      role="tabpanel"
+      aria-labelledby={`st-tab-${id}`}
+      hidden={active !== id}
+    >
+      <h2>{T.sections[id]}</h2>
+      {children}
+    </section>
+  );
+
   return (
     <div class="webview settings">
       <header class="hud" aria-label={T.aria}>
@@ -418,20 +450,25 @@ export function Settings() {
       </header>
 
       <div class="st-wrap">
-        <nav class="st-nav" aria-label={T.navAria}>
-          {SECTIONS.map((id) => (
-            <a
-              key={id}
-              href={`#${id}`}
-              class={active === id ? 'on' : ''}
-              onClick={(e) => {
-                e.preventDefault();
-                go(id);
-              }}
-            >
-              {T.navShort[id]}
-            </a>
-          ))}
+        <nav class="st-nav" aria-label={T.navAria} ref={nav}>
+          <div class="st-tabs" role="tablist" aria-orientation="vertical" onKeyDown={onNavKey}>
+            {SECTIONS.map((id) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                id={`st-tab-${id}`}
+                data-section={id}
+                aria-controls={id}
+                aria-selected={active === id}
+                tabIndex={active === id ? 0 : -1}
+                class={active === id ? 'on' : ''}
+                onClick={() => go(id)}
+              >
+                {T.sections[id]}
+              </button>
+            ))}
+          </div>
           <div class="src">
             {T.source}
             <a
@@ -446,95 +483,122 @@ export function Settings() {
           </div>
         </nav>
 
-        <div class="st-body" ref={body} onScroll={onScroll}>
-          <h2 id="perm">{T.sections.perm}</h2>
-          <Row name={T.mode.name} isNew desc={T.mode.desc} k="defaultPermissionMode">
-            <Select k="defaultPermissionMode" value={v.defaultPermissionMode} options={modes} />
-          </Row>
-          <Row
-            name={T.bypass.name}
-            desc={T.bypass.desc}
-            k="allowBypassPermissions"
-            machine
-            on={v.allowBypassPermissions}
-            below={
-              <div class="warn">
-                <b>{T.bypass.warnTitle}</b>
-                {T.bypass.warn}
-              </div>
-            }
-          >
-            <Toggle k="allowBypassPermissions" value={v.allowBypassPermissions} danger />
-          </Row>
+        <div class="st-body" ref={body}>
+          {page(
+            'session',
+            <>
+              <Row name={T.mode.name} isNew desc={T.mode.desc} k="defaultPermissionMode">
+                <Select k="defaultPermissionMode" value={v.defaultPermissionMode} options={modes} />
+              </Row>
+              <Row
+                name={T.bypass.name}
+                desc={T.bypass.desc}
+                k="allowBypassPermissions"
+                machine
+                on={v.allowBypassPermissions}
+                below={
+                  <div class="warn">
+                    <b>{T.bypass.warnTitle}</b>
+                    {T.bypass.warn}
+                  </div>
+                }
+              >
+                <Toggle k="allowBypassPermissions" value={v.allowBypassPermissions} danger />
+              </Row>
+              <Row name={T.model.name} desc={T.model.desc} k="defaultModel">
+                <TextField
+                  k="defaultModel"
+                  value={v.defaultModel}
+                  placeholder={T.model.placeholder}
+                />
+              </Row>
+              <Row name={T.effort.name} isNew desc={T.effort.desc} k="defaultEffort">
+                <Select k="defaultEffort" value={v.defaultEffort} options={efforts} />
+              </Row>
+            </>,
+          )}
 
-          <h2 id="model">{T.sections.model}</h2>
-          <Row name={T.model.name} desc={T.model.desc} k="defaultModel">
-            <TextField k="defaultModel" value={v.defaultModel} placeholder={T.model.placeholder} />
-          </Row>
-          <Row name={T.effort.name} isNew desc={T.effort.desc} k="defaultEffort">
-            <Select k="defaultEffort" value={v.defaultEffort} options={efforts} />
-          </Row>
+          {page(
+            'limits',
+            <>
+              <Row
+                name={T.thresholds.name}
+                desc={T.thresholds.desc}
+                k="contextThresholds"
+                below={<ThresholdScale value={v.contextThresholds} />}
+              >
+                <Thresholds value={v.contextThresholds} />
+              </Row>
+              <Row
+                name={T.poll.name}
+                desc={T.poll.desc}
+                k="usagePollMinutes"
+                keyNote={T.poll.noLess}
+              >
+                <PollField value={v.usagePollMinutes} />
+                <span class="u">{T.poll.unit}</span>
+              </Row>
+              <Row name={T.keychain.name} desc={T.keychain.desc} k="limits.readKeychain">
+                <Toggle k="limits.readKeychain" value={v['limits.readKeychain']} />
+              </Row>
+            </>,
+          )}
 
-          <h2 id="ctx">{T.sections.ctx}</h2>
-          <Row
-            name={T.thresholds.name}
-            desc={T.thresholds.desc}
-            k="contextThresholds"
-            below={<ThresholdScale value={v.contextThresholds} />}
-          >
-            <Thresholds value={v.contextThresholds} />
-          </Row>
+          {page(
+            'sidebar',
+            <>
+              <Row name={T.sidebarTop.name} isNew desc={T.sidebarTop.desc} k="sidebar.top">
+                <Select k="sidebar.top" value={v['sidebar.top']} options={topModes} />
+              </Row>
+              <Row name={T.listView.name} isNew desc={T.listView.desc} k="sessionList.view">
+                <Select k="sessionList.view" value={v['sessionList.view']} options={listModes} />
+              </Row>
+              <Row
+                name={T.listContext.name}
+                isNew
+                desc={T.listContext.desc}
+                k="sessionList.context"
+              >
+                <Toggle k="sessionList.context" value={v['sessionList.context']} />
+              </Row>
+              <Row name={T.listTime.name} isNew desc={T.listTime.desc} k="sessionList.time">
+                <Toggle k="sessionList.time" value={v['sessionList.time']} />
+              </Row>
+            </>,
+          )}
 
-          <h2 id="lim">{T.sections.lim}</h2>
-          <Row name={T.poll.name} desc={T.poll.desc} k="usagePollMinutes" keyNote={T.poll.noLess}>
-            <PollField value={v.usagePollMinutes} />
-            <span class="u">{T.poll.unit}</span>
-          </Row>
-          <Row name={T.keychain.name} desc={T.keychain.desc} k="limits.readKeychain">
-            <Toggle k="limits.readKeychain" value={v['limits.readKeychain']} />
-          </Row>
+          {page(
+            'look',
+            <>
+              <Row name={T.feedStyle.name} isNew desc={T.feedStyle.desc} k="feed.style">
+                <Select k="feed.style" value={v['feed.style']} options={feedStyles} />
+              </Row>
+              <Row name={T.feedFontSize.name} isNew desc={T.feedFontSize.desc} k="feed.fontSize">
+                <FontSizeSelect value={v['feed.fontSize']} />
+              </Row>
+              <Row name={T.fontInterface.name} isNew desc={T.fontInterface.desc} k="font.interface">
+                <TextField
+                  k="font.interface"
+                  value={v['font.interface']}
+                  placeholder={T.fontPlaceholder(vscodeFont('--vscode-font-family'))}
+                  wide
+                />
+              </Row>
+              <Row name={T.fontCode.name} isNew desc={T.fontCode.desc} k="font.code">
+                <TextField
+                  k="font.code"
+                  value={v['font.code']}
+                  placeholder={T.fontPlaceholder(vscodeFont('--vscode-editor-font-family'))}
+                  wide
+                />
+              </Row>
+              <Row name={T.language.name} isNew desc={T.language.desc} k="language">
+                <Select k="language" value={v.language} options={languageModes} />
+              </Row>
+            </>,
+          )}
 
-          <h2 id="view">{T.sections.view}</h2>
-          <Row name={T.listView.name} isNew desc={T.listView.desc} k="sessionList.view">
-            <Select k="sessionList.view" value={v['sessionList.view']} options={listModes} />
-          </Row>
-          <Row name={T.listContext.name} isNew desc={T.listContext.desc} k="sessionList.context">
-            <Toggle k="sessionList.context" value={v['sessionList.context']} />
-          </Row>
-          <Row name={T.listTime.name} isNew desc={T.listTime.desc} k="sessionList.time">
-            <Toggle k="sessionList.time" value={v['sessionList.time']} />
-          </Row>
-          <Row name={T.sidebarTop.name} isNew desc={T.sidebarTop.desc} k="sidebar.top">
-            <Select k="sidebar.top" value={v['sidebar.top']} options={topModes} />
-          </Row>
-          <Row name={T.feedStyle.name} isNew desc={T.feedStyle.desc} k="feed.style">
-            <Select k="feed.style" value={v['feed.style']} options={feedStyles} />
-          </Row>
-          <Row name={T.fontInterface.name} isNew desc={T.fontInterface.desc} k="font.interface">
-            <TextField
-              k="font.interface"
-              value={v['font.interface']}
-              placeholder={T.fontPlaceholder(vscodeFont('--vscode-font-family'))}
-              wide
-            />
-          </Row>
-          <Row name={T.fontCode.name} isNew desc={T.fontCode.desc} k="font.code">
-            <TextField
-              k="font.code"
-              value={v['font.code']}
-              placeholder={T.fontPlaceholder(vscodeFont('--vscode-editor-font-family'))}
-              wide
-            />
-          </Row>
-          <Row name={T.feedFontSize.name} isNew desc={T.feedFontSize.desc} k="feed.fontSize">
-            <FontSizeSelect value={v['feed.fontSize']} />
-          </Row>
-          <Row name={T.language.name} isNew desc={T.language.desc} k="language">
-            <Select k="language" value={v.language} options={languageModes} />
-          </Row>
-
-          <h2 id="engine">{T.sections.engine}</h2>
-          <EngineRow value={v.claudeExecutable} />
+          {page('engine', <EngineRow value={v.claudeExecutable} />)}
         </div>
       </div>
     </div>

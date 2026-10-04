@@ -27,17 +27,19 @@
 
   <div class="st-wrap">
     <nav class="st-nav">
-      <a href="#perm" class="on">Разрешения</a>
-      <a href="#model">Модель</a>
-      <a href="#ctx">Контекст</a>
-      <a href="#lim">Лимиты</a>
-      <a href="#view">Вид</a>
-      <a href="#engine">Движок</a>
+      <div class="st-tabs" role="tablist">
+        <button role="tab" data-section="session" class="on" aria-selected="true">Новая сессия</button>
+        <button role="tab" data-section="limits">Контекст и лимиты</button>
+        <button role="tab" data-section="sidebar">Боковая панель</button>
+        <button role="tab" data-section="look">Внешний вид</button>
+        <button role="tab" data-section="engine">Движок</button>
+      </div>
       <div class="src">Хранится в настройках VS Code, раздел «Пользователь». Меняется сразу, без перезапуска.<a href="#">открыть settings.json</a></div>
     </nav>
 
     <div class="st-body">
-      <h2 id="perm">Разрешения</h2>
+      <section class="st-page" id="session">
+      <h2>Новая сессия</h2>
       <div class="set">
         <span class="nm">Режим новых сессий<span class="new">новая</span></span>
         <span class="ds">С каким режимом открывается новая сессия. В открытой сессии режим меняется меню «режим» под полем ввода или ⇧⇥.</span>
@@ -51,8 +53,6 @@
         <span class="ctl"><span class="tg on danger" role="switch" aria-checked="true"></span></span>
         <div class="warn"><b>Без разрешений</b> агент правит файлы и запускает любые команды, не спрашивая, — включая удаление и сеть. Включай для изолированной папки или контейнера; на рабочем проекте лучше режим «принимать правки».</div>
       </div>
-
-      <h2 id="model">Модель</h2>
       <div class="set">
         <span class="nm">Модель по умолчанию</span>
         <span class="ds">Для новых сессий. «Выбор движка» — та, что стоит в Claude Code.</span>
@@ -65,8 +65,10 @@
         <span class="key">agentura.defaultEffort</span>
         <span class="ctl"><span class="dd">high</span></span>
       </div>
+      </section>
 
-      <h2 id="ctx">Контекст</h2>
+      <section class="st-page" id="limits" hidden>
+      <h2>Контекст и лимиты</h2>
       <div class="set">
         <span class="nm">Пороги шкалы контекста</span>
         <span class="ds">Где полоса и число над полем ввода становятся жёлтыми и оранжевыми. Автосжатие на 200 000 делает движок — здесь не настраивается.</span>
@@ -75,8 +77,6 @@
         <div class="th" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="h"></i><i class="h"></i><i class="h"></i><i class="h"></i><i class="f"></i></div>
         <div class="thl"><span>0</span><span>120k</span><span style="display:flex;justify-content:space-between"><span>150k</span><span>200k · сжатие</span></span></div>
       </div>
-
-      <h2 id="lim">Лимиты подписки</h2>
       <div class="set">
         <span class="nm">Опрашивать лимиты каждые</span>
         <span class="ds">5-часовое и недельное окно в боковой панели и под полем ввода. Вручную — ↻ в боковой панели.</span>
@@ -89,8 +89,16 @@
         <span class="key">agentura.limits.readKeychain</span>
         <span class="ctl"><span class="tg on" role="switch" aria-checked="true"></span></span>
       </div>
+      </section>
 
-      <h2 id="view">Вид</h2>
+      <section class="st-page" id="sidebar" hidden>
+      <h2>Боковая панель</h2>
+      <div class="set">
+        <span class="nm">Верх боковой панели<span class="new">новая</span></span>
+        <span class="ds">Сколько места под аккаунтом и лимитами: подробно — таблицей, компактно — по строке, плотно — мини-шкалы лимитов в заголовке панели.</span>
+        <span class="key">agentura.sidebar.top</span>
+        <span class="ctl"><span class="dd">подробно — как сейчас</span></span>
+      </div>
       <div class="set">
         <span class="nm">Вид списка сессий<span class="new">новая</span></span>
         <span class="ds">Сколько строк на сессию в боковой панели. Ходы и цена всегда есть в подсказке строки. Переключается и кнопкой в заголовке «Сессии».</span>
@@ -109,17 +117,21 @@
         <span class="key">agentura.sessionList.time</span>
         <span class="ctl"><span class="tg on" role="switch" aria-checked="true"></span></span>
       </div>
-      <div class="set">
-        <span class="nm">Верх боковой панели<span class="new">новая</span></span>
-        <span class="ds">Сколько места под аккаунтом и лимитами: подробно — таблицей, компактно — по строке, плотно — мини-шкалы лимитов в заголовке панели.</span>
-        <span class="key">agentura.sidebar.top</span>
-        <span class="ctl"><span class="dd">подробно — как сейчас</span></span>
-      </div>
+      </section>
+
+      <section class="st-page" id="look" hidden>
+      <h2>Внешний вид</h2>
       <div class="set">
         <span class="nm">Вид ленты чата<span class="new">новая</span></span>
         <span class="ds">Как выглядит ход: журнал — плоский список, свёрнуто — действия завершённых ходов в одну строку, реплики — пузырь и чипы действий, карточки — ход рамкой с лентой действий. Открытые вкладки меняют вид сразу.</span>
         <span class="key">agentura.feed.style</span>
         <span class="ctl"><span class="dd">журнал — как раньше</span></span>
+      </div>
+      <div class="set">
+        <span class="nm">Размер текста ленты<span class="new">новая</span></span>
+        <span class="ds">Лента чата масштабируется целиком: ответы, действия, код, карточки. Открытые вкладки меняются сразу.</span>
+        <span class="key">agentura.feed.fontSize</span>
+        <span class="ctl"><span class="dd">13 px — по умолчанию</span></span>
       </div>
       <div class="set">
         <span class="nm">Шрифт интерфейса<span class="new">новая</span></span>
@@ -134,19 +146,15 @@
         <span class="ctl"><span class="num wide">как в VS Code: Menlo</span></span>
       </div>
       <div class="set">
-        <span class="nm">Размер текста ленты<span class="new">новая</span></span>
-        <span class="ds">Лента чата масштабируется целиком: ответы, действия, код, карточки. Открытые вкладки меняются сразу.</span>
-        <span class="key">agentura.feed.fontSize</span>
-        <span class="ctl"><span class="dd">13 px — по умолчанию</span></span>
-      </div>
-      <div class="set">
         <span class="nm">Язык интерфейса<span class="new">новая</span></span>
         <span class="ds">По умолчанию — как в VS Code. Применяется после перезагрузки окна.</span>
         <span class="key">agentura.language</span>
         <span class="ctl"><span class="dd">как в VS Code</span></span>
       </div>
+      </section>
 
-      <h2 id="engine">Движок</h2>
+      <section class="st-page" id="engine" hidden>
+      <h2>Движок</h2>
       <div class="set">
         <span class="nm">Путь к claude</span>
         <span class="ds">Пусто — искать системный: PATH, ~/.local/bin, Homebrew.</span>
@@ -154,6 +162,7 @@
         <span class="ctl"><span class="num wide">пусто — искать системный</span><button class="btn">проверить</button></span>
         <div class="ok">✓ найден <span class="dim">~/.local/bin/claude</span> · 2.1.284 · system</div>
       </div>
+      </section>
     </div>
   </div>
 
@@ -163,5 +172,21 @@
 <script src="../shared/sidebar.js"></script>
 <script src="../shared/limits.js"></script>
 <script src="../shared/tooltip.js"></script>
+<script>
+  // разделы — страницы: клик по вкладке или #раздел в адресе (кадры галереи: settings#look)
+  function showSection(id) {
+    if (!document.getElementById(id)) return;
+    document.querySelectorAll('.st-page').forEach((p) => (p.hidden = p.id !== id));
+    document.querySelectorAll('.st-nav .st-tabs button').forEach((b) => {
+      const on = b.dataset.section === id;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-selected', String(on));
+    });
+  }
+  document.querySelectorAll('.st-nav .st-tabs button').forEach((b) =>
+    b.addEventListener('click', () => showSection(b.dataset.section)),
+  );
+  showSection(location.hash.slice(1).split('-')[0] || 'session');
+</script>
 </body>
 </html>

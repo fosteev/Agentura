@@ -4,14 +4,21 @@
 .webview.settings { grid-template-rows: auto 1fr; }
 .st-wrap { display: grid; grid-template-columns: 170px 1fr; min-height: 0; font-family: var(--font); font-size: 13px; }
 html[data-width="380"] .st-wrap { grid-template-columns: 1fr; }
-html[data-width="380"] .st-nav { display: none; }
+html[data-width="380"] .st-wrap { grid-template-rows: auto minmax(0, 1fr); }
+html[data-width="380"] .st-nav { border-right: 0; border-bottom: 1px solid var(--line); padding: 0 8px; }
+html[data-width="380"] .st-nav .st-tabs { display: flex; overflow-x: auto; scrollbar-width: none; }
+html[data-width="380"] .st-nav .st-tabs button { flex: none; padding: 7px 8px; white-space: nowrap; }
+html[data-width="380"] .st-nav .st-tabs button.on { background: none; box-shadow: inset 0 -2px 0 var(--accent); }
+html[data-width="380"] .st-nav .src { display: none; }
 .st-nav { border-right: 1px solid var(--line); padding: 12px 0; display: grid; align-content: start; gap: 1px; }
-.st-nav a { padding: 5px 16px; color: var(--fg-mute); text-decoration: none; font-size: 12.5px; }
-.st-nav a.on { color: var(--fg); background: var(--bg-raise); box-shadow: inset 2px 0 0 var(--accent); }
+.st-nav .st-tabs { display: grid; gap: 1px; }
+.st-nav .st-tabs button { padding: 5px 16px; color: var(--fg-mute); text-align: left; font-size: 12.5px; }
+.st-nav .st-tabs button.on { color: var(--fg); background: var(--bg-raise); box-shadow: inset 2px 0 0 var(--accent); }
 .st-nav .src { margin-top: 14px; padding: 10px 16px 0; border-top: 1px solid var(--line); color: var(--fg-faint); font-size: 11px; line-height: 1.5; }
 .st-nav .src a { padding: 0; color: var(--link); font-size: 11px; display: block; }
 
 .st-body { overflow: auto; padding: 4px 26px 24px; min-width: 0; }
+.st-page[hidden] { display: none; }
 .st-body h2 { margin: 18px 0 2px; font-size: 13px; font-weight: 600; color: var(--fg); }
 .st-body h2 small { font-weight: 400; color: var(--fg-mute); font-size: 11.5px; margin-left: 8px; }
 

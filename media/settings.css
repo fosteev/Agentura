@@ -11,10 +11,31 @@
   font-family: var(--font);
   font-size: 13px;
 }
+/* узкий сплит: разделы — полосой вкладок над страницей, подпись про settings.json прячется */
 html[data-width='380'] .st-wrap {
   grid-template-columns: 1fr;
+  grid-template-rows: auto minmax(0, 1fr);
 }
 html[data-width='380'] .st-nav {
+  border-right: 0;
+  border-bottom: 1px solid var(--line);
+  padding: 0 8px;
+}
+html[data-width='380'] .st-nav .st-tabs {
+  display: flex;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+html[data-width='380'] .st-nav .st-tabs button {
+  flex: none;
+  padding: 7px 8px;
+  white-space: nowrap;
+}
+html[data-width='380'] .st-nav .st-tabs button.on {
+  background: none;
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+html[data-width='380'] .st-nav .src {
   display: none;
 }
 .st-nav {
@@ -24,13 +45,20 @@ html[data-width='380'] .st-nav {
   align-content: start;
   gap: 1px;
 }
-.st-nav a {
+.st-nav .st-tabs {
+  display: grid;
+  gap: 1px;
+}
+.st-nav .st-tabs button {
   padding: 5px 16px;
   color: var(--fg-mute);
-  text-decoration: none;
+  text-align: left;
   font-size: 12.5px;
 }
-.st-nav a.on {
+.st-nav .st-tabs button:hover {
+  color: var(--fg);
+}
+.st-nav .st-tabs button.on {
   color: var(--fg);
   background: var(--bg-raise);
   box-shadow: inset 2px 0 0 var(--accent);
@@ -54,6 +82,9 @@ html[data-width='380'] .st-nav {
   overflow: auto;
   padding: 4px 26px 24px;
   min-width: 0;
+}
+.st-page[hidden] {
+  display: none;
 }
 .st-body h2 {
   margin: 18px 0 2px;
@@ -289,7 +320,8 @@ input.num[type='number'] {
 .st-body {
   min-height: 0;
 }
-.st-nav a:focus-visible,
+.st-nav .st-tabs button:focus-visible,
+.st-nav .src a:focus-visible,
 .set .tg:focus-visible,
 .dd select:focus-visible,
 input.num:focus-visible,
@@ -337,4 +369,7 @@ html[data-width='380'] .set .ctl {
 html[data-width='380'] .num.wide {
   min-width: 0;
   width: 100%;
+}
+.st-nav .st-tabs button:focus-visible {
+  outline-offset: -1px;
 }

@@ -89,12 +89,11 @@ describe('вкладка настроек', () => {
     expect(host.querySelector('.st-body')).toBeNull();
     state();
     await flush();
-    expect([...host.querySelectorAll('h2')].map((e) => e.id)).toEqual([
-      'perm',
-      'model',
-      'ctx',
-      'lim',
-      'view',
+    expect([...host.querySelectorAll('.st-page')].map((e) => e.id)).toEqual([
+      'session',
+      'limits',
+      'sidebar',
+      'look',
       'engine',
     ]);
     expect([...host.querySelectorAll('.set .key')].map((e) => e.textContent)).toEqual([
@@ -106,14 +105,14 @@ describe('вкладка настроек', () => {
       'agentura.contextThresholds',
       'agentura.usagePollMinutes · не меньше 5',
       'agentura.limits.readKeychain',
+      'agentura.sidebar.top',
       'agentura.sessionList.view',
       'agentura.sessionList.context',
       'agentura.sessionList.time',
-      'agentura.sidebar.top',
       'agentura.feed.style',
+      'agentura.feed.fontSize',
       'agentura.font.interface',
       'agentura.font.code',
-      'agentura.feed.fontSize',
       'agentura.language',
       'agentura.claudeExecutable · только эта машина',
     ]);
@@ -130,10 +129,38 @@ describe('вкладка настроек', () => {
     const classes = (root: ParentNode, sel: string) =>
       [...root.querySelectorAll(sel)].map((e) => [...e.classList].sort().join('.'));
     expect(classes(host, '.set')).toEqual(classes(proto, '.set'));
-    expect(classes(host, '.st-nav a').length).toBe(classes(proto, '.st-nav a').length);
+    expect(classes(host, '.st-nav [role="tab"]').length).toBe(
+      classes(proto, '.st-nav [role="tab"]').length,
+    );
+    expect([...host.querySelectorAll('.st-page')].map((e) => e.id)).toEqual(
+      [...proto.querySelectorAll('.st-page')].map((e) => e.id),
+    );
     expect(host.querySelector('.st-wrap > .st-nav')).not.toBeNull();
     expect(host.querySelector('.set.on .tg.on.danger')).not.toBeNull();
     expect(host.querySelector('.set.on .warn')).not.toBeNull();
+  });
+
+  it('разделы — страницы: видна одна, клик и стрелки переключают', async () => {
+    const host = mount(Settings);
+    state();
+    await flush();
+    const visible = () =>
+      [...host.querySelectorAll<HTMLElement>('.st-page')].filter((p) => !p.hidden).map((p) => p.id);
+    const tab = (id: string) => host.querySelector<HTMLButtonElement>(`[data-section="${id}"]`)!;
+    expect(visible()).toEqual(['session']);
+    expect(tab('session').getAttribute('aria-selected')).toBe('true');
+    tab('look').click();
+    await flush();
+    expect(visible()).toEqual(['look']);
+    expect(tab('look').classList.contains('on')).toBe(true);
+    expect(tab('session').tabIndex).toBe(-1);
+    tab('look').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    await flush();
+    expect(visible()).toEqual(['engine']);
+    expect(document.activeElement).toBe(tab('engine'));
+    tab('engine').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    await flush();
+    expect(visible()).toEqual(['session']);
   });
 
   it('значения отражаются в полях, в «режиме» нет bypass, пока он не разрешён', async () => {
