@@ -5,7 +5,7 @@ import { costLabel, tokensLabel, whenLabel } from '../sessionsView';
 import { ui } from '../strings';
 import { TabBar, type TabItem } from './TabBar';
 
-export type Tab = 'chat' | 'changes' | 'agents';
+export type Tab = 'chat' | 'changes' | 'git' | 'agents';
 
 export function Hud({
   project,
@@ -27,7 +27,11 @@ export function Hud({
   /** Панели «изменения» и «агенты» недоступны в пустой сессии (экран empty). */
   sidePanesEnabled: boolean;
   /** Бейджи вкладок: число файлов сессии (`live` — идёт правка) и агенты хода `идут / всего` (A6). */
-  badges: { changes?: { count: number; live: boolean }; agents?: { text: string; live: boolean } };
+  badges: {
+    changes?: { count: number; live: boolean };
+    git?: { count: number };
+    agents?: { text: string; live: boolean };
+  };
   /** Сессии проекта, коротко (`sessions.update`) — попап `sessions`. */
   sessions: SessionSummary[];
   currentId?: string | undefined;
@@ -66,6 +70,12 @@ export function Hud({
       ...(badges.changes
         ? { badge: { text: String(badges.changes.count), live: badges.changes.live } }
         : {}),
+    },
+    {
+      key: 'git',
+      label: ui.tabs.git,
+      disabled: !sidePanesEnabled,
+      ...(badges.git ? { badge: { text: String(badges.git.count), live: false } } : {}),
     },
     {
       key: 'agents',

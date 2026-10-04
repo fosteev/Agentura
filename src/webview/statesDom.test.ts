@@ -390,9 +390,10 @@ describe('доступность', () => {
     expect(tabs.map((t) => t.getAttribute('aria-controls'))).toEqual([
       'pane-chat',
       'pane-changes',
+      'pane-git',
       'pane-agents',
     ]);
-    expect(tabs.map((t) => t.tabIndex)).toEqual([0, -1, -1]);
+    expect(tabs.map((t) => t.tabIndex)).toEqual([0, -1, -1, -1]);
     tabs[0]!.dispatchEvent(
       new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }),
     );

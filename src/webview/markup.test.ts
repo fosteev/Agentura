@@ -205,12 +205,12 @@ describe('пустое состояние и шапка совпадают с em
     expect(skeleton(host.querySelector('header')!)).toBe(
       skeleton(emptyProto.querySelector('header.hud')!),
     );
-    // прототип empty.html ещё со вкладкой «ход»; в коде она называется «изменения» (roadmap 09)
+    // прототип empty.html ещё со вкладкой «ход» и без «git»; в коде — «изменения» (roadmap 09) и «git» (roadmap 12)
     expect(compact(host.querySelector('header'))).toBe(
-      compact(emptyProto.querySelector('header.hud')).replace('чатход', 'чатизменения'),
+      compact(emptyProto.querySelector('header.hud')).replace('чатход', 'чатизмененияgit'),
     );
     expect(
       [...host.querySelectorAll('.tabs button')].map((b) => b.hasAttribute('disabled')),
-    ).toEqual([false, true, true]);
+    ).toEqual([false, true, true, true]);
   });
 });
