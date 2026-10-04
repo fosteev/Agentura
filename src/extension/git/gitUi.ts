@@ -36,6 +36,9 @@ export function vscodeGitUi(): GitUi {
     async open(uri) {
       await vscode.commands.executeCommand('vscode.open', uri, { preview: true });
     },
+    async openRepository() {
+      await vscode.commands.executeCommand('git.openRepository');
+    },
     // `agentura-diff:` без содержимого — пустой документ (провайдер отдаёт '' по неизвестному uri)
     empty(name) {
       return vscode.Uri.from({ scheme: DIFF_SCHEME, path: `/git-empty/after/${name}` });

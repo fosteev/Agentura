@@ -449,6 +449,16 @@ export const en: Ui = {
     commitAll: 'Commit all changes',
     errorClose: 'Dismiss',
     errorOp: (op: string, message: string) => `${op}: ${message}`,
+    openRepo: 'Open repository…',
+    commitCompact: 'Commit',
+    targetsLabel: 'to',
+    targetsAria: 'Repositories to commit into',
+    commitTo: (n: number) => `Commit to ${n} ${pl(n, 'repository', 'repositories')}`,
+    needTarget: 'Tick a repository that has staged files',
+    committed: (names: string) => `Committed: ${names}`,
+    repoPick: 'Repositories',
+    cleanHeading: 'clean',
+    fetchAll: 'Fetch in all',
   },
   compose: {
     mode: 'mode',
@@ -746,6 +756,15 @@ export const en: Ui = {
         lanes: 'lanes — a time axis',
         cards: 'cards — an agent as a card',
         graph: 'graph — an editor tab',
+      },
+    },
+    gitLayout: {
+      name: 'Git tab: several repositories',
+      desc: 'The git tab when the workspace holds several repositories (a single one ignores this): a stack of sections, a picker with one repository below, or one shared list with a single commit into several repositories. Open tabs switch immediately.',
+      options: {
+        stack: 'stack — a section per repository',
+        picker: 'picker — one repository at a time',
+        unified: 'unified — one list, one commit',
       },
     },
     fontInterface: {

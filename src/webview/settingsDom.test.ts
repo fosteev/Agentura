@@ -43,6 +43,7 @@ const values: SettingsValues = {
   'sidebar.top': 'detailed',
   'feed.style': 'journal',
   'agents.view': 'list',
+  'git.layout': 'stack',
   'feed.fontSize': 13,
   'ui.fontSize': 13,
   'font.interface': '',
@@ -116,6 +117,7 @@ describe('вкладка настроек', () => {
       'agentura.sessionList.time',
       'agentura.feed.style',
       'agentura.agents.view',
+      'agentura.git.layout',
       'agentura.feed.fontSize',
       'agentura.ui.fontSize',
       'agentura.font.interface',
@@ -202,6 +204,16 @@ describe('вкладка настроек', () => {
     expect(agents.querySelectorAll('.pv [data-agents="list"] .ag .a.sub').length).toBe(4);
     agents.querySelector<HTMLButtonElement>('[data-value="tree"]')!.click();
     expect(sets().at(-1)).toEqual({ type: 'settings.set', key: 'agents.view', value: 'tree' });
+    const gitl = group('git.layout');
+    expect(
+      [...gitl.querySelectorAll('.pv .webview')].map((e) => e.getAttribute('data-git')),
+    ).toEqual(['stack', 'picker', 'unified']);
+    // превью — настоящая вкладка «git» на трёх репозиториях
+    expect(gitl.querySelectorAll('.pv [data-git="stack"] .rb').length).toBe(3);
+    expect(gitl.querySelectorAll('.pv [data-git="picker"] .pick .p').length).toBe(3);
+    expect(gitl.querySelectorAll('.pv [data-git="unified"] .rgrp').length).toBeGreaterThan(2);
+    gitl.querySelector<HTMLButtonElement>('[data-value="unified"]')!.click();
+    expect(sets().at(-1)).toEqual({ type: 'settings.set', key: 'git.layout', value: 'unified' });
     const top = group('sidebar.top');
     expect(
       [...top.querySelectorAll('.pv .sidebar')].map((e) => e.getAttribute('data-top')),

@@ -99,6 +99,11 @@
         "category": "Agentura"
       },
       {
+        "command": "agentura.gitLayout",
+        "title": "%command.gitLayout.title%",
+        "category": "Agentura"
+      },
+      {
         "command": "agentura.addGoogleFont",
         "title": "%command.addGoogleFont.title%",
         "category": "Agentura"
@@ -292,6 +297,21 @@
           ],
           "default": "list",
           "description": "%config.agents.view.description%"
+        },
+        "agentura.git.layout": {
+          "type": "string",
+          "enum": [
+            "stack",
+            "picker",
+            "unified"
+          ],
+          "enumDescriptions": [
+            "%config.git.layout.enum.stack%",
+            "%config.git.layout.enum.picker%",
+            "%config.git.layout.enum.unified%"
+          ],
+          "default": "stack",
+          "description": "%config.git.layout.description%"
         },
         "agentura.font.interface": {
           "type": "string",

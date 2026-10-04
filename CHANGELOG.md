@@ -4,6 +4,13 @@
 
 ### Added
 
+- **Git tab** (third tab of the right panel, `changes | git | agents`): the working tree by git — unstaged and staged
+  files with status and +/−, branch, ↓/↑ against upstream, recent commits, stage / unstage / discard / open diff,
+  commit (amend, "and push"), fetch / pull / push, branch switch; files the agent edited in the session carry a ●
+  and an "agent N" chip filters them. With several repositories in the workspace the layout is set by
+  `agentura.git.layout` (⚙ → "Look", command "Git Tab Layout…"): `stack` (default, a section per repository with its
+  own compact commit line), `picker` (repositories on top, the selected one below) or `unified` (one list and one
+  commit message into several ticked repositories). The empty state has an "Open repository…" button.
 - **Agents tab views** (`agentura.agents.view`, ⚙ → "Look", command "Agents View…"): the "agents" tab of the right
   panel can be a `list` (default, as before), a session `tree`, time `lanes` (one lane per agent on a shared axis,
   call ticks, the main agent's waiting) or `cards` (live call, summary excerpt, failure text). Tree, lanes and cards

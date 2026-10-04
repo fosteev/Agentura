@@ -387,7 +387,8 @@ html[data-width='380'] .num.wide {
   margin-top: 10px;
 }
 .set > .cards:has(.pv-feed),
-.set > .cards:has(.pv-agents) {
+.set > .cards:has(.pv-agents),
+.set > .cards:has(.pv-git) {
   grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
 }
 .card {
@@ -455,6 +456,18 @@ html[data-width='380'] .num.wide {
 }
 .pv-graph {
   --pz: 0.3;
+}
+.pv-git {
+  --pz: 0.55;
+  height: 230px;
+}
+.pv-git .pane.side {
+  display: block;
+  overflow: hidden;
+  background: var(--bg-side);
+}
+.pv-git .gt .scroll {
+  overflow: hidden;
 }
 /* граф в карточке: только холст, высота — под раскладку превью (GRAPH_PREVIEW + полоса ходов) */
 .pv-graph .gmap {

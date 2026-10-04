@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { AGENTS_VIEWS, DEFAULT_AGENTS_VIEW } from './settings';
+import { AGENTS_VIEWS, DEFAULT_AGENTS_VIEW, DEFAULT_GIT_LAYOUT, GIT_LAYOUTS } from './settings';
 
 const root = join(__dirname, '..');
 const read = (f: string): unknown => JSON.parse(readFileSync(join(root, f), 'utf8'));
@@ -55,5 +55,25 @@ describe('agentura.agents.view', () => {
 
   it('команда выбора вида объявлена', () => {
     expect(pkg.contributes.commands.map((c) => c.command)).toContain('agentura.agentsView');
+  });
+});
+
+describe('agentura.git.layout', () => {
+  const pkg = read('package.json') as {
+    contributes: {
+      configuration: { properties: Record<string, { enum?: string[]; enumDescriptions?: string[]; default?: string }> };
+      commands: { command: string }[];
+    };
+  };
+  const prop = pkg.contributes.configuration.properties['agentura.git.layout']!;
+
+  it('enum и значение по умолчанию совпадают с настройкой в коде, у каждого значения есть описание', () => {
+    expect(prop.enum).toEqual([...GIT_LAYOUTS]);
+    expect(prop.default).toBe(DEFAULT_GIT_LAYOUT);
+    expect(prop.enumDescriptions).toHaveLength(GIT_LAYOUTS.length);
+  });
+
+  it('команда выбора раскладки объявлена', () => {
+    expect(pkg.contributes.commands.map((c) => c.command)).toContain('agentura.gitLayout');
   });
 });

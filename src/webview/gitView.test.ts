@@ -3,17 +3,22 @@ import type { GitFileView, GitRepoView, GitSnapshot } from '../shared/git';
 import {
   agentCount,
   agentPathSet,
+  cleanRepos,
   commitButton,
+  commitTargets,
   commitMessage,
   commitWhen,
   cwdPath,
   fileRows,
   gitBadge,
   isAgentFile,
+  pickedRepo,
   sectionRows,
   summaryLeft,
   syncView,
   totalCount,
+  unifiedButton,
+  unifiedSection,
 } from './gitView';
 
 const f = (path: string, status: GitFileView['status'] = 'M', extra: Partial<GitFileView> = {}) =>
@@ -177,5 +182,79 @@ describe('синхронизация и время', () => {
     expect(commitWhen(new Date(2026, 9, 4, 9, 5).getTime(), now)).toBe('09:05');
     expect(commitWhen(new Date(2026, 9, 1, 9, 5).getTime(), now)).toBe('01.10');
     expect(commitWhen(0, now)).toBe('');
+  });
+});
+
+describe('раскладки нескольких репозиториев', () => {
+  const a = repo({
+    root: '/w/a',
+    rel: 'a',
+    name: 'a',
+    unstaged: [f('x/one.ts'), f('two.ts', 'U')],
+    staged: [f('s.ts', 'A')],
+  });
+  const b = repo({ root: '/w/b', rel: 'b', name: 'b', unstaged: [f('r.md')], staged: [] });
+  const c = repo({ root: '/w/c', rel: 'c', name: 'c' });
+  const s = snap(a, b, c);
+
+  it('pickedRepo: сохранённый, иначе первый с изменениями, иначе первый', () => {
+    expect(pickedRepo(s, '/w/b')?.name).toBe('b');
+    expect(pickedRepo(s, '/w/gone')?.name).toBe('a');
+    expect(pickedRepo(s, undefined)?.name).toBe('a');
+    expect(pickedRepo(snap(c, a), undefined)?.name).toBe('a');
+    expect(pickedRepo(snap(c), undefined)?.name).toBe('c');
+    expect(pickedRepo(snap(), undefined)).toBeUndefined();
+  });
+
+  it('cleanRepos: только без изменений', () => {
+    expect(cleanRepos(s).map((r) => r.name)).toEqual(['c']);
+  });
+
+  it('unifiedSection: группы по репозиториям с файлами секции, total — до фильтра агента', () => {
+    const un = unifiedSection(s, false, new Set(), false, false);
+    expect(un.total).toBe(3);
+    expect(un.groups.map((g) => [g.repo.name, g.rows.length])).toEqual([
+      ['a', 2],
+      ['b', 1],
+    ]);
+    const st = unifiedSection(s, true, new Set(), false, false);
+    expect(st.groups.map((g) => g.repo.name)).toEqual(['a']);
+    // фильтр «агент»: пустые группы уходят, счётчик остаётся
+    const ag = unifiedSection(s, false, new Set(['a/two.ts']), true, false);
+    expect(ag.total).toBe(3);
+    expect(ag.groups.map((g) => g.repo.name)).toEqual(['a']);
+    expect(ag.groups[0]!.rows).toHaveLength(1);
+    // дерево: папки отдельными строками внутри группы
+    const tr = unifiedSection(s, false, new Set(), false, true);
+    expect(tr.groups[0]!.rows.map((r) => r.kind)).toEqual(['file', 'dir', 'file']);
+  });
+
+  it('commitTargets: репо с индексом, отмечены по умолчанию; явный выбор сильнее', () => {
+    expect(commitTargets(s, {})).toEqual([{ root: '/w/a', name: 'a', files: 1, on: true }]);
+    expect(commitTargets(s, { '/w/a': false })[0]!.on).toBe(false);
+  });
+
+  it('unifiedButton: нет целей, пустое сообщение, занято, готово', () => {
+    const two = snap(a, repo({ root: '/w/d', name: 'd', staged: [f('q.ts'), f('w.ts')] }));
+    const t = commitTargets(two, {});
+    expect(unifiedButton(two, t, { message: 'm' })).toMatchObject({
+      disabled: false,
+      repos: 2,
+      files: 3,
+      roots: ['/w/a', '/w/d'],
+    });
+    expect(unifiedButton(two, t, { message: ' ' })).toMatchObject({ disabled: true, why: 'empty-message' });
+    expect(unifiedButton(two, commitTargets(two, { '/w/a': false, '/w/d': false }), { message: 'm' })).toMatchObject({
+      disabled: true,
+      why: 'no-targets',
+      repos: 0,
+    });
+    const busy = snap({ ...a, busy: 'commit' }, repo({ root: '/w/d', name: 'd', staged: [f('q.ts')] }));
+    expect(unifiedButton(busy, commitTargets(busy, {}), { message: 'm' })).toMatchObject({
+      disabled: true,
+      why: 'busy',
+    });
+    // занят не отмеченный репозиторий — не мешает
+    expect(unifiedButton(busy, commitTargets(busy, { '/w/a': false }), { message: 'm' }).disabled).toBe(false);
   });
 });

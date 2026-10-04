@@ -21,6 +21,7 @@ import {
   feedStyle,
   gitSnapshot,
   agentsView,
+  gitLayout,
   showThinking,
   stopAgent,
   stopAgents,
@@ -343,7 +344,12 @@ export function Chat() {
   useGitWatch(gitShown);
 
   return (
-    <div class="webview" data-feed={feedStyle.value} data-agents={agentsView.value}>
+    <div
+      class="webview"
+      data-feed={feedStyle.value}
+      data-agents={agentsView.value}
+      data-git={gitLayout.value}
+    >
       <Hud
         project={s.project}
         title={s.title}
@@ -561,6 +567,9 @@ export function Chat() {
             now={now}
             hidden={!gitShown}
             labelledBy={wide.value ? 'ptab-git' : 'tab-git'}
+            layout={gitLayout.value}
+            repoRoot={panel.gitRepo}
+            onRepo={(root) => updatePanel({ gitRepo: root })}
             onTree={(on) => updatePanel({ gitTree: on })}
             onAgentOnly={(on) => updatePanel({ gitAgent: on })}
           />

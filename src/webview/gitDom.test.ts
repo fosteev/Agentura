@@ -13,8 +13,11 @@ import { Chat } from './components/Chat';
 import {
   chat,
   dispatchEvent,
+  GIT_UNIFIED,
+  gitCommitted,
   gitDrafts,
   gitErrors,
+  gitTargets,
   gitSnapshot,
   handleHostMessage,
   sendMessage,
@@ -131,6 +134,9 @@ beforeEach(async () => {
   gitSnapshot.value = undefined;
   gitErrors.value = {};
   gitDrafts.value = {};
+  gitTargets.value = {};
+  gitCommitted.value = [];
+  handleHostMessage({ type: 'chat.info', project: 'w', cwd: '/w', allowBypass: false });
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -233,7 +239,9 @@ describe('вкладка «git»: вид', () => {
     expect(q(pane, '.ws').textContent).toContain('2 репозитория');
     expect(qa(pane, '.rh .nm').map((n) => n.textContent)).toEqual(['a', 'b']);
     expect(q(qa(pane, '.rh')[1]!, '.clean')).not.toBeNull();
-    expect(qa(pane, '.cm')).toHaveLength(1);
+    // стопка: у репозитория с файлами поле коммита строкой, у чистого его нет
+    expect(qa(pane, '.cml')).toHaveLength(1);
+    expect(qa(pane, '.cm')).toHaveLength(0);
     qa(pane, '.f')[0]!.click();
     expect(gitSent().at(-1)).toMatchObject({ type: 'git.open', root: '/w/a' });
   });
@@ -458,5 +466,227 @@ describe('вкладка «git»: git.watch', () => {
       type: 'git.watch',
       on: true,
     });
+  });
+});
+
+describe('вкладка «git»: несколько репозиториев, три раскладки', () => {
+  const type = (el: HTMLInputElement | HTMLTextAreaElement, value: string) => {
+    el.value = value;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  const trio = () => {
+    const a = repo({ root: '/w/a', rel: 'a', name: 'a' });
+    const b = repo({
+      root: '/w/b',
+      rel: 'b',
+      name: 'b',
+      unstaged: [{ path: 'README.md', status: 'M', add: 3, del: 0 }],
+      staged: [{ path: 'src/x.ts', status: 'A', add: 9, del: 0 }],
+      log: [],
+    });
+    const c = repo({ root: '/w/c', rel: 'c', name: 'c', unstaged: [], staged: [], log: [] });
+    return ok(a, b, c);
+  };
+  const layout = async (gitLayout: 'stack' | 'picker' | 'unified', snap = trio()) => {
+    const host = await open(snap);
+    handleHostMessage({ type: 'chat.info', project: 'w', cwd: '/w', allowBypass: false, gitLayout });
+    await flush();
+    return host;
+  };
+
+  it('data-git на корне чата: из chat.info, по умолчанию stack', async () => {
+    const host = await open(trio());
+    expect(q(host, '.webview').getAttribute('data-git')).toBe('stack');
+    handleHostMessage({ type: 'chat.info', project: 'w', cwd: '/w', allowBypass: false, gitLayout: 'picker' });
+    await flush();
+    expect(q(host, '.webview').getAttribute('data-git')).toBe('picker');
+  });
+
+  it('stack: поле коммита строкой, на фокус раскрывается в полное с тем же черновиком', async () => {
+    const host = await layout('stack');
+    const pane = q(host, '#pane-git');
+    expect(qa(pane, '.rb')).toHaveLength(3);
+    expect(qa(pane, '.cml')).toHaveLength(2);
+    const line = qa<HTMLInputElement>(pane, '.cml input.in')[0]!;
+    line.focus();
+    await flush();
+    expect(qa(pane, '.cm')).toHaveLength(1);
+    const full = q<HTMLInputElement>(pane, '.cm input.t');
+    expect(document.activeElement).toBe(full);
+    type(full, 'Stack msg');
+    await flush();
+    q<HTMLButtonElement>(pane, '.cm .go .main').click();
+    expect(gitSent().at(-1)).toMatchObject({ type: 'git.commit', roots: ['/w/a'], message: 'Stack msg' });
+  });
+
+  it('stack: кнопка «Коммит» в строке коммитит сразу', async () => {
+    const host = await layout('stack');
+    const pane = q(host, '#pane-git');
+    const input = qa<HTMLInputElement>(pane, '.cml input.in')[1]!;
+    const btn = qa<HTMLButtonElement>(pane, '.cml button')[1]!;
+    expect(btn.disabled).toBe(true);
+    type(input, 'Quick');
+    await flush();
+    qa<HTMLButtonElement>(pane, '.cml button')[1]!.click();
+    expect(gitSent().at(-1)).toMatchObject({ type: 'git.commit', roots: ['/w/b'], message: 'Quick' });
+  });
+
+  it('picker: список репозиториев, выбор сохраняется в panel.gitRepo, ниже — выбранный как один', async () => {
+    const host = await layout('picker');
+    const pane = q(host, '#pane-git');
+    const rows = qa(pane, '.pick .p');
+    expect(rows).toHaveLength(3);
+    // по умолчанию — первый с изменениями
+    expect(rows[0]!.classList.contains('on')).toBe(true);
+    expect(qa(pane, '.sh .tt')).toHaveLength(2);
+    expect(qa(pane, '.cm')).toHaveLength(1);
+    expect(q(pane, '.cm').getAttribute('data-root')).toBe('/w/a');
+    rows[1]!.click();
+    await flush();
+    expect(qa(pane, '.pick .p')[1]!.classList.contains('on')).toBe(true);
+    expect(q(pane, '.cm').getAttribute('data-root')).toBe('/w/b');
+    expect(qa(pane, '.f .nm b').map((n) => n.textContent)).toContain('README.md');
+    expect((stored as { panel: { gitRepo: string } }).panel.gitRepo).toBe('/w/b');
+    // чистый репозиторий в списке с прочерком
+    expect(q(qa(pane, '.pick .p')[2]!, '.n').textContent).toBe('—');
+    qa(pane, '.f')[0]!.click();
+    expect(gitSent().at(-1)).toMatchObject({ type: 'git.open', root: '/w/b' });
+  });
+
+  it('picker: сохранённый репозиторий исчез — берётся первый с изменениями', async () => {
+    stored = { panel: { tab: 'git', gitRepo: '/w/gone' } };
+    session();
+    push(trio());
+    const host = mount();
+    await flush();
+    handleHostMessage({ type: 'chat.info', project: 'w', cwd: '/w', allowBypass: false, gitLayout: 'picker' });
+    await flush();
+    expect(q(host, '.cm').getAttribute('data-root')).toBe('/w/a');
+  });
+
+  it('unified: общие секции с подзаголовками репо, чистые — строками внизу', async () => {
+    const host = await layout('unified');
+    const pane = q(host, '#pane-git');
+    expect(qa(pane, '.sh .tt').map((n) => n.textContent)).toEqual(['неиндексированные', 'в индексе']);
+    const groups = qa(pane, '.rgrp');
+    expect(groups.map((g) => q(g, '.rg .nm').textContent)).toEqual(['a', 'b', 'a', 'b']);
+    expect(qa(pane, '.sh .n').map((n) => n.textContent)).toEqual(['4', '3']);
+    // чистый c — строкой внизу, отдельного поля коммита у репо нет
+    expect(qa(pane, 'h6').map((n) => n.textContent)).toContain('чистые');
+    expect(qa(pane, '.rg .nm.dim').map((n) => n.textContent)).toEqual(['c']);
+    expect(qa(pane, '.cm')).toHaveLength(1);
+    expect(q(pane, '.cm').getAttribute('data-root')).toBe(GIT_UNIFIED);
+    // файл шлёт запрос со своим root
+    qa(groups[1]!, '.f')[0]!.click();
+    expect(gitSent().at(-1)).toMatchObject({ type: 'git.open', root: '/w/b' });
+  });
+
+  it('unified: «+ все в индекс» — по запросу на каждый репозиторий', async () => {
+    const host = await layout('unified');
+    const pane = q(host, '#pane-git');
+    q<HTMLButtonElement>(pane, '.sh .all.pri').click();
+    expect(gitSent()).toEqual([
+      { type: 'git.stage', root: '/w/a', paths: ['src/Counter.tsx', 'src/new.test.ts', '.env.local'] },
+      { type: 'git.stage', root: '/w/b', paths: ['README.md'] },
+    ]);
+  });
+
+  it('unified: чипы целей по умолчанию отмечены у репо с индексом, один коммит уходит в отмеченные', async () => {
+    const host = await layout('unified');
+    const pane = q(host, '#pane-git');
+    const chips = () => qa<HTMLInputElement>(pane, '.cm .tg input');
+    expect(chips().map((c) => c.checked)).toEqual([true, true]);
+    expect(q(pane, '.cm .tg').textContent).toContain('a 2');
+    expect(q(pane, '.cm .tg').textContent).toContain('b 1');
+    const main = () => q<HTMLButtonElement>(pane, '.cm .go .main');
+    expect(main().disabled).toBe(true);
+    type(q<HTMLInputElement>(pane, '.cm input.t'), 'Both');
+    await flush();
+    expect(main().textContent).toBe('Коммит в 2 репозитория · 3 файла');
+    main().click();
+    expect(gitSent().at(-1)).toEqual({
+      type: 'git.commit',
+      roots: ['/w/a', '/w/b'],
+      message: 'Both',
+      amend: false,
+      push: false,
+    });
+    // снять чип — коммит только в оставшийся
+    chips()[0]!.click();
+    await flush();
+    expect(main().textContent).toBe('Коммит в 1 репозиторий · 1 файл');
+    main().click();
+    expect(gitSent().at(-1)).toMatchObject({ roots: ['/w/b'] });
+    // все чипы сняты — кнопка гаснет с подсказкой
+    chips()[1]!.click();
+    await flush();
+    expect(main().disabled).toBe(true);
+    expect(main().getAttribute('data-tip')).toContain('Отметьте');
+  });
+
+  it('unified: итог по репозиториям — успех строкой, ошибка с именем репо; полный успех чистит черновик', async () => {
+    const host = await layout('unified');
+    const pane = q(host, '#pane-git');
+    type(q<HTMLInputElement>(pane, '.cm input.t'), 'Msg');
+    await flush();
+    handleHostMessage({
+      type: 'git.commit.result',
+      results: [
+        { root: '/w/a', ok: true },
+        { root: '/w/b', ok: false, error: 'hook failed' },
+      ],
+    });
+    handleHostMessage({ type: 'git.error', root: '/w/b', op: 'commit', message: 'hook failed' });
+    await flush();
+    expect(q(pane, '.cm .ok').textContent).toContain('Закоммичено: a');
+    expect(q(pane, '.cm .err').textContent).toContain('b: commit: hook failed');
+    // частичный успех: сообщение остаётся для повтора
+    expect(gitDrafts.value[GIT_UNIFIED]?.summary).toBe('Msg');
+    handleHostMessage({
+      type: 'git.commit.result',
+      results: [
+        { root: '/w/a', ok: true },
+        { root: '/w/b', ok: true },
+      ],
+    });
+    await flush();
+    expect(gitDrafts.value[GIT_UNIFIED]?.summary).toBe('');
+    expect(q<HTMLInputElement>(pane, '.cm input.t').value).toBe('');
+  });
+
+  it('unified: «и push» и amend применяются ко всем отмеченным', async () => {
+    const host = await layout('unified');
+    const pane = q(host, '#pane-git');
+    type(q<HTMLInputElement>(pane, '.cm input.t'), 'P');
+    qa<HTMLInputElement>(pane, '.cm .opt input')[0]!.click();
+    qa<HTMLInputElement>(pane, '.cm .opt input')[1]!.click();
+    await flush();
+    q<HTMLButtonElement>(pane, '.cm .go .main').click();
+    expect(gitSent().at(-1)).toEqual({
+      type: 'git.commit',
+      roots: ['/w/a', '/w/b'],
+      message: 'P',
+      amend: true,
+      push: true,
+    });
+  });
+
+  it('один репозиторий не зависит от раскладки', async () => {
+    for (const l of ['stack', 'picker', 'unified'] as const) {
+      const host = await layout(l, ok(repo()));
+      const pane = q(host, '#pane-git');
+      expect(qa(pane, '.pick, .rb, .rgrp')).toHaveLength(0);
+      expect(q(pane, '.cm').getAttribute('data-root')).toBe('/w');
+      expect(qa(pane, '.cml')).toHaveLength(0);
+      for (const h of mounted.splice(0)) render(null, h);
+      await flush();
+      document.body.innerHTML = '';
+    }
+  });
+
+  it('пустое состояние: «Открыть репозиторий…» шлёт git.openRepository', async () => {
+    const host = await open({ state: 'none', repos: [] });
+    q<HTMLButtonElement>(host, '#pane-git .open-repo').click();
+    expect(gitSent().at(-1)).toEqual({ type: 'git.openRepository' });
   });
 });

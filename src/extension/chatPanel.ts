@@ -13,6 +13,8 @@ import {
   DEFAULT_FEED_STYLE,
   DEFAULT_THRESHOLDS,
   isAgentsView,
+  isGitLayout,
+  DEFAULT_GIT_LAYOUT,
   isFeedStyle,
   thresholdsError,
 } from '../settings';
@@ -279,6 +281,7 @@ export class ChatPanel {
           ),
           feedStyle: ((v) => (isFeedStyle(v) ? v : DEFAULT_FEED_STYLE))(cfg.get<unknown>('feed.style')),
           agentsView: ((v) => (isAgentsView(v) ? v : DEFAULT_AGENTS_VIEW))(cfg.get<unknown>('agents.view')),
+          gitLayout: ((v) => (isGitLayout(v) ? v : DEFAULT_GIT_LAYOUT))(cfg.get<unknown>('git.layout')),
           defaultPermissionMode: cfg.get<string>('defaultPermissionMode'),
           defaultEffort: cfg.get<string>('defaultEffort'),
         };

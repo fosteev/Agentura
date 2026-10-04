@@ -61,7 +61,7 @@ import {
   type ChatState,
   type QuestionCard,
 } from './chatState';
-import type { AgentsView, FeedStyle } from '../settings';
+import type { AgentsView, FeedStyle, GitLayout } from '../settings';
 import type { GitOp, GitSnapshot } from '../shared/git';
 import { pushHistory } from './composer';
 import { applyHud, contextMax, initialHud, resetHud, type HudState } from './hudState';
@@ -115,6 +115,8 @@ export const showThinking = signal(true);
 export const feedStyle = signal<FeedStyle>('journal');
 /** Вид вкладки «агенты» (`agentura.agents.view`, `chat.info`): `data-agents` на корне чата. */
 export const agentsView = signal<AgentsView>('list');
+/** Раскладка вкладки «git» при нескольких репо (`agentura.git.layout`, `chat.info`): `data-git` на корне чата. */
+export const gitLayout = signal<GitLayout>('stack');
 export const history = signal<string[]>([]);
 
 /** Вкладка «git» (roadmap 12): последний снимок хоста; `undefined` — хост ещё не прислал («git загружается…»). */
@@ -140,6 +142,16 @@ export const EMPTY_DRAFT: GitDraft = { summary: '', desc: '', amend: false, push
 
 /** Ключ ошибки без репозитория. */
 export const GIT_ANY = '';
+/** Ключ общего черновика раскладки `unified` (не корень репозитория — при чистке исчезнувших репо не трогается). */
+export const GIT_UNIFIED = '*';
+/** Чипы целей коммита раскладки `unified`: явный выбор по корню; нет записи — отмечен. */
+export const gitTargets = signal<Readonly<Record<string, boolean>>>({});
+/** Репозитории, куда последний коммит из `unified` прошёл (строка успеха над полем); пусто — нет. */
+export const gitCommitted = signal<readonly string[]>([]);
+
+export function setGitTarget(root: string, on: boolean): void {
+  gitTargets.value = { ...gitTargets.value, [root]: on };
+}
 
 export function setGitDraft(root: string, patch: Partial<GitDraft>): void {
   gitDrafts.value = {
@@ -252,6 +264,7 @@ export function handleHostMessage(m: ToWebview): void {
       chat.value = { ...chat.value, project: m.project, cwd: m.cwd, allowBypass: m.allowBypass };
       feedStyle.value = m.feedStyle ?? 'journal';
       agentsView.value = m.agentsView ?? 'list';
+      gitLayout.value = m.gitLayout ?? 'stack';
       if (m.contextThresholds?.length) {
         hudState.value = { ...hudState.value, thresholds: [...m.contextThresholds] };
       }
@@ -326,10 +339,10 @@ export function handleHostMessage(m: ToWebview): void {
       gitSnapshot.value = m.snapshot;
       // репозиторий исчез — его черновик и ошибка больше не нужны
       const roots = new Set(m.snapshot.repos.map((r) => r.root));
-      const drafts = Object.keys(gitDrafts.value).filter((r) => !roots.has(r));
+      const drafts = Object.keys(gitDrafts.value).filter((r) => r !== GIT_UNIFIED && !roots.has(r));
       if (drafts.length) {
         gitDrafts.value = Object.fromEntries(
-          Object.entries(gitDrafts.value).filter(([r]) => roots.has(r)),
+          Object.entries(gitDrafts.value).filter(([r]) => r === GIT_UNIFIED || roots.has(r)),
         );
       }
       break;
@@ -348,6 +361,11 @@ export function handleHostMessage(m: ToWebview): void {
         if (d) setGitDraft(r.root, { summary: '', desc: '', amend: false });
         clearGitError(r.root);
       }
+      // общий черновик `unified` сбрасываем, только если прошли все; иначе сообщение остаётся для повтора
+      if (m.results.length > 0 && m.results.every((r) => r.ok)) {
+        if (gitDrafts.value[GIT_UNIFIED]) setGitDraft(GIT_UNIFIED, { summary: '', desc: '', amend: false });
+      }
+      gitCommitted.value = m.results.filter((r) => r.ok).map((r) => r.root);
       break;
     default:
       break;

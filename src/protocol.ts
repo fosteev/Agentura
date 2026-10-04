@@ -21,6 +21,7 @@ import type { GitNotice, GitRequest } from './shared/git';
 import type {
   EngineCheck,
   AgentsView,
+  GitLayout,
   FeedStyle,
   SessionListMode,
   SettingKey,
@@ -167,6 +168,8 @@ export type ToWebview =
       feedStyle?: FeedStyle;
       /** Вид вкладки «агенты» (`agentura.agents.view`); нет — `list`. */
       agentsView?: AgentsView;
+      /** Раскладка вкладки «git» при нескольких репо (`agentura.git.layout`); нет — `stack`. */
+      gitLayout?: GitLayout;
     }
   | { type: 'capabilities'; sessionId: string; models: ModelOption[]; commands: CommandOption[] }
   | ({ type: 'editor.context' } & EditorContext)
@@ -451,6 +454,7 @@ const FROM_WEBVIEW_TYPES: Record<FromWebview['type'], true> = {
   'git.branch': true,
   'git.open': true,
   'git.openFile': true,
+  'git.openRepository': true,
 };
 
 /** `error.code` карточки «claude не найден»: webview рисует инструкцию и «Открыть настройки». */
@@ -485,6 +489,7 @@ const FIELD_CHECKS: Partial<Record<FromWebview['type'], (m: Record<string, unkno
   'git.branch': (m) => str(m.root),
   'git.open': (m) => str(m.root) && str(m.path) && bool(m.staged),
   'git.openFile': (m) => str(m.root) && str(m.path),
+  'git.openRepository': () => true,
 };
 
 /** Проверка входящего от webview сообщения: снаружи приходит `unknown`. */

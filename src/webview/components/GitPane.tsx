@@ -1,27 +1,39 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { GitCommitView, GitFileStatus, GitRepoView, GitSnapshot } from '../../shared/git';
+import type { GitLayout } from '../../settings';
 import { menuKeys } from '../a11y';
 import {
   agentCount,
+  cleanRepos,
   commitButton,
   commitMessage,
+  commitTargets,
   commitWhen,
   fileRows,
+  pickedRepo,
   repoCount,
   sectionRows,
   summaryLeft,
   syncView,
   totalCount,
+  unifiedButton,
+  unifiedSection,
   type GitFileRow,
+  type GitRow,
+  type UnifiedGroup,
 } from '../gitView';
 import { ui } from '../strings';
 import {
   clearGitError,
   EMPTY_DRAFT,
   GIT_ANY,
+  GIT_UNIFIED,
+  gitCommitted,
   gitDrafts,
   gitErrors,
+  gitTargets,
   setGitDraft,
+  setGitTarget,
   type GitErrorView,
 } from '../store';
 import { send } from '../vscode';
@@ -110,8 +122,11 @@ export function GitPane({
   now,
   hidden,
   labelledBy = 'tab-git',
+  layout = 'stack',
+  repoRoot,
   onTree,
   onAgentOnly,
+  onRepo,
 }: {
   snapshot: GitSnapshot | undefined;
   /** Пути правок агента за сессию, от cwd (`agentPathSet`). */
@@ -123,8 +138,13 @@ export function GitPane({
   now: number;
   hidden?: boolean;
   labelledBy?: string;
+  /** Раскладка при нескольких репозиториях (`agentura.git.layout`); один репозиторий её не читает. */
+  layout?: GitLayout;
+  /** Выбранный в `picker` репозиторий (корень); нет или исчез — первый с изменениями. */
+  repoRoot?: string | undefined;
   onTree: (tree: boolean) => void;
   onAgentOnly: (on: boolean) => void;
+  onRepo?: (root: string) => void;
 }) {
   const t = g();
   const shell = (body: preact.ComponentChildren) => (
@@ -152,6 +172,9 @@ export function GitPane({
       <div class="empty big">
         <b>{t.none}</b>
         <div>{t.noneHint}</div>
+        <button class="open-repo" onClick={() => send({ type: 'git.openRepository' })}>
+          {t.openRepo}
+        </button>
       </div>,
     );
   }
@@ -191,28 +214,232 @@ export function GitPane({
       </>,
     );
   }
+  // имя рабочей папки (последний сегмент cwd), как в прототипе: «queue/ · 3 репозитория · 7 изменений»
+  const folder = cwd?.replace(/[\\/]+$/, '').split(/[\\/]/).pop();
+  const ws = (
+    <div class="ws">
+      <span class="rp">{I.repo}</span>
+      {folder && <b>{folder}/</b>}
+      <span>
+        {t.repos(repos.length)} · {t.changes(totalCount(snapshot))}
+      </span>
+      <span class="r">
+        <button
+          class="ib"
+          data-tip={t.fetchAll}
+          aria-label={t.fetchAll}
+          onClick={() => send({ type: 'git.sync', op: 'fetch' })}
+        >
+          {I.fetch}
+        </button>
+      </span>
+    </div>
+  );
+  if (layout === 'picker') {
+    const sel = pickedRepo(snapshot, repoRoot) ?? repos[0]!;
+    return shell(
+      <>
+        {ws}
+        <div class="pick" role="group" aria-label={t.repoPick}>
+          {repos.map((r) => (
+            <PickRow key={r.root} repo={r} on={r.root === sel.root} onPick={() => onRepo?.(r.root)} />
+          ))}
+        </div>
+        <div class="scroll">
+          {bar}
+          {block(sel, false)}
+        </div>
+        <CommitBox repo={sel} />
+      </>,
+    );
+  }
+  if (layout === 'unified') {
+    return shell(
+      <>
+        {ws}
+        <div class="scroll">
+          {bar}
+          <UnifiedSections
+            snapshot={snapshot}
+            agentPaths={agentPaths}
+            cwd={cwd}
+            tree={tree}
+            agentOnly={agentOnly}
+          />
+        </div>
+        <UnifiedCommit snapshot={snapshot} />
+      </>,
+    );
+  }
   return shell(
     <>
-      <div class="ws">
-        <span class="rp">{I.repo}</span>
-        <b>{t.repos(repos.length)}</b>
-        <span>{t.changes(totalCount(snapshot))}</span>
-        <span class="r">
-          <button
-            class="ib"
-            data-tip={`${t.fetch}`}
-            aria-label={t.fetch}
-            onClick={() => send({ type: 'git.sync', op: 'fetch' })}
-          >
-            {I.fetch}
-          </button>
-        </span>
-      </div>
+      {ws}
       <div class="scroll">
         {bar}
         {repos.map((r) => block(r, true))}
       </div>
     </>,
+  );
+}
+
+/** Строка списка репозиториев раскладки `picker`: выбор по клику, у выбранного — fetch / pull / push. */
+function PickRow({ repo, on, onPick }: { repo: GitRepoView; on: boolean; onPick: () => void }) {
+  const n = repoCount(repo);
+  return (
+    <div class={on ? 'p on' : 'p'} onClick={onPick}>
+      <span class="rd" />
+      <button class="nm" aria-pressed={on} onClick={onPick}>
+        {repo.name}
+      </button>
+      <span onClick={(e) => e.stopPropagation()}>
+        <Branch repo={repo} />
+      </span>
+      <Sync repo={repo} />
+      <span class={n ? 'n' : 'n z'}>{n || '—'}</span>
+      {on && (
+        <span onClick={(e) => e.stopPropagation()}>
+          <SyncButtons repo={repo} />
+        </span>
+      )}
+    </div>
+  );
+}
+
+function FileRows({
+  repo,
+  rows,
+  staged,
+  tree,
+}: {
+  repo: GitRepoView;
+  rows: GitRow[];
+  staged: boolean;
+  tree: boolean;
+}) {
+  return (
+    <>
+      {rows.map((r) =>
+        r.kind === 'dir' ? (
+          <div class="dr" key={`d:${r.path}`} style={{ '--lv': r.level }}>
+            <span class="chev">▾</span>
+            {r.name}
+          </div>
+        ) : (
+          <FileLine key={r.path} repo={repo} row={r} staged={staged} tree={tree} />
+        ),
+      )}
+    </>
+  );
+}
+
+/** Раскладка `unified`: две общие секции на все репозитории с подзаголовками репо, чистые — строками внизу. */
+function UnifiedSections({
+  snapshot,
+  agentPaths,
+  cwd,
+  tree,
+  agentOnly,
+}: {
+  snapshot: GitSnapshot;
+  agentPaths: ReadonlySet<string>;
+  cwd?: string | undefined;
+  tree: boolean;
+  agentOnly: boolean;
+}) {
+  const t = g();
+  const clean = cleanRepos(snapshot);
+  const sec = (staged: boolean) => (
+    <UnifiedSection
+      key={staged ? 'st' : 'un'}
+      staged={staged}
+      repos={snapshot.repos}
+      {...unifiedSection(snapshot, staged, agentPaths, agentOnly, tree, cwd)}
+      agentOnly={agentOnly}
+      tree={tree}
+    />
+  );
+  return (
+    <>
+      {sec(false)}
+      {sec(true)}
+      {clean.length > 0 && (
+        <>
+          <h6>{t.cleanHeading}</h6>
+          {clean.map((r) => (
+            <div class="rg" key={r.root}>
+              <span class="nm dim">{r.name}</span>
+              <Branch repo={r} />
+              <Sync repo={r} />
+              <SyncButtons repo={r} />
+            </div>
+          ))}
+        </>
+      )}
+    </>
+  );
+}
+
+function UnifiedSection({
+  staged,
+  repos,
+  total,
+  groups,
+  tree,
+  agentOnly,
+}: {
+  staged: boolean;
+  repos: readonly GitRepoView[];
+  total: number;
+  groups: UnifiedGroup[];
+  tree: boolean;
+  agentOnly: boolean;
+}) {
+  const t = g();
+  const [open, setOpen] = useState(true);
+  const busy = repos.some((r) => r.busy);
+  // «все» — по каждому репозиторию своим запросом (у запроса один root)
+  const all = () => {
+    for (const r of repos) {
+      const paths = (staged ? r.staged : r.unstaged).map((f) => f.path);
+      if (paths.length === 0) continue;
+      clearGitError(r.root);
+      send({ type: staged ? 'git.unstage' : 'git.stage', root: r.root, paths });
+    }
+  };
+  const emptyText =
+    agentOnly && total > 0 ? t.emptyAgent : staged ? t.emptyStaged : t.emptyUnstaged;
+  return (
+    <>
+      <div class="sh">
+        <button class="chev" aria-expanded={open} onClick={() => setOpen(!open)}>
+          {open ? '▾' : '▸'}
+        </button>
+        <span class="tt">{staged ? t.staged : t.unstaged}</span>
+        <span class="n">{total}</span>
+        {total > 0 && (
+          <button class={staged ? 'all' : 'all pri'} disabled={busy} onClick={all}>
+            {staged ? t.unstageAll : t.stageAll}
+          </button>
+        )}
+      </div>
+      {open &&
+        (groups.length === 0 ? (
+          <div class="empty">{emptyText}</div>
+        ) : (
+          groups.map((gr) => (
+            <div class="rgrp" key={gr.repo.root}>
+              <div class="rg">
+                <span class="nm">{gr.repo.name}</span>
+                <span class="br">
+                  {I.branch}
+                  <span>{gr.repo.branch ?? '—'}</span>
+                </span>
+              </div>
+              <FileRows repo={gr.repo} rows={gr.rows} staged={staged} tree={tree} />
+            </div>
+          ))
+        ))}
+    </>
   );
 }
 
@@ -419,7 +646,7 @@ function RepoBlock({
       {open && n > 0 && (
         <>
           {body}
-          <CommitBox repo={repo} />
+          <CommitBox repo={repo} compact />
         </>
       )}
     </div>
@@ -469,16 +696,7 @@ function Section({
         (list.length === 0 ? (
           <div class="empty">{emptyText}</div>
         ) : (
-          list.map((r) =>
-            r.kind === 'dir' ? (
-              <div class="dr" key={`d:${r.path}`} style={{ '--lv': r.level }}>
-                <span class="chev">▾</span>
-                {r.name}
-              </div>
-            ) : (
-              <FileLine key={r.path} repo={repo} row={r} staged={staged} tree={tree} />
-            ),
-          )
+          <FileRows repo={repo} rows={list} staged={staged} tree={tree} />
         ))}
     </>
   );
@@ -614,15 +832,75 @@ function errorFor(root: string, first: boolean): GitErrorView | undefined {
   return all[root] ?? (first ? all[GIT_ANY] : undefined);
 }
 
-/** Поле коммита репозитория: заголовок со счётчиком, описание, amend / «и push», кнопка с меню ▾. */
-function CommitBox({ repo }: { repo: GitRepoView }) {
+function ErrorLine({ err, onClose, name }: { err: GitErrorView; onClose: () => void; name?: string }) {
   const t = g();
-  const d = gitDrafts.value[repo.root] ?? EMPTY_DRAFT;
-  const [menu, setMenu] = useState(false);
+  return (
+    <div class="err" role="alert">
+      <span>
+        {name ? `${name}: ` : ''}
+        {t.errorOp(err.op, err.message)}
+      </span>
+      <button class="ib" aria-label={t.errorClose} onClick={onClose}>
+        ×
+      </button>
+    </div>
+  );
+}
+
+interface FormButton {
+  disabled: boolean;
+  /** Подпись кнопки целиком (без хвоста «→ ветка»). */
+  label: string;
+  branch?: string;
+  hint: string;
+}
+
+interface FormMenu {
+  /** «Коммит и push» недоступен. */
+  pushOff: boolean;
+  /** Пункт «Коммит всех изменений»; нет — пункта нет (в `unified` его нет). */
+  all?: { off: boolean };
+}
+
+/**
+ * Поле коммита: заголовок со счётчиком, описание, amend / «и push», кнопка с меню ▾. Общее для одного репозитория,
+ * стопки (`compact` — строка, раскрывается на фокус) и общего коммита `unified` (`targets` над полем).
+ */
+function CommitForm({
+  draftKey,
+  tail,
+  btn,
+  menu,
+  busy,
+  errors,
+  targets,
+  compact,
+  note,
+  onGo,
+}: {
+  draftKey: string;
+  /** Хвост подсказки в поле заголовка (имя репозитория). */
+  tail?: string;
+  btn: FormButton;
+  menu: FormMenu;
+  busy: boolean;
+  errors?: preact.ComponentChildren;
+  targets?: preact.ComponentChildren;
+  compact?: boolean;
+  note?: preact.ComponentChildren;
+  onGo: (o: { push?: boolean; all?: boolean }) => void;
+}) {
+  const t = g();
+  const d = gitDrafts.value[draftKey] ?? EMPTY_DRAFT;
+  const [menuOpen, setMenu] = useState(false);
   const [focus, setFocus] = useState(false);
+  // стопка: строка «заголовок + Коммит», на фокус — полное поле
+  const [expanded, setExpanded] = useState(false);
   const pop = useRef<HTMLDivElement>(null);
+  const wrap = useRef<HTMLDivElement>(null);
+  const sum = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    if (!menu) return;
+    if (!menuOpen) return;
     const onDown = (e: MouseEvent) => {
       if (!pop.current?.contains(e.target as Node)) setMenu(false);
     };
@@ -639,59 +917,71 @@ function CommitBox({ repo }: { repo: GitRepoView }) {
       window.removeEventListener('mousedown', onDown);
       window.removeEventListener('keydown', onKey, true);
     };
-  }, [menu]);
-  const message = commitMessage(d.summary, d.desc);
-  const btn = commitButton(repo, { message, amend: d.amend });
-  const btnAll = commitButton(repo, { message, amend: d.amend, all: true });
+  }, [menuOpen]);
+  useEffect(() => {
+    if (compact && expanded) sum.current?.focus();
+  }, [compact, expanded]);
   const left = summaryLeft(d.summary);
-  const err = errorFor(repo.root, true);
   const go = (o: { push?: boolean; all?: boolean } = {}) => {
-    clearGitError(repo.root);
     setMenu(false);
-    send({
-      type: 'git.commit',
-      roots: [repo.root],
-      message,
-      amend: d.amend,
-      push: o.push ?? d.push,
-      ...(o.all ? { all: true } : {}),
-    });
+    onGo(o);
   };
-  const hint =
-    btn.why === 'empty-index'
-      ? t.needStage
-      : btn.why === 'empty-message'
-        ? t.needMessage
-        : btn.why === 'busy'
-          ? t.busy
-          : t.commitHint;
   const onKey = (e: KeyboardEvent) => {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !e.isComposing) {
       e.preventDefault();
       if (!btn.disabled) go();
     }
   };
-  const label = `${d.amend ? t.commitAmend : t.commit}${btn.files ? ` · ${t.filesN(btn.files)}` : ''}`;
+  const collapsed = !!compact && !expanded;
+  // фокус ушёл из поля целиком (не на соседний элемент внутри) — снова строка; проверка после тика: фокус мог
+  // перейти на заменённый элемент (строка → полное поле)
+  const onOut = () => {
+    if (!compact) return;
+    setTimeout(() => {
+      if (!wrap.current?.contains(document.activeElement)) setExpanded(false);
+    }, 0);
+  };
+  if (collapsed) {
+    return (
+      <div class="cml" data-root={draftKey} ref={wrap}>
+        <input
+          class="in"
+          type="text"
+          aria-label={t.summaryAria}
+          placeholder={`${t.summaryPlaceholder}${tail ? ` · ${tail}` : ''}`}
+          value={d.summary}
+          onInput={(e) =>
+            setGitDraft(draftKey, { summary: (e.currentTarget as HTMLInputElement).value })
+          }
+          onFocus={() => setExpanded(true)}
+        />
+        <button
+          class={btn.disabled ? 'go-min' : 'go-min pri'}
+          disabled={btn.disabled}
+          data-tip={btn.hint}
+          onClick={() => go()}
+        >
+          {t.commitCompact}
+        </button>
+      </div>
+    );
+  }
+  const label = btn.label;
   return (
-    <div class="cm" data-root={repo.root}>
-      {err && (
-        <div class="err" role="alert">
-          <span>{t.errorOp(err.op, err.message)}</span>
-          <button class="ib" aria-label={t.errorClose} onClick={() => clearGitError(repo.root)}>
-            ×
-          </button>
-        </div>
-      )}
+    <div class="cm" data-root={draftKey} ref={wrap} onFocusOut={onOut}>
+      {errors}
+      {targets}
       <div class={focus ? 'box focus' : 'box'}>
         <div class="sum">
           <input
             class="t"
             type="text"
+            ref={sum}
             aria-label={t.summaryAria}
-            placeholder={`${t.summaryPlaceholder} · ${repo.name}`}
+            placeholder={`${t.summaryPlaceholder}${tail ? ` · ${tail}` : ''}`}
             value={d.summary}
             onInput={(e) =>
-              setGitDraft(repo.root, { summary: (e.currentTarget as HTMLInputElement).value })
+              setGitDraft(draftKey, { summary: (e.currentTarget as HTMLInputElement).value })
             }
             onKeyDown={onKey}
             onFocus={() => setFocus(true)}
@@ -709,7 +999,7 @@ function CommitBox({ repo }: { repo: GitRepoView }) {
           placeholder={t.descPlaceholder}
           value={d.desc}
           onInput={(e) =>
-            setGitDraft(repo.root, { desc: (e.currentTarget as HTMLTextAreaElement).value })
+            setGitDraft(draftKey, { desc: (e.currentTarget as HTMLTextAreaElement).value })
           }
           onKeyDown={onKey}
           onFocus={() => setFocus(true)}
@@ -722,7 +1012,7 @@ function CommitBox({ repo }: { repo: GitRepoView }) {
             type="checkbox"
             checked={d.amend}
             onChange={(e) =>
-              setGitDraft(repo.root, { amend: (e.currentTarget as HTMLInputElement).checked })
+              setGitDraft(draftKey, { amend: (e.currentTarget as HTMLInputElement).checked })
             }
           />
           {t.amend}
@@ -732,14 +1022,15 @@ function CommitBox({ repo }: { repo: GitRepoView }) {
             type="checkbox"
             checked={d.push}
             onChange={(e) =>
-              setGitDraft(repo.root, { push: (e.currentTarget as HTMLInputElement).checked })
+              setGitDraft(draftKey, { push: (e.currentTarget as HTMLInputElement).checked })
             }
           />
           {t.andPush}
         </label>
+        {note && <span class="r">{note}</span>}
       </div>
       <div class={btn.disabled ? 'go off' : 'go'} ref={pop} onKeyDown={menuKeys}>
-        <button class="main" disabled={btn.disabled} data-tip={hint} onClick={() => go()}>
+        <button class="main" disabled={btn.disabled} data-tip={btn.hint} onClick={() => go()}>
           {label}
           {btn.branch && <small> → {btn.branch}</small>}
         </button>
@@ -748,33 +1039,157 @@ function CommitBox({ repo }: { repo: GitRepoView }) {
           data-tip={t.more}
           aria-label={t.more}
           aria-haspopup="menu"
-          aria-expanded={menu}
-          disabled={!!repo.busy}
-          onClick={() => setMenu(!menu)}
+          aria-expanded={menuOpen}
+          disabled={busy}
+          onClick={() => setMenu(!menuOpen)}
         >
           ▾
         </button>
-        {menu && (
+        {menuOpen && (
           <div class="menu up" role="menu">
             <button
               class="it"
               role="menuitem"
-              disabled={btn.disabled}
+              disabled={menu.pushOff}
               onClick={() => go({ push: true })}
             >
               {t.commitPush}
             </button>
-            <button
-              class="it"
-              role="menuitem"
-              disabled={btnAll.disabled}
-              onClick={() => go({ all: true })}
-            >
-              {t.commitAll}
-            </button>
+            {menu.all && (
+              <button
+                class="it"
+                role="menuitem"
+                disabled={menu.all.off}
+                onClick={() => go({ all: true })}
+              >
+                {t.commitAll}
+              </button>
+            )}
           </div>
         )}
       </div>
     </div>
+  );
+}
+
+/** Поле коммита одного репозитория; в стопке (`compact`) — строкой, раскрывается на фокус. */
+function CommitBox({ repo, compact }: { repo: GitRepoView; compact?: boolean }) {
+  const t = g();
+  const d = gitDrafts.value[repo.root] ?? EMPTY_DRAFT;
+  const message = commitMessage(d.summary, d.desc);
+  const btn = commitButton(repo, { message, amend: d.amend });
+  const btnAll = commitButton(repo, { message, amend: d.amend, all: true });
+  const err = errorFor(repo.root, true);
+  const hint =
+    btn.why === 'empty-index'
+      ? t.needStage
+      : btn.why === 'empty-message'
+        ? t.needMessage
+        : btn.why === 'busy'
+          ? t.busy
+          : t.commitHint;
+  return (
+    <CommitForm
+      draftKey={repo.root}
+      tail={repo.name}
+      compact={compact}
+      busy={!!repo.busy}
+      btn={{
+        disabled: btn.disabled,
+        label: `${d.amend ? t.commitAmend : t.commit}${btn.files ? ` · ${t.filesN(btn.files)}` : ''}`,
+        branch: btn.branch,
+        hint,
+      }}
+      menu={{ pushOff: btn.disabled, all: { off: btnAll.disabled } }}
+      errors={err && <ErrorLine err={err} onClose={() => clearGitError(repo.root)} />}
+      onGo={(o) => {
+        clearGitError(repo.root);
+        send({
+          type: 'git.commit',
+          roots: [repo.root],
+          message,
+          amend: d.amend,
+          push: o.push ?? d.push,
+          ...(o.all ? { all: true } : {}),
+        });
+      }}
+    />
+  );
+}
+
+/** Общее поле коммита раскладки `unified`: чипы «в: ☑ repo N», одно сообщение — отдельный коммит в каждый отмеченный. */
+function UnifiedCommit({ snapshot }: { snapshot: GitSnapshot }) {
+  const t = g();
+  const d = gitDrafts.value[GIT_UNIFIED] ?? EMPTY_DRAFT;
+  const message = commitMessage(d.summary, d.desc);
+  const targets = commitTargets(snapshot, gitTargets.value);
+  const btn = unifiedButton(snapshot, targets, { message });
+  const names = new Map(snapshot.repos.map((r) => [r.root, r.name]));
+  // ошибки по всем репозиториям: отказ одного не прячет остальные
+  const errs = Object.entries(gitErrors.value).filter(([root]) => root === GIT_ANY || names.has(root));
+  const done = gitCommitted.value.map((r) => names.get(r) ?? r);
+  const hint =
+    btn.why === 'no-targets'
+      ? t.needTarget
+      : btn.why === 'empty-message'
+        ? t.needMessage
+        : btn.why === 'busy'
+          ? t.busy
+          : t.commitHint;
+  const clearAll = () => {
+    for (const [root] of errs) clearGitError(root);
+    gitCommitted.value = [];
+  };
+  return (
+    <CommitForm
+      draftKey={GIT_UNIFIED}
+      busy={snapshot.repos.some((r) => r.busy)}
+      btn={{
+        disabled: btn.disabled,
+        label: `${d.amend ? `${t.commitAmend} · ` : ''}${t.commitTo(btn.repos)}${btn.files ? ` · ${t.filesN(btn.files)}` : ''}`,
+        hint,
+      }}
+      menu={{ pushOff: btn.disabled }}
+      errors={
+        <>
+          {done.length > 0 && (
+            <div class="ok" role="status">
+              <span>{t.committed(done.join(', '))}</span>
+              <button class="ib" aria-label={t.errorClose} onClick={() => (gitCommitted.value = [])}>
+                ×
+              </button>
+            </div>
+          )}
+          {errs.map(([root, e]) => (
+            <ErrorLine key={root} err={e} name={names.get(root)} onClose={() => clearGitError(root)} />
+          ))}
+        </>
+      }
+      targets={
+        <div class="tg" role="group" aria-label={t.targetsAria}>
+          <span>{t.targetsLabel}</span>
+          {targets.map((x) => (
+            <label key={x.root} class={x.on ? 'to' : 'to off'}>
+              <input
+                type="checkbox"
+                checked={x.on}
+                onChange={(e) => setGitTarget(x.root, (e.currentTarget as HTMLInputElement).checked)}
+              />
+              {x.name} <span class="mono">{x.files}</span>
+            </label>
+          ))}
+        </div>
+      }
+      onGo={(o) => {
+        clearAll();
+        send({
+          type: 'git.commit',
+          roots: btn.roots,
+          message,
+          amend: d.amend,
+          push: o.push ?? d.push,
+        });
+      }}
+    />
   );
 }

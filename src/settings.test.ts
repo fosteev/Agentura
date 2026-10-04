@@ -87,6 +87,11 @@ describe('sessionList', () => {
     }
     expect(validateSetting('agents.view', 'grid').ok).toBe(false);
     expect(validateSetting('agents.view', 3).ok).toBe(false);
+    for (const v of ['stack', 'picker', 'unified']) {
+      expect(validateSetting('git.layout', v)).toEqual({ ok: true, value: v });
+    }
+    expect(validateSetting('git.layout', 'grid').ok).toBe(false);
+    expect(validateSetting('git.layout', 1).ok).toBe(false);
   });
 });
 
@@ -174,6 +179,7 @@ describe('readSettings', () => {
         'sidebar.top': 'mini',
         'feed.style': 'grid',
         'agents.view': 'map',
+        'git.layout': 'rows',
       }),
     );
     expect(v).toMatchObject({
@@ -183,6 +189,7 @@ describe('readSettings', () => {
       'sidebar.top': 'detailed',
       'feed.style': 'journal',
       'agents.view': 'list',
+      'git.layout': 'stack',
       defaultPermissionMode: 'manual',
       defaultEffort: '',
       contextThresholds: [120_000, 150_000],

@@ -43,7 +43,7 @@ import {
   sessionProblem,
   type SessionAttach,
 } from '../shared/files';
-import { resolveDefaultEffort, resolveDefaultMode, type AgentsView, type FeedStyle } from '../settings';
+import { resolveDefaultEffort, resolveDefaultMode, type AgentsView, type FeedStyle, type GitLayout } from '../settings';
 import { hostStrings, type Lang } from '../shared/l10n';
 import { appliedSides, previewOf, proposedSides, type EditSides } from './editDiff';
 import {
@@ -81,6 +81,8 @@ export interface ChatDeps {
     feedStyle?: FeedStyle | undefined;
     /** `agentura.agents.view`: вид вкладки «агенты», уходит в `chat.info`. */
     agentsView?: AgentsView | undefined;
+    /** `agentura.git.layout`: раскладка вкладки «git» при нескольких репо, уходит в `chat.info`. */
+    gitLayout?: GitLayout | undefined;
     /** `agentura.defaultPermissionMode` как в настройке (`manual` | …): применяется к новым сессиям. */
     defaultPermissionMode?: string | undefined;
     /** `agentura.defaultEffort` (пусто — выбор движка): применяется к новым сессиям. */
@@ -234,6 +236,7 @@ export class ChatController {
       ...(s.contextThresholds?.length ? { contextThresholds: s.contextThresholds } : {}),
       ...(s.feedStyle ? { feedStyle: s.feedStyle } : {}),
       ...(s.agentsView ? { agentsView: s.agentsView } : {}),
+      ...(s.gitLayout ? { gitLayout: s.gitLayout } : {}),
     });
   }
 
