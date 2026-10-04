@@ -17,6 +17,7 @@ import type { Attachment, FileHit } from './shared/prompt';
 import type { ImageProblem } from './shared/images';
 import type { FileProblem } from './shared/files';
 import { isAgentGraphView, type AgentGraphView } from './shared/agentsGraph';
+import type { GitNotice, GitRequest } from './shared/git';
 import type {
   EngineCheck,
   AgentsView,
@@ -237,7 +238,12 @@ export type ToWebview =
       /** Когда данные получены от источника (мс); при кулдауне — время прошлого запроса. */
       updatedAt: number;
       error?: string;
-    };
+    }
+  /**
+   * Вкладка «git» (roadmap 12): `git.state` — снимок на каждое изменение и на `ready`, `git.error` — отказ
+   * действия, `git.commit.result` — итог коммита по каждому репозиторию.
+   */
+  | GitNotice;
 
 /**
  * Webview → extension. Этап 3 добавил `files.find`, `attach.pick`, `sessions.show`, `diff.open` и
@@ -342,7 +348,9 @@ export type FromWebview =
   /** «Добавить из Google Fonts…» под карточками: выбор семейства для интерфейса, кода или панелей (все семейства). */
   | { type: 'fonts.add'; kind: 'ui' | 'code' | 'panels' }
   /** ✕ у скачанного шрифта. */
-  | { type: 'fonts.remove'; family: string };
+  | { type: 'fonts.remove'; family: string }
+  /** Вкладка «git» (roadmap 12): `git.watch|stage|unstage|discard|commit|sync|branch|open|openFile`. */
+  | GitRequest;
 
 /** Картинка из диалога «+»: исходный файл или причина, почему не прочитан. */
 export interface PickedImage {
@@ -434,14 +442,30 @@ const FROM_WEBVIEW_TYPES: Record<FromWebview['type'], true> = {
   'settings.reveal': true,
   'fonts.add': true,
   'fonts.remove': true,
+  'git.watch': true,
+  'git.stage': true,
+  'git.unstage': true,
+  'git.discard': true,
+  'git.commit': true,
+  'git.sync': true,
+  'git.branch': true,
+  'git.open': true,
+  'git.openFile': true,
 };
 
 /** `error.code` карточки «claude не найден»: webview рисует инструкцию и «Открыть настройки». */
 export const ENGINE_MISSING_CODE = 'engine_missing';
 
+const str = (v: unknown): v is string => typeof v === 'string';
+const strings = (v: unknown): boolean => Array.isArray(v) && v.length > 0 && v.every(str);
+const bool = (v: unknown): boolean => typeof v === 'boolean';
+/** Файлы вкладки «git»: корень и непустой список путей. */
+const gitFiles = (m: Record<string, unknown>): boolean => str(m.root) && strings(m.paths);
+
 /**
  * Поля сообщений, которые хост не разбирает сам, а пересылает в другой webview (граф агентов): их форма
- * проверяется здесь. Остальные сообщения проверяет по полям обработчик.
+ * проверяется здесь, как и запросы вкладки «git» (их разбирает сервис, а не контроллер). Остальные сообщения
+ * проверяет по полям обработчик.
  */
 const FIELD_CHECKS: Partial<Record<FromWebview['type'], (m: Record<string, unknown>) => boolean>> = {
   'agents.openGraph': (m) => m.agentId === undefined || typeof m.agentId === 'string',
@@ -449,6 +473,18 @@ const FIELD_CHECKS: Partial<Record<FromWebview['type'], (m: Record<string, unkno
   'agent.stop': (m) => typeof m.sessionId === 'string' && typeof m.taskId === 'string',
   'agent.transcript': (m) =>
     typeof m.sessionId === 'string' && typeof m.agentId === 'string' && typeof m.taskId === 'string',
+  // вкладка «git»: хост ещё проверяет, что `root` — репозиторий панели, а пути — внутри него
+  'git.watch': (m) => bool(m.on),
+  'git.stage': gitFiles,
+  'git.unstage': gitFiles,
+  'git.discard': gitFiles,
+  'git.commit': (m) =>
+    strings(m.roots) && str(m.message) && bool(m.amend) && bool(m.push) && (m.all === undefined || bool(m.all)),
+  'git.sync': (m) =>
+    (m.root === undefined || str(m.root)) && (m.op === 'fetch' || m.op === 'pull' || m.op === 'push'),
+  'git.branch': (m) => str(m.root),
+  'git.open': (m) => str(m.root) && str(m.path) && bool(m.staged),
+  'git.openFile': (m) => str(m.root) && str(m.path),
 };
 
 /** Проверка входящего от webview сообщения: снаружи приходит `unknown`. */

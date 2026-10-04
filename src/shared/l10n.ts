@@ -7,6 +7,15 @@
 
 export type Lang = 'ru' | 'en';
 
+/** Русское число: 1 файл, 2 файла, 5 файлов (11–14 — «многие»). */
+function ruPlural(n: number, one: string, few: string, many: string): string {
+  const d = n % 10;
+  const h = n % 100;
+  if (d === 1 && h !== 11) return one;
+  if (d >= 2 && d <= 4 && (h < 12 || h > 14)) return few;
+  return many;
+}
+
 const ru = {
   /** Локаль для дат и чисел (`toLocaleString`). */
   locale: 'ru',
@@ -97,6 +106,33 @@ const ru = {
     'нет ~/.claude/.credentials.json, а чтение токена из Keychain выключено — включите чтение токена (agentura.limits.readKeychain)',
   limitNoToken: 'нет токена Claude Code (войдите в claude)',
 
+  // вкладка «git» (roadmap 12): причины, модалки, QuickPick, заголовки диффа
+  gitMissing: 'Встроенное расширение Git не найдено.',
+  gitDisabled: 'Git выключен в настройках VS Code (git.enabled).',
+  gitFailed: (reason: string) => `Расширение Git не запустилось: ${reason}`,
+  gitUnknownRepo: 'Этого репозитория нет среди открытых в рабочей папке.',
+  gitOutside: 'Путь вне репозитория.',
+  gitDiscard: (n: number) =>
+    `Отменить изменения в ${n} ${ruPlural(n, 'файле', 'файлах', 'файлах')}? Это нельзя вернуть.`,
+  gitDiscardUntracked: (n: number) =>
+    `Удалить ${n} ${ruPlural(n, 'неотслеживаемый файл', 'неотслеживаемых файла', 'неотслеживаемых файлов')}?`,
+  gitDiscardAlso: (n: number) => `Неотслеживаемые файлы (${n}) будут удалены.`,
+  gitDiscardButton: 'Отменить изменения',
+  gitDeleteButton: 'Удалить',
+  gitEmptyMessage: 'Пустое сообщение коммита.',
+  gitDetached: 'HEAD отсоединён от ветки — push некуда.',
+  gitNoRemote: 'В репозитории нет remote — push некуда.',
+  gitPickRemote: 'Куда опубликовать ветку?',
+  gitPickBranch: 'Ветка для checkout',
+  gitCreateBranch: 'Создать ветку…',
+  gitBranchName: 'Имя новой ветки',
+  gitBranchInvalid: 'Имя ветки — без пробелов.',
+  gitLocal: 'локальные',
+  gitRemote: 'удалённые',
+  gitCurrent: 'текущая',
+  gitWorkingTree: 'рабочее дерево',
+  gitIndex: 'индекс',
+  gitDeleted: 'удалён',
   // транскрипт субагента (документ только для чтения)
   agentReadOnly: '_Транскрипт субагента только для чтения._',
   agentMessage: '## Сообщение',
@@ -143,6 +179,31 @@ const en: HostUi = {
   languageReload: 'Agentura language will apply after the window reloads.',
   reloadButton: 'Reload',
   openFolder: 'Agentura: open a project folder to start a session.',
+  gitMissing: 'The built-in Git extension was not found.',
+  gitDisabled: 'Git is turned off in VS Code settings (git.enabled).',
+  gitFailed: (reason) => `The Git extension failed to start: ${reason}`,
+  gitUnknownRepo: 'This repository is not among those open in the workspace folder.',
+  gitOutside: 'Path is outside the repository.',
+  gitDiscard: (n) =>
+    `Discard changes in ${n} ${n === 1 ? 'file' : 'files'}? This cannot be undone.`,
+  gitDiscardUntracked: (n) => `Delete ${n} untracked ${n === 1 ? 'file' : 'files'}?`,
+  gitDiscardAlso: (n) => `Untracked files (${n}) will be deleted.`,
+  gitDiscardButton: 'Discard changes',
+  gitDeleteButton: 'Delete',
+  gitEmptyMessage: 'The commit message is empty.',
+  gitDetached: 'HEAD is detached from a branch — nothing to push.',
+  gitNoRemote: 'The repository has no remote — nowhere to push.',
+  gitPickRemote: 'Publish the branch to which remote?',
+  gitPickBranch: 'Branch to check out',
+  gitCreateBranch: 'Create branch…',
+  gitBranchName: 'New branch name',
+  gitBranchInvalid: 'A branch name has no spaces.',
+  gitLocal: 'local',
+  gitRemote: 'remote',
+  gitCurrent: 'current',
+  gitWorkingTree: 'Working Tree',
+  gitIndex: 'Index',
+  gitDeleted: 'Deleted',
   addLabel: 'Add',
   previewMissing: (file) => `Agentura: file not found — ${file}`,
   previewTitle: (base) => `preview · ${base}`,
