@@ -293,10 +293,10 @@ function PickRow({ repo, on, onPick }: { repo: GitRepoView; on: boolean; onPick:
       <button class="nm" aria-pressed={on} onClick={onPick}>
         {repo.name}
       </button>
-      <span onClick={(e) => e.stopPropagation()}>
+      <span class="bw" onClick={(e) => e.stopPropagation()}>
         <Branch repo={repo} />
       </span>
-      <Sync repo={repo} />
+      <Sync repo={repo} compact />
       <span class={n ? 'n' : 'n z'}>{n || '—'}</span>
       {on && (
         <span onClick={(e) => e.stopPropagation()}>
@@ -371,7 +371,7 @@ function UnifiedSections({
             <div class="rg" key={r.root}>
               <span class="nm dim">{r.name}</span>
               <Branch repo={r} />
-              <Sync repo={r} />
+              <Sync repo={r} compact />
               <SyncButtons repo={r} />
             </div>
           ))}
@@ -505,14 +505,15 @@ function Branch({ repo }: { repo: GitRepoView }) {
   );
 }
 
-function Sync({ repo }: { repo: GitRepoView }) {
+/** ↓/↑ против upstream; `compact` — строка репозитория в стопке / списке: «новая» вместо «не опубликована». */
+function Sync({ repo, compact = false }: { repo: GitRepoView; compact?: boolean }) {
   const t = g();
   const s = syncView(repo);
   if (s.unpublished) {
     return (
       <span class="sync">
         <span class="unpub" data-tip={t.unpublishedTitle}>
-          {t.unpublished}
+          {compact ? t.unpublishedShort : t.unpublished}
         </span>
       </span>
     );
@@ -642,7 +643,7 @@ function RepoBlock({
         <span class="nm">{repo.name}</span>
         <Branch repo={repo} />
         {n ? <span class="n">{n}</span> : <span class="clean">{t.clean}</span>}
-        <Sync repo={repo} />
+        <Sync repo={repo} compact />
         <SyncButtons repo={repo} />
       </div>
       {open && n > 0 && (

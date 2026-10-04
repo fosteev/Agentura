@@ -412,6 +412,7 @@ const ru = {
     recent: 'последние коммиты',
     branchTitle: 'Сменить ветку',
     unpublished: 'не опубликована',
+    unpublishedShort: 'новая',
     unpublishedTitle: 'Ветки нет в origin — push её опубликует',
     syncTitle: (up: string) => `Против ${up}`,
     fetch: 'Fetch',

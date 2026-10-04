@@ -405,6 +405,7 @@ export const en: Ui = {
     recent: 'recent commits',
     branchTitle: 'Switch branch',
     unpublished: 'not published',
+    unpublishedShort: 'new',
     unpublishedTitle: 'The branch is not on the remote — push will publish it',
     syncTitle: (up: string) => `Against ${up}`,
     fetch: 'Fetch',

@@ -129,7 +129,7 @@ html:is([data-width="900"],[data-width="full"],[data-width="vscode"]) .pane.side
 .gt .rh:first-child { border-top: 0; }
 .gt .rh .chev { width: 14px; text-align: center; color: var(--fg-faint); }
 .gt .rh .nm { color: var(--fg); font-weight: 600; white-space: nowrap; }
-.gt .rh .br { max-width: 130px; }
+.gt .rh .br { max-width: 130px; min-width: 0; flex: 0 1 auto; }
 .gt .rh .n { min-width: 16px; padding: 0 4px; border-radius: 8px; background: var(--badge); color: var(--badge-fg); font-size: 10px; text-align: center; }
 .gt .rh .clean { color: var(--fg-faint); font-size: 10.5px; }
 .gt .rh .sync { margin-left: auto; }
@@ -138,14 +138,16 @@ html:is([data-width="900"],[data-width="full"],[data-width="vscode"]) .pane.side
 
 /* Б · список репозиториев сверху */
 .gt .pick { padding: 4px 0; border-bottom: 1px solid var(--line); }
-.gt .pick .p { display: grid; grid-template-columns: 14px minmax(0, auto) minmax(0, 1fr) auto auto; gap: 6px; align-items: center; height: 26px; padding: 0 10px 0 8px; cursor: pointer; }
+.gt .pick .p { display: flex; gap: 6px; align-items: center; height: 26px; padding: 0 10px 0 8px; cursor: pointer; }
 .gt .pick .p:hover { background: var(--bg-hover); }
 .gt .pick .p.on { background: var(--sel); }
 .gt .pick .p .rd { width: 9px; height: 9px; border-radius: 50%; border: 1px solid var(--fg-mute); justify-self: center; }
 .gt .pick .p.on .rd { border-color: var(--fg); background: radial-gradient(var(--fg) 0 2.5px, transparent 3px); }
 .gt .pick .p .nm { color: var(--fg); }
 .gt .pick .p .br { justify-self: start; max-width: 140px; }
-.gt .pick .p .sync { margin-left: 0; }
+.gt .pick .p .bw { display: flex; min-width: 0; }
+.gt .pick .p .bw .br { max-width: 100%; }
+.gt .pick .p .sync { margin-left: auto; }
 .gt .pick .p .n { min-width: 16px; padding: 0 4px; border-radius: 8px; background: var(--badge); color: var(--badge-fg); font-size: 10px; text-align: center; }
 .gt .pick .p .n.z { background: none; color: var(--fg-faint); }
 
@@ -225,3 +227,7 @@ html:is([data-width="900"],[data-width="full"],[data-width="vscode"]) .pane.side
 .gt .cm .ok { display: flex; align-items: flex-start; gap: 6px; margin: 0 0 8px; padding: 4px 6px 4px 8px; border: 1px solid var(--g-add); border-radius: 3px; color: var(--fg); font-size: 11px; line-height: 1.4; }
 .gt .cm .ok span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .gt .cm .ok .ib { width: 18px; height: 18px; flex: none; }
+/* строка репозитория в `picker`: ветка сжимается первой, остальное — по содержимому */
+.gt .pick .p > * { flex: none; }
+.gt .pick .p .bw { flex: 0 1 auto; }
+.gt .pick .p .nm { max-width: 40%; }
