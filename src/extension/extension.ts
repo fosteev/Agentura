@@ -19,6 +19,9 @@ import { currentLanguage, setUserFonts, userFontsDir } from './webviewHost';
 import { UserFonts } from './googleFonts';
 import { addGoogleFont } from './googleFontsCommand';
 import { WorkspaceFiles } from './workspaceFiles';
+import { GitService, countLines, runGit } from './git/gitService';
+import { getGitApi } from './git/gitApi';
+import { vscodeGitUi } from './git/gitUi';
 
 /** Что активация отдаёт интеграционным тестам (только при запуске из исходников). */
 export interface TestApi {
@@ -105,6 +108,14 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     account,
     memory,
     engine,
+    git: new GitService({
+      loadApi: getGitApi,
+      ui: vscodeGitUi(),
+      lang: currentLanguage,
+      log,
+      run: runGit,
+      countLines,
+    }),
   };
 
   /** Быстрый выбор сессии проекта: «Возобновить сессию» из палитры. */
@@ -189,6 +200,7 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
   context.subscriptions.push(
     services.diffs.register(),
     services.previews,
+    services.git,
     { dispose: () => ChatPanel.stopEngines() },
     vscode.window.registerWebviewViewProvider(SIDEBAR_VIEW_ID, sidebar),
     vscode.window.registerWebviewPanelSerializer(

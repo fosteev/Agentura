@@ -1,6 +1,6 @@
 # Вкладка «git»: рабочее дерево, индекс, коммит — один репозиторий и три раскладки для нескольких
 
-> Статус: в работе · создан 2026-10-04 по запросу владельца («реализуем все варианты с возможностью выбора»).
+> Статус: в работе · этап 1 (хост) принят 2026-10-04 · создан 2026-10-04 по запросу владельца («реализуем все варианты с возможностью выбора»).
 > Прототип: `prototype/screens/git-pane.html#one|one-tree|ma|mb|mc`, `prototype/shared/git.css`, `prototype/shared/git.js`
 > (разметку собирает скрипт — это и есть эталон DOM); галерея — раздел «Вкладка «git»: варианты» (артефакт v29, `#git`).
 > Дизайн владелец принимает картинками в галерее. Исполнитель отмечает чекбоксы этого файла по ходу работы.
@@ -114,21 +114,40 @@
 
 ### 1. Хост: `GitService` и протокол · opus, high
 
-- [ ] `src/extension/git/git.d.ts` (копия из `microsoft/vscode`, с шапкой лицензии) + `getGitApi()` (ленивая активация
+- [x] `src/extension/git/git.d.ts` (копия из `microsoft/vscode`, с шапкой лицензии) + `getGitApi()` (ленивая активация
   `vscode.git`, `getAPI(1)`, причины недоступности)
-- [ ] `src/shared/git.ts`: типы снимка и действий; маппинг `Status` → буква (`gitStatus(...)`), чистая функция + тест
-- [ ] `src/extension/git/gitService.ts`: выбор репо по cwd, снимок, подписки `onDidOpenRepository`/`onDidCloseRepository`/
+- [x] `src/shared/git.ts`: типы снимка и действий; маппинг `Status` → буква (`gitStatus(...)`), чистая функция + тест
+- [x] `src/extension/git/gitService.ts`: выбор репо по cwd, снимок, подписки `onDidOpenRepository`/`onDidCloseRepository`/
   `state.onDidChange`, дебаунс, `watch`-счётчик, `numstat` (`spawn`, `-z`, бинарные `-\t-`), строки неотслеживаемых, лог
-- [ ] действия: stage / unstage / discard (модалка) / commit (несколько root, итог по каждому) / sync / branch (QuickPick) /
+- [x] действия: stage / unstage / discard (модалка) / commit (несколько root, итог по каждому) / sync / branch (QuickPick) /
   open (дифф через `toGitUri`) / openFile; проверка `root` и путей
-- [ ] протокол: `git.state`, `git.error` в `ToWebview`; `git.watch|stage|unstage|discard|commit|sync|branch|open|openFile`
+- [x] протокол: `git.state`, `git.error` в `ToWebview`; `git.watch|stage|unstage|discard|commit|sync|branch|open|openFile`
   в `FromWebview` + `FROM_WEBVIEW_TYPES` + валидаторы; `protocol.test.ts`
-- [ ] `services.git` в `ChatServices`/`extension.ts`, подписка панели (`git.state` на изменение и на `ready`), маршрут
+- [x] `services.git` в `ChatServices`/`extension.ts`, подписка панели (`git.state` на изменение и на `ready`), маршрут
   `git.*` из `chatPanel.ts` в сервис (cwd панели)
-- [ ] тесты: `gitService.test.ts` на моке API (выбор репо для cwd-в-репо / cwd-над-репо / пусто / недоступно; статусы;
+- [x] тесты: `gitService.test.ts` на моке API (выбор репо для cwd-в-репо / cwd-над-репо / пусто / недоступно; статусы;
   `numstat` с бинарным и переименованием; commit в два root, один падает; discard без подтверждения не зовёт `clean`;
   путь вне репо отклонён)
-- [ ] `npm run check` зелёный
+- [x] `npm run check` зелёный
+
+### Решения (2026-10-04, по итогам сессии 1)
+
+- **`git.commit.result {results: {root, ok, pushed?, error?}[]}`** — новое сообщение: без него webview не знает об успехе
+  (очистить черновик, показать итог по репо в `unified`). Ошибки дублируются `git.error` по каждому root.
+- **`git.commit.all?: boolean`** — для пункта ▾ «Коммит всех изменений».
+- **`postCommitCommand: null`** — пользовательский `git.postCommitCommand` не запускается, push — только флагом запроса
+  (иначе «и push» и настройка VS Code дали бы двойной push).
+- **`GitRepoView.rel` бывает `..`/`../..`** — когда cwd глубже корня репо. Метка агента (этап 2): путь файла
+  относительно cwd = `posix.normalize(rel + '/' + path)`; начинается с `../` — файл вне cwd, агентом не помечается.
+- **`git.state` не шлётся, пока API не `initialized`** — webview держит состояние «нет снимка» (вкладка без бейджа,
+  внутри — «git загружается…»), а не «репозиториев нет».
+- **`GitSnapshot.reason` — готовый локализованный текст хоста**, webview показывает как есть.
+- `INDEX_COPIED` → `A`, `INTENT_TO_RENAME` → `R`; `Status`/`RefType` — числами (`GIT_STATUS`, `const enum` не доступны
+  при `isolatedModules`), сверка с `git.d.ts` — типом `STATUS_CHECK` (разъедется — typecheck красный).
+- `git.d.ts` исключён из eslint/prettier — копия чужого файла, не правим.
+- Приёмка: `inside()` не путает файл `..name` с выходом наверх; JSDoc `FIELD_CHECKS` вернулся к своей константе.
+- Открыто: два действия подряд в одном репо — `busy` второго снимается, когда кончится первое (ключ — репо, не счётчик);
+  косметика, кнопки гаснут на время короче реального. Вложенные репо при cwd внутри репо показываются все — так и задумано.
 
 ### 2. Webview: вкладка «git», один репозиторий · sonnet, high · после 1
 
@@ -211,7 +230,8 @@ DoD: `npm run check` зелёный; `gitService.test.ts` покрывает с�
 Читай: этот файл — «Решения» и «Этапы → 2»; `src/shared/git.ts`. Точки входа вкладок — «Что есть сейчас»; эталон
 вкладки — `ChangesPane` в `src/webview/components/SidePanes.tsx` и его тесты. Открывать только фрагменты, которые правишь.
 
-Уже решено, не переспрашивать: всё в «Решения». Несколько репо в этом этапе показывать раскладкой `stack` без настройки
+Уже решено, не переспрашивать: всё в «Решения» и «Решения (по итогам сессии 1)» — там же `git.commit.result`, `rel`
+с `..`, состояние «нет снимка». Несколько репо в этом этапе показывать раскладкой `stack` без настройки
 (просто разделы подряд) — раскладки и настройка в этапе 3.
 
 Порядок: ветка `stage-2-git-pane` от `main` (после мержа этапа 1) → чекбоксы «Этапы → 2».

@@ -10,3 +10,4 @@ src/data/agentmeter
 test/fixtures
 src/agent/claude/__fixtures__
 test/integration/out
+src/extension/git/git.d.ts

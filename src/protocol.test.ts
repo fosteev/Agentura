@@ -72,6 +72,40 @@ describe('protocol', () => {
     expect(isFromWebview({ type: 'agent.transcript', sessionId: 's', taskId: 't' })).toBe(false);
   });
 
+  it('вкладка «git» (roadmap 12): запросы проверяются по полям', () => {
+    const ok = [
+      { type: 'git.watch', on: true },
+      { type: 'git.stage', root: '/w', paths: ['a.ts'] },
+      { type: 'git.unstage', root: '/w', paths: ['a.ts', 'b.ts'] },
+      { type: 'git.discard', root: '/w', paths: ['a.ts'] },
+      { type: 'git.commit', roots: ['/w', '/w/b'], message: 'm', amend: false, push: true },
+      { type: 'git.commit', roots: ['/w'], message: 'm', amend: true, push: false, all: true },
+      { type: 'git.sync', op: 'fetch' },
+      { type: 'git.sync', root: '/w', op: 'push' },
+      { type: 'git.branch', root: '/w' },
+      { type: 'git.open', root: '/w', path: 'a.ts', staged: false },
+      { type: 'git.openFile', root: '/w', path: 'a.ts' },
+    ];
+    for (const m of ok) expect(isFromWebview(m), JSON.stringify(m)).toBe(true);
+    const bad = [
+      { type: 'git.watch' },
+      { type: 'git.stage', root: '/w', paths: [] },
+      { type: 'git.stage', root: '/w', paths: 'a.ts' },
+      { type: 'git.unstage', paths: ['a.ts'] },
+      { type: 'git.discard', root: '/w', paths: [1] },
+      { type: 'git.commit', roots: [], message: 'm', amend: false, push: false },
+      { type: 'git.commit', roots: ['/w'], message: 'm', amend: false },
+      { type: 'git.commit', roots: ['/w'], message: 'm', amend: false, push: false, all: 'yes' },
+      { type: 'git.sync', op: 'rebase' },
+      { type: 'git.sync', root: 1, op: 'fetch' },
+      { type: 'git.branch' },
+      { type: 'git.open', root: '/w', path: 'a.ts' },
+      { type: 'git.openFile', root: '/w' },
+      { type: 'git.status' },
+    ];
+    for (const m of bad) expect(isFromWebview(m), JSON.stringify(m)).toBe(false);
+  });
+
   it('обёртки postMessage передают сообщение как есть', () => {
     const toWebview = vi.fn().mockResolvedValue(true);
     postToWebview({ postMessage: toWebview }, { type: 'init', surface: 'chat', version: '0.0.1' });

@@ -33,6 +33,8 @@ import {
 import type { SessionMemory } from './sessionMemory';
 import type { SessionsService } from './sessionsService';
 import type { UsageService } from './usage';
+import type { GitService } from './git/gitService';
+import { isGitRequest } from '../shared/git';
 import type { Logger } from './logger';
 import { hostStrings } from '../shared/l10n';
 import { attachMessaging, currentLanguage, renderWebview, userFontsDir, webviewOptions } from './webviewHost';
@@ -76,6 +78,8 @@ export interface ChatServices {
   memory: SessionMemory;
   /** Поиск `claude` (асинхронный, с прогревом). */
   engine: EngineLocator;
+  /** Вкладка «git» (roadmap 12): репозитории рабочей папки над API встроенного git. */
+  git: GitService;
 }
 
 export function createAdapter(log: Logger): { adapter: AgentAdapter; engine: EngineLocator } {
@@ -413,13 +417,24 @@ export class ChatPanel {
     ChatPanel.panels.push(this);
     ChatPanel.lastActive = this;
     panel.webview.html = renderWebview(panel.webview, context.extensionUri, 'chat', 'Agentura', currentLanguage());
+    // вкладка «git»: снимок на каждое изменение репозиториев рабочей папки (cwd панели)
+    const git = services.git.attach(folder.uri.fsPath, (m) => postToWebview(panel.webview, m));
     this.disposables.push(
       attachMessaging(panel.webview, 'chat', version, log, (m) => {
+        // действия вкладки «git» — сервису, сессия движка для них не нужна
+        if (isGitRequest(m)) {
+          void git.handle(m).catch((e) => log.error(`${m.type}: ${String(e)}`));
+          return;
+        }
         // 'ready' уже обработан в attachMessaging (init); остальное — контроллеру
         void this.controller.handle(m).catch((e) => log.error(`${m.type}: ${String(e)}`));
-        // webview чата пересоздан — он не помнит, что граф открыт
-        if (m.type === 'ready') this.graph.chatReady();
+        if (m.type === 'ready') {
+          // webview чата пересоздан — он не помнит, что граф открыт
+          this.graph.chatReady();
+          git.refresh();
+        }
       }),
+      git,
       // автоопрос лимитов (раз в `usagePollMinutes`) доходит и до открытого чата
       {
         dispose: services.usage.onUpdate((snap) =>
