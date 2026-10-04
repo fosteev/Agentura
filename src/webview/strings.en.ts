@@ -434,7 +434,7 @@ export const en: Ui = {
     descPlaceholder: 'Description',
     descAria: 'Commit description',
     generate: 'The agent writes the message from the index',
-    generateSoon: 'Soon: the agent will write the commit message',
+    generating: 'The agent is writing the message…',
     amend: 'amend',
     andPush: 'and push',
     commit: 'Commit',

@@ -10,7 +10,9 @@
   and an "agent N" chip filters them. With several repositories in the workspace the layout is set by
   `agentura.git.layout` (⚙ → "Look", command "Git Tab Layout…"): `stack` (default, a section per repository with its
   own compact commit line), `picker` (repositories on top, the selected one below) or `unified` (one list and one
-  commit message into several ticked repositories). The empty state has an "Open repository…" button.
+  commit message into several ticked repositories). The empty state has an "Open repository…" button. The ✦
+  button in the commit box asks Sonnet for a message from the staged diff and the repository's recent subjects
+  (one-off request without tools; it is not saved as a session and does not show up in the session list).
 - **Agents tab views** (`agentura.agents.view`, ⚙ → "Look", command "Agents View…"): the "agents" tab of the right
   panel can be a `list` (default, as before), a session `tree`, time `lanes` (one lane per agent on a shared axis,
   call ticks, the main agent's waiting) or `cards` (live call, summary excerpt, failure text). Tree, lanes and cards

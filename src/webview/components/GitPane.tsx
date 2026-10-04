@@ -31,7 +31,9 @@ import {
   gitCommitted,
   gitDrafts,
   gitErrors,
+  gitGenerating,
   gitTargets,
+  requestGitMessage,
   setGitDraft,
   setGitTarget,
   type GitErrorView,
@@ -876,9 +878,12 @@ function CommitForm({
   targets,
   compact,
   note,
+  gen,
   onGo,
 }: {
   draftKey: string;
+  /** ✦: репозитории с непустым индексом, по которым модель пишет сообщение; пусто — кнопка выключена. */
+  gen: readonly string[];
   /** Хвост подсказки в поле заголовка (имя репозитория). */
   tail?: string;
   btn: FormButton;
@@ -922,6 +927,7 @@ function CommitForm({
     if (compact && expanded) sum.current?.focus();
   }, [compact, expanded]);
   const left = summaryLeft(d.summary);
+  const generating = draftKey in gitGenerating.value;
   const go = (o: { push?: boolean; all?: boolean } = {}) => {
     setMenu(false);
     onGo(o);
@@ -988,7 +994,14 @@ function CommitForm({
             onBlur={() => setFocus(false)}
           />
           {d.summary && <span class={left.over ? 'n over' : 'n'}>{left.left}</span>}
-          <button class="ib gen" disabled data-tip={t.generateSoon} aria-label={t.generate}>
+          <button
+            class={generating ? 'ib gen busy' : 'ib gen'}
+            disabled={gen.length === 0}
+            aria-busy={generating}
+            data-tip={generating ? t.generating : gen.length === 0 ? t.needStage : t.generate}
+            aria-label={t.generate}
+            onClick={() => requestGitMessage(draftKey, gen)}
+          >
             {I.spark}
           </button>
         </div>
@@ -1092,6 +1105,7 @@ function CommitBox({ repo, compact }: { repo: GitRepoView; compact?: boolean }) 
     <CommitForm
       draftKey={repo.root}
       tail={repo.name}
+      gen={repo.staged.length > 0 ? [repo.root] : []}
       compact={compact}
       busy={!!repo.busy}
       btn={{
@@ -1143,6 +1157,7 @@ function UnifiedCommit({ snapshot }: { snapshot: GitSnapshot }) {
   return (
     <CommitForm
       draftKey={GIT_UNIFIED}
+      gen={btn.roots}
       busy={snapshot.repos.some((r) => r.busy)}
       btn={{
         disabled: btn.disabled,

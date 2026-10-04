@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { unlink } from 'node:fs/promises';
 import type {
   Options,
   PermissionResult,
@@ -16,6 +17,7 @@ import type {
   AgentEventOf,
   AgentSession,
   CommandOption,
+  CompletionRequest,
   EffortLevel,
   ModelOption,
   PermissionDecision,
@@ -35,7 +37,7 @@ import type { Lang } from '../../shared/l10n';
 import { ClaudeEventMapper } from './mapper';
 import { PermissionBroker } from './permissions';
 import { buildHistory, DEFAULT_MAX_TURNS, findRetryPoint, type HistoryMessage } from './history';
-import { transcriptPath } from '../../data/sessions';
+import { defaultClaudeHome, transcriptPath } from '../../data/sessions';
 import { readTranscriptExtras } from '../../data/transcriptExtras';
 import { streamLines } from '../../data/jsonlStream';
 import {
@@ -174,6 +176,8 @@ export function userContent(
 
 /** Сколько ждать `accountInfo()` от временного процесса CLI. */
 export const ACCOUNT_INFO_TIMEOUT_MS = 15_000;
+/** Сколько ждать ответа одноразового запроса (`complete`). */
+export const COMPLETE_TIMEOUT_MS = 60_000;
 
 /** `parentUuid` записи `uuid` в транскрипте (потоком: файл бывает в десятки МБ); нет — `undefined`. */
 export async function promptParent(path: string, uuid: string): Promise<string | undefined> {
@@ -367,6 +371,89 @@ export class ClaudeAdapter implements AgentAdapter {
         this.config.log?.('warn', `accountInfo: закрытие query: ${String(error)}`);
       }
       abort.abort();
+    }
+  }
+
+  /**
+   * Одноразовый запрос вне сессии (✦ сообщение коммита): строковый промпт, один ход, без инструментов,
+   * MCP и размышлений. В список сессий не попадает: `persistSession: false` — движок не пишет транскрипт
+   * в `~/.claude/projects`, а список читается оттуда. Страховка на движок, который флаг не учёл (свой
+   * `claude` из `agentura.claudeExecutable`), — файл транскрипта с id этого запроса удаляется.
+   * Нет ответа за `timeoutMs` — ошибка; процесс закрывается в любом случае (`close()` и `abort`).
+   */
+  async complete(cwd: string, request: CompletionRequest): Promise<string> {
+    const sdk = await this.loadSdk();
+    const abort = new AbortController();
+    const timeoutMs = request.timeoutMs ?? COMPLETE_TIMEOUT_MS;
+    const q = sdk.query({
+      prompt: request.prompt,
+      options: {
+        ...(await this.baseOptions(cwd)),
+        systemPrompt: request.system,
+        tools: [],
+        mcpServers: {},
+        strictMcpConfig: true,
+        maxTurns: 1,
+        thinking: { type: 'disabled' },
+        effort: 'low',
+        // без инструментов спрашивать нечего, но `defaultMode` пользователя (`auto`) не берём
+        permissionMode: 'default',
+        persistSession: false,
+        ...(request.model ? { model: request.model } : {}),
+        abortController: abort,
+      },
+    });
+    let sessionId: string | undefined;
+    const read = async (): Promise<string> => {
+      for await (const m of q) {
+        if (typeof m.session_id === 'string' && m.session_id) sessionId = m.session_id;
+        if (m.type !== 'result') continue;
+        if (m.subtype === 'success' && !m.is_error) return m.result;
+        throw new Error(
+          m.subtype === 'success' ? m.result || 'error' : m.errors.join('; ') || m.subtype,
+        );
+      }
+      throw new Error('движок завершился без ответа');
+    };
+    // проигравший гонку с таймаутом поток оборвётся на `close()` — без обработчика это unhandled rejection
+    const reading = read();
+    reading.catch(() => undefined);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        reading,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error(`движок не ответил за ${Math.round(timeoutMs / 1000)} с`)),
+            timeoutMs,
+          );
+        }),
+      ]);
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+      try {
+        q.close();
+      } catch (error) {
+        this.config.log?.('warn', `complete: закрытие query: ${String(error)}`);
+      }
+      abort.abort();
+      if (sessionId) await this.dropTranscript(cwd, sessionId);
+    }
+  }
+
+  /** Транскрипт одноразового запроса, если движок его всё же записал, — удалить (иначе он в списке сессий). */
+  private async dropTranscript(cwd: string, sessionId: string): Promise<void> {
+    const home = (this.config.env ?? process.env)['CLAUDE_CONFIG_DIR'] || defaultClaudeHome();
+    const file = transcriptPath(cwd, sessionId, home);
+    try {
+      await unlink(file);
+      this.config.log?.(
+        'warn',
+        `complete: движок записал транскрипт вопреки persistSession — удалён ${file}`,
+      );
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT')
+        this.config.log?.('warn', `complete: транскрипт ${file}: ${String(error)}`);
     }
   }
 

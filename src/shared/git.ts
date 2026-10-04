@@ -67,7 +67,16 @@ export type GitSyncOp = 'fetch' | 'pull' | 'push';
 
 /** Операция в `git.error`. */
 export type GitOp =
-  'stage' | 'unstage' | 'discard' | 'commit' | GitSyncOp | 'branch' | 'open' | 'openFile';
+  | 'stage'
+  | 'unstage'
+  | 'discard'
+  | 'commit'
+  | GitSyncOp
+  | 'branch'
+  | 'open'
+  | 'openFile'
+  /** ✦ сообщение коммита моделью. */
+  | 'message';
 
 /** Запросы вкладки «git» (часть `FromWebview`). Пути — от корня репозитория `root`. */
 export type GitRequest =
@@ -95,7 +104,12 @@ export type GitRequest =
   | { type: 'git.open'; root: string; path: string; staged: boolean }
   | { type: 'git.openFile'; root: string; path: string }
   /** Пустое состояние: команда VS Code `git.openRepository` (выбрать папку с репозиторием). */
-  | { type: 'git.openRepository' };
+  | { type: 'git.openRepository' }
+  /**
+   * ✦: сообщение коммита пишет модель по индексу `roots` (в `unified` — всех отмеченных, одним запросом).
+   * Ответ — `git.message.result` с теми же `roots` или `git.error {op: 'message'}`.
+   */
+  | { type: 'git.message'; roots: string[] };
 
 /** Итог коммита в одном репозитории. */
 export interface GitCommitResult {
@@ -110,7 +124,9 @@ export interface GitCommitResult {
 export type GitNotice =
   | { type: 'git.state'; snapshot: GitSnapshot }
   | { type: 'git.error'; root?: string; op: GitOp; message: string }
-  | { type: 'git.commit.result'; results: GitCommitResult[] };
+  | { type: 'git.commit.result'; results: GitCommitResult[] }
+  /** Ответ на `git.message`: `roots` — как в запросе (по ним webview находит черновик). */
+  | { type: 'git.message.result'; roots: string[]; summary: string; desc: string };
 
 /**
  * Значения `Status` из `git.d.ts` (`const enum`, порядок объявления). Сверка с типами — в `gitService.ts`

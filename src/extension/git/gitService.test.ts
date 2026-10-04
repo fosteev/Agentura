@@ -141,13 +141,17 @@ function setup(
     ui?: ReturnType<typeof fakeUi>;
     run?: GitDeps['run'];
     countLines?: GitDeps['countLines'];
+    /** `null` — у адаптера нет одноразовых запросов. */
+    complete?: GitDeps['complete'] | null;
   } = {},
 ) {
   const ui = opts.ui ?? fakeUi();
   const run = vi.fn(opts.run ?? (async () => ''));
   const countLines = vi.fn(opts.countLines ?? (async () => undefined));
   const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+  const complete = vi.fn(opts.complete ?? (async () => 'Subject\n\nBody'));
   const service = new GitService({
+    ...(opts.complete === null ? {} : { complete }),
     loadApi: async () => (Array.isArray(repos) ? { api: fakeApi(repos) as never } : repos),
     ui: ui as unknown as GitUi,
     lang: () => 'ru',
@@ -156,7 +160,7 @@ function setup(
     countLines,
     debounceMs: 0,
   });
-  return { service, ui, run, countLines, log };
+  return { service, ui, run, countLines, log, complete };
 }
 
 function client(service: GitService, cwd: string) {
@@ -609,5 +613,127 @@ describe('GitService: действия', () => {
     repo.changed.fire();
     await tick();
     expect(cl.states().length).toBe(n);
+  });
+});
+
+describe('GitService: ✦ сообщение коммита', () => {
+  /** git по аргументам: `--stat`, дифф, лог — с корнем в тексте, чтобы видеть, чей индекс ушёл в промпт. */
+  const git: GitDeps['run'] = async (_bin, args, cwd) => {
+    if (args.includes('--stat')) return ` a.ts | 2 +-  (${cwd})\n`;
+    if (args[0] === 'diff') return `diff --git a/a.ts b/a.ts (${cwd})\n-old\n+new\n`;
+    if (args[0] === 'log') return 'Fix the thing\nAdd the other\n';
+    return '';
+  };
+  const staged = (root: string) =>
+    fakeRepo(root, { indexChanges: [ch(root, 'a.ts', S.INDEX_MODIFIED)] });
+
+  it('один репозиторий: индекс, стиль и модель sonnet — в одноразовый запрос, ответ — git.message.result', async () => {
+    const repo = staged('/w');
+    const { service, run, complete } = setup([repo], {
+      run: git,
+      complete: async () => '```\nFix parser  \n\nHandle the empty line.\n```',
+    });
+    const cl = client(service, '/w');
+    await cl.c.handle({ type: 'git.message', roots: ['/w'] });
+    expect(run).toHaveBeenCalledWith(
+      '/usr/bin/git',
+      ['diff', '--cached', '--stat', '--no-color'],
+      '/w',
+    );
+    expect(run).toHaveBeenCalledWith('/usr/bin/git', ['log', '-n5', '--format=%s'], '/w');
+    expect(complete).toHaveBeenCalledTimes(1);
+    const [cwd, req] = complete.mock.calls[0]!;
+    expect(cwd).toBe('/w');
+    expect(req.model).toBe('sonnet');
+    expect(req.system).toMatch(/72 characters/);
+    expect(req.prompt).toContain('- Fix the thing');
+    expect(req.prompt).toContain('a.ts | 2 +-  (/w)');
+    expect(req.prompt).toContain('+new');
+    expect(cl.posts.find((m) => m.type === 'git.message.result')).toEqual({
+      type: 'git.message.result',
+      roots: ['/w'],
+      summary: 'Fix parser',
+      desc: 'Handle the empty line.',
+    });
+    expect(cl.errors()).toEqual([]);
+  });
+
+  it('unified: индекс всех отмеченных — одним запросом; репозиторий без индекса не идёт', async () => {
+    const a = staged('/w/a');
+    const b = staged('/w/b');
+    const c = fakeRepo('/w/c');
+    const { service, complete } = setup([a, b, c], { run: git });
+    const cl = client(service, '/w');
+    await cl.c.handle({ type: 'git.message', roots: ['/w/a', '/w/b', '/w/c'] });
+    expect(complete).toHaveBeenCalledTimes(1);
+    const [cwd, req] = complete.mock.calls[0]!;
+    expect(cwd).toBe('/w/a');
+    expect(req.prompt).toContain('## Repository: a');
+    expect(req.prompt).toContain('## Repository: b');
+    expect(req.prompt).not.toContain('## Repository: c');
+    expect(req.prompt).toMatch(/separate commit in each of these 2 repositories/);
+    expect(cl.posts.find((m) => m.type === 'git.message.result')).toMatchObject({
+      roots: ['/w/a', '/w/b', '/w/c'],
+      summary: 'Subject',
+      desc: 'Body',
+    });
+  });
+
+  it('пустой индекс, чужой root, нет движка, сбой модели, пустой ответ — git.error {op: message}', async () => {
+    const empty = fakeRepo('/w');
+    const r1 = setup([empty], { run: git });
+    const c1 = client(r1.service, '/w');
+    await c1.c.handle({ type: 'git.message', roots: ['/w'] });
+    expect(r1.complete).not.toHaveBeenCalled();
+    expect(c1.errors()).toEqual([
+      { type: 'git.error', root: '/w', op: 'message', message: t.gitMessageEmptyIndex },
+    ]);
+
+    const r2 = setup([staged('/w')], { run: git });
+    const c2 = client(r2.service, '/w');
+    await c2.c.handle({ type: 'git.message', roots: ['/w', '/other'] });
+    expect(r2.complete).not.toHaveBeenCalled();
+    expect(c2.errors()).toEqual([{ type: 'git.error', op: 'message', message: t.gitUnknownRepo }]);
+
+    const r3 = setup([staged('/w')], { run: git, complete: null });
+    const c3 = client(r3.service, '/w');
+    await c3.c.handle({ type: 'git.message', roots: ['/w'] });
+    expect(c3.errors()).toEqual([
+      { type: 'git.error', root: '/w', op: 'message', message: t.gitMessageNoModel },
+    ]);
+
+    const r4 = setup([staged('/w')], {
+      run: git,
+      complete: async () => {
+        throw new Error('движок не ответил за 60 с');
+      },
+    });
+    const c4 = client(r4.service, '/w');
+    await c4.c.handle({ type: 'git.message', roots: ['/w'] });
+    expect(c4.errors()).toEqual([
+      { type: 'git.error', root: '/w', op: 'message', message: 'движок не ответил за 60 с' },
+    ]);
+    expect(r4.log.error).toHaveBeenCalled();
+
+    const r5 = setup([staged('/w')], { run: git, complete: async () => '  \n ' });
+    const c5 = client(r5.service, '/w');
+    await c5.c.handle({ type: 'git.message', roots: ['/w'] });
+    expect(c5.errors()).toEqual([
+      { type: 'git.error', root: '/w', op: 'message', message: t.gitMessageBlank },
+    ]);
+    expect(c5.posts.some((m) => m.type === 'git.message.result')).toBe(false);
+  });
+
+  it('репозиторий без коммитов: лог падает — заголовков нет, запрос всё равно идёт', async () => {
+    const { service, complete } = setup([staged('/w')], {
+      run: async (bin, args, cwd) => {
+        if (args[0] === 'log') throw new Error('does not have any commits yet');
+        return git(bin, args, cwd);
+      },
+    });
+    const cl = client(service, '/w');
+    await cl.c.handle({ type: 'git.message', roots: ['/w'] });
+    expect(complete.mock.calls[0]![1].prompt).toContain('(no commits yet)');
+    expect(cl.errors()).toEqual([]);
   });
 });

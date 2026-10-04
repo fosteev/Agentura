@@ -22,6 +22,7 @@ import { WorkspaceFiles } from './workspaceFiles';
 import { GitService, countLines, runGit } from './git/gitService';
 import { getGitApi } from './git/gitApi';
 import { vscodeGitUi } from './git/gitUi';
+import type { CompletionRequest } from '../agent/types';
 
 /** Что активация отдаёт интеграционным тестам (только при запуске из исходников). */
 export interface TestApi {
@@ -115,6 +116,10 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
       log,
       run: runGit,
       countLines,
+      // ✦ сообщение коммита: одноразовый запрос движка, без транскрипта
+      ...(adapter.complete
+        ? { complete: (cwd: string, r: CompletionRequest) => adapter.complete!(cwd, r) }
+        : {}),
     }),
   };
 

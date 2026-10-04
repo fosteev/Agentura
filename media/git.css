@@ -181,7 +181,8 @@ html:is([data-width="900"],[data-width="full"],[data-width="vscode"]) .pane.side
 .gt .cm .sum input.t { flex: 1; min-width: 0; padding: 0; border: 0; outline: 0; background: none; color: var(--fg); font: inherit; }
 .gt .cm .sum input.t::placeholder, .gt .cm textarea.desc::placeholder { color: var(--fg-faint); }
 .gt .cm .sum .n.over { color: var(--warn); }
-.gt .cm .sum .gen { cursor: default; }
+.gt .cm .sum .gen.busy { cursor: progress; }
+.gt .cm .sum .gen.busy svg { animation: spin 1s linear infinite; }
 .gt .cm textarea.desc { display: block; width: 100%; box-sizing: border-box; resize: vertical; min-height: 34px; border: 0; border-top: 1px dashed var(--line); outline: 0; background: none; font: inherit; font-size: 11px; line-height: 1.45; }
 .gt .cm .opt input[type="checkbox"] { width: 11px; height: 11px; margin: 0; accent-color: var(--btn); }
 .gt .cm .go { position: relative; }

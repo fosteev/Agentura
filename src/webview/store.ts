@@ -148,6 +148,37 @@ export const GIT_UNIFIED = '*';
 export const gitTargets = signal<Readonly<Record<string, boolean>>>({});
 /** Репозитории, куда последний коммит из `unified` прошёл (строка успеха над полем); пусто — нет. */
 export const gitCommitted = signal<readonly string[]>([]);
+/** ✦ ждёт ответа: ключ черновика (корень или `GIT_UNIFIED`) → `roots` запроса `git.message`. */
+export const gitGenerating = signal<Readonly<Record<string, readonly string[]>>>({});
+
+const sameRoots = (a: readonly string[], b: readonly string[]): boolean =>
+  a.length === b.length && a.every((r) => b.includes(r));
+
+/**
+ * ✦: попросить сообщение коммита по индексу `roots` в черновик `key`. Уже ждёт — ничего (повторный клик).
+ * Ответ (`git.message.result`) заменяет заголовок и описание черновика целиком.
+ */
+export function requestGitMessage(key: string, roots: readonly string[]): boolean {
+  if (key in gitGenerating.value || roots.length === 0) return false;
+  gitGenerating.value = { ...gitGenerating.value, [key]: [...roots] };
+  for (const r of roots) clearGitError(r);
+  if (key === GIT_UNIFIED) clearGitError(GIT_ANY);
+  send({ type: 'git.message', roots: [...roots] });
+  return true;
+}
+
+/** Снять ожидание ✦ с черновиков, чьи `roots` подходят под `match`. */
+function settleGenerating(match: (roots: readonly string[]) => boolean): string[] {
+  const keys = Object.entries(gitGenerating.value)
+    .filter(([, roots]) => match(roots))
+    .map(([k]) => k);
+  if (keys.length) {
+    const rest = { ...gitGenerating.value };
+    for (const k of keys) delete rest[k];
+    gitGenerating.value = rest;
+  }
+  return keys;
+}
 
 export function setGitTarget(root: string, on: boolean): void {
   gitTargets.value = { ...gitTargets.value, [root]: on };
@@ -348,6 +379,13 @@ export function handleHostMessage(m: ToWebview): void {
       break;
     }
     case 'git.error':
+      // отказ ✦: `root` есть, только если запрос был по одному репозиторию
+      if (m.op === 'message') {
+        const root = m.root;
+        settleGenerating((roots) =>
+          root === undefined ? roots.length > 1 : sameRoots(roots, [root]),
+        );
+      }
       gitErrors.value = {
         ...gitErrors.value,
         [m.root ?? GIT_ANY]: { op: m.op, message: m.message },
@@ -366,6 +404,10 @@ export function handleHostMessage(m: ToWebview): void {
         if (gitDrafts.value[GIT_UNIFIED]) setGitDraft(GIT_UNIFIED, { summary: '', desc: '', amend: false });
       }
       gitCommitted.value = m.results.filter((r) => r.ok).map((r) => r.root);
+      break;
+    case 'git.message.result':
+      for (const key of settleGenerating((roots) => sameRoots(roots, m.roots)))
+        setGitDraft(key, { summary: m.summary, desc: m.desc });
       break;
     default:
       break;

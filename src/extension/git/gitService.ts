@@ -4,6 +4,15 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { API, Change, Commit, Ref, Repository, Status } from './git';
 import type { GitApiResult } from './gitApi';
+import {
+  MESSAGE_MODEL,
+  MESSAGE_SUBJECTS,
+  MESSAGE_SYSTEM,
+  messagePrompt,
+  parseCommitMessage,
+  type StagedInput,
+} from './commitMessage';
+import type { CompletionRequest } from '../../agent/types';
 import { pathKey, samePath } from '../pathKey';
 import { hostStrings, type HostUi, type Lang } from '../../shared/l10n';
 import {
@@ -94,6 +103,11 @@ export interface GitDeps {
   countLines(file: string): Promise<LineCount>;
   /** Дебаунс, мс (тесты — 0). */
   debounceMs?: number;
+  /**
+   * Одноразовый запрос к модели (✦, `AgentAdapter.complete`): не создаёт сессию в списке. Нет — ✦ отвечает
+   * ошибкой.
+   */
+  complete?(cwd: string, request: CompletionRequest): Promise<string>;
 }
 
 /** Панель чата, подписанная на вкладку «git». */
@@ -521,6 +535,7 @@ export class GitService implements vscode.Disposable {
       return;
     }
     if (m.type === 'git.commit') return this.commit(client, m);
+    if (m.type === 'git.message') return this.message(client, m.roots);
     if (m.type === 'git.sync') return this.sync(client, m.op, m.root);
     const repo = this.findRepo(client, m.root);
     const op: GitOp = m.type.slice(4) as GitOp;
@@ -622,6 +637,60 @@ export class GitService implements vscode.Disposable {
       results.push(res);
     }
     client.post({ type: 'git.commit.result', results });
+  }
+
+  /**
+   * ✦: индекс репозиториев `roots` (только с непустым индексом) → один запрос к модели → `git.message.result`
+   * с теми же `roots`. Ошибка — `git.error {op: 'message'}` (с `root`, если репозиторий один).
+   */
+  private async message(client: Client, roots: string[]): Promise<void> {
+    const fail = (e: unknown): void =>
+      this.fail(client, 'message', roots.length === 1 ? roots[0] : undefined, e);
+    const complete = this.deps.complete;
+    if (!complete) return fail(new Error(this.t.gitMessageNoModel));
+    const repos: Repository[] = [];
+    for (const root of roots) {
+      const repo = this.findRepo(client, root);
+      if (!repo) return fail(new Error(this.t.gitUnknownRepo));
+      repos.push(repo);
+    }
+    const api = this.api;
+    const staged = repos.filter((r) => r.state.indexChanges.length > 0);
+    if (!api || staged.length === 0) return fail(new Error(this.t.gitMessageEmptyIndex));
+    try {
+      const inputs = await Promise.all(staged.map((r) => this.stagedInput(api, r)));
+      const prompt = messagePrompt(inputs);
+      this.deps.log.info(
+        `git message: ${staged.map((r) => r.rootUri.fsPath).join(', ')} (${prompt.length} символов)`,
+      );
+      const text = await complete.call(this.deps, staged[0]!.rootUri.fsPath, {
+        system: MESSAGE_SYSTEM,
+        prompt,
+        model: MESSAGE_MODEL,
+      });
+      const msg = parseCommitMessage(text);
+      if (!msg) throw new Error(this.t.gitMessageBlank);
+      client.post({ type: 'git.message.result', roots, ...msg });
+    } catch (e) {
+      fail(e);
+    }
+  }
+
+  /** Индекс репозитория для промпта ✦: `--stat`, дифф и заголовки последних коммитов (нет коммитов — пусто). */
+  private async stagedInput(api: API, repo: Repository): Promise<StagedInput> {
+    const root = repo.rootUri.fsPath;
+    const run = (args: string[]): Promise<string> => this.deps.run(api.git.path, args, root);
+    const [stat, diff, log] = await Promise.all([
+      run(['diff', '--cached', '--stat', '--no-color']),
+      run(['diff', '--cached', '--no-color', '--no-ext-diff']),
+      run(['log', `-n${MESSAGE_SUBJECTS}`, '--format=%s']).catch(() => ''),
+    ]);
+    return {
+      name: path.basename(root),
+      stat,
+      diff,
+      subjects: log.split('\n').filter((s) => s.trim() !== ''),
+    };
   }
 
   /**

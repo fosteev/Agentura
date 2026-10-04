@@ -441,7 +441,7 @@ const ru = {
     descPlaceholder: 'Описание',
     descAria: 'Описание коммита',
     generate: 'Сообщение пишет агент по индексу',
-    generateSoon: 'Скоро: сообщение коммита напишет агент',
+    generating: 'Агент пишет сообщение…',
     amend: 'amend',
     andPush: 'и push',
     commit: 'Коммит',
