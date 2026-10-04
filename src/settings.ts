@@ -48,7 +48,7 @@ export type LanguageMode = (typeof LANGUAGE_MODES)[number];
 export const DEFAULT_LANGUAGE: LanguageMode = 'auto';
 /**
  * Размер текста ленты (`feed.fontSize`), px: базовый текст ответа. Остальные размеры ленты масштабируются
- * от него (`--fz` в CSS), так что 13 — вёрстка как есть.
+ * от него (`--fz` в CSS), так что 13 — вёрстка как есть. Те же границы и умолчание — у размера интерфейса (`ui.fontSize`).
  */
 export const DEFAULT_FEED_FONT_SIZE = 13;
 export const MIN_FEED_FONT_SIZE = 10;
@@ -70,6 +70,7 @@ export type SettingKey =
   | 'sidebar.top'
   | 'feed.style'
   | 'feed.fontSize'
+  | 'ui.fontSize'
   | 'font.interface'
   | 'font.panels'
   | 'font.code'
@@ -90,6 +91,7 @@ export const SETTING_KEYS: readonly SettingKey[] = [
   'sidebar.top',
   'feed.style',
   'feed.fontSize',
+  'ui.fontSize',
   'font.interface',
   'font.panels',
   'font.code',
@@ -119,6 +121,8 @@ export interface SettingsValues {
   'sidebar.top': SidebarTopMode;
   'feed.style': FeedStyle;
   'feed.fontSize': number;
+  /** Размер интерфейса (всё, кроме ленты), px; 13 — как есть, иначе всё масштабируется (`--ui-zoom`). */
+  'ui.fontSize': number;
   /** Пусто — шрифт интерфейса VS Code. */
   'font.interface': string;
   /** Шапка, поле ввода, правая и левая панели; пусто — как было (чат моноширинный, боковая — шрифт интерфейса). */
@@ -292,6 +296,7 @@ export function validateSetting(key: SettingKey, value: unknown, lang: ErrLang =
       if (typeof value !== 'string') return bad(t.string);
       return /[;{}<>]/.test(value) ? bad(t.fontName) : { ok: true, value: value.trim() };
     case 'feed.fontSize':
+    case 'ui.fontSize':
       return isFeedFontSize(value)
         ? { ok: true, value }
         : bad(t.pxRange(MIN_FEED_FONT_SIZE, MAX_FEED_FONT_SIZE));
@@ -335,6 +340,7 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
   const feed = cfg.get<unknown>('feed.style');
   const lang = cfg.get<unknown>('language');
   const fz = cfg.get<unknown>('feed.fontSize');
+  const uz = cfg.get<unknown>('ui.fontSize');
   const str = (k: string) => {
     const v = cfg.get<unknown>(k);
     return typeof v === 'string' ? v : '';
@@ -358,6 +364,7 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
     'sidebar.top': isSidebarTopMode(top) ? top : DEFAULT_SIDEBAR_TOP,
     'feed.style': isFeedStyle(feed) ? feed : DEFAULT_FEED_STYLE,
     'feed.fontSize': isFeedFontSize(fz) ? fz : DEFAULT_FEED_FONT_SIZE,
+    'ui.fontSize': isFeedFontSize(uz) ? uz : DEFAULT_FEED_FONT_SIZE,
     'font.interface': str('font.interface'),
     'font.panels': str('font.panels'),
     'font.code': str('font.code'),

@@ -20,6 +20,7 @@ export function fontStack(name: string, fallback: string): string | undefined {
 /** CSS-переменные корня: пусто (`undefined`) — убрать, остаются значения из tokens.css. */
 export function appearanceVars(m: Appearance): Record<string, string | undefined> {
   const size = isFeedFontSize(m.feedFontSize) ? m.feedFontSize : DEFAULT_FEED_FONT_SIZE;
+  const ui = isFeedFontSize(m.uiFontSize) ? m.uiFontSize : DEFAULT_FEED_FONT_SIZE;
   return {
     '--font': fontStack(m.fontInterface, 'var(--font-vscode)'),
     '--mono': fontStack(m.fontCode, 'var(--mono-vscode)'),
@@ -27,6 +28,8 @@ export function appearanceVars(m: Appearance): Record<string, string | undefined
     '--panel-font': fontStack(m.fontPanels, 'var(--font-vscode)'),
     '--feed-zoom':
       size === DEFAULT_FEED_FONT_SIZE ? undefined : String(size / DEFAULT_FEED_FONT_SIZE),
+    // интерфейс целиком (`zoom` на #root); лента делит на него свой масштаб и остаётся своего размера
+    '--ui-zoom': ui === DEFAULT_FEED_FONT_SIZE ? undefined : String(ui / DEFAULT_FEED_FONT_SIZE),
   };
 }
 
@@ -48,7 +51,18 @@ export function applyUserFontsLink(css: string | undefined, doc: Document = docu
   doc.head.append(el);
 }
 
+/**
+ * Масштаб интерфейса (`--ui-zoom` корня). Под `zoom` размеры из `getBoundingClientRect` и `innerWidth` — в пикселях
+ * окна, а px в стилях умножаются на масштаб: такие величины перед записью в стиль или сравнением с порогом в px
+ * вёрстки делятся на него.
+ */
+export function uiZoom(root: HTMLElement = document.documentElement): number {
+  const z = parseFloat(root.style.getPropertyValue('--ui-zoom'));
+  return Number.isFinite(z) && z > 0 ? z : 1;
+}
+
 export function applyAppearance(m: Appearance, root: HTMLElement = document.documentElement): void {
+  const zoomBefore = uiZoom(root);
   userFonts.value = { ui: m.userFonts.ui, code: m.userFonts.code };
   applyUserFontsLink(m.userFonts.css, root.ownerDocument);
   // через CSSOM: CSP вебвью запрещает inline-стили в разметке, но не style.setProperty
@@ -56,6 +70,8 @@ export function applyAppearance(m: Appearance, root: HTMLElement = document.docu
     if (value === undefined) root.style.removeProperty(prop);
     else root.style.setProperty(prop, value);
   }
+  // пороги ширины (узкий режим, панель) пересчитываются по resize — масштаб меняет «ширину» так же
+  if (uiZoom(root) !== zoomBefore) root.ownerDocument.defaultView?.dispatchEvent(new Event('resize'));
 }
 
 /** Шрифты и размер ленты от хоста (`appearance`) — общий слушатель для всех поверхностей. */

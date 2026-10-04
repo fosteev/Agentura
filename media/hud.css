@@ -103,8 +103,9 @@ html:is([data-width="900"],[data-width="full"],[data-width="vscode"]) .body[data
 .side .tabpane[hidden] { display: none; }
 
 /* лента как журнал */
-/* agentura.feed.fontSize: лента масштабируется целиком (жёсткие px и колонки сетки растут вместе с текстом) */
-.log { padding: 10px 14px 8px; display: grid; gap: 2px; align-content: start; zoom: var(--feed-zoom, 1); }
+/* agentura.feed.fontSize: лента масштабируется целиком (жёсткие px и колонки сетки растут вместе с текстом);
+   внутри #root с zoom интерфейса (--ui-zoom) — делим на него, чтобы у ленты остался свой размер */
+.log { padding: 10px 14px 8px; display: grid; gap: 2px; align-content: start; zoom: calc(var(--feed-zoom, 1) / var(--ui-zoom, 1)); }
 .log .u { display: grid; grid-template-columns: 14px 1fr auto; gap: 8px; padding: 6px 0; margin: 6px 0 4px; color: var(--fg); font-weight: 500; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .log > .u:first-child, .log > .turn:first-child > .u:first-child { border-top: 0; margin-top: 0; }
 .log .u .p { color: var(--accent); }

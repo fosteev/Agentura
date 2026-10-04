@@ -102,14 +102,18 @@ describe('шрифты и размер ленты', () => {
     expect(validateSetting('feed.fontSize', 21).ok).toBe(false);
     expect(validateSetting('feed.fontSize', 13.5).ok).toBe(false);
     expect(validateSetting('feed.fontSize', '14').ok).toBe(false);
+    expect(validateSetting('ui.fontSize', 16)).toEqual({ ok: true, value: 16 });
+    expect(validateSetting('ui.fontSize', 21).ok).toBe(false);
   });
   it('readSettings: мусор → пусто и 13', () => {
     expect(readSettings(cfgOf({ 'feed.fontSize': 99, 'font.code': 1 }))).toMatchObject({
       'feed.fontSize': 13,
+      'ui.fontSize': 13,
       'font.code': '',
       'font.interface': '',
     });
     expect(readSettings(cfgOf({ 'feed.fontSize': 16 }))['feed.fontSize']).toBe(16);
+    expect(readSettings(cfgOf({ 'ui.fontSize': 15 }))['ui.fontSize']).toBe(15);
   });
 });
 

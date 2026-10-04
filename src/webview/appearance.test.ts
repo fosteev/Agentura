@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest';
-import { applyAppearance, appearanceVars, fontStack } from './appearance';
+import { applyAppearance, appearanceVars, fontStack, uiZoom } from './appearance';
 import { userFonts } from './fonts';
 
 const msg = (
@@ -9,6 +9,7 @@ const msg = (
     fontPanels: string;
     fontCode: string;
     feedFontSize: number;
+    uiFontSize: number;
     userFonts: { ui: string[]; code: string[]; css?: string };
   }> = {},
 ) => ({
@@ -17,6 +18,7 @@ const msg = (
   fontPanels: '',
   fontCode: '',
   feedFontSize: 13,
+  uiFontSize: 13,
   userFonts: { ui: [], code: [] },
   ...over,
 });
@@ -48,7 +50,13 @@ describe('appearanceVars / applyAppearance', () => {
       '--mono': undefined,
       '--panel-font': undefined,
       '--feed-zoom': undefined,
+      '--ui-zoom': undefined,
     });
+  });
+  it('размер интерфейса — свой масштаб от 13 px; мусор — как 13', () => {
+    expect(appearanceVars(msg({ uiFontSize: 16 }))['--ui-zoom']).toBe(String(16 / 13));
+    expect(appearanceVars(msg({ uiFontSize: 99 }))['--ui-zoom']).toBeUndefined();
+    expect(appearanceVars(msg({ uiFontSize: 16 }))['--feed-zoom']).toBeUndefined();
   });
   it('размер ленты — масштаб от 13 px; мусор — как 13', () => {
     expect(appearanceVars(msg({ feedFontSize: 15.5 }))['--feed-zoom']).toBeUndefined();
@@ -92,5 +100,19 @@ describe('скачанные шрифты', () => {
     expect(userFonts.value).toEqual({ ui: ['Onest'], code: ['Fira Code'] });
     applyAppearance(msg(), root);
     expect(userFonts.value).toEqual({ ui: [], code: [] });
+  });
+
+  it('масштаб интерфейса: uiZoom читает его, смена масштаба шлёт resize (пороги ширины пересчитываются)', () => {
+    let resized = 0;
+    const onResize = () => resized++;
+    window.addEventListener('resize', onResize);
+    applyAppearance(msg({ uiFontSize: 16 }), root);
+    expect(uiZoom(root)).toBeCloseTo(16 / 13);
+    applyAppearance(msg({ uiFontSize: 16, fontCode: 'Fira Code' }), root);
+    expect(resized).toBe(1);
+    applyAppearance(msg(), root);
+    expect(uiZoom(root)).toBe(1);
+    expect(resized).toBe(2);
+    window.removeEventListener('resize', onResize);
   });
 });

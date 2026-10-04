@@ -1,3 +1,4 @@
+import { uiZoom } from '../appearance';
 import { signal, useSignalEffect } from '@preact/signals';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import {
@@ -116,7 +117,7 @@ export function Chat() {
   // hud.css переключает вёрстку по html[data-width="900"]; в реальном webview ширину меряем сами
   useSignalEffect(() => {
     const apply = () => {
-      const isWide = window.innerWidth >= WIDE_PX;
+      const isWide = window.innerWidth / uiZoom() >= WIDE_PX;
       wide.value = isWide;
       if (isWide) {
         document.documentElement.setAttribute('data-width', '900');
@@ -142,7 +143,8 @@ export function Chat() {
   };
   // ширина тела нужна для верхнего предела панели; меняется только с окном
   useEffect(() => {
-    const measure = () => setBodyW(bodyRef.current?.getBoundingClientRect().width ?? 0);
+    // ширины ниже — в пикселях окна; панель задаётся в px вёрстки, их масштаб `zoom` умножит (uiZoom)
+    const measure = () => setBodyW((bodyRef.current?.getBoundingClientRect().width ?? 0) / uiZoom());
     measure();
     window.addEventListener('resize', measure);
     return () => window.removeEventListener('resize', measure);
@@ -151,13 +153,15 @@ export function Chat() {
   const panelOff = !!panel.off;
   const dragWidth = (clientX: number) => {
     const r = bodyRef.current?.getBoundingClientRect();
-    return r ? clampPanel(r.right - clientX, r.width) : PANEL_DEF;
+    const z = uiZoom();
+    return r ? clampPanel((r.right - clientX) / z, r.width / z) : PANEL_DEF;
   };
   const setLiveWidth = (w: number) => bodyRef.current?.style.setProperty('--side-w', `${w}px`);
   const stepWidth = (delta: number) => {
     const r = bodyRef.current?.getBoundingClientRect();
-    const cur = clampPanel(panelRef.current.w ?? PANEL_DEF, r?.width ?? 0);
-    updatePanel({ w: clampPanel(cur + delta, r?.width ?? 0) });
+    const bw = (r?.width ?? 0) / uiZoom();
+    const cur = clampPanel(panelRef.current.w ?? PANEL_DEF, bw);
+    updatePanel({ w: clampPanel(cur + delta, bw) });
   };
 
   const s = chat.value;

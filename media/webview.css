@@ -7,11 +7,13 @@ body {
   padding: 0;
   overflow: hidden;
 }
+/* agentura.ui.fontSize: весь интерфейс масштабируется zoom; под zoom 100vh растёт вместе с ним — делим обратно */
 #root {
   height: 100%;
+  zoom: var(--ui-zoom, 1);
 }
 .webview {
-  height: 100vh;
+  height: calc(100vh / var(--ui-zoom, 1));
 }
 .webview > .body {
   min-height: 0;
@@ -22,7 +24,7 @@ body {
 
 /* боковая панель: те же строки, что в sessions.html, плюс 5-й ряд под список */
 .sidebar {
-  height: 100vh;
+  height: calc(100vh / var(--ui-zoom, 1));
   grid-template-rows: auto auto auto auto 1fr;
 }
 .sidebar .list {
@@ -44,7 +46,7 @@ body {
 .prompt .typed {
   color: var(--fg);
   min-width: 0;
-  max-height: 40vh;
+  max-height: calc(40vh / var(--ui-zoom, 1));
   overflow-y: auto;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -59,7 +61,7 @@ body {
 .opts .plus::after { content: ""; }
 .opts .plus { font-size: 13px; line-height: 1; color: var(--fg); }
 .ctx span .x { cursor: pointer; }
-.compose .menu { max-height: 45vh; overflow-y: auto; }
+.compose .menu { max-height: calc(45vh / var(--ui-zoom, 1)); overflow-y: auto; }
 .opts button[disabled], .tabs button[disabled] { cursor: default; }
 .opts .send[disabled] { color: var(--fg-faint); }
 
@@ -120,7 +122,7 @@ body {
 
 /* попап sessions в шапке чата (этап 6): прижат к правому краю шапки */
 .hud .acts { position: relative; }
-.hud .acts .menu.down { left: auto; right: 0; min-width: 300px; max-height: 60vh; overflow: auto; }
+.hud .acts .menu.down { left: auto; right: 0; min-width: 300px; max-height: calc(60vh / var(--ui-zoom, 1)); overflow: auto; }
 .hud .acts .menu .it { cursor: pointer; }
 
 /* ───── этап 7: состояния, ошибки, лимит, доступность ───── */

@@ -290,6 +290,13 @@
           "maximum": 20,
           "description": "%config.feed.fontSize.description%"
         },
+        "agentura.ui.fontSize": {
+          "type": "integer",
+          "default": 13,
+          "minimum": 10,
+          "maximum": 20,
+          "description": "%config.ui.fontSize.description%"
+        },
         "agentura.language": {
           "type": "string",
           "enum": [

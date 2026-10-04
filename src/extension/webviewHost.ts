@@ -73,6 +73,7 @@ const APPEARANCE_KEYS = [
   'agentura.font.panels',
   'agentura.font.code',
   'agentura.feed.fontSize',
+  'agentura.ui.fontSize',
 ];
 
 /** Скачанные шрифты для `appearance`: имена и ссылка на fonts.css (`?v=` — mtime, чтобы webview не держал старый). */
@@ -103,6 +104,7 @@ async function postAppearance(webview: vscode.Webview, isLatest: () => boolean, 
       fontPanels: v['font.panels'],
       fontCode: v['font.code'],
       feedFontSize: v['feed.fontSize'],
+      uiFontSize: v['ui.fontSize'],
       userFonts,
     });
   } catch (e) {

@@ -1,3 +1,4 @@
+import { uiZoom } from '../appearance';
 import type { ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import {
@@ -260,18 +261,22 @@ function FontCards({
   );
 }
 
-function FontSizeSelect({ value }: { value: number }) {
-  void errors.value['feed.fontSize'];
+function FontSizeSelect({
+  value,
+  k = 'feed.fontSize',
+}: {
+  value: number;
+  k?: 'feed.fontSize' | 'ui.fontSize';
+}) {
+  void errors.value[k];
   const sizes: number[] = [];
   for (let n = MIN_FEED_FONT_SIZE; n <= MAX_FEED_FONT_SIZE; n++) sizes.push(n);
   return (
     <span class="dd">
       <select
-        aria-label="feed.fontSize"
+        aria-label={k}
         value={String(value)}
-        onChange={(e) =>
-          commit('feed.fontSize', Number((e.currentTarget as HTMLSelectElement).value))
-        }
+        onChange={(e) => commit(k, Number((e.currentTarget as HTMLSelectElement).value))}
       >
         {sizes.map((n) => (
           <option key={n} value={String(n)}>
@@ -443,7 +448,7 @@ export function Settings() {
     const apply = () =>
       document.documentElement.setAttribute(
         'data-width',
-        window.innerWidth < NAV_PX ? '380' : '900',
+        window.innerWidth / uiZoom() < NAV_PX ? '380' : '900',
       );
     apply();
     window.addEventListener('resize', apply);
@@ -722,6 +727,9 @@ export function Settings() {
                 }
               >
                 <FontSizeSelect value={v['feed.fontSize']} />
+              </Row>
+              <Row name={T.uiFontSize.name} isNew desc={T.uiFontSize.desc} k="ui.fontSize">
+                <FontSizeSelect value={v['ui.fontSize']} k="ui.fontSize" />
               </Row>
               <Row
                 name={T.fontInterface.name}

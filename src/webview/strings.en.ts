@@ -625,6 +625,10 @@ export const en: Ui = {
     fontSampleCode: 'count ?? prev;',
     sampleTrying: (name: string) => `sample — trying ${name}`,
     sample: 'sample — fonts and size from the settings above',
+    uiFontSize: {
+      name: 'Interface size',
+      desc: 'Everything except the feed: header, input box, panels, sidebar, this tab. The feed has its own size above. Open tabs update immediately.',
+    },
     feedFontSize: {
       name: 'Feed text size',
       desc: 'The whole chat feed scales: replies, actions, code, cards. Open tabs update immediately.',

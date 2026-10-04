@@ -116,7 +116,7 @@ void _allEventTypesListed;
 export type ToWebview =
   | { type: 'init'; surface: 'chat' | 'sidebar' | 'settings'; version: string }
   /**
-   * Шрифты и размер ленты (`agentura.font.*`, `agentura.feed.fontSize`): всем поверхностям после `init` и при
+   * Шрифты, размер ленты и интерфейса (`agentura.font.*`, `agentura.feed.fontSize`, `agentura.ui.fontSize`): всем поверхностям после `init` и при
    * смене настройки. Пустой шрифт — как в VS Code.
    */
   | {
@@ -125,6 +125,7 @@ export type ToWebview =
       fontPanels: string;
       fontCode: string;
       feedFontSize: number;
+      uiFontSize: number;
       /**
        * Шрифты, скачанные из Google Fonts: имена по назначению и ссылка на их fonts.css (webview-uri с `?v=`).
        * Нет скачанных — без `css`.
