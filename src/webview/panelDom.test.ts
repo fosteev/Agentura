@@ -341,6 +341,21 @@ describe('состояние webview', () => {
     expect(q(host, '#pane-changes').hidden).toBe(false);
   });
 
+  it('agScope: валидные охваты читаются, кривые поля и виды отбрасываются', () => {
+    stored = { panel: { agScope: { tree: 'turn', lanes: 'session', cards: 'all', list: 'turn' } } };
+    expect(vscode.readPanel().agScope).toEqual({ tree: 'turn', lanes: 'session' });
+    stored = { panel: { agScope: 'session' } };
+    expect(vscode.readPanel().agScope).toBeUndefined();
+    stored = { panel: { agScope: {} } };
+    expect(vscode.readPanel().agScope).toBeUndefined();
+  });
+
+  it('savePanel({ agScope }) сохраняет охват и не трогает остальное', () => {
+    stored = { sessionId: 's1', panel: { w: 420 } };
+    vscode.savePanel({ agScope: { cards: 'session' } });
+    expect(stored).toEqual({ sessionId: 's1', panel: { w: 420, agScope: { cards: 'session' } } });
+  });
+
   it('по умолчанию: 300 px, развёрнута, «изменения»', async () => {
     const host = mount();
     await flush();

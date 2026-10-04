@@ -34,13 +34,13 @@ export function isAgentRow(r: FeedRow): r is ToolRow {
 }
 
 /** Сколько агент работает (идёт — до `now`). */
-function elapsed(a: AgentNode, now: number): number {
+export function elapsed(a: AgentNode, now: number): number {
   if (a.status === 'running') return Math.max(0, now - a.startedAt, a.durationMs ?? 0);
   return a.durationMs ?? Math.max(0, (a.endedAt ?? now) - a.startedAt);
 }
 
 /** Что агент делает сейчас: незакрытый вызов, иначе рассуждение/текст, иначе последний инструмент прогресса. */
-function currentCall(a: AgentNode, cwd?: string): string {
+export function currentCall(a: AgentNode, cwd?: string): string {
   for (let i = a.segs.length - 1; i >= 0; i--) {
     const g = a.segs[i]!;
     if (g.endAt !== undefined) continue;
@@ -352,6 +352,56 @@ export function detailAgent(h: HudState, selected?: string): AgentNode | undefin
 
 const TASKS_SHOWN = 6;
 
+/** Строка основного агента: модель, чем занят, контекст. */
+export function mainRow(
+  h: HudState,
+  o: { working: boolean; waiting: boolean; model?: string },
+): MapRowView {
+  const used = h.context?.used;
+  return {
+    cls: 'a main',
+    mark: o.working ? '●' : '○',
+    name: ui.agents.main,
+    meta: `${o.model ? shortModel(o.model) : '—'} · ${
+      o.working ? (o.waiting ? ui.agents.waitingAgents : ui.agents.answering) : ui.agents.waitingTask
+    }`,
+    tokens: used !== undefined ? compactTokens(used) : '—',
+    depth: 0,
+  };
+}
+
+/** Фоновые задачи основного (shell, monitor): идущие первыми, потом новые. */
+export function backgroundTasks(h: HudState): AgentNode[] {
+  return h.agents
+    .filter((a) => !isSubagent(a))
+    .sort(
+      (x, y) =>
+        Number(y.status === 'running') - Number(x.status === 'running') ||
+        y.startedAt - x.startedAt,
+    );
+}
+
+/** Строка фоновой задачи (в списке, в дереве, в чипах). */
+export function taskRow(a: AgentNode, now: number): MapRowView {
+  const running = a.status === 'running';
+  return {
+    agentId: a.agentId,
+    cls: running ? 'a busy' : 'a',
+    mark: running ? '◐' : a.status === 'failed' ? '✕' : '○',
+    name: a.description || a.taskType,
+    meta: running
+      ? `${ui.agents.shell} · ${formatDuration(elapsed(a, now))}`
+      : a.status === 'failed'
+        ? `${ui.agents.failed} ${clock(a.endedAt ?? now)}`
+        : a.status === 'stopped'
+          ? `${ui.agents.stopped} ${clock(a.endedAt ?? now)}`
+          : ui.agents.finishedAt(clock(a.endedAt ?? now)),
+    tokens: '—',
+    ...(running ? { stopTaskId: a.taskId } : {}),
+    depth: 0,
+  };
+}
+
 export function agentMapView(
   h: HudState,
   o: {
@@ -371,23 +421,7 @@ export function agentMapView(
   const detail = detailAgent(h, o.selected);
   const ids = new Set(shown.map((a) => a.agentId));
 
-  const used = h.context?.used;
-  const rows: MapRowView[] = [
-    {
-      cls: 'a main',
-      mark: o.working ? '●' : '○',
-      name: ui.agents.main,
-      meta: `${o.model ? shortModel(o.model) : '—'} · ${
-        o.working
-          ? o.waiting
-            ? ui.agents.waitingAgents
-            : ui.agents.answering
-          : ui.agents.waitingTask
-      }`,
-      tokens: used !== undefined ? compactTokens(used) : '—',
-      depth: 0,
-    },
-  ];
+  const rows: MapRowView[] = [mainRow(h, o)];
   // дерево: субагент → его субагенты (parentAgentId); родителя нет на карте — на верхний уровень
   const walk = (parent: string | undefined, depth: number) => {
     for (const a of shown) {
@@ -399,33 +433,9 @@ export function agentMapView(
   };
   walk(undefined, 0);
 
-  const tasks = h.agents
-    .filter((a) => !isSubagent(a))
-    .sort(
-      (x, y) =>
-        Number(y.status === 'running') - Number(x.status === 'running') ||
-        y.startedAt - x.startedAt,
-    )
+  const tasks = backgroundTasks(h)
     .slice(0, TASKS_SHOWN)
-    .map((a): MapRowView => {
-      const running = a.status === 'running';
-      return {
-        agentId: a.agentId,
-        cls: running ? 'a busy' : 'a',
-        mark: running ? '◐' : a.status === 'failed' ? '✕' : '○',
-        name: a.description || a.taskType,
-        meta: running
-          ? `${ui.agents.shell} · ${formatDuration(elapsed(a, now))}`
-          : a.status === 'failed'
-            ? `${ui.agents.failed} ${clock(a.endedAt ?? now)}`
-            : a.status === 'stopped'
-              ? `${ui.agents.stopped} ${clock(a.endedAt ?? now)}`
-              : ui.agents.finishedAt(clock(a.endedAt ?? now)),
-        tokens: '—',
-        ...(running ? { stopTaskId: a.taskId } : {}),
-        depth: 0,
-      };
-    });
+    .map((a) => taskRow(a, now));
 
   const bar = shown.map((a) => ({
     ...(a.status === 'running'
@@ -461,7 +471,7 @@ export function agentMapView(
   };
 }
 
-function mapRow(a: AgentNode, depth: number, now: number, sel: boolean, cwd?: string): MapRowView {
+export function mapRow(a: AgentNode, depth: number, now: number, sel: boolean, cwd?: string): MapRowView {
   const time = formatDuration(elapsed(a, now));
   const model = a.model ? `${shortModel(a.model)} · ` : '';
   const status =
@@ -503,6 +513,36 @@ function mapRow(a: AgentNode, depth: number, now: number, sel: boolean, cwd?: st
 const DETAIL_HEAD = 2;
 const DETAIL_TAIL = 8;
 
+/** Строки хода агента: вызов, рассуждение, текст — со временем от старта агента. */
+export function detailRows(a: AgentNode, now: number, cwd?: string): DetailRowView[] {
+  return a.segs.map((g): DetailRowView => {
+    const running = g.endAt === undefined && a.status === 'running';
+    const dur = formatDuration((g.endAt ?? now) - g.at);
+    const at = (Math.max(0, g.at - a.startedAt) / 1000).toFixed(1);
+    if (g.kind !== 'tool') {
+      return {
+        at,
+        op: g.kind === 'think' ? 'think' : 'text',
+        ev: g.kind === 'think' ? '' : ui.agents.detail.text,
+        d: running ? `${dur}…` : dur,
+        mute: true,
+        ...(running ? { now: true } : {}),
+      };
+    }
+    const v = toolView(g.name ?? '', g.input ?? {}, cwd);
+    const tail = running ? `${dur}…` : dur;
+    return {
+      at,
+      op: v.op,
+      ev: v.what,
+      ...(v.dim ? { dim: v.dim } : {}),
+      ...(v.dimAfter ? { dimAfter: true } : {}),
+      d: g.detail && !running ? `${g.detail} · ${tail}` : tail,
+      ...(running ? { now: true } : {}),
+    };
+  });
+}
+
 export function agentDetail(
   a: AgentNode,
   now: number,
@@ -535,32 +575,7 @@ export function agentDetail(
     { label: ui.agents.detail.calls, value: String(calls) },
   ];
 
-  const all = a.segs.map((g): DetailRowView => {
-    const running = g.endAt === undefined && a.status === 'running';
-    const dur = formatDuration((g.endAt ?? now) - g.at);
-    const at = (Math.max(0, g.at - a.startedAt) / 1000).toFixed(1);
-    if (g.kind !== 'tool') {
-      return {
-        at,
-        op: g.kind === 'think' ? 'think' : 'text',
-        ev: g.kind === 'think' ? '' : ui.agents.detail.text,
-        d: running ? `${dur}…` : dur,
-        mute: true,
-        ...(running ? { now: true } : {}),
-      };
-    }
-    const v = toolView(g.name ?? '', g.input ?? {}, cwd);
-    const tail = running ? `${dur}…` : dur;
-    return {
-      at,
-      op: v.op,
-      ev: v.what,
-      ...(v.dim ? { dim: v.dim } : {}),
-      ...(v.dimAfter ? { dimAfter: true } : {}),
-      d: g.detail && !running ? `${g.detail} · ${tail}` : tail,
-      ...(running ? { now: true } : {}),
-    };
-  });
+  const all = detailRows(a, now, cwd);
   const rows =
     all.length > DETAIL_HEAD + DETAIL_TAIL + 1
       ? [

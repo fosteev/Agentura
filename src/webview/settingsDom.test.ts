@@ -42,6 +42,7 @@ const values: SettingsValues = {
   'sessionList.time': true,
   'sidebar.top': 'detailed',
   'feed.style': 'journal',
+  'agents.view': 'list',
   'feed.fontSize': 13,
   'ui.fontSize': 13,
   'font.interface': '',
@@ -114,6 +115,7 @@ describe('вкладка настроек', () => {
       'agentura.sessionList.context',
       'agentura.sessionList.time',
       'agentura.feed.style',
+      'agentura.agents.view',
       'agentura.feed.fontSize',
       'agentura.ui.fontSize',
       'agentura.font.interface',
@@ -189,6 +191,17 @@ describe('вкладка настроек', () => {
       { type: 'settings.set', key: 'feed.style', value: 'cards' },
       { type: 'settings.set', key: 'feed.style', value: 'journal' },
     ]);
+    const agents = group('agents.view');
+    expect(
+      [...agents.querySelectorAll('.pv .webview')].map((e) => e.getAttribute('data-agents')),
+    ).toEqual(['list', 'tree', 'lanes', 'cards', 'graph']);
+    // превью — настоящая вкладка «агенты»: дерево с ветками, дорожки, карточки; у списка — строки агентов
+    expect(agents.querySelectorAll('.pv [data-agents="tree"] .am .kids > li').length).toBeGreaterThan(3);
+    expect(agents.querySelectorAll('.pv [data-agents="lanes"] .am .ln').length).toBeGreaterThan(4);
+    expect(agents.querySelectorAll('.pv [data-agents="cards"] .am .card').length).toBe(4);
+    expect(agents.querySelectorAll('.pv [data-agents="list"] .ag .a.sub').length).toBe(4);
+    agents.querySelector<HTMLButtonElement>('[data-value="tree"]')!.click();
+    expect(sets().at(-1)).toEqual({ type: 'settings.set', key: 'agents.view', value: 'tree' });
     const top = group('sidebar.top');
     expect(
       [...top.querySelectorAll('.pv .sidebar')].map((e) => e.getAttribute('data-top')),
@@ -368,7 +381,7 @@ describe('вкладка настроек', () => {
       result: { ok: true, source: 'setting', path: '/x/claude', version: '2.1.285' },
     });
     await flush();
-    const ok = host.querySelector('.set .ok')!;
+    const ok = host.querySelector('.set .ok[role="status"]')!;
     expect(ok.textContent).toContain('найден');
     expect(ok.textContent).toContain('/x/claude');
     expect(ok.textContent).toContain('2.1.285');

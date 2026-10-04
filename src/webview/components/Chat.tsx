@@ -19,6 +19,7 @@ import {
   respondPermission,
   selectedAgent,
   feedStyle,
+  agentsView,
   showThinking,
   stopAgent,
   stopAgents,
@@ -37,7 +38,8 @@ import { Hud, type Tab } from './Hud';
 import { TabBar, type TabItem } from './TabBar';
 import { Log } from './Log';
 import { useStickToBottom } from '../useStickToBottom';
-import { AgentsPane, ChangesPane } from './SidePanes';
+import { AgentsPane, ChangesPane, type AgentsPaneModel } from './SidePanes';
+import { agentsViewPane, defaultScope } from '../agentViews';
 import type { FeedRow } from '../chatState';
 import { formatDuration, toolView } from '../toolView';
 
@@ -144,7 +146,8 @@ export function Chat() {
   // ширина тела нужна для верхнего предела панели; меняется только с окном
   useEffect(() => {
     // ширины ниже — в пикселях окна; панель задаётся в px вёрстки, их масштаб `zoom` умножит (uiZoom)
-    const measure = () => setBodyW((bodyRef.current?.getBoundingClientRect().width ?? 0) / uiZoom());
+    const measure = () =>
+      setBodyW((bodyRef.current?.getBoundingClientRect().width ?? 0) / uiZoom());
     measure();
     window.addEventListener('resize', measure);
     return () => window.removeEventListener('resize', measure);
@@ -246,6 +249,32 @@ export function Chat() {
   const agentsBdg = agentBadge(h);
   // основной ждёт своих субагентов: живая строка «ждёт N агентов» и «stop all»
   const awaited = working && s.status !== 'waiting' ? waitingAgents(s.rows, h) : [];
+  // вид вкладки «агенты»: `graph` в панели показывает список (граф — вкладка редактора, этап 2 roadmap 11)
+  const agentsMode = agentsView.value === 'graph' ? 'list' : agentsView.value;
+  const agentsOpts = {
+    working,
+    waiting: awaited.length > 0,
+    now,
+    cwd: s.cwd,
+    hasSession: !!s.sessionId,
+    ...(selectedAgent.value ? { selected: selectedAgent.value } : {}),
+    ...(s.model ? { model: s.model } : {}),
+  };
+  // виды Б/В/Г считаются только на видимой вкладке (раз в секунду, на всю сессию — не бесплатно)
+  const agentsModel = (hidden: boolean): AgentsPaneModel =>
+    agentsMode === 'list'
+      ? { mode: 'list', view: agentMapView(h, agentsOpts) }
+      : hidden
+        ? { mode: 'hidden' }
+        : {
+            mode: 'views',
+            view: agentsViewPane(
+              h,
+              agentsMode,
+              panel.agScope?.[agentsMode] ?? defaultScope(agentsMode),
+              agentsOpts,
+            ),
+          };
   const liveText = awaited.length
     ? `${ui.log.waitingAgents(awaited.length)}${s.turnStartedAt ? ` · ${formatDuration(now - s.turnStartedAt)}` : ''}`
     : live;
@@ -273,7 +302,7 @@ export function Chat() {
   ];
 
   return (
-    <div class="webview" data-feed={feedStyle.value}>
+    <div class="webview" data-feed={feedStyle.value} data-agents={agentsView.value}>
       <Hud
         project={s.project}
         title={s.title}
@@ -283,7 +312,10 @@ export function Chat() {
         badges={
           empty
             ? {}
-            : { ...(changesBdg ? { changes: changesBdg } : {}), ...(agentsBdg ? { agents: agentsBdg } : {}) }
+            : {
+                ...(changesBdg ? { changes: changesBdg } : {}),
+                ...(agentsBdg ? { agents: agentsBdg } : {}),
+              }
         }
         sessions={recent.value}
         currentId={currentSession.value ?? (s.sessionId || undefined)}
@@ -479,15 +511,12 @@ export function Chat() {
             }
           />
           <AgentsPane
-            view={agentMapView(h, {
-              working,
-              waiting: awaited.length > 0,
-              now,
-              cwd: s.cwd,
-              hasSession: !!s.sessionId,
-              ...(selectedAgent.value ? { selected: selectedAgent.value } : {}),
-              ...(s.model ? { model: s.model } : {}),
-            })}
+            model={agentsModel(wide.value ? panelTab !== 'agents' : t !== 'agents')}
+            now={now}
+            onScope={(scope) =>
+              agentsMode !== 'list' &&
+              updatePanel({ agScope: { ...panel.agScope, [agentsMode]: scope } })
+            }
             hidden={wide.value ? panelTab !== 'agents' : t !== 'agents'}
             labelledBy={wide.value ? 'ptab-agents' : 'tab-agents'}
             onSelect={(id) => (selectedAgent.value = id)}
@@ -503,9 +532,7 @@ export function Chat() {
             onClick={() => updatePanel({ tab: 'changes', off: false })}
           >
             {ICON_CHANGES}
-            {changesBdg && (
-              <span class={changesBdg.live ? 'b live' : 'b'}>{changesBdg.count}</span>
-            )}
+            {changesBdg && <span class={changesBdg.live ? 'b live' : 'b'}>{changesBdg.count}</span>}
           </button>
           <button
             data-tip={ui.tabs.agents}

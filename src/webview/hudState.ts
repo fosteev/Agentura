@@ -36,6 +36,8 @@ export interface TimelineSeg {
 }
 
 export interface TurnTimeline {
+  /** Ход пользователя (`HudState.turnNo` на момент старта); ход-пробуждение несёт номер прежнего. У таймлайнов агентов нет. */
+  turnNo?: number;
   startedAt: number;
   endedAt?: number;
   segs: TimelineSeg[];
@@ -151,7 +153,7 @@ function activeTurn(s: HudState): TurnTimeline | undefined {
 function ensureTurn(s: HudState, now: number): { state: HudState; turn: TurnTimeline } {
   const cur = activeTurn(s);
   if (cur) return { state: s, turn: cur };
-  const turn: TurnTimeline = { startedAt: now, segs: [] };
+  const turn: TurnTimeline = { turnNo: s.turnNo, startedAt: now, segs: [] };
   return { state: { ...s, turns: [...s.turns, turn].slice(-KEEP_TURNS) }, turn };
 }
 
@@ -336,11 +338,12 @@ export function applyHud(s: HudState, e: AgentEvent, now = Date.now()): HudState
       const closed = s.turns.map((t) =>
         t.endedAt === undefined ? { ...closeAll(t, e.at, true), endedAt: e.at } : t,
       );
+      // ход-пробуждение (без промпта) продолжает ход пользователя: его агенты — те же «за ход»
+      const turnNo = e.prompt !== undefined || e.prompts ? s.turnNo + 1 : s.turnNo;
       return {
         ...s,
-        turns: [...closed, { startedAt: e.at, segs: [] }].slice(-KEEP_TURNS),
-        // ход-пробуждение (без промпта) продолжает ход пользователя: его агенты — те же «за ход»
-        ...(e.prompt !== undefined || e.prompts ? { turnNo: s.turnNo + 1 } : {}),
+        turns: [...closed, { turnNo, startedAt: e.at, segs: [] }].slice(-KEEP_TURNS),
+        turnNo,
       };
     }
     case 'thinking.start': {

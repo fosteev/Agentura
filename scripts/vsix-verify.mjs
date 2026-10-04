@@ -91,6 +91,7 @@ for (const f of [
   'dist/webview/settings.js',
   'media/icon.svg',
   'media/agents.css',
+  'media/agents-map.css',
   'media/attach.css',
   'media/tooltip.css',
   'media/settings.css',

@@ -93,6 +93,11 @@
         "category": "Agentura"
       },
       {
+        "command": "agentura.agentsView",
+        "title": "%command.agentsView.title%",
+        "category": "Agentura"
+      },
+      {
         "command": "agentura.addGoogleFont",
         "title": "%command.addGoogleFont.title%",
         "category": "Agentura"
@@ -267,6 +272,25 @@
           ],
           "default": "journal",
           "description": "%config.feed.style.description%"
+        },
+        "agentura.agents.view": {
+          "type": "string",
+          "enum": [
+            "list",
+            "tree",
+            "lanes",
+            "cards",
+            "graph"
+          ],
+          "enumDescriptions": [
+            "%config.agents.view.enum.list%",
+            "%config.agents.view.enum.tree%",
+            "%config.agents.view.enum.lanes%",
+            "%config.agents.view.enum.cards%",
+            "%config.agents.view.enum.graph%"
+          ],
+          "default": "list",
+          "description": "%config.agents.view.description%"
         },
         "agentura.font.interface": {
           "type": "string",

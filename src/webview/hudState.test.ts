@@ -321,6 +321,15 @@ describe('таймлайн хода', () => {
     expect(s.turns).toHaveLength(3);
     expect(s.turns[2]!.startedAt).toBe(40);
   });
+
+  it('turnNo таймлайна — номер хода пользователя; ход-пробуждение несёт прежний', () => {
+    let s = initialHud();
+    s = applyHud(s, ev({ type: 'turn.start', at: 0, prompt: 'один' }));
+    s = applyHud(s, ev({ type: 'turn.start', at: 10, prompt: 'два' }));
+    s = applyHud(s, ev({ type: 'turn.start', at: 20 }));
+    expect(s.turns.map((t) => t.turnNo)).toEqual([1, 2, 2]);
+    expect(s.turnNo).toBe(2);
+  });
 });
 
 describe('агенты', () => {

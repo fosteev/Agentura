@@ -12,7 +12,7 @@ import { SessionMemory } from './sessionMemory';
 import { SessionsService } from './sessionsService';
 import { showDebugState } from './debugPanel';
 import { SettingsPanel } from './settingsPanel';
-import { FEED_STYLES, readSettings, writeSetting, type SettingKey } from '../settings';
+import { AGENTS_VIEWS, FEED_STYLES, readSettings, writeSetting, type SettingKey } from '../settings';
 import { hostStrings } from '../shared/l10n';
 import { currentLanguage, setUserFonts, userFontsDir } from './webviewHost';
 import { UserFonts } from './googleFonts';
@@ -141,6 +141,28 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     await writeSetting(cfg, key, value, target);
   };
 
+  const pickAgentsView = async (): Promise<void> => {
+    const t = hostStrings(currentLanguage());
+    const cfg = vscode.workspace.getConfiguration('agentura');
+    const current = readSettings(cfg)['agents.view'];
+    const picked = await vscode.window.showQuickPick(
+      AGENTS_VIEWS.map((id) => ({
+        label: `${id === current ? '$(check) ' : ''}${t.agentsViews[id]?.[0] ?? id}`,
+        description: id === current ? t.feedStyleCurrent : '',
+        detail: t.agentsViews[id]?.[1] ?? '',
+        id,
+      })),
+      { placeHolder: t.agentsViewPlaceholder },
+    );
+    if (!picked) return;
+    try {
+      await writeWhereSet('agents.view', picked.id);
+    } catch (e) {
+      log.warn('agentura.agentsView: не записать agents.view', e);
+      void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e));
+    }
+  };
+
   const pickFeedStyle = async (): Promise<void> => {
     const t = hostStrings(currentLanguage());
     const cfg = vscode.workspace.getConfiguration('agentura');
@@ -206,6 +228,7 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
       }
     }),
     vscode.commands.registerCommand('agentura.feedStyle', () => pickFeedStyle()),
+    vscode.commands.registerCommand('agentura.agentsView', () => pickAgentsView()),
     // второй аргумент — назначение из вкладки настроек (`fonts.add`); из палитры приходит пустым
     vscode.commands.registerCommand('agentura.addGoogleFont', (kind?: unknown) =>
       addGoogleFont(

@@ -9,6 +9,7 @@ import {
   SESSION_LIST_MODES,
   SIDEBAR_TOP_MODES,
   FEED_STYLES,
+  AGENTS_VIEWS,
   DEFAULT_FEED_FONT_SIZE,
   MAX_FEED_FONT_SIZE,
   MIN_FEED_FONT_SIZE,
@@ -29,7 +30,7 @@ import {
   settingsValues,
 } from '../settingsStore';
 import { ui, uiLang } from '../strings';
-import { ChoiceCards, FeedPreview, SidebarPreview } from './SettingsPreview';
+import { AgentsPreview, ChoiceCards, FeedPreview, SidebarPreview } from './SettingsPreview';
 import { fontStack } from '../appearance';
 import { codeFonts, installedFonts, uiFonts, userFonts } from '../fonts';
 import {
@@ -709,6 +710,23 @@ export function Settings() {
                     options={cardOptions(FEED_STYLES, T.feedStyle.options)}
                     preview={(style) => <FeedPreview style={style} />}
                     onPick={(style) => commit('feed.style', style)}
+                  />
+                }
+              >
+                {null}
+              </Row>
+              <Row
+                name={T.agentsView.name}
+                isNew
+                desc={T.agentsView.desc}
+                k="agents.view"
+                below={
+                  <ChoiceCards
+                    label={T.agentsView.name}
+                    value={v['agents.view']}
+                    options={cardOptions(AGENTS_VIEWS, T.agentsView.options)}
+                    preview={(view) => <AgentsPreview view={view} />}
+                    onPick={(view) => commit('agents.view', view)}
                   />
                 }
               >

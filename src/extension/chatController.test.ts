@@ -210,6 +210,15 @@ describe('ChatController', () => {
     expect(posted).toEqual([expect.objectContaining({ type: 'chat.info', feedStyle: 'cards' })]);
   });
 
+  it('pushInfo: вид вкладки «агенты» из настроек уходит в chat.info', async () => {
+    const { controller, posted, deps } = setup();
+    await controller.handle({ type: 'ready' });
+    posted.length = 0;
+    deps.settings = () => ({ allowBypass: false, agentsView: 'lanes' });
+    controller.pushInfo();
+    expect(posted).toEqual([expect.objectContaining({ type: 'chat.info', agentsView: 'lanes' })]);
+  });
+
   it('ready: отдаёт chat.info, список недавних и возможности движка', async () => {
     const { controller, posted } = setup();
     controller.start();
