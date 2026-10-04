@@ -92,6 +92,7 @@ describe('шрифты и размер ленты', () => {
       value: 'JetBrains Mono',
     });
     expect(validateSetting('font.interface', '')).toEqual({ ok: true, value: '' });
+    expect(validateSetting('font.panels', ' Inter ')).toEqual({ ok: true, value: 'Inter' });
     expect(validateSetting('font.code', 'a; color: red').ok).toBe(false);
     expect(validateSetting('font.code', 5).ok).toBe(false);
   });

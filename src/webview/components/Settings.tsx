@@ -26,6 +26,9 @@ import {
   settingsValues,
 } from '../settingsStore';
 import { ui, uiLang } from '../strings';
+import { ChoiceCards, FeedPreview, SidebarPreview } from './SettingsPreview';
+import { fontStack } from '../appearance';
+import { CODE_FONTS, UI_FONTS, installedFonts } from '../fonts';
 import {
   SETTINGS_SECTIONS,
   readSettingsSection,
@@ -174,10 +177,69 @@ function TextField({
   );
 }
 
+/** Варианты карточек: подпись — начало подписи варианта («журнал — как раньше» → «журнал»). */
+const cardOptions = <V extends string>(modes: readonly V[], labels: Record<string, string>) =>
+  modes.map((m): [V, string] => [m, (labels[m] ?? m).split(' — ')[0] ?? m]);
+
 /** Первое имя из font-family VS Code — для подсказки в пустом поле шрифта. */
 function vscodeFont(cssVar: string): string {
   const v = getComputedStyle(document.documentElement).getPropertyValue(cssVar);
   return (v.split(',')[0] ?? '').trim().replace(/^["']|["']$/g, '');
+}
+
+/**
+ * Шрифт карточками: «как в VS Code», установленные из популярных и текущий свой (если его нет в списке).
+ * Каждая карточка нарисована своим шрифтом; наведение примеряет шрифт на образец ленты (`onTry`).
+ */
+type FontKey = 'font.interface' | 'font.panels' | 'font.code';
+
+/** Переменная CSS каждого шрифта и запасной шрифт (`fontStack`); у панелей пусто — прежние шрифты. */
+const FONT_VARS: Record<FontKey, [string, string]> = {
+  'font.interface': ['--font', 'var(--font-vscode)'],
+  'font.panels': ['--panel-font', 'var(--font-vscode)'],
+  'font.code': ['--mono', 'var(--mono-vscode)'],
+};
+
+function FontCards({
+  k,
+  value,
+  candidates,
+  defaultLabel,
+  fallback,
+  sample,
+  onTry,
+}: {
+  k: FontKey;
+  value: string;
+  candidates: readonly string[];
+  /** Подпись карточки «пусто». */
+  defaultLabel: string;
+  fallback: string;
+  sample: string;
+  onTry: (name: string | undefined) => void;
+}) {
+  const fonts = installedFonts(candidates);
+  const own = value.trim();
+  if (own && !fonts.includes(own)) fonts.push(own);
+  const options: [string, string][] = [
+    ['', defaultLabel],
+    ...fonts.map((f): [string, string] => [f, f === 'system-ui' ? T.fontSystem : f]),
+  ];
+  return (
+    <ChoiceCards
+      kind="fonts"
+      label={k}
+      value={own}
+      options={options}
+      preview={(f) => (
+        <span class="fs" style={{ fontFamily: fontStack(f, fallback) ?? fallback }}>
+          {sample}
+        </span>
+      )}
+      onPick={(f) => commit(k, f)}
+      onTry={onTry}
+    />
+  );
 }
 
 function FontSizeSelect({ value }: { value: number }) {
@@ -351,6 +413,10 @@ function EngineRow({ value }: { value: string }) {
 export function Settings() {
   const v = settingsValues.value;
   const [active, setActive] = useState<Section>(readSettingsSection);
+  // примерка шрифта (наведение на карточку): образец ленты рисуется им, настройка не меняется
+  const [trying, setTrying] = useState<{ k: FontKey; name: string }>();
+  const tryFont = (k: FontKey) => (name: string | undefined) =>
+    setTrying(name === undefined ? undefined : { k, name });
   const body = useRef<HTMLDivElement>(null);
   const nav = useRef<HTMLElement>(null);
 
@@ -404,16 +470,26 @@ export function Settings() {
     ...EFFORT_LEVELS.map((e): [string, string] => [e, e]),
   ];
 
-  const listModes = SESSION_LIST_MODES.map((m): [string, string] => [
-    m,
-    T.listView.options[m] ?? m,
-  ]);
-  const topModes = SIDEBAR_TOP_MODES.map((m): [string, string] => [
-    m,
-    T.sidebarTop.options[m] ?? m,
-  ]);
-
-  const feedStyles = FEED_STYLES.map((m): [string, string] => [m, T.feedStyle.options[m] ?? m]);
+  // примеряемый шрифт перекрывает свою переменную только у образцов; '' — значение по умолчанию
+  // (у панелей — `initial`: var(--panel-font, …) берёт прежний шрифт)
+  const trialVars = trying
+    ? (() => {
+        const [cssVar, base] = FONT_VARS[trying.k];
+        const empty = trying.k === 'font.panels' ? 'initial' : base;
+        return { [cssVar]: fontStack(trying.name, base) ?? empty };
+      })()
+    : undefined;
+  const trialCap = trying
+    ? T.sampleTrying(
+        trying.name || (trying.k === 'font.panels' ? T.fontAsBefore : T.fontVscode('')),
+      )
+    : T.sample;
+  const look = {
+    top: v['sidebar.top'],
+    list: v['sessionList.view'],
+    context: v['sessionList.context'],
+    time: v['sessionList.time'],
+  };
   const languageModes = LANGUAGE_MODES.map((m): [string, string] => [
     m,
     T.language.options[m] ?? m,
@@ -547,11 +623,39 @@ export function Settings() {
           {page(
             'sidebar',
             <>
-              <Row name={T.sidebarTop.name} isNew desc={T.sidebarTop.desc} k="sidebar.top">
-                <Select k="sidebar.top" value={v['sidebar.top']} options={topModes} />
+              <Row
+                name={T.sidebarTop.name}
+                isNew
+                desc={T.sidebarTop.desc}
+                k="sidebar.top"
+                below={
+                  <ChoiceCards
+                    label={T.sidebarTop.name}
+                    value={v['sidebar.top']}
+                    options={cardOptions(SIDEBAR_TOP_MODES, T.sidebarTop.options)}
+                    preview={(top) => <SidebarPreview look={{ ...look, top }} part="top" />}
+                    onPick={(top) => commit('sidebar.top', top)}
+                  />
+                }
+              >
+                {null}
               </Row>
-              <Row name={T.listView.name} isNew desc={T.listView.desc} k="sessionList.view">
-                <Select k="sessionList.view" value={v['sessionList.view']} options={listModes} />
+              <Row
+                name={T.listView.name}
+                isNew
+                desc={T.listView.desc}
+                k="sessionList.view"
+                below={
+                  <ChoiceCards
+                    label={T.listView.name}
+                    value={v['sessionList.view']}
+                    options={cardOptions(SESSION_LIST_MODES, T.listView.options)}
+                    preview={(list) => <SidebarPreview look={{ ...look, list }} part="list" />}
+                    onPick={(list) => commit('sessionList.view', list)}
+                  />
+                }
+              >
+                {null}
               </Row>
               <Row
                 name={T.listContext.name}
@@ -570,27 +674,99 @@ export function Settings() {
           {page(
             'look',
             <>
-              <Row name={T.feedStyle.name} isNew desc={T.feedStyle.desc} k="feed.style">
-                <Select k="feed.style" value={v['feed.style']} options={feedStyles} />
+              <Row
+                name={T.feedStyle.name}
+                isNew
+                desc={T.feedStyle.desc}
+                k="feed.style"
+                below={
+                  <ChoiceCards
+                    label={T.feedStyle.name}
+                    value={v['feed.style']}
+                    options={cardOptions(FEED_STYLES, T.feedStyle.options)}
+                    preview={(style) => <FeedPreview style={style} />}
+                    onPick={(style) => commit('feed.style', style)}
+                  />
+                }
+              >
+                {null}
               </Row>
-              <Row name={T.feedFontSize.name} isNew desc={T.feedFontSize.desc} k="feed.fontSize">
+              <Row
+                name={T.feedFontSize.name}
+                isNew
+                desc={T.feedFontSize.desc}
+                k="feed.fontSize"
+                below={
+                  <div class="pv-one" style={trialVars}>
+                    <span class="pv-cap">{trialCap}</span>
+                    <FeedPreview style={v['feed.style']} scaled />
+                  </div>
+                }
+              >
                 <FontSizeSelect value={v['feed.fontSize']} />
               </Row>
-              <Row name={T.fontInterface.name} isNew desc={T.fontInterface.desc} k="font.interface">
-                <TextField
-                  k="font.interface"
-                  value={v['font.interface']}
-                  placeholder={T.fontPlaceholder(vscodeFont('--vscode-font-family'))}
-                  wide
-                />
+              <Row
+                name={T.fontInterface.name}
+                isNew
+                desc={T.fontInterface.desc}
+                k="font.interface"
+                below={
+                  <FontCards
+                    k="font.interface"
+                    value={v['font.interface']}
+                    candidates={UI_FONTS}
+                    defaultLabel={T.fontVscode(vscodeFont('--vscode-font-family'))}
+                    fallback="var(--font-vscode)"
+                    sample={T.fontSampleUi}
+                    onTry={tryFont('font.interface')}
+                  />
+                }
+              >
+                <TextField k="font.interface" value={v['font.interface']} placeholder={T.fontOwn} />
               </Row>
-              <Row name={T.fontCode.name} isNew desc={T.fontCode.desc} k="font.code">
-                <TextField
-                  k="font.code"
-                  value={v['font.code']}
-                  placeholder={T.fontPlaceholder(vscodeFont('--vscode-editor-font-family'))}
-                  wide
-                />
+              <Row
+                name={T.fontPanels.name}
+                isNew
+                desc={T.fontPanels.desc}
+                k="font.panels"
+                below={
+                  <>
+                    <FontCards
+                      k="font.panels"
+                      value={v['font.panels']}
+                      candidates={[...UI_FONTS, ...CODE_FONTS]}
+                      defaultLabel={T.fontAsBefore}
+                      fallback="var(--mono)"
+                      sample={T.fontSamplePanels}
+                      onTry={tryFont('font.panels')}
+                    />
+                    <div class="pv-one pv-panels" style={trialVars}>
+                      <span class="pv-cap">{trialCap}</span>
+                      <SidebarPreview look={look} part="top" />
+                    </div>
+                  </>
+                }
+              >
+                <TextField k="font.panels" value={v['font.panels']} placeholder={T.fontOwn} />
+              </Row>
+              <Row
+                name={T.fontCode.name}
+                isNew
+                desc={T.fontCode.desc}
+                k="font.code"
+                below={
+                  <FontCards
+                    k="font.code"
+                    value={v['font.code']}
+                    candidates={CODE_FONTS}
+                    defaultLabel={T.fontVscode(vscodeFont('--vscode-editor-font-family'))}
+                    fallback="var(--mono-vscode)"
+                    sample={T.fontSampleCode}
+                    onTry={tryFont('font.code')}
+                  />
+                }
+              >
+                <TextField k="font.code" value={v['font.code']} placeholder={T.fontOwn} />
               </Row>
               <Row name={T.language.name} isNew desc={T.language.desc} k="language">
                 <Select k="language" value={v.language} options={languageModes} />

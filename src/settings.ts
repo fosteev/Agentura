@@ -71,6 +71,7 @@ export type SettingKey =
   | 'feed.style'
   | 'feed.fontSize'
   | 'font.interface'
+  | 'font.panels'
   | 'font.code'
   | 'language';
 
@@ -90,6 +91,7 @@ export const SETTING_KEYS: readonly SettingKey[] = [
   'feed.style',
   'feed.fontSize',
   'font.interface',
+  'font.panels',
   'font.code',
   'language',
 ];
@@ -119,6 +121,8 @@ export interface SettingsValues {
   'feed.fontSize': number;
   /** Пусто — шрифт интерфейса VS Code. */
   'font.interface': string;
+  /** Шапка, поле ввода, правая и левая панели; пусто — как было (чат моноширинный, боковая — шрифт интерфейса). */
+  'font.panels': string;
   /** Пусто — шрифт редактора VS Code. */
   'font.code': string;
   language: LanguageMode;
@@ -283,6 +287,7 @@ export function validateSetting(key: SettingKey, value: unknown, lang: ErrLang =
     case 'claudeExecutable':
       return typeof value === 'string' ? { ok: true, value: value.trim() } : bad(t.string);
     case 'font.interface':
+    case 'font.panels':
     case 'font.code':
       if (typeof value !== 'string') return bad(t.string);
       return /[;{}<>]/.test(value) ? bad(t.fontName) : { ok: true, value: value.trim() };
@@ -354,6 +359,7 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
     'feed.style': isFeedStyle(feed) ? feed : DEFAULT_FEED_STYLE,
     'feed.fontSize': isFeedFontSize(fz) ? fz : DEFAULT_FEED_FONT_SIZE,
     'font.interface': str('font.interface'),
+    'font.panels': str('font.panels'),
     'font.code': str('font.code'),
     language: isLanguageMode(lang) ? lang : DEFAULT_LANGUAGE,
   };

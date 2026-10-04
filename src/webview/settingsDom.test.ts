@@ -43,6 +43,7 @@ const values: SettingsValues = {
   'feed.style': 'journal',
   'feed.fontSize': 13,
   'font.interface': '',
+  'font.panels': '',
   'font.code': '',
   language: 'auto',
 };
@@ -112,6 +113,7 @@ describe('вкладка настроек', () => {
       'agentura.feed.style',
       'agentura.feed.fontSize',
       'agentura.font.interface',
+      'agentura.font.panels',
       'agentura.font.code',
       'agentura.language',
       'agentura.claudeExecutable · только эта машина',
@@ -161,6 +163,66 @@ describe('вкладка настроек', () => {
     tab('engine').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
     await flush();
     expect(visible()).toEqual(['session']);
+  });
+
+  it('виды — карточками с настоящими миниатюрами; клик и стрелки пишут настройку', async () => {
+    const host = mount(Settings);
+    state({ 'feed.style': 'folded' });
+    await flush();
+    const group = (k: string) =>
+      host.querySelector<HTMLElement>(`[data-key="agentura.${k}"] [role="radiogroup"]`)!;
+    const feed = group('feed.style');
+    expect(
+      [...feed.querySelectorAll('.pv .webview')].map((e) => e.getAttribute('data-feed')),
+    ).toEqual(['journal', 'folded', 'replies', 'cards']);
+    expect(feed.querySelectorAll('.pv .log .u').length).toBe(4);
+    expect(feed.querySelector('[aria-checked="true"]')?.getAttribute('data-value')).toBe('folded');
+    feed.querySelector<HTMLButtonElement>('[data-value="cards"]')!.click();
+    feed
+      .querySelector('[aria-checked="true"]')!
+      .dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+    expect(sets()).toEqual([
+      { type: 'settings.set', key: 'feed.style', value: 'cards' },
+      { type: 'settings.set', key: 'feed.style', value: 'journal' },
+    ]);
+    const top = group('sidebar.top');
+    expect(
+      [...top.querySelectorAll('.pv .sidebar')].map((e) => e.getAttribute('data-top')),
+    ).toEqual(['detailed', 'compact', 'dense']);
+    const list = group('sessionList.view');
+    expect(
+      [...list.querySelectorAll('.pv .sidebar')].map((e) => e.getAttribute('data-list')),
+    ).toEqual(['detailed', 'compact', 'dense']);
+    expect(
+      host.querySelector('[data-key="agentura.feed.fontSize"] .pv-one .pv-sized .log'),
+    ).not.toBeNull();
+  });
+
+  it('шрифт карточками: каждая своим шрифтом, наведение примеряет на образец, клик пишет', async () => {
+    const host = mount(Settings);
+    state({ 'font.code': 'My Mono' });
+    await flush();
+    const code = host.querySelector<HTMLElement>(
+      '[data-key="agentura.font.code"] [role="radiogroup"]',
+    )!;
+    const card = (v: string) => code.querySelector<HTMLButtonElement>(`[data-value="${v}"]`)!;
+    // без canvas (jsdom) показываются все кандидаты; свой шрифт — отдельной карточкой, выбран
+    expect(card('JetBrains Mono').querySelector<HTMLElement>('.fs')!.style.fontFamily).toContain(
+      'JetBrains Mono',
+    );
+    expect(card('My Mono').getAttribute('aria-checked')).toBe('true');
+    expect(card('').getAttribute('aria-checked')).toBe('false');
+    const sample = host.querySelector<HTMLElement>('[data-key="agentura.feed.fontSize"] .pv-one')!;
+    card('Fira Code').dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    card('Fira Code').dispatchEvent(new MouseEvent('mouseenter'));
+    await flush();
+    expect(sample.style.getPropertyValue('--mono')).toBe('"Fira Code", var(--mono-vscode)');
+    expect(sample.textContent).toContain('Fira Code');
+    code.dispatchEvent(new MouseEvent('mouseleave'));
+    await flush();
+    expect(sample.style.getPropertyValue('--mono')).toBe('');
+    card('Fira Code').click();
+    expect(sets()).toEqual([{ type: 'settings.set', key: 'font.code', value: 'Fira Code' }]);
   });
 
   it('значения отражаются в полях, в «режиме» нет bypass, пока он не разрешён', async () => {

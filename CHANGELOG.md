@@ -20,6 +20,14 @@
   each limit on one line (gauge, percentage, reset time), "New session" as a ＋ button in the "Sessions" header;
   `dense` — limits as mini-gauges in the panel header next to ↻ and ⚙ (yellow above 70 %, red above 85 %), the
   account in the header tooltip.
+- **View previews in settings**: the chat feed style, the sidebar top and the session list view are picked from
+  cards with live miniatures (the real feed and sidebar rendered on sample data, so a preview never drifts from the
+  real view); the feed text size shows a sample feed at the chosen size. Fonts are picked from cards too: installed
+  ones out of a list of popular interface and monospace fonts, each card drawn in its font; hovering a card tries the
+  font on the sample feed, a custom name can still be typed.
+- **Panel font** (`agentura.font.panels`, ⚙ → "Appearance"): one font for the header, the input box and the right
+  and left panels. Empty keeps the current look (monospace chat chrome, the sidebar in the interface font); numbers,
+  paths and code inside the panels stay on the code font.
 - **Settings tab sections are pages**: a section list on the left (arrow keys switch too; a tab strip above the page
   in a narrow split) instead of anchors on one long page; the open section is remembered. Six sections regrouped into
   five: New session, Context and limits, Sidebar, Appearance, Engine.

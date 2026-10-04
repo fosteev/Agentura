@@ -101,7 +101,17 @@ function levelClass(percent: number): string {
   return lv === 'lim-hot' ? '' : lv;
 }
 
-function SessionRow({ s }: { s: SessionSummary }) {
+function SessionRow({
+  s,
+  isCurrent,
+  now: n,
+  ctxCol,
+}: {
+  s: SessionSummary;
+  isCurrent: boolean;
+  now: number;
+  ctxCol: boolean;
+}) {
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const input = useRef<HTMLInputElement>(null);
   const isEditing = editing.value === s.id;
@@ -112,7 +122,7 @@ function SessionRow({ s }: { s: SessionSummary }) {
     }
   }, [isEditing]);
 
-  const cls = rowClass(s, current.value === s.id);
+  const cls = rowClass(s, isCurrent);
   if (isEditing) {
     const finish = (save: boolean) => {
       const title = input.current?.value.trim() ?? '';
@@ -139,7 +149,7 @@ function SessionRow({ s }: { s: SessionSummary }) {
           <small>{ui.sidebar.renameHint}</small>
         </span>
         <span class="ctx">{ctxLabel(s)}</span>
-        <span class="when">{whenLabel(s, now.value)}</span>
+        <span class="when">{whenLabel(s, n)}</span>
       </div>
     );
   }
@@ -162,10 +172,10 @@ function SessionRow({ s }: { s: SessionSummary }) {
       <span class="dot" />
       <span class="t">
         {s.title}
-        <small>{subLabel(s, !listCols.value.context)}</small>
+        <small>{subLabel(s, !ctxCol)}</small>
       </span>
       <span class="ctx">{ctxLabel(s)}</span>
-      <span class="when">{whenLabel(s, now.value)}</span>
+      <span class="when">{whenLabel(s, n)}</span>
     </button>
   );
 }
@@ -198,8 +208,7 @@ function foldProps(key: keyof SidebarFold, name: string) {
 }
 
 /** Кнопка вида списка в заголовке «Сессии»: по кругу подробно → компактно → плотно. */
-function ListModeButton() {
-  const cur = listMode.value;
+function ListModeButton({ cur }: { cur: SessionListMode }) {
   const next = nextSessionListMode(cur);
   const L = ui.sidebar.listMode;
   const title = L.title(L.names[cur], L.names[next]);
@@ -253,28 +262,71 @@ export function Sidebar() {
     };
   }, []);
 
+  return (
+    <SidebarView
+      look={{
+        top: topMode.value,
+        list: listMode.value,
+        context: listCols.value.context,
+        time: listCols.value.time,
+      }}
+      data={{
+        windows: windows.value,
+        account: account.value,
+        sessions: sessions.value,
+        current: current.value,
+        project: project.value,
+        now: now.value,
+      }}
+    />
+  );
+}
+
+/** Вид панели (`agentura.sidebar.top`, `agentura.sessionList.*`). */
+export interface SidebarLook {
+  top: SidebarTopMode;
+  list: SessionListMode;
+  context: boolean;
+  time: boolean;
+}
+
+/** Данные панели: живые — из сообщений хоста, в превью настроек — фикстура. */
+export interface SidebarData {
+  windows: LimitWindowSummary[];
+  account: AccountSummary | undefined;
+  sessions: SessionSummary[];
+  current: string | undefined;
+  project: string;
+  now: number;
+}
+
+/**
+ * Разметка панели по виду и данным. Живая панель (`Sidebar`) и миниатюры вида во вкладке настроек рисуются
+ * одним кодом — превью не расходится с панелью. Поиск и свёрнутые секции — общие сигналы (в превью не трогаются).
+ */
+export function SidebarView({ look, data }: { look: SidebarLook; data: SidebarData }) {
   const u = usage.value;
-  const n = now.value;
+  const n = data.now;
   const q = query.value;
-  const shown = filterSessions(sessions.value, q);
+  const shown = filterSessions(data.sessions, q);
   const groups = groupByDay(shown, n);
   const f = fold.value;
-  const limits = limitRows(windows.value, n);
-  const top = topMode.value;
+  const limits = limitRows(data.windows, n);
+  const top = look.top;
   return (
     <div
       class="sidebar"
       aria-label={ui.sidebar.aria}
-      data-list={listMode.value}
-      data-ctx={listCols.value.context ? 'on' : 'off'}
-      data-time={listCols.value.time ? 'on' : 'off'}
+      data-list={look.list}
+      data-ctx={look.context ? 'on' : 'off'}
+      data-time={look.time ? 'on' : 'off'}
       data-top={top}
     >
       <div
         class="head"
         data-tip={
           top === 'dense'
-            ? accountRows(account.value)
+            ? accountRows(data.account)
                 .map(([k, v]) => `${k}: ${v}`)
                 .join('\n')
             : undefined
@@ -337,14 +389,14 @@ export function Sidebar() {
           </button>
         </h3>
         <div class="kv">
-          {accountRows(account.value).map(([k, v]) => (
+          {accountRows(data.account).map(([k, v]) => (
             <>
               <span>{k}</span>
               <b data-tip={v}>{v}</b>
             </>
           ))}
         </div>
-        {top === 'compact' && <AccountLine a={account.value} />}
+        {top === 'compact' && <AccountLine a={data.account} />}
         <div class="lim">
           {limits.map((l) => (
             <div class="row" key={l.key} data-tip={[l.label, l.note].filter(Boolean).join(' · ')}>
@@ -364,7 +416,7 @@ export function Sidebar() {
           <span class="tri" />
           {ui.sidebar.sessions}
           <span class="r" style={{ color: 'var(--fg-mute)' }}>
-            {project.value}
+            {data.project}
           </span>
           {top !== 'detailed' && (
             <button
@@ -378,7 +430,7 @@ export function Sidebar() {
               ＋
             </button>
           )}
-          <ListModeButton />
+          <ListModeButton cur={look.list} />
         </h3>
         {top === 'detailed' && (
           <button class="new" onClick={() => send({ type: 'session.new' })}>
@@ -425,7 +477,13 @@ export function Sidebar() {
           <>
             <div class="day">{g.day}</div>
             {g.rows.map((s) => (
-              <SessionRow key={s.id} s={s} />
+              <SessionRow
+                key={s.id}
+                s={s}
+                isCurrent={data.current === s.id}
+                now={n}
+                ctxCol={look.context}
+              />
             ))}
           </>
         ))}

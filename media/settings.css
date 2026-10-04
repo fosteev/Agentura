@@ -373,3 +373,153 @@ html[data-width='380'] .num.wide {
 .st-nav .st-tabs button:focus-visible {
   outline-offset: -1px;
 }
+
+/* Миниатюры вида (SettingsPreview): настоящие лента и боковая панель на фикстуре, уменьшенные zoom (--pz). */
+.set .ctl:empty {
+  display: none;
+}
+.set > .cards {
+  grid-column: 1 / -1;
+  display: grid;
+  /* панель в карточке — не шире ~400 px живой: колонки не растягиваются на всю строку */
+  grid-template-columns: repeat(auto-fill, minmax(160px, 220px));
+  gap: 12px;
+  margin-top: 10px;
+}
+.set > .cards:has(.pv-feed) {
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+}
+.card {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  text-align: left;
+  color: var(--fg-mute);
+}
+.card .pv {
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+}
+.card:hover .pv {
+  border-color: var(--fg-faint);
+}
+.card.on .pv {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.card .cn {
+  font-size: 12px;
+  padding-left: 2px;
+}
+.card:hover .cn,
+.card.on .cn {
+  color: var(--fg);
+}
+.card.on .cn::before {
+  content: '✓ ';
+  color: var(--accent);
+}
+.card:focus-visible {
+  outline: none;
+}
+.card:focus-visible .pv {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.pv {
+  --pz: 0.55;
+  overflow: hidden;
+  background: var(--bg);
+}
+.pv > .webview,
+.pv > .sidebar {
+  /* стандартный zoom: ширина «auto» уже в уменьшенных пикселях — контент раскладывается на 1/--pz шире рамки */
+  zoom: var(--pz);
+  width: auto;
+  height: auto;
+  display: block;
+}
+.pv-feed {
+  --pz: 0.5;
+  height: 150px;
+}
+/* в карточках масштаб свой; размер текста из настройки — только в образце */
+.pv-feed:not(.pv-sized) .log {
+  zoom: 1;
+}
+.pv-side {
+  height: 176px;
+  background: var(--bg-side);
+}
+.pv-side.pv-list {
+  height: 150px;
+}
+.pv-side > .sidebar {
+  display: grid;
+  background: var(--bg-side);
+}
+.pv-list .sidebar > .head,
+.pv-list .sidebar > .sec.acc,
+.pv-list .sidebar > .tools {
+  display: none;
+}
+
+.set > .pv-one {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 5px;
+  margin-top: 10px;
+}
+.pv-one .pv {
+  --pz: 1;
+  height: auto;
+  max-height: 240px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+}
+.pv-one .pv-cap {
+  color: var(--fg-faint);
+  font-size: 11px;
+}
+
+/* Шрифты карточками: образец нарисован своим шрифтом, наведение примеряет его на образец ленты выше */
+.set > .cards.fonts {
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px 10px;
+}
+.card .fs {
+  display: block;
+  padding: 9px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  background: var(--bg-raise);
+  color: var(--fg);
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.card:hover .fs {
+  border-color: var(--fg-faint);
+}
+.card.on .fs {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.card:focus-visible .fs {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+}
+.cards.fonts .card .cn {
+  font-size: 11.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* превью шрифта панелей — верх боковой панели в настоящую ширину */
+.pv-one.pv-panels .pv-side {
+  max-width: 340px;
+  height: 200px;
+  max-height: none;
+}

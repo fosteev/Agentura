@@ -53,13 +53,19 @@ export function renderWebview(
 }
 
 /** Ключи, от которых зависит сообщение `appearance`. */
-const APPEARANCE_KEYS = ['agentura.font.interface', 'agentura.font.code', 'agentura.feed.fontSize'];
+const APPEARANCE_KEYS = [
+  'agentura.font.interface',
+  'agentura.font.panels',
+  'agentura.font.code',
+  'agentura.feed.fontSize',
+];
 
 function postAppearance(webview: vscode.Webview): void {
   const v = readSettings(vscode.workspace.getConfiguration('agentura'));
   postToWebview(webview, {
     type: 'appearance',
     fontInterface: v['font.interface'],
+    fontPanels: v['font.panels'],
     fontCode: v['font.code'],
     feedFontSize: v['feed.fontSize'],
   });

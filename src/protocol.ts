@@ -119,7 +119,13 @@ export type ToWebview =
    * Шрифты и размер ленты (`agentura.font.*`, `agentura.feed.fontSize`): всем поверхностям после `init` и при
    * смене настройки. Пустой шрифт — как в VS Code.
    */
-  | { type: 'appearance'; fontInterface: string; fontCode: string; feedFontSize: number }
+  | {
+      type: 'appearance';
+      fontInterface: string;
+      fontPanels: string;
+      fontCode: string;
+      feedFontSize: number;
+    }
   /** Вкладка настроек (этап 3 roadmap 0.2): значения `agentura.*` и ключи, перекрытые настройками рабочей папки. */
   | { type: 'settings.state'; values: SettingsValues; overridden: SettingKey[] }
   /** Отказ записи настройки (проверка не прошла или запись не удалась) — текст у поля. */

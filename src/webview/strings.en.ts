@@ -604,13 +604,25 @@ export const en: Ui = {
     },
     fontInterface: {
       name: 'Interface font',
-      desc: 'Reply text, settings, the sidebar. Empty — same as VS Code; also used if the font is not installed.',
+      desc: 'Reply text and settings; the sidebar too, unless a panel font is set. Empty — same as VS Code; also used if the font is not installed.',
     },
+    fontPanels: {
+      name: 'Panel font',
+      desc: 'The header, the input box, the right and left panels. Empty — as now: the chat is monospace, the sidebar uses the interface font. Numbers, paths and code stay on the code font.',
+    },
+    fontAsBefore: 'as now',
+    fontSamplePanels: 'New session · enter ↵',
     fontCode: {
       name: 'Code font',
       desc: 'Monospace: code, the action log in the feed, numbers. Empty — the VS Code editor font.',
     },
-    fontPlaceholder: (vscode: string) => (vscode ? `same as VS Code: ${vscode}` : 'same as VS Code'),
+    fontVscode: (name: string) => (name ? `same as VS Code · ${name}` : 'same as VS Code'),
+    fontSystem: 'system',
+    fontOwn: 'custom font',
+    fontSampleUi: 'Ticket counter 42',
+    fontSampleCode: 'count ?? prev;',
+    sampleTrying: (name: string) => `sample — trying ${name}`,
+    sample: 'sample — fonts and size from the settings above',
     feedFontSize: {
       name: 'Feed text size',
       desc: 'The whole chat feed scales: replies, actions, code, cards. Open tabs update immediately.',

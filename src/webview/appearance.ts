@@ -1,17 +1,20 @@
 import type { ToWebview } from '../protocol';
 import { DEFAULT_FEED_FONT_SIZE, isFeedFontSize } from '../settings';
+import { GENERIC_FONTS } from './fonts';
 import { onHostMessage } from './vscode';
 
 export type Appearance = Extract<ToWebview, { type: 'appearance' }>;
 
 /**
  * Имя шрифта из настройки → стек `font-family`: шрифт, затем `fallback` (шрифт VS Code), если его нет в системе.
- * Одно имя берётся в кавычки; список через запятую или имя в кавычках — как есть. Пусто или мусор — `undefined`.
+ * Одно имя берётся в кавычки (кроме родовых `system-ui`, `monospace`…); список через запятую или имя в кавычках — как есть. Пусто или мусор — `undefined`.
  */
 export function fontStack(name: string, fallback: string): string | undefined {
   const n = name.trim();
   if (!n || /[;{}<>\\]/.test(n)) return undefined;
-  return `${/[,'"]/.test(n) ? n : `"${n}"`}, ${fallback}`;
+  // родовое имя в кавычках — уже имя семейства, а не системный шрифт
+  const head = /[,'"]/.test(n) || GENERIC_FONTS.includes(n) ? n : `"${n}"`;
+  return `${head}, ${fallback}`;
 }
 
 /** CSS-переменные корня: пусто (`undefined`) — убрать, остаются значения из tokens.css. */
@@ -20,6 +23,8 @@ export function appearanceVars(m: Appearance): Record<string, string | undefined
   return {
     '--font': fontStack(m.fontInterface, 'var(--font-vscode)'),
     '--mono': fontStack(m.fontCode, 'var(--mono-vscode)'),
+    // нет — панели берут свой прежний шрифт (var(--panel-font, …) в webview.css)
+    '--panel-font': fontStack(m.fontPanels, 'var(--font-vscode)'),
     '--feed-zoom':
       size === DEFAULT_FEED_FONT_SIZE ? undefined : String(size / DEFAULT_FEED_FONT_SIZE),
   };

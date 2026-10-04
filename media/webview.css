@@ -30,7 +30,7 @@ body {
 }
 .sidebar .head {
   padding: 10px 14px 6px;
-  font-family: var(--font);
+  font-family: var(--panel-font, var(--font));
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -146,4 +146,16 @@ body.vscode-high-contrast .banner, body.vscode-high-contrast-light .banner {
 @media (forced-colors: active) {
   .ask, .btn, .banner { border: 1px solid CanvasText; }
   .ask.danger, .banner { border-left: 4px solid Mark; }
+}
+
+/* agentura.font.panels: шапка, поле ввода, правая и левая панели. Не задан — прежние шрифты: чат моноширинный,
+   боковая панель — шрифт интерфейса. Числа, пути и код внутри панелей остаются на --mono. */
+.hud,
+.compose,
+.pane.side,
+.rail {
+  font-family: var(--panel-font, var(--mono));
+}
+.sidebar {
+  font-family: var(--panel-font, var(--font));
 }
