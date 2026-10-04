@@ -21,6 +21,9 @@ export interface SettingsDeps {
   checkEngine(path: string): Promise<EngineCheck>;
   reveal(target: 'ui' | 'json'): void;
   warn(message: string): void;
+  /** Скачать шрифт из Google Fonts (`kind` — назначение карточки) / удалить скачанный. */
+  addFont?(kind: 'ui' | 'code' | 'panels'): void;
+  removeFont?(family: string): void;
   /** Язык текстов ошибок; по умолчанию русский. */
   lang?(): Lang;
 }
@@ -61,6 +64,12 @@ export class SettingsController {
       }
       case 'settings.reveal':
         this.deps.reveal(m.target === 'json' ? 'json' : 'ui');
+        break;
+      case 'fonts.add':
+        this.deps.addFont?.(m.kind === 'code' || m.kind === 'panels' ? m.kind : 'ui');
+        break;
+      case 'fonts.remove':
+        if (typeof m.family === 'string') this.deps.removeFont?.(m.family);
         break;
       default:
         break;

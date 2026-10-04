@@ -125,6 +125,11 @@ export type ToWebview =
       fontPanels: string;
       fontCode: string;
       feedFontSize: number;
+      /**
+       * Шрифты, скачанные из Google Fonts: имена по назначению и ссылка на их fonts.css (webview-uri с `?v=`).
+       * Нет скачанных — без `css`.
+       */
+      userFonts: { ui: string[]; code: string[]; css?: string };
     }
   /** Вкладка настроек (этап 3 roadmap 0.2): значения `agentura.*` и ключи, перекрытые настройками рабочей папки. */
   | { type: 'settings.state'; values: SettingsValues; overridden: SettingKey[] }
@@ -311,7 +316,11 @@ export type FromWebview =
   /** «проверить»: найти claude по этому пути (пусто — системный) и показать версию и источник. */
   | { type: 'settings.checkEngine'; path: string }
   /** «в настройках VS Code» / «settings.json». */
-  | { type: 'settings.reveal'; target: 'ui' | 'json' };
+  | { type: 'settings.reveal'; target: 'ui' | 'json' }
+  /** «Добавить из Google Fonts…» под карточками: выбор семейства для интерфейса, кода или панелей (все семейства). */
+  | { type: 'fonts.add'; kind: 'ui' | 'code' | 'panels' }
+  /** ✕ у скачанного шрифта. */
+  | { type: 'fonts.remove'; family: string };
 
 /** Картинка из диалога «+»: исходный файл или причина, почему не прочитан. */
 export interface PickedImage {
@@ -399,6 +408,8 @@ const FROM_WEBVIEW_TYPES: Record<FromWebview['type'], true> = {
   'settings.set': true,
   'settings.checkEngine': true,
   'settings.reveal': true,
+  'fonts.add': true,
+  'fonts.remove': true,
 };
 
 /** `error.code` карточки «claude не найден»: webview рисует инструкцию и «Открыть настройки». */

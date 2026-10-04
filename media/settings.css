@@ -517,6 +517,54 @@ html[data-width='380'] .num.wide {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* скачанный шрифт: ✕ в углу карточки (кнопка рядом с карточкой, не внутри) и кнопка «Добавить» под карточками */
+.cw {
+  position: relative;
+  display: grid;
+  min-width: 0;
+}
+.cx {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  line-height: 16px;
+  font-size: 10px;
+  text-align: center;
+  border-radius: 3px;
+  background: var(--bg-raise);
+  border: 1px solid var(--line-strong);
+  color: var(--fg-mute);
+  cursor: pointer;
+  opacity: 0;
+}
+.cw:hover .cx,
+.cx:focus-visible {
+  opacity: 1;
+}
+.cx:hover,
+.cx:focus-visible {
+  color: var(--fg);
+  outline: none;
+  border-color: var(--accent);
+}
+.set > .fonts-add {
+  grid-column: 1 / -1;
+  justify-self: start;
+  margin-top: 8px;
+  padding: 4px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  background: none;
+  color: var(--fg);
+  cursor: pointer;
+}
+.set > .fonts-add:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
 /* превью шрифта панелей — верх боковой панели в настоящую ширину */
 .pv-one.pv-panels .pv-side {
   max-width: 340px;

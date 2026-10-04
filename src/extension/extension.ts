@@ -12,9 +12,11 @@ import { SessionMemory } from './sessionMemory';
 import { SessionsService } from './sessionsService';
 import { showDebugState } from './debugPanel';
 import { SettingsPanel } from './settingsPanel';
-import { FEED_STYLES, readSettings, writeSetting } from '../settings';
+import { FEED_STYLES, readSettings, writeSetting, type SettingKey } from '../settings';
 import { hostStrings } from '../shared/l10n';
-import { currentLanguage } from './webviewHost';
+import { currentLanguage, setUserFonts, userFontsDir } from './webviewHost';
+import { UserFonts } from './googleFonts';
+import { addGoogleFont } from './googleFontsCommand';
 import { WorkspaceFiles } from './workspaceFiles';
 
 /** Что активация отдаёт интеграционным тестам (только при запуске из исходников). */
@@ -48,6 +50,15 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
   const live = new LiveSessions();
   const transcripts = new TranscriptCache();
   const memory = new SessionMemory(context.workspaceState);
+
+  // шрифты, скачанные из Google Fonts: папка данных расширения; сеть — только по команде
+  const userFonts = new UserFonts({
+    dir: userFontsDir(context).fsPath,
+    fetch: (url, init) => fetch(url, init),
+    warn: (m) => log.warn(m),
+  });
+  setUserFonts(userFonts);
+  context.subscriptions.push({ dispose: () => setUserFonts(undefined) });
 
   const sessions = new SessionsService({
     adapter,
@@ -117,6 +128,19 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     if (picked) ChatPanel.resume(context, log, services, picked.id);
   };
 
+  // настройка задана в воркспейсе — запись в Global её не перебьёт: пишем туда, где она задана
+  const writeWhereSet = async (key: SettingKey, value: string): Promise<void> => {
+    const cfg = vscode.workspace.getConfiguration('agentura');
+    const set = cfg.inspect(key);
+    const target =
+      set?.workspaceFolderValue !== undefined
+        ? vscode.ConfigurationTarget.WorkspaceFolder
+        : set?.workspaceValue !== undefined
+          ? vscode.ConfigurationTarget.Workspace
+          : vscode.ConfigurationTarget.Global;
+    await writeSetting(cfg, key, value, target);
+  };
+
   const pickFeedStyle = async (): Promise<void> => {
     const t = hostStrings(currentLanguage());
     const cfg = vscode.workspace.getConfiguration('agentura');
@@ -131,16 +155,8 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
       { placeHolder: t.feedStylePlaceholder },
     );
     if (!picked) return;
-    // вид задан в настройках воркспейса — запись в Global его не перебьёт: пишем туда, где он задан
-    const set = cfg.inspect('feed.style');
-    const target =
-      set?.workspaceFolderValue !== undefined
-        ? vscode.ConfigurationTarget.WorkspaceFolder
-        : set?.workspaceValue !== undefined
-          ? vscode.ConfigurationTarget.Workspace
-          : vscode.ConfigurationTarget.Global;
     try {
-      await writeSetting(cfg, 'feed.style', picked.id, target);
+      await writeWhereSet('feed.style', picked.id);
     } catch (e) {
       log.warn('agentura.feedStyle: не записать feed.style', e);
       void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e));
@@ -190,6 +206,22 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
       }
     }),
     vscode.commands.registerCommand('agentura.feedStyle', () => pickFeedStyle()),
+    // второй аргумент — назначение из вкладки настроек (`fonts.add`); из палитры приходит пустым
+    vscode.commands.registerCommand('agentura.addGoogleFont', (kind?: unknown) =>
+      addGoogleFont(
+        { fonts: userFonts, log, write: writeWhereSet },
+        kind === 'ui' || kind === 'code' || kind === 'panels' ? kind : undefined,
+      ),
+    ),
+    // служебная: ✕ в карточке скачанного шрифта (в палитру не выносится)
+    vscode.commands.registerCommand('agentura.removeGoogleFont', async (family: unknown) => {
+      if (typeof family !== 'string') return;
+      try {
+        await userFonts.remove(family);
+      } catch (e) {
+        log.warn(`agentura.removeGoogleFont: ${family}`, e);
+      }
+    }),
     vscode.commands.registerCommand('agentura.showLogs', () => log.show()),
     // отладка: фикстуры состояний в отдельной вкладке без движка (этап 7)
     vscode.commands.registerCommand('agentura.debug.showState', (name?: unknown) =>

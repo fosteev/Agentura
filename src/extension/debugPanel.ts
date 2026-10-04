@@ -3,7 +3,7 @@ import { postToWebview } from '../protocol';
 import { STATE_FIXTURES } from './debugStatesData';
 import { STATE_NAMES, isStateName, parseFixture, type StateName } from './debugStates';
 import type { Logger } from './logger';
-import { attachMessaging, currentLanguage, renderWebview, webviewOptions } from './webviewHost';
+import { attachMessaging, currentLanguage, renderWebview, userFontsDir, webviewOptions } from './webviewHost';
 
 /**
  * `agentura.debug.showState`: отдельная вкладка с тем же webview чата, но без движка — события
@@ -29,7 +29,7 @@ export async function showDebugState(
     'agentura.debugState',
     `Agentura · ${state} (отладка)`,
     vscode.ViewColumn.Beside,
-    { ...webviewOptions(context.extensionUri), retainContextWhenHidden: true },
+    { ...webviewOptions(context.extensionUri, userFontsDir(context)), retainContextWhenHidden: true },
   );
   panel.webview.html = renderWebview(panel.webview, context.extensionUri, 'chat', 'Agentura', currentLanguage());
   const version = String(context.extension.packageJSON.version);

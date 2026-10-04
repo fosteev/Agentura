@@ -7,6 +7,7 @@
   "command.refreshUsage.title": "Refresh Limits",
   "command.openSettings.title": "Settings",
   "command.feedStyle.title": "Feed Style…",
+  "command.addGoogleFont.title": "Add Google Font…",
   "command.showLogs.title": "Show Log",
   "command.debug.showState.title": "Show State (debug)",
   "config.contextThresholds.description": "Context gauge thresholds in tokens: the yellow and orange zones.",

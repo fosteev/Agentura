@@ -619,6 +619,8 @@ export const en: Ui = {
     fontVscode: (name: string) => (name ? `same as VS Code · ${name}` : 'same as VS Code'),
     fontSystem: 'system',
     fontOwn: 'custom font',
+    fontAdd: 'Add from Google Fonts…',
+    fontRemove: 'Remove downloaded font',
     fontSampleUi: 'Ticket counter 42',
     fontSampleCode: 'count ?? prev;',
     sampleTrying: (name: string) => `sample — trying ${name}`,

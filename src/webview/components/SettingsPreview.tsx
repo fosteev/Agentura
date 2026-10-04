@@ -153,6 +153,7 @@ export function ChoiceCards<V extends string>({
   onPick,
   onTry,
   kind,
+  removable,
 }: {
   label: string;
   value: V;
@@ -163,6 +164,8 @@ export function ChoiceCards<V extends string>({
   onTry?: (v: V | undefined) => void;
   /** Модификатор сетки: `fonts` — плотные карточки шрифтов. */
   kind?: string;
+  /** У части карточек — ✕ «удалить» (скачанные шрифты); кнопка рядом с карточкой, не внутри неё. */
+  removable?: { has: (v: V) => boolean; label: string; onRemove: (v: V) => void };
 }) {
   const ids = options.map(([v]) => v);
   const onKey = (e: KeyboardEvent) => {
@@ -172,7 +175,8 @@ export function ChoiceCards<V extends string>({
         : e.key === 'ArrowLeft' || e.key === 'ArrowUp'
           ? -1
           : 0;
-    if (!step) return;
+    // стрелки — только на карточках; на ✕ рядом с карточкой они не должны менять выбор
+    if (!step || (e.target as HTMLElement).getAttribute('role') !== 'radio') return;
     e.preventDefault();
     const next = ids[(ids.indexOf(value) + step + ids.length) % ids.length];
     if (next === undefined) return;
@@ -191,23 +195,48 @@ export function ChoiceCards<V extends string>({
           onTry?.(undefined);
       }}
     >
-      {options.map(([v, name]) => (
-        <button
-          key={v}
-          type="button"
-          role="radio"
-          data-value={v}
-          aria-checked={v === value}
-          tabIndex={v === value ? 0 : -1}
-          class={v === value ? 'card on' : 'card'}
-          onClick={() => v !== value && onPick(v)}
-          onMouseEnter={() => onTry?.(v)}
-          onFocus={() => onTry?.(v)}
-        >
-          {preview(v)}
-          <span class="cn">{name}</span>
-        </button>
-      ))}
+      {options.map(([v, name]) => {
+        const card = (
+          <button
+            key={v}
+            type="button"
+            role="radio"
+            data-value={v}
+            aria-checked={v === value}
+            tabIndex={v === value ? 0 : -1}
+            class={v === value ? 'card on' : 'card'}
+            onClick={() => v !== value && onPick(v)}
+            onMouseEnter={() => onTry?.(v)}
+            onFocus={() => onTry?.(v)}
+          >
+            {preview(v)}
+            <span class="cn">{name}</span>
+          </button>
+        );
+        if (!removable?.has(v)) return card;
+        return (
+          <div key={v} class="cw">
+            {card}
+            <button
+              type="button"
+              class="cx"
+              data-remove={v}
+              aria-label={`${removable.label}: ${name}`}
+              title={removable.label}
+              onClick={(e) => {
+                // кнопка исчезнет вместе с карточкой — фокус на выбранную карточку группы, а не в никуда
+                (e.currentTarget as HTMLElement)
+                  .closest('[role="radiogroup"]')
+                  ?.querySelector<HTMLElement>('[aria-checked="true"]')
+                  ?.focus();
+                removable.onRemove(v);
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        );
+      })}
     </div>
   );
 }

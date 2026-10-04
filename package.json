@@ -93,6 +93,11 @@
         "category": "Agentura"
       },
       {
+        "command": "agentura.addGoogleFont",
+        "title": "%command.addGoogleFont.title%",
+        "category": "Agentura"
+      },
+      {
         "command": "agentura.showLogs",
         "title": "%command.showLogs.title%",
         "category": "Agentura"

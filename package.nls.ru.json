@@ -7,6 +7,7 @@
   "command.refreshUsage.title": "Обновить лимиты",
   "command.openSettings.title": "Настройки",
   "command.feedStyle.title": "Вид ленты…",
+  "command.addGoogleFont.title": "Добавить шрифт Google…",
   "command.showLogs.title": "Показать журнал",
   "command.debug.showState.title": "Показать состояние (отладка)",
   "config.contextThresholds.description": "Пороги шкалы контекста в токенах: жёлтая и оранжевая зоны.",

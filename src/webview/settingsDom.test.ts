@@ -13,6 +13,7 @@ import {
   overridden,
   settingsValues,
 } from './settingsStore';
+import { userFonts } from './fonts';
 import * as vscode from './vscode';
 
 const posted: Record<string, unknown>[] = [];
@@ -72,6 +73,7 @@ beforeEach(() => {
   overridden.value = [];
   errors.value = {};
   engineCheck.value = { pending: false };
+  userFonts.value = { ui: [], code: [] };
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -223,6 +225,42 @@ describe('вкладка настроек', () => {
     expect(sample.style.getPropertyValue('--mono')).toBe('');
     card('Fira Code').click();
     expect(sets()).toEqual([{ type: 'settings.set', key: 'font.code', value: 'Fira Code' }]);
+  });
+
+  it('Google Fonts: кнопка под карточками шлёт fonts.add с kind, ✕ — только у скачанных и шлёт fonts.remove', async () => {
+    userFonts.value = { ui: ['Onest'], code: ['Fira Code'] };
+    const host = mount(Settings);
+    state();
+    await flush();
+    const row = (k: string) => host.querySelector<HTMLElement>(`[data-key="agentura.${k}"]`)!;
+    const add = (k: string) => row(k).querySelector<HTMLButtonElement>('.fonts-add');
+    add('font.interface')!.click();
+    add('font.code')!.click();
+    add('font.panels')!.click();
+    expect(posted.filter((m) => m.type === 'fonts.add')).toEqual([
+      { type: 'fonts.add', kind: 'ui' },
+      { type: 'fonts.add', kind: 'code' },
+      { type: 'fonts.add', kind: 'panels' },
+    ]);
+    const marks = (k: string) =>
+      [...row(k).querySelectorAll<HTMLElement>('.cx')].map((b) => b.getAttribute('data-remove'));
+    expect(marks('font.interface')).toEqual(['Onest']);
+    expect(marks('font.code')).toEqual(['Fira Code']);
+    expect(marks('font.panels')).toEqual(['Onest', 'Fira Code']);
+    // карточка скачанного — обычная: клик выбирает шрифт
+    row('font.interface').querySelector<HTMLButtonElement>('[data-value="Onest"]')!.click();
+    expect(sets()).toEqual([{ type: 'settings.set', key: 'font.interface', value: 'Onest' }]);
+    // стрелка на ✕ не меняет выбор карточек
+    row('font.interface')
+      .querySelector('.cx')!
+      .dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    expect(sets()).toHaveLength(1);
+    row('font.interface').querySelector<HTMLButtonElement>('.cx')!.click();
+    expect(posted).toContainEqual({ type: 'fonts.remove', family: 'Onest' });
+    // системные кандидаты ✕ не получают
+    expect(
+      row('font.interface').querySelector('[data-value="system-ui"]')!.parentElement!.classList.contains('cw'),
+    ).toBe(false);
   });
 
   it('значения отражаются в полях, в «режиме» нет bypass, пока он не разрешён', async () => {
