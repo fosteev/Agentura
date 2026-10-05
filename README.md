@@ -137,3 +137,7 @@ Where things are:
 
 `Agentura: Show State (debug)` opens state fixtures without the engine. The `scripts/*-smoke.mjs` scripts run the live engine
 and spend tokens. The plan and decision log are in `docs/roadmap/` (in Russian).
+
+## License
+
+[MIT](LICENSE)
