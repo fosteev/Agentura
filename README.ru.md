@@ -88,7 +88,7 @@
 `~/.claude/local` и Homebrew (на Windows — `claude.exe`). Другой путь задаётся в `agentura.claudeExecutable`.
 
 ```
-code --install-extension agentura-0.3.0.vsix
+code --install-extension agentura-0.4.0.vsix
 ```
 
 Сборка из исходников:
@@ -96,7 +96,7 @@ code --install-extension agentura-0.3.0.vsix
 ```
 npm ci
 npm run check      # типы, линтер, юнит-тесты, сборка
-npm run package    # agentura-0.3.0.vsix
+npm run package    # agentura-0.4.0.vsix
 ```
 
 ## Настройки

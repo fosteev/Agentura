@@ -1,6 +1,9 @@
 # Всё, что не нужно рантайму. Бинарник движка (claude-agent-sdk-<платформа>, 213+ МБ) не входит:
 # .vsix универсальный, движок — системный `claude` (agentura.claudeExecutable), этап 8.
 .claude/**
+.codex/**
+AGENTS.md
+CLAUDE.md
 .serena/**
 .vscode/**
 .vscode-test/**
