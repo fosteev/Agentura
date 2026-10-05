@@ -112,6 +112,16 @@ export interface ContextView {
   /** Класс числа: `ok`, `zero`, пусто (жёлтый по умолчанию), `hot`, `full`. */
   numCls: string;
   zone: Zone;
+  /** Заполнение до автосжатия, 0…100 (`used / fullAt`): кольцо, % и кромка раскладок поля. */
+  percent: number;
+  /** Заполнение шкалы (`used / scale`), 0…100 — полоса `ContextBar`. */
+  fill: number;
+  /** Пороги на шкале, 0…100 (`порог / scale`) — засечки `ContextBar`. */
+  marks: number[];
+  /** Цвет зоны (`var(--ok|warn|hot|full)`). */
+  color: string;
+  /** `131k/200k`. */
+  short: string;
   blocks: Block[];
   /** «порог 150k пройден» — когда перешагнули второй порог. */
   note?: string;
@@ -133,6 +143,12 @@ export function contextView(s: HudState): ContextView {
     max: formatInt(max),
     numCls: used === 0 ? 'zero' : zone === 'warn' ? '' : zone,
     zone,
+    percent: fullAt > 0 ? Math.max(0, Math.min(100, Math.round((used / fullAt) * 100))) : 0,
+    fill: scale > 0 ? Math.max(0, Math.min(100, (used / scale) * 100)) : 0,
+    // как метки в contextBlocks: только пороги внутри шкалы
+    marks: sorted.filter((t) => t > 0 && t < scale).map((t) => (t / scale) * 100),
+    color: ZONE_VAR[zone],
+    short: `${kilo(used)}/${kilo(max)}`,
     blocks: contextBlocks(used, scale, s.thresholds, fullAt),
     ...(passed !== undefined && zone !== 'ok'
       ? { note: ui.compose.thresholdPassed(kilo(passed)) }

@@ -1,6 +1,7 @@
 # 14 · Поле ввода: шесть раскладок с настройкой
 
-> Статус: этап 1 принят 2026-10-05 (ветка `stage-1-composer-parts`), следующий — 2. На подтверждение и ручную проверку —
+> Статус: этап 1 принят 2026-10-05 (ветка `stage-1-composer-parts`), этап 2 принят 2026-10-05 (ветка
+> `stage-2-composer-layouts`), следующий — 3. На подтверждение и ручную проверку —
 > `14-composer-layouts.pending.md`. Прототип — `prototype/screens/composer.html#a…#f` (+ `-typed`), стили —
 > `prototype/shared/composer.css`, картинки — галерея, раздел «Поле ввода: варианты» (v31).
 
@@ -124,11 +125,32 @@
 
 ### 2. Раскладки `card`, `gauges`, `minimal` · sonnet, high · после 1
 
-- [ ] `media/composer.css` (подключён), `ContextRing`, `ContextBar`, `EngineMenu`
-- [ ] три раскладки по Решению 5, правила видимости `minimal`
-- [ ] `composerDom.test.ts`: на каждую раскладку — ключевые элементы есть, Enter отправляет, меню режима и `EngineMenu`
+- [x] `media/composer.css` (подключён), `ContextRing`, `ContextBar`, `EngineMenu`
+- [x] три раскладки по Решению 5, правила видимости `minimal`
+- [x] `composerDom.test.ts`: на каждую раскладку — ключевые элементы есть, Enter отправляет, меню режима и `EngineMenu`
       открываются; `minimal` — кольцо и 5ч скрыты в норме и видны за порогом
-- [ ] `npm run check` зелёный
+- [x] `npm run check` зелёный
+
+### Решения (2026-10-05, по итогам сессии 2)
+
+- `ContextView` (`hudView.ts`) дополнен полями для раскладок: `percent` — `used / fullAt` (кольцо, %, кромка), `fill` —
+  `used / scale` и `marks` — пороги на шкале в % (`ContextBar`; засечки только `0 < t < scale`, как метки
+  `contextBlocks`), `color` — `var(--зона)`, `short` — `131k/200k`. При окне 0 — нули, не NaN.
+- Части сверх списка: `ContextGauge` (`.cn.gauge`: «контекст [полоса] 131k/200k · сжать», без «+N» за черновики — в
+  gauges прибавку показывает только подсказка черновиков), `LimitText` («5ч 82%» для `minimal`). Вид частей — проп `look`:
+  `PlusMenu` `classic|circle|file`, `ModeMenu` `label|pill|dollar` (у кнопки `data-mode`; цвет режима пока всегда
+  `--info`, как в прототипе), `AgentMenu`/`ModelMenu` `label|value`, `EngineMenu` `full|short`, `Meters`
+  `classic|time|under|alert`, `SendControl` `classic|round|long|enter`. Пункты меню — `AgentItems`/`ModelItems`/
+  `EffortItems` (последний — с переключателем thinking), общие для отдельных меню и `EngineMenu`.
+- Автоконтекст в новых раскладках — прежний DOM `AutoContext look="chip"` («открыт <b>name</b> ✕»), оформленный чипом
+  через `.chips > span:not(.hint)`; вид «Counter.tsx 12–40» из прототипа не делали. `ref`/`plus` — этап 3.
+- CSS (приёмка): общие правила `media/composer.css` — под `.compose:not([data-layout="classic"])` (на classic тоже стоит
+  `data-layout`, исполнитель писал `.compose[data-layout]` и сдвигал приборы и ноты classic); стили триггеров — только
+  `> .pop > button` (иначе задевают пункты меню, «отправить» и стоп). Меню рядов `card` (`.row`) и `minimal` (`.one`)
+  открываются от края ряда (`.pop` в ряду — `position: static`), меню движка в `minimal` — от правого края: от кнопки
+  они уходили за край вкладки (`body overflow: hidden`). В `gauges` меню — от кнопки, как в classic.
+- Смена раскладки перемонтирует поле (оно в разных обёртках) — `useLayoutEffect` по `layout` возвращает в него `text`.
+- Шпаргалка `minimal` не показывается и в закрытой сессии, и при ответе карточке (`target`).
 
 ### 3. Раскладки `statusline`, `shell` + страница настроек + картинки · sonnet, high · после 2
 
@@ -211,6 +233,14 @@ DoD: `npm run check` зелёный; тесты из чекбокса этапа
 
 Уже решено, не переспрашивать: всё в «Решения». Публичные тексты (CHANGELOG, README.md) — на английском, README.ru.md —
 на русском, обе версии.
+
+Готово к переиспользованию (этап 2, см. «Решения по итогам сессии 2»): `ContextBar` (полоса + засечки), `ContextGauge`,
+`ContextRing`; `hv.context.percent/fill/marks/color/short`; `look` у меню, `Meters`, `SendControl` — новый вид
+добавлять новым значением `look`, DOM прежних видов не менять. Раскладка — ветка `if (layout === '…')` в `Composer`.
+`AutoContext` пока рисует только `chip` — `ref` (`statusline`: `@file:строки`) и `plus` (`shell`: `+ file:строки`)
+доделать здесь. CSS — `media/composer.css`: общие правила под `.compose:not([data-layout="classic"])`, правила кнопок —
+через `> .pop > button` (не задевать пункты меню), меню у правого края — `left: auto; right: 0` или от края ряда
+(`.pop { position: static }` в ряду с `position: relative`), иначе уходят за вкладку.
 
 Порядок: ветка `stage-3-composer-rest` от `main` (после мержа этапа 2) → чекбоксы «Этапы → 3».
 
