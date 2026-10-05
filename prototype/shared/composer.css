@@ -1,0 +1,123 @@
+/* Экран composer: варианты нижней панели ввода (предложение 05.10, ждёт выбора).
+   Хэш: #a как сейчас, #b карточка, #c строка состояния, #d приборы сверху, #e минимум, #f командная строка;
+   суффикс -typed — набран текст, пока агент работает (очередь + стоп). В media/ не перенесено, пока не выбрано. */
+
+.cv { display: none; }
+.webview[data-cmp="a"] .cv[data-v="a"], .webview[data-cmp="b"] .cv[data-v="b"], .webview[data-cmp="c"] .cv[data-v="c"],
+.webview[data-cmp="d"] .cv[data-v="d"], .webview[data-cmp="e"] .cv[data-v="e"], .webview[data-cmp="f"] .cv[data-v="f"] { display: block; }
+
+/* состояние «набрано во время работы» */
+.cv .ty, .cv .when-busy { display: none !important; }
+.webview[data-typed] .cv .ph, .webview[data-typed] .cv .when-idle { display: none !important; }
+.webview[data-typed] .cv .ty { display: inline !important; }
+.webview[data-typed] .cv .when-busy { display: inline-flex !important; }
+.cv .ty { color: var(--fg); }
+.cv .ty .tok { background: var(--sel); border-radius: 2px; padding: 0 2px; }
+.cv .caret { display: inline-block; width: 1px; height: 13px; background: var(--fg); vertical-align: -2px; margin-left: 1px; }
+.cv .ph { color: var(--fg-mute); }
+.cv b { font-weight: 500; color: var(--fg); }
+.cv .w { color: var(--warn); }
+.cv .dim { color: var(--fg-faint); }
+.cv kbd { font: inherit; color: var(--fg-mute); }
+
+/* общие кирпичи */
+.cv .ring { --p: 66; --c: var(--warn); width: 14px; height: 14px; border-radius: 50%; flex: none;
+  background: radial-gradient(var(--ring-bg, var(--bg-input)) 52%, transparent 54%), conic-gradient(var(--c) calc(var(--p) * 1%), var(--line-strong) 0); }
+.cv .bar { display: inline-block; width: 90px; height: 4px; border-radius: 2px; background: var(--bg-input); position: relative; overflow: hidden; vertical-align: 2px; }
+.cv .bar > i { position: absolute; inset: 0 auto 0 0; width: calc(var(--p, 66) * 1%); background: var(--c, var(--warn)); }
+.cv .bar > u { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--fg-mute); opacity: .7; }
+.cv .chip { display: inline-flex; gap: 5px; align-items: center; padding: 1px 6px; border-radius: 3px; background: var(--bg-raise); border: 1px solid var(--line); color: var(--fg); font-size: 11px; }
+.cv .chip i { font-style: normal; color: var(--fg-mute); }
+.cv .chip .x { color: var(--fg-faint); }
+.cv .stopb { gap: 6px; align-items: center; color: var(--fg); padding: 2px 8px; border: 1px solid var(--line-strong); border-radius: 3px; font-size: 11px; }
+.cv .stopb::before { content: ""; width: 7px; height: 7px; background: var(--del); border-radius: 1px; }
+.cv .q { color: var(--info); font-size: 11px; }
+
+/* А · как сейчас: полоса контекста, вложения + счётчик, поле, строка настроек с приборами */
+.cv[data-v="a"] .ctx .cn { margin-left: auto; }
+.cv[data-v="a"] .opts .plus { color: var(--fg); font-size: 13px; line-height: 1; }
+.cv[data-v="a"] .opts .plus::after { content: none; }
+
+/* Б · карточка: всё внутри одной рамки, контекст — кольцо, лимиты — подстрочник */
+.cv[data-v="b"] { border-top: 0; padding: 4px 14px 8px; }
+.cv[data-v="b"] .card { border: 1px solid var(--line-strong); border-radius: 8px; background: var(--bg-input); padding: 8px 10px 6px; display: grid; gap: 6px; --ring-bg: var(--bg-input); }
+.cv[data-v="b"] .card:focus-within, .cv[data-v="b"] .card.f { border-color: var(--accent); }
+.cv[data-v="b"] .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.cv[data-v="b"] .ta { min-height: 34px; font-size: 12.5px; }
+.cv[data-v="b"] .row { display: flex; align-items: center; gap: 6px; }
+.cv[data-v="b"] .ib { width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--line-strong); color: var(--fg-mute); display: grid; place-items: center; font-size: 13px; }
+.cv[data-v="b"] .pill { padding: 2px 8px; border-radius: 11px; color: var(--fg-mute); font-size: 11px; }
+.cv[data-v="b"] .pill:hover { background: var(--bg-hover); }
+.cv[data-v="b"] .pill::after { content: " ▾"; opacity: .6; }
+.cv[data-v="b"] .pill.mode b { color: var(--info); }
+.cv[data-v="b"] .sp { flex: 1; }
+.cv[data-v="b"] .cnt { display: inline-flex; gap: 6px; align-items: center; font-size: 11px; color: var(--fg-mute); margin-right: 4px; }
+.cv[data-v="b"] .go { width: 24px; height: 24px; border-radius: 50%; background: var(--btn); color: var(--btn-fg); display: grid; place-items: center; font-size: 13px; }
+.cv[data-v="b"] .stopb { border-radius: 12px; }
+.cv[data-v="b"] .under { display: flex; gap: 14px; justify-content: flex-end; padding: 5px 4px 0; font-size: 10.5px; color: var(--fg-mute); }
+
+/* В · строка состояния: поле без обвеса, всё остальное — одна полоса снизу, как в vim */
+.cv[data-v="c"] { padding: 0; border-top: 0; }
+.cv[data-v="c"] .inp { position: relative; padding: 10px 14px 12px; border-top: 1px solid var(--line); display: grid; grid-template-columns: 14px 1fr; gap: 8px; min-height: 52px; }
+.cv[data-v="c"] .inp::before { content: ""; position: absolute; top: -1px; left: 0; height: 2px; width: 65.6%; background: var(--warn); }
+.cv[data-v="c"] .inp .p { color: var(--accent); font-weight: 600; }
+.cv[data-v="c"] .inp .att { color: var(--link); }
+.cv[data-v="c"] .sl { display: flex; align-items: stretch; height: 22px; font-size: 11px; background: var(--bg-raise); border-top: 1px solid var(--line); color: var(--fg-mute); }
+.cv[data-v="c"] .sl > * { display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; border-right: 1px solid var(--line); white-space: nowrap; }
+.cv[data-v="c"] .sl .md { background: var(--info); color: #fff; font-weight: 600; letter-spacing: .04em; }
+.cv[data-v="c"] .sl .sp { flex: 1; border-right: 0; padding: 0; }
+.cv[data-v="c"] .sl .r { border-right: 0; border-left: 1px solid var(--line); }
+.cv[data-v="c"] .sl .bar { width: 60px; }
+.cv[data-v="c"] .sl .key { color: var(--fg); }
+
+/* Г · приборы сверху: над полем — что прикреплено и сколько осталось, под полем — только настройки */
+.cv[data-v="d"] { padding: 6px 14px 10px; }
+.cv[data-v="d"] .top { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 11px; color: var(--fg-mute); }
+.cv[data-v="d"] .top .g { margin-left: auto; display: inline-flex; gap: 16px; align-items: center; }
+.cv[data-v="d"] .top .g > span { display: inline-flex; gap: 6px; align-items: center; }
+.cv[data-v="d"] .prompt { min-height: 48px; }
+.cv[data-v="d"] .set { display: flex; gap: 4px; align-items: center; padding-top: 6px; font-size: 11.5px; }
+.cv[data-v="d"] .set button { padding: 2px 6px; border-radius: 3px; color: var(--fg-mute); }
+.cv[data-v="d"] .set button:hover { background: var(--bg-hover); }
+.cv[data-v="d"] .set .mode b { color: var(--info); }
+.cv[data-v="d"] .set .sp { flex: 1; }
+.cv[data-v="d"] .set .go { color: var(--btn-fg); background: var(--btn); padding: 3px 10px; }
+.cv[data-v="d"] .set .go:hover { background: var(--btn); }
+
+/* Д · минимум: одна строка, режим — цветом «$», настройки — одной кнопкой, приборы — только когда близко к порогу */
+.cv[data-v="e"] { padding: 8px 14px 10px; border-top: 0; position: relative; }
+.cv[data-v="e"]::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 1px; background: linear-gradient(90deg, var(--warn) 65.6%, var(--line) 0); }
+.cv[data-v="e"] .one { display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 10px; background: var(--bg-input); border: 1px solid var(--line-strong); border-radius: 4px; min-height: 36px; --ring-bg: var(--bg-input); }
+.cv[data-v="e"] .one .p { color: var(--info); font-weight: 600; }
+.cv[data-v="e"] .one .t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cv[data-v="e"] .one .ms { color: var(--fg-mute); font-size: 11px; padding: 2px 6px; border-radius: 3px; }
+.cv[data-v="e"] .one .ms::after { content: " ▾"; opacity: .6; }
+.cv[data-v="e"] .one .ms:hover { background: var(--bg-hover); }
+.cv[data-v="e"] .one .cx { display: inline-flex; gap: 5px; align-items: center; color: var(--warn); font-size: 11px; }
+.cv[data-v="e"] .one .go { color: var(--fg-mute); font-size: 11px; padding: 2px 4px; }
+.cv[data-v="e"] .hint { padding: 5px 2px 0; font-size: 10.5px; color: var(--fg-faint); display: flex; gap: 14px; }
+
+/* Е · командная строка: без рамки, двухстрочное приглашение как в starship */
+.cv[data-v="f"] { padding: 8px 14px 12px; background: var(--bg-code); }
+.cv[data-v="f"] .pl { display: flex; gap: 0; align-items: center; font-size: 11px; color: var(--fg-mute); flex-wrap: wrap; row-gap: 4px; }
+.cv[data-v="f"] .pl > span { display: inline-flex; gap: 6px; align-items: center; }
+.cv[data-v="f"] .pl > span + span::before { content: "·"; color: var(--fg-faint); margin: 0 8px; }
+.cv[data-v="f"] .pl .dir { color: var(--info); font-weight: 600; }
+.cv[data-v="f"] .pl .md { color: var(--info); }
+.cv[data-v="f"] .pl .r { margin-left: auto; }
+.cv[data-v="f"] .pl .r::before { content: none !important; }
+.cv[data-v="f"] .pl .r + .r::before { content: "·" !important; color: var(--fg-faint); margin: 0 8px; }
+.cv[data-v="f"] .att { font-size: 11px; color: var(--fg-mute); padding: 3px 0 0; }
+.cv[data-v="f"] .att .a { color: var(--link); margin-right: 10px; }
+.cv[data-v="f"] .ln { display: flex; gap: 8px; align-items: baseline; padding-top: 6px; font-size: 13px; }
+.cv[data-v="f"] .ln .p { color: var(--ok); font-weight: 700; }
+.cv[data-v="f"] .ln .t { flex: 1; }
+.cv[data-v="f"] .ln .ph::after { content: ""; display: inline-block; width: 7px; height: 14px; background: var(--fg); opacity: .7; vertical-align: -2px; margin-left: 2px; }
+.cv[data-v="f"] .ln .k { font-size: 11px; color: var(--fg-faint); }
+.cv a { color: var(--link); text-decoration: none; }
+.cv .stopb { display: inline-flex; }
+.cv .opts .stopb::after { content: none; }
+.cv[data-v="a"] .opts .when-busy .q { white-space: nowrap; }
+.cv[data-v="f"] .pl > span.mdl { gap: 0; }
+.cv[data-v="f"] .pl > span.r + span.r::before { margin: 0 2px; }
+.cv[data-v="f"] .pl .r ~ .r { margin-left: 0; }
