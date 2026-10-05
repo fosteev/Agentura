@@ -388,7 +388,8 @@ html[data-width='380'] .num.wide {
 }
 .set > .cards:has(.pv-feed),
 .set > .cards:has(.pv-agents),
-.set > .cards:has(.pv-git) {
+.set > .cards:has(.pv-git),
+.set > .cards:has(.pv-composer) {
   grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
 }
 .card {
@@ -409,15 +410,15 @@ html[data-width='380'] .num.wide {
   border-color: var(--accent);
   box-shadow: 0 0 0 1px var(--accent);
 }
-.card .cn {
+.card > .cn {
   font-size: 12px;
   padding-left: 2px;
 }
-.card:hover .cn,
-.card.on .cn {
+.card:hover > .cn,
+.card.on > .cn {
   color: var(--fg);
 }
-.card.on .cn::before {
+.card.on > .cn::before {
   content: '✓ ';
   color: var(--accent);
 }
@@ -456,6 +457,15 @@ html[data-width='380'] .num.wide {
 }
 .pv-graph {
   --pz: 0.3;
+}
+.pv-composer {
+  --pz: 0.55;
+  height: 120px;
+  display: flex;
+  align-items: flex-end;
+}
+.pv-composer > .webview {
+  width: 100%;
 }
 .pv-git {
   --pz: 0.55;
@@ -546,7 +556,7 @@ html[data-width='380'] .num.wide {
   outline: 1px solid var(--accent);
   outline-offset: 2px;
 }
-.cards.fonts .card .cn {
+.cards.fonts .card > .cn {
   font-size: 11.5px;
   overflow: hidden;
   text-overflow: ellipsis;

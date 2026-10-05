@@ -8,6 +8,7 @@ import {
   MIN_POLL_MINUTES,
   SESSION_LIST_MODES,
   SIDEBAR_TOP_MODES,
+  COMPOSER_LAYOUTS,
   FEED_STYLES,
   AGENTS_VIEWS,
   GIT_LAYOUTS,
@@ -31,7 +32,7 @@ import {
   settingsValues,
 } from '../settingsStore';
 import { ui, uiLang } from '../strings';
-import { AgentsPreview, ChoiceCards, FeedPreview, GitPreview, SidebarPreview } from './SettingsPreview';
+import { AgentsPreview, ChoiceCards, ComposerPreview, FeedPreview, GitPreview, SidebarPreview } from './SettingsPreview';
 import { fontStack } from '../appearance';
 import { codeFonts, installedFonts, uiFonts, userFonts } from '../fonts';
 import {
@@ -711,6 +712,23 @@ export function Settings() {
                     options={cardOptions(FEED_STYLES, T.feedStyle.options)}
                     preview={(style) => <FeedPreview style={style} />}
                     onPick={(style) => commit('feed.style', style)}
+                  />
+                }
+              >
+                {null}
+              </Row>
+              <Row
+                name={T.composerLayout.name}
+                isNew
+                desc={T.composerLayout.desc}
+                k="composer.layout"
+                below={
+                  <ChoiceCards
+                    label={T.composerLayout.name}
+                    value={v['composer.layout']}
+                    options={cardOptions(COMPOSER_LAYOUTS, T.composerLayout.options)}
+                    preview={(layout) => <ComposerPreview layout={layout} />}
+                    onPick={(layout) => commit('composer.layout', layout)}
                   />
                 }
               >

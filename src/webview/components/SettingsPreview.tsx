@@ -1,14 +1,14 @@
 import type { ComponentChildren } from 'preact';
 import type { FeedRow } from '../chatState';
 import type { SessionSummary } from '../../protocol';
-import type { AgentsView, FeedStyle, GitLayout } from '../../settings';
+import type { AgentsView, ComposerLayout, FeedStyle, GitLayout } from '../../settings';
 import type { GitFileStatus, GitFileView, GitRepoView, GitSnapshot } from '../../shared/git';
 import { agentMapView } from '../agentsView';
 import { agentGraphView, agentsViewPane, defaultScope } from '../agentViews';
 import { graphModel } from '../agentsGraph/model';
 import { AgentsGraph } from './AgentsGraph';
 import { initialHud, type AgentNode, type HudState, type TimelineSeg } from '../hudState';
-import { uiLang } from '../strings';
+import { ui, uiLang } from '../strings';
 import { Log } from './Log';
 import { SidebarView, type SidebarData, type SidebarLook } from './Sidebar';
 import { AgentsPane } from './SidePanes';
@@ -376,6 +376,202 @@ export function GitPreview({ layout }: { layout: GitLayout }) {
             onRepo={noop}
           />
         </aside>
+      </div>
+    </div>
+  );
+}
+
+
+// ——— поле ввода: статичный снимок (глобальное состояние поля превью не трогает) ———
+
+const COMPOSER_TEXT = {
+  ru: { typed: 'Почини мигание счётчика', file: 'Counter.tsx', lines: '12–40', project: 'queue-board' },
+  en: { typed: 'Fix the counter flicker', file: 'Counter.tsx', lines: '12–40', project: 'queue-board' },
+}[uiLang];
+
+/** Поле ввода в раскладке `layout`: те же классы и `data-layout`, что у настоящего, данные — образец (контекст 66 %). */
+export function ComposerPreview({ layout }: { layout: ComposerLayout }) {
+  const T = COMPOSER_TEXT;
+  const c = ui.compose;
+  const mode = ui.modes.default?.[0] ?? '';
+  const vars = '--p:66;--c:var(--warn)';
+  const typed = (
+    <div class="pop">
+      <div class="prompt">
+        <span class="p">$</span>
+        <div class="typed">{T.typed}</div>
+      </div>
+    </div>
+  );
+  const ring = (
+    <span class="cr">
+      <span class="ring" style={vars} />
+      <span class="pc" style="color:var(--warn)">66%</span>
+    </span>
+  );
+  const bar = (
+    <span class="bar" style={vars}>
+      <i />
+      <u style="left:75%" />
+    </span>
+  );
+  const btn = (cls: string, label: string) => (
+    <span class="pop">
+      <button class={cls}>{label}</button>
+    </span>
+  );
+  const chip = (
+    <span class="auto">
+      {c.autoFile} <b>{T.file}</b>
+      <span class="x">✕</span>
+    </span>
+  );
+  const cache = (
+    <span class="meters time">
+      <span class="m">
+        <span class="clock" />
+        <b>3:12</b>
+      </span>
+      <span class="m lim">
+        {c.fiveHour} <b class="pct">62%</b>
+      </span>
+    </span>
+  );
+  let body;
+  if (layout === 'card') {
+    body = (
+      <>
+        <div class="frame">
+          <div class="chips">{chip}</div>
+          {typed}
+          <div class="row">
+            <span class="pop"><button class="plus ib">{c.plus}</button></span>
+            <span class="pop"><button class="pill mode"><b>{mode}</b></button></span>
+            <span class="pop"><button class="pill engine">claude · opus 4.5 · high</button></span>
+            <span class="sp" />
+            {ring}
+            <button class="send go">↑</button>
+          </div>
+        </div>
+      </>
+    );
+  } else if (layout === 'statusline') {
+    body = (
+      <>
+        <div class="inp">
+          <div class="chips refs">
+            <span class="auto ref">@<b>{T.file}</b><span class="rg-l">:{T.lines}</span></span>
+          </div>
+          {typed}
+        </div>
+        <div class="sl">
+          {btn('plus', c.plus)}
+          {btn('blk mode', mode)}
+          {btn('agent', 'claude')}
+          <span class="pop"><button><b>opus 4.5</b></button></span>
+          <span class="pop"><button class="effort"><b>high</b></button></span>
+          <span class="sp" />
+          <span class="cr cs">ctx {bar} <b>131k/200k</b></span>
+          {cache}
+          <button class="send go">↵</button>
+        </div>
+      </>
+    );
+  } else if (layout === 'gauges') {
+    body = (
+      <>
+        <div class="ctx top">
+          <div class="chips">{chip}</div>
+          <span class="g">
+            <span class="cn gauge">{c.context} {bar} <b>131k/200k</b></span>
+            {cache}
+          </span>
+        </div>
+        {typed}
+        <div class="sets">
+          {btn('plus', c.plusFile)}
+          {btn('mode', mode)}
+          {btn('agent', 'claude')}
+          <span class="pop"><button><b>opus 4.5</b></button></span>
+          <span class="pop"><button><b>high</b></button></span>
+          <span class="sp" />
+          <button class="send go">{c.sendLong}</button>
+        </div>
+      </>
+    );
+  } else if (layout === 'minimal') {
+    body = (
+      <>
+        <div class="one">
+          {btn('dollar mode', '$')}
+          <div class="chips">{chip}</div>
+          {typed}
+          {ring}
+          {btn('plus ib', c.plus)}
+          <span class="pop eng"><button class="engine">opus 4.5 · high</button></span>
+          <button class="send go">↵</button>
+        </div>
+      </>
+    );
+  } else if (layout === 'shell') {
+    body = (
+      <>
+        <div class="pl">
+          <span class="dir">{T.project}</span>
+          {btn('mdt mode', mode)}
+          <span class="mdl">
+            <span class="pop"><button>claude</button></span>
+            <span class="sep-c">/</span>
+            <span class="pop"><button><b>opus 4.5</b></button></span>
+            <span class="sep-c">:</span>
+            <span class="pop"><button><b>high</b></button></span>
+          </span>
+          {btn('plus', c.plus)}
+          <span class="rg">
+            <span class="cr cs">{bar} <b class="pc" style="color:var(--warn)">66%</b></span>
+            {cache}
+          </span>
+        </div>
+        <div class="chips refs">
+          <span class="auto plus"><span class="mk">+</span><b>{T.file}</b><span class="rg-l">:{T.lines}</span></span>
+        </div>
+        <div class="ln">
+          {typed}
+          <button class="send go">↵</button>
+        </div>
+      </>
+    );
+  } else {
+    body = (
+      <>
+        <div class="blocks">
+          {Array.from({ length: 20 }, (_, i) => (
+            <i class={i < 13 ? 'on' : ''} />
+          ))}
+        </div>
+        <div class="ctx">{chip}<span class="cn">{c.context} <b>131k / 200k</b></span></div>
+        {typed}
+        <div class="opts">
+          {btn('plus', c.plus)}
+          {btn('mode', mode)}
+          {btn('agent', 'claude')}
+          <span class="pop"><button>{c.model} <b>opus 4.5</b></button></span>
+          <span class="pop"><button>{c.effort} <b>high</b></button></span>
+          <button class="send">{c.send}</button>
+        </div>
+      </>
+    );
+  }
+  return (
+    <div class="pv pv-composer" inert aria-hidden="true">
+      <div class="webview">
+        <footer
+          class="compose"
+          data-layout={layout}
+          style={layout === 'statusline' || layout === 'minimal' ? vars : undefined}
+        >
+          {body}
+        </footer>
       </div>
     </div>
   );

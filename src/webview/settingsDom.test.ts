@@ -117,6 +117,7 @@ describe('вкладка настроек', () => {
       'agentura.sessionList.context',
       'agentura.sessionList.time',
       'agentura.feed.style',
+      'agentura.composer.layout',
       'agentura.agents.view',
       'agentura.git.layout',
       'agentura.feed.fontSize',
@@ -194,6 +195,13 @@ describe('вкладка настроек', () => {
       { type: 'settings.set', key: 'feed.style', value: 'cards' },
       { type: 'settings.set', key: 'feed.style', value: 'journal' },
     ]);
+    const comp = group('composer.layout');
+    expect(
+      [...comp.querySelectorAll('.pv footer.compose')].map((e) => e.getAttribute('data-layout')),
+    ).toEqual(['classic', 'card', 'statusline', 'gauges', 'minimal', 'shell']);
+    expect(comp.querySelector('[aria-checked="true"]')?.getAttribute('data-value')).toBe('classic');
+    comp.querySelector<HTMLButtonElement>('[data-value="shell"]')!.click();
+    expect(sets()).toContainEqual({ type: 'settings.set', key: 'composer.layout', value: 'shell' });
     const agents = group('agents.view');
     expect(
       [...agents.querySelectorAll('.pv .webview')].map((e) => e.getAttribute('data-agents')),

@@ -30,9 +30,9 @@ const jobs = []; // async functions, run in a pool
 const limitsMsg = () => ({ type: 'limits.update', ...data.limits() });
 
 /** Everything the host sends a chat tab on `ready`. */
-function chatMessages(events, { feedStyle = 'journal', agentsView = 'list', gitLayout = 'stack', extra = [] } = {}) {
+function chatMessages(events, { feedStyle = 'journal', agentsView = 'list', gitLayout = 'stack', composerLayout = 'classic', extra = [] } = {}) {
   return [
-    { type: 'chat.info', project: data.PROJECT, cwd: data.CWD, allowBypass: false, feedStyle, agentsView, gitLayout },
+    { type: 'chat.info', project: data.PROJECT, cwd: data.CWD, allowBypass: false, feedStyle, agentsView, gitLayout, composerLayout },
     { type: 'capabilities', sessionId: 's1', ...data.capabilities },
     { type: 'session.defaults', mode: 'manual', effort: 'high' },
     limitsMsg(),
@@ -87,6 +87,22 @@ jobs.push(async () => {
     return { src: await shot(page, png('feed'), 760, 760), label };
   }));
   await montage({ ...labelStyle, cols: 2, frames, out: join(OUT, 'feed-styles.png') }, TMP);
+});
+
+// ---- 2b. composer layouts (2x3): the bottom of the tab ---------------------------------------------------------
+
+jobs.push(async () => {
+  const layouts = [['classic', 'classic (default)'], ['card', 'card'], ['statusline', 'status line'], ['gauges', 'gauges on top'], ['minimal', 'minimal'], ['shell', 'shell prompt']];
+  const extra = [
+    { type: 'context.usage', usedTokens: 131_250, maxTokens: 200_000, source: 'engine' },
+    { type: 'editor.context', file: { path: 'apps/board/src/Counter.tsx', name: 'Counter.tsx' }, selection: { path: 'apps/board/src/Counter.tsx', name: 'Counter.tsx', startLine: 12, endLine: 40 } },
+  ];
+  const frames = await Promise.all(layouts.map(async ([layout, label]) => {
+    const page = chatPage('dark', data.finishedTurn(), { off: true }, { composerLayout: layout, extra });
+    // 760 px tall page at 2x: keep the lowest 190 css px, which is the whole input of every layout
+    return { src: await shot(page, png('composer'), 760, 760), label, crop: [0, 1140, 1520, 380] };
+  }));
+  await montage({ ...labelStyle, cols: 2, frames, out: join(OUT, 'composer-layouts.png') }, TMP);
 });
 
 // ---- 3/4. agents: four views in the right panel, and the graph tab ---------------------------------------------
@@ -145,7 +161,7 @@ jobs.push(async () => {
     defaultPermissionMode: 'manual', allowBypassPermissions: false, defaultModel: '', defaultEffort: 'high',
     contextThresholds: [120_000, 150_000], usagePollMinutes: 15, 'limits.readKeychain': true, claudeExecutable: '',
     'sessionList.view': 'compact', 'sessionList.context': true, 'sessionList.time': true, 'sidebar.top': 'detailed',
-    'feed.style': 'journal', 'agents.view': 'list', 'git.layout': 'stack', 'feed.fontSize': 13, 'ui.fontSize': 13,
+    'feed.style': 'journal', 'composer.layout': 'classic', 'agents.view': 'list', 'git.layout': 'stack', 'feed.fontSize': 13, 'ui.fontSize': 13,
     'font.interface': '', 'font.panels': '', 'font.code': '', language: 'auto',
   };
   const page = put(TMP, `${name('settings')}.html`, surfaceHtml({

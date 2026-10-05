@@ -29,7 +29,7 @@ Personal project, not on the Marketplace. Install it from a `.vsix` (see [Instal
 - **Agents graph.** Opens in its own editor tab: who started whom, the prompt each agent got and the summary it
   returned, plus its live calls.
 - **Attachments.** Paste screenshots with `⌘V`. Attach files with "+" or by dragging them in with `⇧` held. Text and PDF are sent as documents.
-- **Look.** Four feed styles, five agent views, three git layouts, three session list densities, your own fonts
+- **Look.** Four feed styles, six input layouts, five agent views, three git layouts, three session list densities, your own fonts
   (bundled, installed or Google Fonts), separate text sizes for the feed and the rest of the interface.
 - **English and Russian interface.**
 
@@ -38,6 +38,13 @@ Personal project, not on the Marketplace. Install it from a `.vsix` (see [Instal
 `agentura.feed.style`: `journal`, `folded`, `replies`, `cards`.
 
 ![Four feed styles of the same turn](docs/images/feed-styles.png)
+
+### Input layouts
+
+`agentura.composer.layout`: `classic`, `card`, `statusline`, `gauges`, `minimal`, `shell`. Keys and behavior are the
+same in all of them; only the arrangement changes. While a turn runs the field shows "↵ queue" and a stop button.
+
+![Six input layouts](docs/images/composer-layouts.png)
 
 ### Agents
 
