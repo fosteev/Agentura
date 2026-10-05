@@ -115,8 +115,14 @@ function ItemButton({
   onPick?: () => void;
 }) {
   const cls = ['it', selected && 'sel', it.dis && 'dis'].filter(Boolean).join(' ');
+  const ref = useRef<HTMLButtonElement>(null);
+  // Arrow keys move the selection; keep it visible in a menu taller than its max-height.
+  useEffect(() => {
+    if (selected) ref.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [selected]);
   return (
     <button
+      ref={ref}
       class={cls}
       role="menuitem"
       aria-disabled={it.dis ? true : undefined}
