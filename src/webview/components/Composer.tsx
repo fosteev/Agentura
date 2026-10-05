@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { EffortLevel, PermissionMode } from '../../agent/types';
 import { attachmentKey, attachmentLabel, type Attachment } from '../../shared/prompt';
 import { addSys } from '../chatState';
@@ -63,7 +63,7 @@ import {
 } from '../imageDraft';
 import { send } from '../vscode';
 
-type MenuName = 'mode' | 'model' | 'effort' | 'agent' | 'plus';
+type MenuName = 'mode' | 'model' | 'effort' | 'agent' | 'plus' | 'engine';
 
 /** Запасной список, пока движок не прислал `supportedModels()` (сессия ещё поднимается). */
 const FALLBACK_MODELS = [
@@ -566,21 +566,156 @@ export function Composer() {
     toggle,
     close: () => setMenu(undefined),
   };
+  const layout = composerLayout.value;
+  // раскладки кладут поле в разные обёртки — смена раскладки перемонтирует его пустым; вернуть набранное
+  const shownLayout = useRef(layout);
+  useLayoutEffect(() => {
+    if (shownLayout.current === layout) return;
+    shownLayout.current = layout;
+    const el = edRef.current;
+    if (el && (el.textContent ?? '') !== text) {
+      el.textContent = text;
+      setCaret(text.length);
+    }
+  }, [layout]);
+  const modelProps = { models, curModel };
+
+  const promptEl = (
+    <PromptField
+      edRef={edRef}
+      placeholder={
+        closed
+          ? ui.compose.closedPlaceholder
+          : blocked
+            ? ui.limit.placeholder
+            : target
+              ? ui.reply[target.kind]
+              : s.status === 'waiting'
+                ? ui.reply.waiting
+                : ui.compose.placeholder
+      }
+      closed={closed}
+      onInput={onInput}
+      onKeyDown={onKeyDown}
+      onPaste={onPaste}
+      menu={menuOpen && trig ? { kind: trig.kind, items, slash: slashItems, selected, onPick: accept } : undefined}
+    />
+  );
+  const sendCtl = (look: SendLook) => (
+    <SendControl
+      look={look}
+      working={working}
+      disabled={closed || (!!blocked && !target)}
+      onSend={submit}
+      onStop={() => {
+        interrupt();
+        // стоп размонтируется вместе с ходом — фокус обратно в поле, а не на body
+        edRef.current?.focus();
+      }}
+    />
+  );
+  const rootProps = {
+    class: footerCls,
+    'data-layout': layout,
+    onDragEnter,
+    onDragOver,
+    onDragLeave,
+    onDrop,
+  };
+  const chips = <AutoContext auto={auto} manual={manual} look="chip" />;
+
+  if (layout === 'card') {
+    return (
+      <footer {...rootProps}>
+        <div class="frame">
+          <Drafts drafts={drafts} fileDrafts={fileDrafts} />
+          <div class="chips">{chips}</div>
+          {promptEl}
+          <div class="row">
+            <PlusMenu {...menuProps} look="circle" />
+            <ModeMenu {...menuProps} look="pill" />
+            <EngineMenu {...menuProps} {...modelProps} efforts={efforts} look="full" />
+            <span class="sp" />
+            <ContextRing hv={hv} />
+            {sendCtl('round')}
+          </div>
+        </div>
+        <div class="ctx under">
+          <DraftHint drafts={drafts.length} files={fileDrafts.length} />
+          <Note histIdx={histIdx} blocked={blocked} />
+          <ContextCount
+            hv={hv}
+            draftTokens={draftTokens}
+            fileEstimate={fileEstimate}
+            withFiles={withFiles}
+          />
+          <Meters hv={hv} look="under" />
+        </div>
+      </footer>
+    );
+  }
+
+  if (layout === 'gauges') {
+    return (
+      <footer {...rootProps}>
+        <div class="ctx top">
+          <div class="chips">
+            <Drafts drafts={drafts} fileDrafts={fileDrafts} />
+            {chips}
+            <DraftHint drafts={drafts.length} files={fileDrafts.length} />
+          </div>
+          <span class="g">
+            <ContextGauge hv={hv} />
+            <Meters hv={hv} look="time" />
+          </span>
+        </div>
+        {promptEl}
+        <Note histIdx={histIdx} blocked={blocked} />
+        <div class="sets">
+          <PlusMenu {...menuProps} look="file" />
+          <ModeMenu {...menuProps} />
+          <AgentMenu {...menuProps} look="value" />
+          <ModelMenu {...menuProps} {...modelProps} look="value" />
+          <EffortMenu {...menuProps} efforts={efforts} />
+          <span class="sp" />
+          {sendCtl('long')}
+        </div>
+      </footer>
+    );
+  }
+
+  if (layout === 'minimal') {
+    const idle = text === '' && drafts.length === 0 && fileDrafts.length === 0;
+    const noted = histIdx !== undefined || !!blocked || closed || !!target;
+    return (
+      <footer {...rootProps} style={`--p:${hv.context.percent};--c:${hv.context.color}`}>
+        <Drafts drafts={drafts} fileDrafts={fileDrafts} />
+        <div class="one">
+          <ModeMenu {...menuProps} look="dollar" />
+          <div class="chips">{chips}</div>
+          {promptEl}
+          {hv.context.zone !== 'ok' && <ContextRing hv={hv} />}
+          <Meters hv={hv} look="alert" />
+          <PlusMenu {...menuProps} look="circle" />
+          <EngineMenu {...menuProps} {...modelProps} efforts={efforts} look="short" />
+          {sendCtl('enter')}
+        </div>
+        <div class="sub">
+          <DraftHint drafts={drafts.length} files={fileDrafts.length} />
+          <Note histIdx={histIdx} blocked={blocked} />
+          {idle && !noted && <span class="dim cheat">{ui.compose.cheatsheet}</span>}
+        </div>
+      </footer>
+    );
+  }
 
   return (
-    <footer
-      class={footerCls}
-      data-layout={composerLayout.value}
-      onDragEnter={onDragEnter}
-      onDragOver={onDragOver}
-      onDragLeave={onDragLeave}
-      onDrop={onDrop}
-    >
+    <footer {...rootProps}>
       <ContextBlocks blocks={hv.context.blocks} />
       <Drafts drafts={drafts} fileDrafts={fileDrafts} />
       <div class="ctx">
         <DraftHint drafts={drafts.length} files={fileDrafts.length} />
-        <AutoContext auto={auto} manual={manual} look="chip" />
+        {chips}
         <ContextCount
           hv={hv}
           draftTokens={draftTokens}
@@ -588,43 +723,16 @@ export function Composer() {
           withFiles={withFiles}
         />
       </div>
-      <PromptField
-        edRef={edRef}
-        placeholder={
-          closed
-            ? ui.compose.closedPlaceholder
-            : blocked
-              ? ui.limit.placeholder
-              : target
-                ? ui.reply[target.kind]
-                : s.status === 'waiting'
-                  ? ui.reply.waiting
-                  : ui.compose.placeholder
-        }
-        closed={closed}
-        onInput={onInput}
-        onKeyDown={onKeyDown}
-        onPaste={onPaste}
-        menu={menuOpen && trig ? { kind: trig.kind, items, slash: slashItems, selected, onPick: accept } : undefined}
-      />
+      {promptEl}
       <Note histIdx={histIdx} blocked={blocked} />
       <div class="opts">
         <PlusMenu {...menuProps} />
         <ModeMenu {...menuProps} />
         <AgentMenu {...menuProps} />
-        <ModelMenu {...menuProps} models={models} curModel={curModel} />
+        <ModelMenu {...menuProps} {...modelProps} />
         <EffortMenu {...menuProps} efforts={efforts} />
         <Meters hv={hv} />
-        <SendControl
-          working={working}
-          disabled={closed || (!!blocked && !target)}
-          onSend={submit}
-          onStop={() => {
-            interrupt();
-            // стоп размонтируется вместе с ходом — фокус обратно в поле, а не на body
-            edRef.current?.focus();
-          }}
-        />
+        {sendCtl('classic')}
       </div>
     </footer>
   );
@@ -863,18 +971,24 @@ function Note({
   );
 }
 
-function PlusMenu({ menu, toggle, close }: MenuProps) {
+/** `look` — вид кнопки-триггера: `classic` — как в строке настроек, остальные — для раскладок. */
+function PlusMenu({
+  menu,
+  toggle,
+  close,
+  look = 'classic',
+}: MenuProps & { look?: 'classic' | 'circle' | 'file' }) {
   return (
     <span class="pop" onKeyDown={menuKeys}>
       <button
-        class="plus"
+        class={look === 'circle' ? 'plus ib' : 'plus'}
         data-tip={ui.compose.plusTitle}
         aria-label={ui.compose.plusTitle}
         aria-haspopup="menu"
         aria-expanded={menu === 'plus'}
         onClick={() => toggle('plus')}
       >
-        {ui.compose.plus}
+        {look === 'file' ? ui.compose.plusFile : ui.compose.plus}
       </button>
       {menu === 'plus' && (
         <div class="menu up" role="menu">
@@ -922,19 +1036,38 @@ function PlusMenu({ menu, toggle, close }: MenuProps) {
   );
 }
 
-function ModeMenu({ menu, toggle, close }: MenuProps) {
+function ModeMenu({
+  menu,
+  toggle,
+  close,
+  look = 'label',
+}: MenuProps & { look?: 'label' | 'pill' | 'dollar' }) {
   const s = chat.value;
   const modeLabel = ui.modes[s.mode]?.[0] ?? s.mode;
   return (
     <span class="pop" onKeyDown={menuKeys}>
-      <button
-        class="mode"
-        aria-haspopup="menu"
-        aria-expanded={menu === 'mode'}
-        onClick={() => toggle('mode')}
-      >
-        {ui.compose.mode} <b>{modeLabel}</b>
-      </button>
+      {look === 'label' ? (
+        <button
+          class="mode"
+          aria-haspopup="menu"
+          aria-expanded={menu === 'mode'}
+          onClick={() => toggle('mode')}
+        >
+          {ui.compose.mode} <b>{modeLabel}</b>
+        </button>
+      ) : (
+        <button
+          class={look === 'pill' ? 'pill mode' : 'dollar mode'}
+          data-mode={s.mode}
+          data-tip={`${ui.compose.mode}: ${modeLabel}`}
+          aria-label={`${ui.compose.mode}: ${modeLabel}`}
+          aria-haspopup="menu"
+          aria-expanded={menu === 'mode'}
+          onClick={() => toggle('mode')}
+        >
+          {look === 'pill' ? <b>{modeLabel}</b> : '$'}
+        </button>
+      )}
       {menu === 'mode' && (
         <div class="menu up" role="menu">
           {(['default', 'acceptEdits', 'plan', 'bypassPermissions'] as PermissionMode[]).map((m) => {
@@ -962,8 +1095,100 @@ function ModeMenu({ menu, toggle, close }: MenuProps) {
   );
 }
 
-function AgentMenu({ menu, toggle, close }: MenuProps) {
+function AgentItems({ close }: { close: () => void }) {
   const s = chat.value;
+  return (
+    <>
+      <div class="hd">{ui.compose.agentMenu}</div>
+      <ItemButton
+        it={{
+          label: 'Claude',
+          small: ui.compose.claudeVia(s.engineVersion),
+          hint: ui.compose.agentReady,
+        }}
+        selected
+        onPick={close}
+      />
+      <ItemButton
+        it={{
+          label: 'Codex',
+          small: ui.compose.acpAdapter,
+          hint: ui.compose.agentSoon,
+          dis: true,
+        }}
+      />
+      <ItemButton
+        it={{
+          label: 'Gemini',
+          small: ui.compose.acpAdapter,
+          hint: ui.compose.agentSoon,
+          dis: true,
+        }}
+      />
+    </>
+  );
+}
+
+interface ModelProps {
+  models: ReadonlyArray<{ value: string; displayName: string; description?: string }>;
+  curModel: unknown;
+}
+
+function ModelItems({ close, models, curModel }: { close: () => void } & ModelProps) {
+  return (
+    <>
+      <div class="hd">{ui.menus.model}</div>
+      {models.map((m) => (
+        <ItemButton
+          it={{ label: m.displayName, small: m.description }}
+          selected={m === curModel}
+          onPick={() => {
+            close();
+            setModel(m.value);
+          }}
+        />
+      ))}
+    </>
+  );
+}
+
+function EffortItems({
+  close,
+  efforts,
+}: {
+  close: () => void;
+  efforts: EffortLevel[] | string[];
+}) {
+  const s = chat.value;
+  return (
+    <>
+      <div class="hd">{ui.menus.effort}</div>
+      {efforts.map((l) => (
+        <ItemButton
+          it={{ label: l }}
+          selected={s.effort === l}
+          onPick={() => {
+            close();
+            setEffort(l as EffortLevel);
+          }}
+        />
+      ))}
+      <div class="sep" />
+      <button class="it" onClick={() => (showThinking.value = !showThinking.value)}>
+        <span>
+          {ui.menus.thinking}
+          <small>{ui.menus.thinkingHint}</small>
+        </span>
+        <Switch on={showThinking.value} />
+      </button>
+    </>
+  );
+}
+
+/** `label` — «агент claude» (строка настроек), `value` — только значение (раскладка `gauges`). */
+type TriggerLook = 'label' | 'value';
+
+function AgentMenu({ menu, toggle, close, look = 'label' }: MenuProps & { look?: TriggerLook }) {
   return (
     <span class="pop" onKeyDown={menuKeys}>
       <button
@@ -973,36 +1198,17 @@ function AgentMenu({ menu, toggle, close }: MenuProps) {
         aria-expanded={menu === 'agent'}
         onClick={() => toggle('agent')}
       >
-        {ui.compose.agent} <b>claude</b>
+        {look === 'label' ? (
+          <>
+            {ui.compose.agent} <b>claude</b>
+          </>
+        ) : (
+          'claude'
+        )}
       </button>
       {menu === 'agent' && (
         <div class="menu up" role="menu">
-          <div class="hd">{ui.compose.agentMenu}</div>
-          <ItemButton
-            it={{
-              label: 'Claude',
-              small: ui.compose.claudeVia(s.engineVersion),
-              hint: ui.compose.agentReady,
-            }}
-            selected
-            onPick={close}
-          />
-          <ItemButton
-            it={{
-              label: 'Codex',
-              small: ui.compose.acpAdapter,
-              hint: ui.compose.agentSoon,
-              dis: true,
-            }}
-          />
-          <ItemButton
-            it={{
-              label: 'Gemini',
-              small: ui.compose.acpAdapter,
-              hint: ui.compose.agentSoon,
-              dis: true,
-            }}
-          />
+          <AgentItems close={close} />
         </div>
       )}
     </span>
@@ -1015,29 +1221,24 @@ function ModelMenu({
   close,
   models,
   curModel,
-}: MenuProps & {
-  models: ReadonlyArray<{ value: string; displayName: string; description?: string }>;
-  curModel: unknown;
-}) {
+  look = 'label',
+}: MenuProps & ModelProps & { look?: TriggerLook }) {
   const s = chat.value;
+  const name = s.model ? shortModel(s.model) : '—';
   return (
     <span class="pop" onKeyDown={menuKeys}>
       <button aria-haspopup="menu" aria-expanded={menu === 'model'} onClick={() => toggle('model')}>
-        {ui.compose.model} <b>{s.model ? shortModel(s.model) : '—'}</b>
+        {look === 'label' ? (
+          <>
+            {ui.compose.model} <b>{name}</b>
+          </>
+        ) : (
+          <b>{name}</b>
+        )}
       </button>
       {menu === 'model' && (
         <div class="menu up" role="menu">
-          <div class="hd">{ui.menus.model}</div>
-          {models.map((m) => (
-            <ItemButton
-              it={{ label: m.displayName, small: m.description }}
-              selected={m === curModel}
-              onPick={() => {
-                close();
-                setModel(m.value);
-              }}
-            />
-          ))}
+          <ModelItems close={close} models={models} curModel={curModel} />
         </div>
       )}
     </span>
@@ -1062,35 +1263,124 @@ function EffortMenu({
       </button>
       {menu === 'effort' && (
         <div class="menu up" role="menu">
-          <div class="hd">{ui.menus.effort}</div>
-          {efforts.map((l) => (
-            <ItemButton
-              it={{ label: l }}
-              selected={s.effort === l}
-              onPick={() => {
-                close();
-                setEffort(l as EffortLevel);
-              }}
-            />
-          ))}
-          <div class="sep" />
-          <button class="it" onClick={() => (showThinking.value = !showThinking.value)}>
-            <span>
-              {ui.menus.thinking}
-              <small>{ui.menus.thinkingHint}</small>
-            </span>
-            <Switch on={showThinking.value} />
-          </button>
+          <EffortItems close={close} efforts={efforts} />
         </div>
       )}
     </span>
   );
 }
 
-/** Приборы: кэш, 5 часов, неделя (если >70 %). */
-function Meters({ hv }: { hv: Hv }) {
+/**
+ * Одна кнопка вместо трёх: «agent · model · effort» (`full`) или «model · effort» (`short`); меню — три секции из тех же
+ * списков пунктов, что у отдельных меню.
+ */
+function EngineMenu({
+  menu,
+  toggle,
+  close,
+  models,
+  curModel,
+  efforts,
+  look,
+}: MenuProps & ModelProps & { efforts: EffortLevel[] | string[]; look: 'full' | 'short' }) {
+  const s = chat.value;
+  const parts = [
+    ...(look === 'full' ? ['claude'] : []),
+    s.model ? shortModel(s.model) : '—',
+    s.effort ?? 'auto',
+  ];
   return (
-    <span class="meters">
+    <span class="pop eng" onKeyDown={menuKeys}>
+      <button
+        class={look === 'full' ? 'pill engine' : 'engine'}
+        data-tip={ui.compose.engineTitle}
+        aria-label={`${ui.compose.engineTitle}: ${parts.join(' · ')}`}
+        aria-haspopup="menu"
+        aria-expanded={menu === 'engine'}
+        onClick={() => toggle('engine')}
+      >
+        {parts.join(' · ')}
+      </button>
+      {menu === 'engine' && (
+        <div class="menu up" role="menu">
+          <AgentItems close={close} />
+          <div class="sep" />
+          <ModelItems close={close} models={models} curModel={curModel} />
+          <div class="sep" />
+          <EffortItems close={close} efforts={efforts} />
+        </div>
+      )}
+    </span>
+  );
+}
+
+/** Кольцо заполнения контекста (`used / fullAt`) и процент; цвет — по зоне. */
+function ContextRing({ hv }: { hv: Hv }) {
+  const c = hv.context;
+  return (
+    <span class="cr" data-tip={c.title}>
+      <span class="ring" style={`--p:${c.percent};--c:${c.color}`} aria-hidden="true" />
+      <span class="pc" style={`color:${c.color}`}>
+        {c.percent}%
+      </span>
+    </span>
+  );
+}
+
+/** Полоса заполнения шкалы контекста с засечками порогов. */
+function ContextBar({ hv }: { hv: Hv }) {
+  const c = hv.context;
+  return (
+    <span class="bar" style={`--p:${c.fill};--c:${c.color}`} aria-hidden="true">
+      <i />
+      {c.marks.map((m) => (
+        <u style={`left:${m}%`} />
+      ))}
+    </span>
+  );
+}
+
+/** «контекст [полоса] 131k/200k · сжать» — компактная замена `ContextCount`. */
+function ContextGauge({ hv }: { hv: Hv }) {
+  const c = hv.context;
+  return (
+    <span class="cn gauge" data-tip={c.title}>
+      {ui.compose.context} <ContextBar hv={hv} /> <b class={c.numCls}>{c.short}</b>{' '}
+      {c.compacting && (
+        <>
+          <span class="spin" aria-hidden="true" /> {ui.log.compacting}{' '}
+        </>
+      )}
+      <button onClick={compact}>{ui.compose.compact}</button>
+    </span>
+  );
+}
+
+/**
+ * Приборы: кэш, 5 часов, неделя (если >70 %). `time` — кэш одним временем (без попаданий), `under` — подстрочник
+ * карточки (ячейки скрыты стилем), `alert` — только окна лимитов хуже нормы (>70 %), текстом.
+ */
+function Meters({
+  hv,
+  look = 'classic',
+}: {
+  hv: Hv;
+  look?: 'classic' | 'time' | 'under' | 'alert';
+}) {
+  const weekShown = hv.limits.week && hv.limits.week.percent > 70;
+  if (look === 'alert') {
+    const five = hv.limits.five && hv.limits.five.percent > 70 ? hv.limits.five : undefined;
+    const week = weekShown ? hv.limits.week : undefined;
+    if (!five && !week) return null;
+    return (
+      <span class="meters alert">
+        {five && <LimitText label={ui.compose.fiveHour} meter={five} title={hv.limits.title} />}
+        {week && <LimitText label={ui.compose.weekShort} meter={week} title={hv.limits.title} />}
+      </span>
+    );
+  }
+  return (
+    <span class={look === 'classic' ? 'meters' : `meters ${look}`}>
       <span class="m" data-tip={hv.cache.title}>
         <span
           class="clock"
@@ -1100,23 +1390,51 @@ function Meters({ hv }: { hv: Hv }) {
               : `conic-gradient(var(--info) ${Math.round(hv.cache.left * 100)}%, var(--bg-input) 0)`,
           }}
         />
-        {ui.compose.cache} <b>{hv.cache.time}</b> · <b>{hv.cache.hit}</b>
+        {look === 'time' ? (
+          <b>{hv.cache.time}</b>
+        ) : (
+          <>
+            {ui.compose.cache} <b>{hv.cache.time}</b> · <b>{hv.cache.hit}</b>
+          </>
+        )}
       </span>
       <LimitMeterView label={ui.compose.fiveHour} meter={hv.limits.five} title={hv.limits.title} />
-      {hv.limits.week && hv.limits.week.percent > 70 && (
+      {weekShown && (
         <LimitMeterView label={ui.compose.weekShort} meter={hv.limits.week} title={hv.limits.title} />
       )}
     </span>
   );
 }
 
+/** Окно лимита текстом «5ч 82%» (раскладка `minimal`). */
+function LimitText({
+  label,
+  meter,
+  title,
+}: {
+  label: string;
+  meter: LimitMeter;
+  title: string;
+}) {
+  return (
+    <span class={`m lim ${meter.level}`} data-tip={title}>
+      {label} <b class={meter.full ? 'pct full' : 'pct'}>{meter.percent}%</b>
+    </span>
+  );
+}
+
+/** Вид кнопки отправки: `classic` — «enter ↵», `round` — ↑ в круге, `long` — «отправить ↵», `enter` — «↵». */
+type SendLook = 'classic' | 'round' | 'long' | 'enter';
+
 /** Отправка; пока идёт ход — «↵ в очередь» и стоп (Esc делает то же). */
 function SendControl({
+  look,
   working,
   disabled,
   onSend,
   onStop,
 }: {
+  look: SendLook;
   working: boolean;
   disabled: boolean;
   onSend: () => void;
@@ -1141,14 +1459,21 @@ function SendControl({
   }
   return (
     <button
-      class="send"
+      class={look === 'classic' ? 'send' : 'send go'}
+      aria-label={look === 'round' || look === 'enter' ? ui.compose.sendTitle : undefined}
       data-tip={ui.compose.sendTitle}
       data-tip-key="Enter"
       // ответ карточке (вопрос, план) к лимиту не относится: Enter его пропускает — и кнопка тоже
       disabled={disabled}
       onClick={onSend}
     >
-      {ui.compose.send}
+      {look === 'classic'
+        ? ui.compose.send
+        : look === 'round'
+          ? '↑'
+          : look === 'long'
+            ? ui.compose.sendLong
+            : '↵'}
     </button>
   );
 }

@@ -61,6 +61,7 @@ export function renderWebview(
       uri('media', 'changes.css'),
       uri('media', 'git.css'),
       uri('media', 'feed.css'),
+      uri('media', 'composer.css'),
       uri('media', 'attach.css'),
       uri('media', 'webview.css'),
       uri('media', 'tooltip.css'),

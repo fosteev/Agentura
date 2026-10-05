@@ -1,0 +1,98 @@
+/* Раскладки поля ввода (roadmap 14): `agentura.composer.layout` → `data-layout` на `footer.compose`.
+   DOM раскладки задаёт Composer.tsx, здесь только вид. `classic` стилей здесь не имеет (его рисует hud.css), поэтому
+   общие правила — под `:not([data-layout="classic"])`: `data-layout="classic"` на footer тоже стоит.
+   Источник значений — prototype/shared/composer.css; цвета — только токены. */
+
+/* общие кирпичи: кольцо, полоса, чип, круглая кнопка */
+.compose:not([data-layout="classic"]) .ring { --p: 0; --c: var(--ok); width: 14px; height: 14px; border-radius: 50%; flex: none;
+  background: radial-gradient(var(--ring-bg, var(--bg-input)) 52%, transparent 54%), conic-gradient(var(--c) calc(var(--p) * 1%), var(--line-strong) 0); }
+.compose:not([data-layout="classic"]) .cr { display: inline-flex; gap: 6px; align-items: center; font-size: 11px; white-space: nowrap; }
+.compose:not([data-layout="classic"]) .bar { display: inline-block; width: 90px; height: 4px; border-radius: 2px; background: var(--bg-input); position: relative; overflow: hidden; vertical-align: 2px; }
+.compose:not([data-layout="classic"]) .bar > i { position: absolute; inset: 0 auto 0 0; width: calc(var(--p, 0) * 1%); background: var(--c, var(--ok)); }
+.compose:not([data-layout="classic"]) .bar > u { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--fg-mute); opacity: .7; }
+.compose:not([data-layout="classic"]) .chips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; min-width: 0; }
+.compose:not([data-layout="classic"]) .chips:empty { display: none; }
+.compose:not([data-layout="classic"]) .chips > span:not(.hint) { display: inline-flex; gap: 5px; align-items: center; padding: 1px 6px; border-radius: 3px;
+  background: var(--bg-raise); border: 1px solid var(--line); color: var(--fg); font-size: 11px; }
+.compose:not([data-layout="classic"]) .chips > span b { font-weight: 400; }
+.compose:not([data-layout="classic"]) .chips > span .x { margin-left: 0; color: var(--fg-faint); cursor: pointer; }
+.compose:not([data-layout="classic"]) .chips .att { margin: 0; }
+.compose:not([data-layout="classic"]) .sp { flex: 1; }
+.compose:not([data-layout="classic"]) .meters { margin-left: 0; }
+.compose:not([data-layout="classic"]) .go { background: var(--btn); color: var(--btn-fg); }
+.compose:not([data-layout="classic"]) .go:disabled { opacity: .5; }
+.compose:not([data-layout="classic"]) .note { padding: 0; }
+.compose:not([data-layout="classic"]) .ctx .hint { color: var(--fg-faint); }
+
+/* ── Б · card: одна рамка, контекст — кольцо, лимиты — подстрочник ───── */
+.compose[data-layout="card"] { border-top: 0; padding: 4px 14px 8px; }
+.compose[data-layout="card"] .frame { border: 1px solid var(--line-strong); border-radius: 8px; background: var(--bg-input);
+  padding: 8px 10px 6px; display: grid; gap: 6px; --ring-bg: var(--bg-input); }
+.compose[data-layout="card"] .frame:focus-within { border-color: var(--accent); }
+.compose[data-layout="card"] .frame .att { margin: 0; }
+.compose[data-layout="card"] .prompt { border: 0; background: none; padding: 0; min-height: 34px; grid-template-columns: minmax(0, 1fr); }
+.compose[data-layout="card"] .prompt .p { display: none; }
+.compose[data-layout="card"] .row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+/* триггеры меню — только `> .pop > button`: иначе правило задевает пункты открытого меню, «отправить» и стоп */
+.compose[data-layout="card"] .row > .pop > button { color: var(--fg-mute); }
+/* меню ряда открываются от левого края ряда, а не от кнопки: пилюли в середине, узкая вкладка — иначе меню за краем */
+.compose[data-layout="card"] .row { position: relative; }
+.compose[data-layout="card"] .row > .pop { position: static; }
+.compose[data-layout="card"] .ib { width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--line-strong); display: grid; place-items: center; font-size: 13px; line-height: 1; }
+.compose[data-layout="card"] .pill { padding: 2px 8px; border-radius: 11px; font-size: 11px; }
+.compose[data-layout="card"] .pill:hover { background: var(--bg-hover); }
+.compose[data-layout="card"] .pill::after { content: " ▾"; opacity: .6; }
+.compose[data-layout="card"] .pill b { font-weight: 500; color: var(--fg); }
+.compose[data-layout="card"] .pill.mode b { color: var(--info); }
+.compose[data-layout="card"] .go { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; padding: 0; }
+.compose[data-layout="card"] .stopb { border-radius: 12px; padding: 2px 8px; }
+.compose[data-layout="card"] .under { margin: 0; padding: 5px 4px 0; gap: 4px 14px; font-size: 10.5px; align-items: center; }
+.compose[data-layout="card"] .under .cn { white-space: normal; }
+.compose[data-layout="card"] .under .meters { gap: 14px; flex-wrap: wrap; }
+.compose[data-layout="card"] .under .cells { display: none; }
+
+/* ── Г · gauges: приборы сверху, настройки под полем ─────────────────── */
+.compose[data-layout="gauges"] { padding: 6px 14px 10px; }
+.compose[data-layout="gauges"] .top { align-items: center; gap: 8px 12px; margin-bottom: 6px; }
+.compose[data-layout="gauges"] .top .g { margin-left: auto; display: inline-flex; gap: 8px 16px; align-items: center; flex-wrap: wrap; }
+.compose[data-layout="gauges"] .top .cn { margin-left: 0; white-space: normal; }
+.compose[data-layout="gauges"] .top .meters { gap: 16px; }
+.compose[data-layout="gauges"] .prompt { min-height: 48px; }
+.compose[data-layout="gauges"] .sets { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; padding-top: 6px; font-size: 11.5px; color: var(--fg-mute); }
+.compose[data-layout="gauges"] .sets > .pop > button { padding: 2px 6px; border-radius: 3px; color: var(--fg-mute); }
+.compose[data-layout="gauges"] .sets > .pop > button:hover { background: var(--bg-hover); }
+.compose[data-layout="gauges"] .sets > .pop > button b { font-weight: 500; color: var(--fg); }
+.compose[data-layout="gauges"] .sets > .pop > button:not(.plus)::after { content: " ▾"; opacity: .6; }
+.compose[data-layout="gauges"] .sets .mode b { color: var(--info); }
+.compose[data-layout="gauges"] .sets .go { padding: 3px 10px; border-radius: 3px; }
+.compose[data-layout="gauges"] .sets .go:hover { background: var(--btn); }
+
+/* ── Д · minimal: одна строка, режим — цветом «$», приборы — у порога ── */
+.compose[data-layout="minimal"] { border-top: 0; padding: 8px 14px 10px; position: relative; }
+.compose[data-layout="minimal"]::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg, var(--c, var(--ok)) calc(var(--p, 0) * 1%), var(--line) 0); }
+.compose[data-layout="minimal"] .one { display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 10px; flex-wrap: wrap;
+  background: var(--bg-input); border: 1px solid var(--line-strong); border-radius: 4px; min-height: 36px; --ring-bg: var(--bg-input); }
+.compose[data-layout="minimal"] .one:focus-within { border-color: var(--accent); }
+.compose[data-layout="minimal"] .one > .pop:has(> .prompt) { flex: 1 1 140px; min-width: 0; }
+.compose[data-layout="minimal"] .prompt { border: 0; background: none; padding: 0; min-height: 0; grid-template-columns: minmax(0, 1fr); }
+.compose[data-layout="minimal"] .prompt .p { display: none; }
+.compose[data-layout="minimal"] .dollar { color: var(--info); font-weight: 600; padding: 0 2px; }
+.compose[data-layout="minimal"] .one > .pop > button { color: var(--fg-mute); }
+.compose[data-layout="minimal"] .one .engine { font-size: 11px; padding: 2px 6px; border-radius: 3px; }
+.compose[data-layout="minimal"] .one .engine::after { content: " ▾"; opacity: .6; }
+.compose[data-layout="minimal"] .one .engine:hover, .compose[data-layout="minimal"] .one .plus:hover { background: var(--bg-hover); }
+/* меню строки — от краёв строки: поле, режим и «+» — слева, движок — справа */
+.compose[data-layout="minimal"] .one { position: relative; }
+.compose[data-layout="minimal"] .one > .pop { position: static; }
+.compose[data-layout="minimal"] .pop.eng .menu { left: auto; right: 0; }
+.compose[data-layout="minimal"] .meters.alert { gap: 8px; font-size: 11px; }
+.compose[data-layout="minimal"] .go { font-size: 11px; padding: 2px 6px; border-radius: 3px; background: none; color: var(--fg-mute); }
+.compose[data-layout="minimal"] .go:hover { background: var(--bg-hover); color: var(--fg); }
+.compose[data-layout="minimal"] .sub { display: flex; gap: 14px; padding: 5px 2px 0; font-size: 10.5px; color: var(--fg-faint); flex-wrap: wrap; }
+.compose[data-layout="minimal"] .sub:empty { display: none; }
+.compose[data-layout="minimal"] .sub .note { color: var(--fg-mute); }
+.compose[data-layout="minimal"] .sub .hint { color: var(--fg-faint); }
+
+/* узкая вкладка: ряды и так переносятся (flex-wrap выше и у .ctx в hud.css); приборы gauges — с левого края */
+html[data-width="380"] .compose[data-layout="gauges"] .top .g { margin-left: 0; }
