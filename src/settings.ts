@@ -40,6 +40,21 @@ export const FEED_STYLES = ['journal', 'folded', 'replies', 'cards'] as const;
 export type FeedStyle = (typeof FEED_STYLES)[number];
 export const DEFAULT_FEED_STYLE: FeedStyle = 'journal';
 /**
+ * Раскладка поля ввода (`composer.layout`): `classic` — как раньше; `card` — одна рамка с нижним рядом; `statusline` —
+ * полоса состояния под полем; `gauges` — приборы сверху; `minimal` — одна строка; `shell` — командная строка.
+ * Поведение поля одно, меняется расстановка частей (`data-layout` на `footer.compose`).
+ */
+export const COMPOSER_LAYOUTS = [
+  'classic',
+  'card',
+  'statusline',
+  'gauges',
+  'minimal',
+  'shell',
+] as const;
+export type ComposerLayout = (typeof COMPOSER_LAYOUTS)[number];
+export const DEFAULT_COMPOSER_LAYOUT: ComposerLayout = 'classic';
+/**
  * Вид вкладки «агенты» правой панели (`agents.view`): `list` — список с деталями, `tree` — дерево сессии, `lanes` —
  * дорожки времени, `cards` — карточки; `graph` — граф во вкладке редактора (панель при нём показывает `list`).
  */
@@ -83,6 +98,7 @@ export type SettingKey =
   | 'sessionList.time'
   | 'sidebar.top'
   | 'feed.style'
+  | 'composer.layout'
   | 'agents.view'
   | 'git.layout'
   | 'feed.fontSize'
@@ -106,6 +122,7 @@ export const SETTING_KEYS: readonly SettingKey[] = [
   'sessionList.time',
   'sidebar.top',
   'feed.style',
+  'composer.layout',
   'agents.view',
   'git.layout',
   'feed.fontSize',
@@ -138,6 +155,7 @@ export interface SettingsValues {
   'sessionList.time': boolean;
   'sidebar.top': SidebarTopMode;
   'feed.style': FeedStyle;
+  'composer.layout': ComposerLayout;
   'agents.view': AgentsView;
   'git.layout': GitLayout;
   'feed.fontSize': number;
@@ -178,6 +196,10 @@ export function isSessionListMode(v: unknown): v is SessionListMode {
 
 export function isSidebarTopMode(v: unknown): v is SidebarTopMode {
   return typeof v === 'string' && (SIDEBAR_TOP_MODES as readonly string[]).includes(v);
+}
+
+export function isComposerLayout(v: unknown): v is ComposerLayout {
+  return typeof v === 'string' && (COMPOSER_LAYOUTS as readonly string[]).includes(v);
 }
 
 export function isFeedStyle(v: unknown): v is FeedStyle {
@@ -346,6 +368,10 @@ export function validateSetting(key: SettingKey, value: unknown, lang: ErrLang =
         : bad(t.allowed(SIDEBAR_TOP_MODES.join(', ')));
     case 'feed.style':
       return isFeedStyle(value) ? { ok: true, value } : bad(t.allowed(FEED_STYLES.join(', ')));
+    case 'composer.layout':
+      return isComposerLayout(value)
+        ? { ok: true, value }
+        : bad(t.allowed(COMPOSER_LAYOUTS.join(', ')));
     case 'agents.view':
       return isAgentsView(value) ? { ok: true, value } : bad(t.allowed(AGENTS_VIEWS.join(', ')));
     case 'git.layout':
@@ -370,6 +396,7 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
   const list = cfg.get<unknown>('sessionList.view');
   const top = cfg.get<unknown>('sidebar.top');
   const feed = cfg.get<unknown>('feed.style');
+  const cl = cfg.get<unknown>('composer.layout');
   const agv = cfg.get<unknown>('agents.view');
   const gl = cfg.get<unknown>('git.layout');
   const lang = cfg.get<unknown>('language');
@@ -397,6 +424,7 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
     'sessionList.time': cfg.get<unknown>('sessionList.time') !== false,
     'sidebar.top': isSidebarTopMode(top) ? top : DEFAULT_SIDEBAR_TOP,
     'feed.style': isFeedStyle(feed) ? feed : DEFAULT_FEED_STYLE,
+    'composer.layout': isComposerLayout(cl) ? cl : DEFAULT_COMPOSER_LAYOUT,
     'agents.view': isAgentsView(agv) ? agv : DEFAULT_AGENTS_VIEW,
     'git.layout': isGitLayout(gl) ? gl : DEFAULT_GIT_LAYOUT,
     'feed.fontSize': isFeedFontSize(fz) ? fz : DEFAULT_FEED_FONT_SIZE,

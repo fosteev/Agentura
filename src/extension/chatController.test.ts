@@ -215,6 +215,15 @@ describe('ChatController', () => {
     expect(posted).toEqual([expect.objectContaining({ type: 'chat.info', feedStyle: 'cards' })]);
   });
 
+  it('pushInfo: раскладка поля ввода из настроек уходит в chat.info', async () => {
+    const { controller, posted, deps } = setup();
+    await controller.handle({ type: 'ready' });
+    posted.length = 0;
+    deps.settings = () => ({ allowBypass: false, composerLayout: 'shell' });
+    controller.pushInfo();
+    expect(posted).toEqual([expect.objectContaining({ type: 'chat.info', composerLayout: 'shell' })]);
+  });
+
   it('pushInfo: вид вкладки «агенты» из настроек уходит в chat.info', async () => {
     const { controller, posted, deps } = setup();
     await controller.handle({ type: 'ready' });

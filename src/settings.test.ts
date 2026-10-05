@@ -166,6 +166,21 @@ describe('resolveDefaultMode / resolveDefaultEffort', () => {
   });
 });
 
+describe('composer.layout', () => {
+  it('validateSetting: шесть раскладок, остальное — отказ', () => {
+    for (const v of ['classic', 'card', 'statusline', 'gauges', 'minimal', 'shell']) {
+      expect(validateSetting('composer.layout', v)).toEqual({ ok: true, value: v });
+    }
+    expect(validateSetting('composer.layout', 'grid').ok).toBe(false);
+    expect(validateSetting('composer.layout', 1).ok).toBe(false);
+  });
+  it('readSettings: мусор и пусто — classic, нормальное значение читается', () => {
+    expect(readSettings(cfgOf({ 'composer.layout': 'rows' }))['composer.layout']).toBe('classic');
+    expect(readSettings(cfgOf({}))['composer.layout']).toBe('classic');
+    expect(readSettings(cfgOf({ 'composer.layout': 'shell' }))['composer.layout']).toBe('shell');
+  });
+});
+
 describe('readSettings', () => {
   it('мусор из settings.json заменяется значениями по умолчанию', () => {
     const v = readSettings(

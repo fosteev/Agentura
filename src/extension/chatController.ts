@@ -43,7 +43,7 @@ import {
   sessionProblem,
   type SessionAttach,
 } from '../shared/files';
-import { resolveDefaultEffort, resolveDefaultMode, type AgentsView, type FeedStyle, type GitLayout } from '../settings';
+import { resolveDefaultEffort, resolveDefaultMode, type AgentsView, type ComposerLayout, type FeedStyle, type GitLayout } from '../settings';
 import { hostStrings, type Lang } from '../shared/l10n';
 import { appliedSides, previewOf, proposedSides, type EditSides } from './editDiff';
 import {
@@ -79,6 +79,8 @@ export interface ChatDeps {
     contextThresholds?: number[];
     /** `agentura.feed.style`: вид ленты, уходит в `chat.info`. */
     feedStyle?: FeedStyle | undefined;
+    /** `agentura.composer.layout`: раскладка поля ввода, уходит в `chat.info`. */
+    composerLayout?: ComposerLayout | undefined;
     /** `agentura.agents.view`: вид вкладки «агенты», уходит в `chat.info`. */
     agentsView?: AgentsView | undefined;
     /** `agentura.git.layout`: раскладка вкладки «git» при нескольких репо, уходит в `chat.info`. */
@@ -235,6 +237,7 @@ export class ChatController {
       allowBypass: s.allowBypass,
       ...(s.contextThresholds?.length ? { contextThresholds: s.contextThresholds } : {}),
       ...(s.feedStyle ? { feedStyle: s.feedStyle } : {}),
+      ...(s.composerLayout ? { composerLayout: s.composerLayout } : {}),
       ...(s.agentsView ? { agentsView: s.agentsView } : {}),
       ...(s.gitLayout ? { gitLayout: s.gitLayout } : {}),
     });
