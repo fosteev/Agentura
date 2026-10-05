@@ -5,6 +5,12 @@
  */
 
 export type PermissionMode = 'default' | 'acceptEdits' | 'plan' | 'bypassPermissions';
+/** Внешний движок сессии. Во всех долговечных ссылках id хранится вместе с провайдером. */
+export type AgentProvider = 'claude' | 'codex';
+export interface SessionRef {
+  provider: AgentProvider;
+  id: string;
+}
 export type EffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 /**
  * Ответ на запрос разрешения. `allow-always` — принять подсказки движка как есть (правило в

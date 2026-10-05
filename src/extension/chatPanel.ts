@@ -4,7 +4,8 @@ import { samePath } from './pathKey';
 import * as vscode from 'vscode';
 import { EngineLocator } from './engineLocator';
 import { ClaudeAdapter } from '../agent/claude/adapter';
-import type { AgentAdapter } from '../agent/types';
+import { resolveCodexExecutable } from '../agent/codex/executable';
+import type { AgentAdapter, AgentProvider, SessionRef } from '../agent/types';
 import type { LimitsSource } from '../data/limits';
 import type { LiveSessions, TranscriptCache } from '../data/sessions';
 import { postToWebview } from '../protocol';
@@ -82,11 +83,17 @@ export interface ChatServices {
   memory: SessionMemory;
   /** Поиск `claude` (асинхронный, с прогревом). */
   engine: EngineLocator;
+  /** Поиск `codex` (без прогрева: нужен только тому, кто выбрал Codex). */
+  codexEngine: EngineLocator;
   /** Вкладка «git» (roadmap 12): репозитории рабочей папки над API встроенного git. */
   git: GitService;
 }
 
-export function createAdapter(log: Logger): { adapter: AgentAdapter; engine: EngineLocator } {
+export function createAdapter(log: Logger): {
+  adapter: AgentAdapter;
+  engine: EngineLocator;
+  codexEngine: EngineLocator;
+} {
   const cfg = () => vscode.workspace.getConfiguration('agentura');
   // `.vsix` без бинарника движка: настройка → системный `claude` (с проверкой версии). Поиск асинхронный
   // (`EngineLocator`): прогрев при активации, первый запуск движка ждёт его результат, а не поток хоста.
@@ -97,17 +104,29 @@ export function createAdapter(log: Logger): { adapter: AgentAdapter; engine: Eng
     notify: (m) => void vscode.window.showWarningMessage(`Agentura: ${m}`),
     lang: currentLanguage,
   });
+  // отдельный локатор: ошибки и кэш «claude» и «codex» не смешиваются
+  const codexEngine = new EngineLocator({
+    setting: () => cfg().get<string>('codexExecutable') ?? '',
+    resolve: (s) => resolveCodexExecutable(s),
+    name: 'codex',
+    notFound: 'Codex CLI (codex) was not found.',
+    info: (m) => log.info(m),
+    warn: (m) => log.warn(m),
+    lang: currentLanguage,
+  });
   const adapter = new ClaudeAdapter({
     executablePath: () => engine.path(),
     clientApp: 'agentura',
     log: (level, message) => log[level](message),
     lang: currentLanguage,
   });
-  return { adapter, engine };
+  return { adapter, engine, codexEngine };
 }
 
 interface OpenOptions {
   resumeId?: string;
+  /** Движок возобновляемой сессии; нет — `claude`. */
+  provider?: AgentProvider;
   /** Вкладка создаётся без фокуса и не стартует движок, пока не станет видимой (восстановление). */
   lazy?: boolean;
   /** Готовая панель (сериализатор). */
@@ -133,6 +152,8 @@ export class ChatPanel {
 
   private readonly disposables: vscode.Disposable[] = [];
   private readonly controller: ChatController;
+  /** Движок сессии вкладки (пока всегда `claude`: Codex подключается этапом 3). */
+  private provider: AgentProvider = 'claude';
   private started = false;
   private lazy = false;
   /** Вкладка графа агентов этой вкладки чата (roadmap 11, этап 2): одна на чат. */
@@ -149,6 +170,7 @@ export class ChatPanel {
   private static views(): PanelView[] {
     return ChatPanel.panels.map((p) => ({
       sessionId: p.controller.sessionId,
+      provider: p.provider,
       pristine: p.controller.pristine,
       active: p.panel.active,
     }));
@@ -183,7 +205,10 @@ export class ChatPanel {
     }
     const target = ChatPanel.panels[route.index]!;
     target.panel.reveal();
-    if (route.kind === 'reuse' && open.resumeId) void target.controller.resume(open.resumeId);
+    if (route.kind === 'reuse' && open.resumeId) {
+      target.provider = open.provider ?? 'claude';
+      void target.controller.resume(open.resumeId);
+    }
     return target;
   }
 
@@ -206,12 +231,19 @@ export class ChatPanel {
     context: vscode.ExtensionContext,
     log: Logger,
     services: ChatServices,
-    sessionId: string,
+    session: string | SessionRef,
     from?: ChatPanel,
   ): void {
+    // без провайдера — `claude` (старые вызовы: боковая панель, команда, память воркспейса)
+    const ref: SessionRef = typeof session === 'string' ? { provider: 'claude', id: session } : session;
+    // Codex-вкладки появятся с этапом 3: до того чужой id нельзя отдавать Claude-движку
+    if (ref.provider !== 'claude') {
+      log.warn(`Сессия ${ref.provider}:${ref.id} не открыта: движок ${ref.provider} ещё не подключён`);
+      return;
+    }
     const fromIndex = from ? ChatPanel.panels.indexOf(from) : undefined;
-    const route = routeResume(ChatPanel.views(), sessionId, fromIndex);
-    ChatPanel.apply(route, context, log, services, { resumeId: sessionId });
+    const route = routeResume(ChatPanel.views(), ref, fromIndex);
+    ChatPanel.apply(route, context, log, services, { resumeId: ref.id, provider: ref.provider });
   }
 
   /** Кнопка `/status` боковой панели: выполнить во вкладке (активной или новой). */
@@ -227,15 +259,19 @@ export class ChatPanel {
   ): vscode.WebviewPanelSerializer {
     return {
       deserializeWebviewPanel: async (panel, state: unknown) => {
-        const id = restoredSessionId(
+        const ref = restoredSessionId(
           state,
-          ChatPanel.panels.map((p) => p.controller.sessionId),
+          ChatPanel.panels.map((p) =>
+            p.controller.sessionId ? { provider: p.provider, id: p.controller.sessionId } : undefined,
+          ),
           services.memory.openSessions(),
         );
+        // Codex-сессию до этапа 3 не поднимаем: пустая вкладка лучше, чем чужой id в Claude
+        const id = ref?.provider === 'claude' ? ref.id : undefined;
         const visible = panel.visible;
         ChatPanel.apply({ kind: 'new' }, context, log, services, {
           panel,
-          ...(id ? { resumeId: id } : {}),
+          ...(id ? { resumeId: id, provider: 'claude' as const } : {}),
           lazy: !visible,
         });
       },
@@ -255,6 +291,7 @@ export class ChatPanel {
     folder: vscode.WorkspaceFolder,
     open: OpenOptions,
   ) {
+    this.provider = open.provider ?? 'claude';
     const version = String(context.extension.packageJSON.version);
     const files = new WorkspaceFiles(folder.uri);
     const editorColumn = (): vscode.ViewColumn =>
@@ -399,7 +436,7 @@ export class ChatPanel {
       openPreview: (p) => services.previews.open(p, editorColumn()),
       openExternal: (u) => void vscode.env.openExternal(vscode.Uri.parse(u)),
       ...(open.resumeId ? { resumeId: open.resumeId } : {}),
-      openSession: (id) => ChatPanel.resume(context, log, services, id, this),
+      openSession: (id, provider) => ChatPanel.resume(context, log, services, { provider, id }, this),
       titleOf: async (id) => (await services.sessions.list()).find((r) => r.id === id)?.title,
       onSession: () => {
         this.graph.claimPending();
@@ -496,10 +533,11 @@ export class ChatPanel {
 
   /** Состав или фокус вкладок изменился: память воркспейса и строка `cur` боковой панели. */
   private static sessionsChanged(services: ChatServices): void {
-    const ids = ChatPanel.panels
-      .map((p) => p.controller.sessionId)
-      .filter((x): x is string => x !== undefined);
-    services.memory.setOpenSessions(ids);
+    const refs = ChatPanel.panels.flatMap((p): SessionRef[] => {
+      const id = p.controller.sessionId;
+      return id === undefined ? [] : [{ provider: p.provider, id }];
+    });
+    services.memory.setOpenSessions(refs);
     ChatPanel.changed.fire();
   }
 

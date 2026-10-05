@@ -39,6 +39,15 @@ describe('routeResume', () => {
   });
 });
 
+describe('routeResume: движок', () => {
+  it('тот же id у другого движка — не открытая сессия', () => {
+    const panels: PanelView[] = [{ sessionId: 'a', provider: 'claude', pristine: false, active: true }];
+    expect(routeResume(panels, { provider: 'claude', id: 'a' })).toEqual({ kind: 'reveal', index: 0 });
+    expect(routeResume(panels, 'a')).toEqual({ kind: 'reveal', index: 0 });
+    expect(routeResume(panels, { provider: 'codex', id: 'a' })).toEqual({ kind: 'new' });
+  });
+});
+
 describe('routeNew / routeOpen', () => {
   it('новая: пустая вкладка уже есть — показать её, иначе открыть', () => {
     expect(routeNew([p({ sessionId: 'a' }), p({ pristine: true })])).toEqual({
@@ -55,22 +64,27 @@ describe('routeNew / routeOpen', () => {
 });
 
 describe('restoredSessionId (сериализатор)', () => {
+  const cl = (id: string) => ({ provider: 'claude' as const, id });
+  const cx = (id: string) => ({ provider: 'codex' as const, id });
   it('лишнее поле panel состояния не мешает: id берётся из sessionId', () => {
-    expect(restoredSessionId({ sessionId: 'a', panel: { w: 400, off: true } }, [], ['b'])).toBe(
-      'a',
-    );
-    expect(restoredSessionId({ panel: { w: 400 } }, [], ['b'])).toBeUndefined();
+    expect(
+      restoredSessionId({ sessionId: 'a', panel: { w: 400, off: true } }, [], [cl('b')]),
+    ).toEqual(cl('a'));
+    expect(restoredSessionId({ panel: { w: 400 } }, [], [cl('b')])).toBeUndefined();
   });
-  it('своя сессия из состояния webview', () => {
-    expect(restoredSessionId({ sessionId: 'a' }, [], ['b'])).toBe('a');
+  it('своя сессия из состояния webview; движок — из памяти воркспейса, иначе Claude', () => {
+    expect(restoredSessionId({ sessionId: 'a' }, [], [cl('b')])).toEqual(cl('a'));
+    expect(restoredSessionId({ sessionId: 'a' }, [], [cx('a')])).toEqual(cx('a'));
+    expect(restoredSessionId({ sessionId: 'a', provider: 'codex' }, [], [])).toEqual(cx('a'));
   });
-  it('своя уже открыта в другой вкладке — не поднимать второй раз', () => {
-    expect(restoredSessionId({ sessionId: 'a' }, ['a'], [])).toBeUndefined();
+  it('своя уже открыта в другой вкладке — не поднимать второй раз; тот же id другого движка — другая', () => {
+    expect(restoredSessionId({ sessionId: 'a' }, [cl('a')], [])).toBeUndefined();
+    expect(restoredSessionId({ sessionId: 'a', provider: 'codex' }, [cl('a')], [])).toEqual(cx('a'));
   });
   it('пустое состояние — вкладка без сессии, запас из памяти не берётся', () => {
-    expect(restoredSessionId({}, [], ['a'])).toBeUndefined();
+    expect(restoredSessionId({}, [], [cl('a')])).toBeUndefined();
   });
-  it('состояния нет совсем — первая незанятая из памяти воркспейса', () => {
-    expect(restoredSessionId(undefined, ['a', undefined], ['a', 'b'])).toBe('b');
+  it('состояния нет совсем — первая незанятая из памяти воркспейса, с движком', () => {
+    expect(restoredSessionId(undefined, [cl('a'), undefined], [cl('a'), cx('b')])).toEqual(cx('b'));
   });
 });

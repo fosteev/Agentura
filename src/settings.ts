@@ -3,7 +3,7 @@
  * хост (вкладка настроек, `chatController`), и webview настроек; доступ к конфигурации приходит снаружи.
  * Источник правды — настройки VS Code: вкладка настроек только читает и пишет их.
  */
-import type { EffortLevel, PermissionMode } from './agent/types';
+import type { AgentProvider, EffortLevel, PermissionMode } from './agent/types';
 
 export const EFFORT_LEVELS: readonly EffortLevel[] = ['low', 'medium', 'high', 'xhigh', 'max'];
 /** Режимы по умолчанию как в настройке: `manual` — обычный режим с подтверждениями. */
@@ -83,6 +83,12 @@ export const DEFAULT_FEED_FONT_SIZE = 13;
 export const MIN_FEED_FONT_SIZE = 10;
 export const MAX_FEED_FONT_SIZE = 20;
 
+export const PROVIDERS: readonly AgentProvider[] = ['claude', 'codex'];
+export const DEFAULT_PROVIDER: AgentProvider = 'claude';
+export function isProvider(v: unknown): v is AgentProvider {
+  return v === 'claude' || v === 'codex';
+}
+
 /** Ключи без префикса `agentura.` — те же, что в `getConfiguration('agentura')`. */
 export type SettingKey =
   | 'defaultPermissionMode'
@@ -93,6 +99,8 @@ export type SettingKey =
   | 'usagePollMinutes'
   | 'limits.readKeychain'
   | 'claudeExecutable'
+  | 'codexExecutable'
+  | 'defaultProvider'
   | 'sessionList.view'
   | 'sessionList.context'
   | 'sessionList.time'
@@ -117,6 +125,8 @@ export const SETTING_KEYS: readonly SettingKey[] = [
   'usagePollMinutes',
   'limits.readKeychain',
   'claudeExecutable',
+  'codexExecutable',
+  'defaultProvider',
   'sessionList.view',
   'sessionList.context',
   'sessionList.time',
@@ -136,9 +146,15 @@ export const SETTING_KEYS: readonly SettingKey[] = [
 /**
  * `scope: machine` в package.json: пишутся только в пользовательские настройки машины. Режим по умолчанию —
  * не machine (решение владельца 2026-10-01): его можно задать на проект; bypass из него всё равно требует
- * machine-настройки `allowBypassPermissions`.
+ * machine-настройки `allowBypassPermissions`. `defaultProvider` — `scope: application` (тоже только пользователь):
+ * `.vscode/settings.json` чужого репозитория не должен молча отправлять код другому вендору.
  */
-export const MACHINE_KEYS: readonly SettingKey[] = ['allowBypassPermissions', 'claudeExecutable'];
+export const MACHINE_KEYS: readonly SettingKey[] = [
+  'allowBypassPermissions',
+  'claudeExecutable',
+  'codexExecutable',
+  'defaultProvider',
+];
 
 export interface SettingsValues {
   defaultPermissionMode: DefaultMode;
@@ -150,6 +166,8 @@ export interface SettingsValues {
   usagePollMinutes: number;
   'limits.readKeychain': boolean;
   claudeExecutable: string;
+  codexExecutable: string;
+  defaultProvider: AgentProvider;
   'sessionList.view': SessionListMode;
   'sessionList.context': boolean;
   'sessionList.time': boolean;
@@ -328,6 +346,8 @@ export function validateSetting(key: SettingKey, value: unknown, lang: ErrLang =
   switch (key) {
     case 'defaultPermissionMode':
       return isDefaultMode(value) ? { ok: true, value } : bad(t.unknownMode);
+    case 'defaultProvider':
+      return isProvider(value) ? { ok: true, value } : bad(t.allowed(PROVIDERS.join(', ')));
     case 'defaultEffort':
       return value === '' || isEffort(value)
         ? { ok: true, value }
@@ -339,6 +359,7 @@ export function validateSetting(key: SettingKey, value: unknown, lang: ErrLang =
       return typeof value === 'boolean' ? { ok: true, value } : bad(t.yesNo);
     case 'defaultModel':
     case 'claudeExecutable':
+    case 'codexExecutable':
       return typeof value === 'string' ? { ok: true, value: value.trim() } : bad(t.string);
     case 'font.interface':
     case 'font.panels':
@@ -400,6 +421,7 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
   const agv = cfg.get<unknown>('agents.view');
   const gl = cfg.get<unknown>('git.layout');
   const lang = cfg.get<unknown>('language');
+  const provider = cfg.get<unknown>('defaultProvider');
   const fz = cfg.get<unknown>('feed.fontSize');
   const uz = cfg.get<unknown>('ui.fontSize');
   const str = (k: string) => {
@@ -419,6 +441,8 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
     usagePollMinutes: typeof poll === 'number' && Number.isFinite(poll) ? poll : 15,
     'limits.readKeychain': cfg.get<unknown>('limits.readKeychain') !== false,
     claudeExecutable: str('claudeExecutable'),
+    codexExecutable: str('codexExecutable'),
+    defaultProvider: isProvider(provider) ? provider : DEFAULT_PROVIDER,
     'sessionList.view': isSessionListMode(list) ? list : DEFAULT_SESSION_LIST,
     'sessionList.context': cfg.get<unknown>('sessionList.context') !== false,
     'sessionList.time': cfg.get<unknown>('sessionList.time') !== false,

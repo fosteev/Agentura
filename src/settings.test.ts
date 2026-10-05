@@ -52,6 +52,12 @@ describe('validateSetting', () => {
     });
     expect(validateSetting('allowBypassPermissions', 'true').ok).toBe(false);
   });
+  it('Codex: путь обрезается, движок по умолчанию — только claude|codex', () => {
+    expect(validateSetting('codexExecutable', ' /bin/codex ')).toEqual({ ok: true, value: '/bin/codex' });
+    expect(validateSetting('codexExecutable', 1).ok).toBe(false);
+    expect(validateSetting('defaultProvider', 'codex')).toEqual({ ok: true, value: 'codex' });
+    expect(validateSetting('defaultProvider', 'gpt').ok).toBe(false);
+  });
   it('опрос лимитов — целое не меньше 5', () => {
     expect(validateSetting('usagePollMinutes', 5).ok).toBe(true);
     expect(validateSetting('usagePollMinutes', 4).ok).toBe(false);
@@ -220,11 +226,20 @@ describe('readSettings', () => {
   });
 });
 
+describe('readSettings: движок', () => {
+  it('по умолчанию claude; мусор заменяется значением по умолчанию', () => {
+    expect(readSettings(cfgOf({})).defaultProvider).toBe('claude');
+    expect(readSettings(cfgOf({ defaultProvider: 'codex' })).defaultProvider).toBe('codex');
+    expect(readSettings(cfgOf({ defaultProvider: 5 })).defaultProvider).toBe('claude');
+    expect(readSettings(cfgOf({ codexExecutable: '/x/codex' })).codexExecutable).toBe('/x/codex');
+  });
+});
+
 describe('overriddenKeys', () => {
   it('значение рабочей области перекрывает пользовательское; machine-ключи не считаются', () => {
     const cfg = {
       inspect: (k: string) =>
-        k === 'defaultModel' || k === 'claudeExecutable' ? { workspaceValue: 'x' } : {},
+        k === 'defaultModel' || k === 'claudeExecutable' || k === 'codexExecutable' ? { workspaceValue: 'x' } : {},
     };
     expect(overriddenKeys(cfg)).toEqual(['defaultModel']);
   });
