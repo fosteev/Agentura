@@ -45,6 +45,11 @@ export interface SlashItem {
 /** Собственные команды расширения: обрабатываются в webview/хосте, не уходят движку. */
 export const OWN_COMMANDS = ['plan', 'compact', 'clear', 'status'] as const;
 
+/** Собственные команды, доступные движку: `/plan` — режим (`modes`), `/compact` — сжатие (`compact`). */
+export function ownCommands(f: { modes: boolean; compact: boolean }): string[] {
+  return OWN_COMMANDS.filter((n) => (n === 'plan' ? f.modes : n === 'compact' ? f.compact : true));
+}
+
 /**
  * Список меню «/»: свои команды, затем команды движка (`supportedCommands()` и `init.slash_commands`)
  * и скиллы (`init.skills`). Дубли по имени схлопываются: свои команды важнее.
@@ -54,12 +59,13 @@ export function buildSlashItems(
   slashCommands: readonly string[],
   skills: readonly string[],
   ownDescriptions: Readonly<Record<string, string>>,
+  own: readonly string[] = OWN_COMMANDS,
 ): SlashItem[] {
   const skillSet = new Set(skills);
   const described = new Map(engine.map((c) => [c.name, c.description]));
   const seen = new Set<string>();
   const out: SlashItem[] = [];
-  for (const name of OWN_COMMANDS) {
+  for (const name of own) {
     seen.add(name);
     out.push({ name, description: ownDescriptions[name] ?? '', group: 'command', own: true });
   }

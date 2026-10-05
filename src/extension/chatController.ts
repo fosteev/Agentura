@@ -26,6 +26,7 @@ import type {
   ToWebview,
 } from '../protocol';
 import { ENGINE_MISSING_CODE } from '../protocol';
+import { providerFeatures } from '../agent/features';
 import type {
   FileKind,
   ImageMediaType,
@@ -63,7 +64,16 @@ class EngineMissingError extends Error {}
 export interface ChatDeps {
   /** Язык текстов для пользователя; по умолчанию русский. */
   lang?: Lang;
+  /** Адаптер Claude; для других движков — `adapterFor`. Тесты с одним адаптером обходятся им для всех. */
   adapter: AgentAdapter;
+  /** Движок вкладки: у возобновляемой сессии — её, у новой — `agentura.defaultProvider`. Нет — `claude`. */
+  provider?: AgentProvider;
+  /** Адаптер движка (Codex создаётся лениво, при первом выборе). Нет — `adapter` для любого. */
+  adapterFor?(provider: AgentProvider): AgentAdapter;
+  /** Готов ли движок не-Claude (`codex`); нет — проверки нет. У `claude` — `engine`. */
+  engineFor?(provider: AgentProvider): { ready(): Promise<{ ok: true } | { ok: false; problem: string }> } | undefined;
+  /** Выбор движка в пустой вкладке запоминается как дефолт следующих новых чатов (`agentura.defaultProvider`). */
+  rememberProvider?(provider: AgentProvider): void;
   cwd: string;
   project: string;
   post(message: ToWebview): void;
@@ -221,6 +231,8 @@ export class ChatController {
   /** Возобновляемая сессия: `ensureSession` зовёт `resumeSession`, а не `createSession`. */
   private resumeId: string | undefined;
   private resumeToken = 0;
+  /** Движок сессии вкладки. Меняется только в пустой вкладке (`setProvider`) и при `resume` чужой сессии. */
+  private engineProvider: AgentProvider;
   /** Идёт чтение истории для `resume`: до его конца сессию движка не поднимаем (нужны модель и режим). */
   private loading: Promise<void> | undefined;
   /** История возобновлённой сессии и то, с чем её продолжать (модель, режим, база стоимости). */
@@ -241,6 +253,8 @@ export class ChatController {
       ...(s.composerLayout ? { composerLayout: s.composerLayout } : {}),
       ...(s.agentsView ? { agentsView: s.agentsView } : {}),
       ...(s.gitLayout ? { gitLayout: s.gitLayout } : {}),
+      provider: this.engineProvider,
+      features: providerFeatures(this.engineProvider),
     });
   }
 
@@ -294,6 +308,7 @@ export class ChatController {
   constructor(private readonly deps: ChatDeps) {
     this.resumeId = deps.resumeId;
     this.lastSessionId = deps.resumeId;
+    this.engineProvider = deps.provider ?? 'claude';
     const tag = (m: string) => `[${this.logTag()}] ${m}`;
     this.log = {
       debug: (m) => deps.log.debug(tag(m)),
@@ -311,6 +326,28 @@ export class ChatController {
   /** Id сессии вкладки: живой или возобновляемой; нет — новая ещё не стартовала. */
   get sessionId(): string | undefined {
     return this.registeredId ?? this.resumeId;
+  }
+
+  /** Движок вкладки (`claude` | `codex`). */
+  get provider(): AgentProvider {
+    return this.engineProvider;
+  }
+
+  private get adapter(): AgentAdapter {
+    return this.deps.adapterFor?.(this.engineProvider) ?? this.deps.adapter;
+  }
+
+  /**
+   * Выбор движка в пустой вкладке (`engine.set`): сессия ещё не начата, значит её не жалко. Начатая или
+   * возобновлённая остаётся на своём движке. Выбор запоминается как дефолт новых чатов.
+   */
+  private setProvider(provider: AgentProvider): void {
+    if (this.disposed || !this.pristine || provider === this.engineProvider) return;
+    this.deps.rememberProvider?.(provider);
+    this.engineProvider = provider;
+    this.pushInfo();
+    // пустая сессия прежнего движка (процесс поднят при открытии вкладки) закрывается, поднимается новая
+    this.newSession(true);
   }
 
   /** Вкладка не тронута: новая сессия без сообщений — её можно занять под другую сессию. */
@@ -335,7 +372,12 @@ export class ChatController {
    * Возобновить сессию `id` в этой вкладке: история из транскрипта → лента, движок — `resume`.
    * Нет транскрипта — вкладка остаётся с новой сессией, причина в журнале.
    */
-  resume(id: string, engine = true): Promise<void> {
+  resume(id: string, engine = true, provider?: AgentProvider): Promise<void> {
+    // вкладка берёт движок возобновляемой сессии; `session.init` и список чужого движка не перепутать
+    if (provider && provider !== this.engineProvider) {
+      this.engineProvider = provider;
+      this.pushInfo();
+    }
     const run = this.doResume(id, engine);
     this.loading = run;
     return run.finally(() => {
@@ -362,8 +404,8 @@ export class ChatController {
     try {
       // оборванный ход «Повторить» отбросит — в ленте его промпта до повтора быть не должно
       history = this.retryDrop
-        ? await deps.adapter.loadHistory(id, deps.cwd, { stopBefore: this.retryDrop.promptUuid })
-        : await deps.adapter.loadHistory(id, deps.cwd);
+        ? await this.adapter.loadHistory(id, deps.cwd, { stopBefore: this.retryDrop.promptUuid })
+        : await this.adapter.loadHistory(id, deps.cwd);
     } catch (e) {
       if (token !== this.resumeToken) return;
       this.log.warn(`история сессии ${id} не прочитана: ${String(e)}`);
@@ -443,7 +485,7 @@ export class ChatController {
     if (!this.seedPending || !history) {
       try {
         // сессия зарегистрирована живой — процесс движка жив, его фоновые задачи ещё идут
-        history = await this.deps.adapter.loadHistory(id, this.deps.cwd, {
+        history = await this.adapter.loadHistory(id, this.deps.cwd, {
           live: this.inTurn,
           tasksAlive: this.registeredId !== undefined,
         });
@@ -585,6 +627,9 @@ export class ChatController {
       case 'session.new':
         this.newSession(false);
         return;
+      case 'engine.set':
+        this.setProvider(m.provider);
+        return;
       case 'sessions.show':
         deps.showSessions();
         return;
@@ -592,7 +637,7 @@ export class ChatController {
         // какую вкладку занять — решает менеджер вкладок (та же, открытая или новая)
         // нет поля provider — Claude (контракт `session.resume`)
         if (deps.openSession) deps.openSession(m.sessionId, m.provider ?? 'claude');
-        else await this.resume(m.sessionId);
+        else await this.resume(m.sessionId, true, m.provider ?? 'claude');
         return;
       case 'diff.open':
         await this.openDiff(m.toolUseId);
@@ -602,8 +647,8 @@ export class ChatController {
         return;
       case 'agent.transcript': {
         const id = m.sessionId || this.current?.id;
-        if (!id || !deps.adapter.agentTranscript || !deps.openText) return;
-        const text = await deps.adapter.agentTranscript(id, deps.cwd, m.taskId, '');
+        if (!id || !this.adapter.agentTranscript || !deps.openText) return;
+        const text = await this.adapter.agentTranscript(id, deps.cwd, m.taskId, '');
         if (text === undefined) {
           this.log.warn(`транскрипт субагента ${m.taskId}: файла нет`);
           return;
@@ -812,7 +857,7 @@ export class ChatController {
         // повторный промпт не двоился. Нет точки (первый ход, чужие сообщения после него) — как раньше
         this.retryDrop =
           prompts.length && this.inflight[0]?.started && !this.dropRefused
-            ? await this.deps.adapter
+            ? await this.adapter
                 .retryPoint?.(id, this.deps.cwd, prompts[0]!.text)
                 .catch((e: unknown) => {
                   this.log.warn(`точка отката хода: ${String(e)}`);
@@ -1243,10 +1288,15 @@ export class ChatController {
       const { deps } = this;
       const s = deps.settings();
       const resume = this.resumeId;
+      const provider = this.engineProvider;
+      const claude = provider === 'claude';
+      // адаптер — на момент старта: `open()` зовётся после поиска движка, а движок вкладки к тому времени мог смениться
+      const adapter = this.adapter;
       this.usedDrop = !!resume && !!this.retryDrop;
       const base = {
         cwd: deps.cwd,
-        allowBypassPermissions: s.allowBypass,
+        // режимов Claude у Codex нет: его политику задаёт конфиг, а не эти настройки
+        allowBypassPermissions: claude && s.allowBypass,
       };
       const open = (): Promise<AgentSession> =>
         resume
@@ -1254,15 +1304,16 @@ export class ChatController {
               const h = this.resumed?.history;
               // режим и модель — с конца сессии: движок при `resume` берёт их из опций, а не из записи
               const mode =
-                h?.mode === 'bypassPermissions' && !s.allowBypass
+                !claude || (h?.mode === 'bypassPermissions' && !s.allowBypass)
                   ? 'default'
                   : (h?.mode ?? 'default');
-              const model = h?.model ?? s.defaultModel;
+              // `agentura.defaultModel` — модель Claude: Codex она не подходит
+              const model = claude ? (h?.model ?? s.defaultModel) : h?.model;
               // база = то, с чего движок сам продолжит `total_cost_usd`: он восстанавливает итог из записи
               // `cost-state` транскрипта (нет записи — с нуля). Любая другая база (память расширения)
               // занизила бы стоимость первого хода после `resume` (`turn.result.costUsd = итог − база`)
-              const baseline = h?.totalCostUsd ?? 0;
-              return deps.adapter.resumeSession(resume, {
+              const baseline = claude ? (h?.totalCostUsd ?? 0) : 0;
+              return adapter.resumeSession(resume, {
                 ...base,
                 permissionMode: mode,
                 ...(model ? { model } : {}),
@@ -1270,14 +1321,17 @@ export class ChatController {
                 ...(this.retryDrop ? { dropTurn: this.retryDrop } : {}),
               });
             })()
-          : (() => {
+          : !claude
+            ? // настройки режима, effort и модели — про Claude; Codex стартует со своими дефолтами (`model/list`)
+              adapter.createSession({ ...base, permissionMode: 'default' })
+            : (() => {
               // настройки «режим» и «effort по умолчанию» — только новым сессиям (resume берёт своё)
               const mode = resolveDefaultMode(s.defaultPermissionMode, s.allowBypass);
               const effort = resolveDefaultEffort(s.defaultEffort);
               // меню под полем ввода — сразу, не дожидаясь `session.init` после первого хода
               this.defaults = { type: 'session.defaults', mode, ...(effort ? { effort } : {}) };
               deps.post(this.defaults);
-              return deps.adapter.createSession({
+              return adapter.createSession({
                 ...base,
                 permissionMode: mode,
                 ...(s.defaultModel ? { model: s.defaultModel } : {}),
@@ -1285,8 +1339,9 @@ export class ChatController {
               });
             })();
       // без `claude` движок не запускаем: SDK в `.vsix` своего бинарника не имеет и упал бы невнятной ошибкой
-      const opened = deps.engine
-        ? deps.engine.ready().then((ready) => {
+      const engine = claude ? deps.engine : deps.engineFor?.(provider);
+      const opened = engine
+        ? engine.ready().then((ready) => {
             // пока шёл поиск, сессию заменили (`/clear`, resume) или вкладку закрыли: не спавнить движок
             // и не трогать чужие `resumed`/`retryDrop` — отказ этого поколения `catch` ниже проглотит
             if (gen !== this.generation || this.disposed)
@@ -1385,7 +1440,7 @@ export class ChatController {
         this.register(session.id);
         this.lastSessionId = session.id || this.lastSessionId;
         this.lastInit = e;
-        this.deps.onEngineVersion?.(e.engineVersion);
+        if (this.engineProvider === 'claude') this.deps.onEngineVersion?.(e.engineVersion);
         this.log.info(`session.init: ${e.model}, режим ${e.permissionMode}`);
         break;
       case 'context.usage':

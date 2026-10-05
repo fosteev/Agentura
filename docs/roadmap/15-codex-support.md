@@ -1,6 +1,6 @@
 # 15 — Codex как второй движок
 
-> **Статус:** этап 2 принят 2026-10-05 — следующий: 3. Автопилот `/roadmap-run`, ветки
+> **Статус:** этап 3 принят 2026-10-06 — следующий: 4. Автопилот `/roadmap-run`, ветки
 > `stage-<N>-<slug>` от main, приёмка Opus. Ручные проверки и решения — `15-codex-support.pending.md`.
 
 Исходное ТЗ написал Codex (2026-10-05) — оно ниже целиком в «Контекст и ограничения». Этапы
@@ -237,23 +237,81 @@
 
 **Сессия:** sonnet.
 
-- [ ] Фабрика провайдеров вместо единственного `createAdapter()` (`chatPanel.ts`): адаптеры
+- [x] Фабрика провайдеров вместо единственного `createAdapter()` (`chatPanel.ts`): адаптеры
       по `AgentProvider`, Codex-адаптер создаётся лениво; `ChatController` создаёт/резюмит
       сессию у адаптера своего провайдера; engine-ready и карточка «не найден» — по провайдеру.
-- [ ] `chat.info` получает `provider` и флаги возможностей (`modes`, `compact`, `metrics`
+- [x] `chat.info` получает `provider` и флаги возможностей (`modes`, `compact`, `metrics`
       (контекст/лимиты/цена), `subagents`, `plan`, `questions`, `images`, `files`); старое
       сообщение без полей = Claude.
-- [ ] `EngineMenu` в `Composer.tsx` (сейчас заглушка «скоро»): Codex выбирается до старта
+- [x] `EngineMenu` в `Composer.tsx` (сейчас заглушка «скоро»): Codex выбирается до старта
       сессии, после `session.init` — только показ; выбор запоминается как дефолт для следующего
       нового чата (`agentura.defaultProvider` или workspaceState — решить и записать).
-- [ ] Для Codex скрыты: `ModeMenu` и shift-tab, `/compact` и прочие Claude-команды, HUD
+- [x] Для Codex скрыты: `ModeMenu` и shift-tab, `/compact` и прочие Claude-команды, HUD
       лимитов/цены/cache TTL/контекста, дерево субагентов, `AgentMenu`/`EffortMenu` если не
       применимы. Никаких фейковых чисел.
-- [ ] Строки en/ru одновременно (`strings.ts`, `strings.en.ts`, nls); «Codex — скоро» убрать.
-- [ ] Тесты контроллера на маршрутизацию по провайдеру; `npm run check` зелёный.
+- [x] Строки en/ru одновременно (`strings.ts`, `strings.en.ts`, nls); «Codex — скоро» убрать.
+- [x] Тесты контроллера на маршрутизацию по провайдеру; `npm run check` зелёный.
 - [ ] Пользователь: новый чат → Codex → короткий ответ стримится, Stop прерывает ход.
 
 **Готово, когда:** из UI можно открыть Codex-чат и получить ответ; Claude-чат как раньше.
+
+**Решения (2026-10-06, по итогам сессии 3):**
+
+- **Раскладка.** `src/agent/features.ts` — `ProviderFeatures` (`modes, compact, metrics, subagents, plan, questions,
+  images, files`), `CLAUDE_FEATURES` (всё `true`), `CODEX_FEATURES` (`images` — единственное `true`), `providerFeatures(p)`
+  отдаёт копию. `ChatController` держит `engineProvider` (геттер `provider`); адаптер — `adapterFor(provider)` (нет —
+  `deps.adapter` для любого, так живут старые тесты), готовность движка — `engine` (Claude) / `engineFor(provider)`
+  (Codex), запоминание выбора — `rememberProvider`. `ChatServices.codexAdapter()` — ленивый (`createAdapter(log,
+  clientVersion)` возвращает и его): без выбора Codex адаптера нет вовсе. Webview: сигналы `provider`/`features` в
+  `store.ts`, не в `ChatState` (переживают `session.reset`).
+- **Контракт.** `chat.info` получает `provider?: 'claude' | 'codex'` и `features?: ProviderFeatures`; нет полей =
+  Claude со всеми флагами (старое сообщение). `chat.info` перепосылается при смене движка вкладки (`engine.set`, `resume`
+  чужого движка) — не только на `ready`. Новое сообщение webview → хост `engine.set { provider }` (проверка в
+  `FIELD_CHECKS`). Состояние webview теперь `{ sessionId, provider }` (`persistSession(id, provider)`), `forgetSession`
+  убирает оба; `restoredSessionId` его уже читал. `ChatPanel.resume` и сериализатор больше не отбрасывают Codex-ссылки.
+- **Выбор движка.** Меню «агент» (`AgentItems`, общее для `AgentMenu` и `EngineMenu`): Claude / Codex выбираются, пока
+  у вкладки нет `sessionId` и нет сообщения пользователя (`engineLocked()`); потом — только показ (второй пункт
+  `dis`, подсказка «выбирается в новом чате»). Хост принимает `engine.set` только в `pristine`-вкладке (не touched, не
+  resume): закрывает пустую сессию прежнего движка, `newSession(true)` поднимает новую у другого адаптера. `/clear` и
+  `session.new` движок вкладки не меняют. Gemini остаётся «скоро»; «Codex — скоро» убрано.
+- **Дефолт нового чата — настройка `agentura.defaultProvider`** (а не workspaceState): она уже есть (этап 1,
+  application-scope), один источник правды с вкладкой настроек. Выбор в меню пишет её через `getConfiguration().update(…,
+  Global)`; новая вкладка читает её в конструкторе `ChatPanel` (кривое значение — `claude`). Возобновляемая сессия
+  берёт свой движок, настройка ей не мешает.
+- **Что скрыто у Codex (по флагам, не по имени).** `modes` — `ModeMenu` (все раскладки, `null`), Shift+Tab, `/plan`,
+  режим в `/status`; `compact` — `/compact` (вручную — системная строка «недоступна для этого агента», движку не
+  уходит), строка «контекст пройден»; `metrics` — кольцо/полоса/счётчик контекста, кэш, лимиты 5ч/неделя (`Meters`,
+  `ContextRing/Status/Gauge/Count` возвращают `null`), а главное — `limitBlocked` (лимит Claude не блокирует
+  Codex-вкладку); `subagents` — вкладка «агенты» (шапка, панель, рейка; сохранённая `tab: 'agents'` откатывается на
+  «изменения»); `files` — `addFiles` превращает любой файл (в т.ч. из drag-n-drop и «+») в красную плашку
+  `problem: 'engine'` («агент не принимает файлы»), пункт «+» → «Изображение…» без «или файл». `plan`/`questions` —
+  карточек у Codex нет, прятать нечего (флаги — для этапа 4). `AgentMenu`/`EffortMenu` остаются: модель и effort
+  приходят из `model/list`; запасной список моделей Claude (`FALLBACK_MODELS`) и `ui.efforts` Codex не показываются
+  (до прихода `capabilities` меню пустые). Смена движка сбрасывает `capabilities`.
+- **Настройки Claude Codex не получает.** `defaultModel`, `defaultEffort`, `defaultPermissionMode`, `allowBypass`,
+  `baselineCostUsd` и `model` из истории в Codex-сессию не уходят (`defaultModel` — имя модели Claude, `sonnet` в
+  `thread/start` сломал бы ход), `session.defaults` для Codex не шлётся, `onEngineVersion`/память «claude X» —
+  только Claude.
+- **Карточка «не найден».** `EngineLocator` для Codex возвращает `problem` из `hostStrings().codexNotFound` (en/ru,
+  через `CODEX_NOT_FOUND` из `executable.ts`); остальные проблемы резолвера (обёртка `.cmd`, «не запускается») остаются
+  английскими. `EngineMissingCard` выбирает заголовок и подсказку по `provider` (новые `missingTitleCodex`,
+  `missingHintCodex`); кнопка «Открыть настройки» открывает вкладку настроек Agentura, строки пути к Codex там нет
+  (этап 6) — в подсказке названа настройка `agentura.codexExecutable`.
+- **Решение владельца выполнено:** Stop не сбрасывает очередь Codex-сессии (`this.queue.length = 0` убран из
+  `interrupt`, тест перевёрнут: после `turn/completed(interrupted)` стартует `turn/start` следующего сообщения).
+- **Отступления/скоуп.** (1) Контекст Codex-вкладки скрыт целиком, хотя адаптер уже шлёт настоящий `context.usage`
+  (`thread/tokenUsage/updated`): так сказано в плане и в ТЗ («не рисовать фальшивые числа» — числа не фальшивые, но
+  порогов/автосжатия нет); включить — флаг `metrics`, разделить на `context`/`cost` — один шаг в `features.ts`.
+  (2) Боковая панель (`Sidebar`: аккаунт и лимиты Claude, список сессий Claude) не менялась — она вне вкладок чата;
+  метка `Claude`/`Codex` рядом с сессией (ТЗ §6) — этап 5, вместе со списком Codex-тредов. (3) Восстановленная после
+  Reload Window Codex-вкладка делает `thread/resume` с пустой лентой — истории нет до этапа 5 (`loadHistory` — заглушка),
+  а повтор при «already has an active writer» тоже этап 5.
+- **Не проверено.** Живой Codex через UI (выбор → ответ стримится → Stop) — глазами пользователя; живые прогоны на этом
+  этапе не делались. Вёрстка без `ModeMenu` в раскладках (`card`, `gauges`, `statusline`, `shell`, `minimal`): проверено
+  только DOM-тестами (элемента нет), не глазами. Картинка Codex-сообщением — по-прежнему не на живом.
+- **Проверки:** `TZ=UTC npm run check` зелёный, 1175 тестов (было 1121): `chatControllerProvider.test.ts` (12:
+  маршрутизация, resume, `engine.set`), `engineDom.test.ts` (27: флаги в шести раскладках, меню «/», выбор движка,
+  вкладка «агенты», файлы, `limitBlocked`), плюс `features`, `ownCommands`, `persistSession` с `provider`.
 
 ### 4. Подтверждения и инструменты Codex
 
@@ -355,7 +413,22 @@
 - Типы — `src/agent/codex/protocol.ts` (0.160.0); добавил тип/поле — допиши и в списки
   `scripts/codex-protocol.mjs`.
 
+**Приёмка (2026-10-06, Opus):** принято, `TZ=UTC npm run check` зелёный, 1176 тестов. Поправлено: `session.resume` без `openSession` (тестовый путь) теперь
+передаёт `provider` в `resume`; `ensureSession` фиксирует адаптер на старте (`open()` зовётся после поиска движка — не
+должен взять адаптер другого движка, если вкладку успели переключить); запись `agentura.defaultProvider` ловит и
+синхронный отказ `update`, `claude` убирает ключ из User settings, а не пишет значение по умолчанию. Компоненты
+выбирают по `provider` только содержимое, а не видимость (запасной список моделей Claude, effort-уровни Claude, текст
+карточки «не найден») — это допустимо, прятать по-прежнему только флагами. Строка итога хода у Codex показывает
+`cache r… w0` (записи кэша сервер не сообщает) — косметика, этап 4/6. Второй проход (Opus): файл, прикреплённый в
+Claude-вкладке до выбора Codex, уходил Codex-адаптеру и молча терялся — теперь `chat.info` без `files` перекрашивает
+такие черновики в плашку `engine` (тест в `engineDom.test.ts`). Оставлено как есть (низкий риск, записано): `session.reset`
+из `setProvider` может стереть строку пользователя, если тот отправил сообщение в те же миллисекунды, что и выбор
+движка (сообщение при этом уходит правильному адаптеру); во время чтения истории resume меню движка выглядит доступным,
+а хост молча игнорирует `engine.set`; дефолт запоминается до проверки, что Codex установлен.
+
 ### Промт 3
+
+**Решение владельца (2026-10-06):** Stop в Codex-сессии НЕ сбрасывает очередь — как у Claude: следующее сообщение из очереди стартует новый ход после `turn/completed(interrupted)`. Убрать `this.queue.length = 0` в `CodexSession.interrupt` (`src/agent/codex/adapter.ts`), тест «Stop сбрасывает очередь» перевернуть. История (этап 5) — через `thread/list`, подтверждено.
 
 Этап 3 «Подключение к чату». Карта: `ChatController` (`src/extension/chatController.ts`,
 создание сессии около `ready()`), `chat.info` в `src/protocol.ts`, `Composer.tsx` (`EngineMenu`
@@ -382,7 +455,7 @@ clientVersion })` (`adapter.ts`); `createSession` без пути бросает
 Для флагов возможностей: `files` (PromptFile) адаптер молча отбрасывает (warn в лог) — вложение файлов для
 Codex прятать; `images` уходят data-URL'ом (на живом не проверено); `compact/mode/plan/questions/
 stopTask` — no-op; у `turn.result` `totalCostUsd: 0` означает «неизвестно» — HUD цены/кэша прятать. `Stop`
-(`interrupt`) сбрасывает очередь сообщений сессии. Таймаут `thread/start`/`turn/start` (60 с) закрывает сессию (`error` +
+(`interrupt`) очередь сообщений НЕ сбрасывает (решение владельца, сделано в этапе 3). Таймаут `thread/start`/`turn/start` (60 с) закрывает сессию (`error` +
 `session.closed`) — UI должен предложить новый чат/повтор, как при падении процесса.
 
 ### Промт 4
@@ -405,6 +478,14 @@ request). До этапа 4 отказы `decline` маппер не показ�
 брокер должен закрыть ответом там же, иначе pending повиснет. Живой сервер НЕ ставит `jsonrpc` в сообщениях; сервер шлёт и чужие notifications (`hook/*`,
 `mcpServer/*`, `account/*`) — это нормально.
 
+По реальному коду (после этапа 3): флаги возможностей — `src/agent/features.ts` (`CODEX_FEATURES`); у Codex
+`plan` и `questions` сейчас `false` и UI по ним ничего не прячет (карточек нет) — когда брокер начнёт слать
+`question.request`, флаг переводится в `true` там же; `files`/`subagents`/`modes`/`metrics` остаются `false`. Карточки
+`permission.request` рисуются независимо от флагов. `ChatController` берёт адаптер через геттер `adapter`
+(`adapterFor(engineProvider)`), в `ensureSession` — один раз на старте сессии; `EDIT_TOOLS`/`editInputs` в контроллере знают только Claude-имена (`Edit`, `Write`):
+для вкладки «изменения» у Codex имена инструментов придётся согласовать с мапером. Тесты контроллера на двух
+провайдерах — `src/extension/chatControllerProvider.test.ts` (там же образец `fakeAdapter`).
+
 ### Промт 5
 
 Этап 5 «История Codex». Перед началом прочитай `15-codex-support.pending.md` — решение
@@ -414,11 +495,27 @@ renameSession` — пустые заглушки в `adapter.ts`; `thread/resume
 сессии 2); треды Agentura в `thread/list` различимы по `originator:"agentura"`/`source:"vscode"`. `SessionsService` (`src/extension/sessionsService.ts`) сейчас целиком
 про `~/.claude/projects` — объединение провайдеров сделать так, чтобы Claude-путь не изменился.
 
+По реальному коду (после этапа 3): `ChatController.resume(id, engine, provider)` уже переключает движок вкладки и
+перепосылает `chat.info`; `ChatPanel.resume` и сериализатор больше не отбрасывают Codex-ссылки, поэтому до этапа 5
+Codex-вкладка после Reload Window делает `thread/resume` с пустой лентой (`loadHistory` — заглушка). `titleOf`
+(`services.sessions.list()`) — только Claude: для Codex-треда вернёт `undefined`, заголовок надо брать из `thread/list`/
+`thread/name/set`. Метка `Claude`/`Codex` рядом с сессией в боковой панели (ТЗ §6) в этапе 3 не делалась — это сюда.
+Состояние webview уже хранит `{ sessionId, provider }`. Отправители `session.resume` в webview (`Sidebar.tsx`, `Chat.tsx`
+— пустой экран и список сессий) и строковые вызовы `ChatPanel.resume` в `extension.ts` (`openLast`, `pickSession`) пока
+`provider` не передают — нет поля = Claude; со списком Codex-тредов передавать обязательно.
+
 ### Промт 6
 
 Этап 6 «Полировка». Настройки — `src/webview/components/Settings.tsx` и
 `src/extension/settingsController.ts` (как сделана строка пути к Claude). README/CHANGELOG — по
 стилю существующих. Собрать vsix штатным скриптом и проверить состав (`vsce ls` или аналог).
+
+По реальному коду (после этапа 3): `agentura.defaultProvider` теперь читает `ChatPanel` (новая вкладка) и пишет меню
+движка в композере (`Global`); строка в вкладке «Настройки» должна показывать то же значение. Карточка «Codex не найден»
+открывает вкладку настроек Agentura кнопкой «Открыть настройки», а строки пути к Codex там нет — добавить вместе с
+проверкой `codex --version`. Не-«не найден» проблемы резолвера Codex (`.cmd`-обёртка, «не запускается») английские —
+локализовать через `hostStrings`, если нужно. В CHANGELOG: выбор движка в композере, Codex без режимов/приборов/
+субагентов/файлов, формат `agentura.openSessions` и состояния webview (`provider`).
 
 ## Контекст и ограничения
 
