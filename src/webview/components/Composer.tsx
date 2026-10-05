@@ -17,6 +17,8 @@ import {
   capabilities,
   chat,
   compact,
+  composerLayout,
+  interrupt,
   dismiss,
   dismissed,
   editor,
@@ -548,7 +550,6 @@ export function Composer() {
   })();
 
   const toggle = (name: MenuName) => setMenu(menu === name ? undefined : name);
-  const modeLabel = ui.modes[s.mode]?.[0] ?? s.mode;
 
   const drafts = draftImages.value;
   const draftTokens = imagesTokens(drafts.flatMap((d) => (d.image ? [d.image] : [])));
@@ -559,145 +560,294 @@ export function Composer() {
     .filter(Boolean)
     .join(' ');
 
+  const working = s.status === 'working';
+  const menuProps: MenuProps = {
+    menu,
+    toggle,
+    close: () => setMenu(undefined),
+  };
+
   return (
     <footer
       class={footerCls}
+      data-layout={composerLayout.value}
       onDragEnter={onDragEnter}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
     >
-      <div class="blocks" aria-hidden="true">
-        {hv.context.blocks.map((b) => (
-          <i class={b.cls} style={b.style} />
-        ))}
+      <ContextBlocks blocks={hv.context.blocks} />
+      <Drafts drafts={drafts} fileDrafts={fileDrafts} />
+      <div class="ctx">
+        <DraftHint drafts={drafts.length} files={fileDrafts.length} />
+        <AutoContext auto={auto} manual={manual} look="chip" />
+        <ContextCount
+          hv={hv}
+          draftTokens={draftTokens}
+          fileEstimate={fileEstimate}
+          withFiles={withFiles}
+        />
       </div>
-      {(drafts.length > 0 || fileDrafts.length > 0) && (
-        <div class="att">
-          {drafts.map((d) => (
-            <DraftChip key={d.id} d={d} />
-          ))}
-          {fileDrafts.map((d) => (
-            <FileChip key={`f${d.id}`} d={d} />
-          ))}
+      <PromptField
+        edRef={edRef}
+        placeholder={
+          closed
+            ? ui.compose.closedPlaceholder
+            : blocked
+              ? ui.limit.placeholder
+              : target
+                ? ui.reply[target.kind]
+                : s.status === 'waiting'
+                  ? ui.reply.waiting
+                  : ui.compose.placeholder
+        }
+        closed={closed}
+        onInput={onInput}
+        onKeyDown={onKeyDown}
+        onPaste={onPaste}
+        menu={menuOpen && trig ? { kind: trig.kind, items, slash: slashItems, selected, onPick: accept } : undefined}
+      />
+      <Note histIdx={histIdx} blocked={blocked} />
+      <div class="opts">
+        <PlusMenu {...menuProps} />
+        <ModeMenu {...menuProps} />
+        <AgentMenu {...menuProps} />
+        <ModelMenu {...menuProps} models={models} curModel={curModel} />
+        <EffortMenu {...menuProps} efforts={efforts} />
+        <Meters hv={hv} />
+        <SendControl
+          working={working}
+          disabled={closed || (!!blocked && !target)}
+          onSend={submit}
+          onStop={() => {
+            interrupt();
+            // стоп размонтируется вместе с ходом — фокус обратно в поле, а не на body
+            edRef.current?.focus();
+          }}
+        />
+      </div>
+    </footer>
+  );
+}
+
+type Hv = typeof meters.value;
+
+/**
+ * Открытое меню одно на всё поле (`menu` в `Composer`); закрытие кликом вне и по Esc — эффект в `Composer`, он узнаёт
+ * «внутри» по `.closest('.pop')`. Поэтому каждое меню-часть рисуется в своей обёртке `.pop` внутри `footer.compose`.
+ */
+interface MenuProps {
+  menu: MenuName | undefined;
+  toggle: (name: MenuName) => void;
+  close: () => void;
+}
+
+/** Полоса блоков контекста (20 клеток) над полем. */
+function ContextBlocks({ blocks }: { blocks: Hv['context']['blocks'] }) {
+  return (
+    <div class="blocks" aria-hidden="true">
+      {blocks.map((b) => (
+        <i class={b.cls} style={b.style} />
+      ))}
+    </div>
+  );
+}
+
+/** Черновики: миниатюры картинок и плашки файлов. */
+function Drafts({ drafts, fileDrafts }: { drafts: DraftImage[]; fileDrafts: DraftFile[] }) {
+  if (drafts.length === 0 && fileDrafts.length === 0) return null;
+  return (
+    <div class="att">
+      {drafts.map((d) => (
+        <DraftChip key={d.id} d={d} />
+      ))}
+      {fileDrafts.map((d) => (
+        <FileChip key={`f${d.id}`} d={d} />
+      ))}
+    </div>
+  );
+}
+
+/** Подсказка про черновики (картинки / файлы) в строке контекста. */
+function DraftHint({ drafts, files }: { drafts: number; files: number }) {
+  if (drafts > 0) return <span class="dim hint">{ui.compose.imagesHint}</span>;
+  if (files > 0) return <span class="dim hint">{ui.compose.filesHint}</span>;
+  return null;
+}
+
+/** Автоконтекст (файл / выделение) и вручную добавленное. `look` — вид чипа; пока рисуется только `chip`. */
+function AutoContext({
+  auto,
+  manual,
+}: {
+  auto: Attachment[];
+  manual: Attachment[];
+  look: 'chip' | 'ref' | 'plus';
+}) {
+  return (
+    <>
+      {auto.map((a) => {
+        const l = attachmentLabel(a);
+        return (
+          <span class="auto">
+            {a.kind === 'selection' ? ui.compose.autoSelection : ui.compose.autoFile}{' '}
+            <b>{a.kind === 'selection' ? l.range.trim() : l.name}</b>
+            <span
+              class="x"
+              role="button"
+              tabIndex={0}
+              aria-label={ui.compose.removeChip}
+              data-tip={ui.compose.removeChip}
+              onClick={() => dismiss(attachmentKey(a))}
+              onKeyDown={(e: KeyboardEvent) => pressKey(e, () => dismiss(attachmentKey(a)))}
+            >
+              ✕
+            </span>
+          </span>
+        );
+      })}
+      {manual.map((a: Attachment) => {
+        const l = attachmentLabel(a);
+        return (
+          <span>
+            <code>{l.name}</code>
+            {l.range}
+            <span
+              class="x"
+              role="button"
+              tabIndex={0}
+              aria-label={ui.compose.removeChip}
+              data-tip={ui.compose.removeChip}
+              onClick={() => removeExtra(attachmentKey(a))}
+              onKeyDown={(e: KeyboardEvent) => pressKey(e, () => removeExtra(attachmentKey(a)))}
+            >
+              ✕
+            </span>
+          </span>
+        );
+      })}
+    </>
+  );
+}
+
+/** «контекст N / max · сжать». */
+function ContextCount({
+  hv,
+  draftTokens,
+  fileEstimate,
+  withFiles,
+}: {
+  hv: Hv;
+  draftTokens: number;
+  fileEstimate: ReturnType<typeof filesTokens>;
+  withFiles: boolean;
+}) {
+  return (
+    <span class="cn" data-tip={hv.context.title}>
+      {ui.compose.context} <b class={hv.context.numCls}>{hv.context.now}</b>{' '}
+      {draftTokens > 0 && (
+        <>
+          <span class="plus" data-tip={ui.compose.imagesPlusTitle}>
+            {ui.compose.imagesPlus(compactTokens(draftTokens))}
+          </span>{' '}
+        </>
+      )}
+      {withFiles && (
+        <>
+          <span class="plus" data-tip={ui.compose.filesPlusTitle}>
+            {ui.compose.filesPlus(
+              fileEstimate.tokens > 0
+                ? `${compactTokens(fileEstimate.tokens)}${fileEstimate.unknown ? '+?' : ''}`
+                : '?',
+            )}
+          </span>{' '}
+        </>
+      )}
+      / {hv.context.max} ·{' '}
+      {hv.context.compacting && (
+        <>
+          <span class="spin" aria-hidden="true" /> {ui.log.compacting} ·{' '}
+        </>
+      )}
+      {hv.context.note && <>{hv.context.note} · </>}
+      <button onClick={compact}>{ui.compose.compact}</button>
+    </span>
+  );
+}
+
+/** Поле ввода и меню `/` `@`; состояние и обработчики — в `Composer`, поле только рисует. */
+function PromptField({
+  edRef,
+  placeholder,
+  closed,
+  onInput,
+  onKeyDown,
+  onPaste,
+  menu,
+}: {
+  edRef: { current: HTMLDivElement | null };
+  placeholder: string;
+  closed: boolean;
+  onInput: () => void;
+  onKeyDown: (e: KeyboardEvent) => void;
+  onPaste: (e: ClipboardEvent) => void;
+  menu?: {
+    kind: 'slash' | 'at';
+    items: Item[];
+    slash: SlashItem[];
+    selected: number;
+    onPick: (i: number) => void;
+  };
+}) {
+  return (
+    <div class="pop">
+      <div class="prompt">
+        <span class="p">$</span>
+        <div
+          ref={edRef}
+          class="typed"
+          contenteditable={closed ? 'false' : 'plaintext-only'}
+          role="textbox"
+          aria-multiline="true"
+          data-placeholder={placeholder}
+          onInput={onInput}
+          onKeyDown={onKeyDown}
+          onPaste={onPaste}
+        />
+      </div>
+      {menu && (
+        <div class="menu up">
+          {menu.kind === 'slash' ? (
+            <SlashMenu
+              items={menu.items}
+              slash={menu.slash}
+              selected={menu.selected}
+              onPick={menu.onPick}
+            />
+          ) : (
+            <>
+              <div class="hd">{ui.menus.files}</div>
+              {menu.items.map((it, i) => (
+                <ItemButton it={it} selected={i === menu.selected} onPick={() => menu.onPick(i)} />
+              ))}
+            </>
+          )}
         </div>
       )}
-      <div class="ctx">
-        {drafts.length > 0 ? (
-          <span class="dim hint">{ui.compose.imagesHint}</span>
-        ) : (
-          fileDrafts.length > 0 && <span class="dim hint">{ui.compose.filesHint}</span>
-        )}
-        {auto.map((a) => {
-          const l = attachmentLabel(a);
-          return (
-            <span class="auto">
-              {a.kind === 'selection' ? ui.compose.autoSelection : ui.compose.autoFile}{' '}
-              <b>{a.kind === 'selection' ? l.range.trim() : l.name}</b>
-              <span
-                class="x"
-                role="button"
-                tabIndex={0}
-                aria-label={ui.compose.removeChip}
-                data-tip={ui.compose.removeChip}
-                onClick={() => dismiss(attachmentKey(a))}
-                onKeyDown={(e: KeyboardEvent) => pressKey(e, () => dismiss(attachmentKey(a)))}
-              >
-                ✕
-              </span>
-            </span>
-          );
-        })}
-        {manual.map((a: Attachment) => {
-          const l = attachmentLabel(a);
-          return (
-            <span>
-              <code>{l.name}</code>
-              {l.range}
-              <span
-                class="x"
-                role="button"
-                tabIndex={0}
-                aria-label={ui.compose.removeChip}
-                data-tip={ui.compose.removeChip}
-                onClick={() => removeExtra(attachmentKey(a))}
-                onKeyDown={(e: KeyboardEvent) => pressKey(e, () => removeExtra(attachmentKey(a)))}
-              >
-                ✕
-              </span>
-            </span>
-          );
-        })}
-        <span class="cn" data-tip={hv.context.title}>
-          {ui.compose.context} <b class={hv.context.numCls}>{hv.context.now}</b>{' '}
-          {draftTokens > 0 && (
-            <>
-              <span class="plus" data-tip={ui.compose.imagesPlusTitle}>
-                {ui.compose.imagesPlus(compactTokens(draftTokens))}
-              </span>{' '}
-            </>
-          )}
-          {withFiles && (
-            <>
-              <span class="plus" data-tip={ui.compose.filesPlusTitle}>
-                {ui.compose.filesPlus(
-                  fileEstimate.tokens > 0
-                    ? `${compactTokens(fileEstimate.tokens)}${fileEstimate.unknown ? '+?' : ''}`
-                    : '?',
-                )}
-              </span>{' '}
-            </>
-          )}
-          / {hv.context.max} ·{' '}
-          {hv.context.compacting && (
-            <>
-              <span class="spin" aria-hidden="true" /> {ui.log.compacting} ·{' '}
-            </>
-          )}
-          {hv.context.note && <>{hv.context.note} · </>}
-          <button onClick={compact}>{ui.compose.compact}</button>
-        </span>
-      </div>
-      <div class="pop">
-        <div class="prompt">
-          <span class="p">$</span>
-          <div
-            ref={edRef}
-            class="typed"
-            contenteditable={closed ? 'false' : 'plaintext-only'}
-            role="textbox"
-            aria-multiline="true"
-            data-placeholder={
-              closed
-                ? ui.compose.closedPlaceholder
-                : blocked
-                  ? ui.limit.placeholder
-                  : target
-                    ? ui.reply[target.kind]
-                    : s.status === 'waiting'
-                      ? ui.reply.waiting
-                      : ui.compose.placeholder
-            }
-            onInput={onInput}
-            onKeyDown={onKeyDown}
-            onPaste={onPaste}
-          />
-        </div>
-        {menuOpen && trig && (
-          <div class="menu up">
-            {trig.kind === 'slash' ? (
-              <SlashMenu items={items} slash={slashItems} selected={selected} onPick={accept} />
-            ) : (
-              <>
-                <div class="hd">{ui.menus.files}</div>
-                {items.map((it, i) => (
-                  <ItemButton it={it} selected={i === selected} onPick={() => accept(i)} />
-                ))}
-              </>
-            )}
-          </div>
-        )}
-      </div>
+    </div>
+  );
+}
+
+/** Заметки под полем: просмотр истории и «лимит исчерпан». */
+function Note({
+  histIdx,
+  blocked,
+}: {
+  histIdx: number | undefined;
+  blocked: ReturnType<typeof limitBlocked.peek>;
+}) {
+  return (
+    <>
       {histIdx !== undefined && (
         <div class="note">
           {ui.compose.historyLabel}{' '}
@@ -709,230 +859,297 @@ export function Composer() {
           <b>{deferredNote(blocked, tick.value)}</b>
         </div>
       )}
-      <div class="opts">
-        <span class="pop" onKeyDown={menuKeys}>
-          <button
-            class="plus"
-            data-tip={ui.compose.plusTitle}
-            aria-label={ui.compose.plusTitle}
-            aria-haspopup="menu"
-            aria-expanded={menu === 'plus'}
-            onClick={() => toggle('plus')}
-          >
-            {ui.compose.plus}
+    </>
+  );
+}
+
+function PlusMenu({ menu, toggle, close }: MenuProps) {
+  return (
+    <span class="pop" onKeyDown={menuKeys}>
+      <button
+        class="plus"
+        data-tip={ui.compose.plusTitle}
+        aria-label={ui.compose.plusTitle}
+        aria-haspopup="menu"
+        aria-expanded={menu === 'plus'}
+        onClick={() => toggle('plus')}
+      >
+        {ui.compose.plus}
+      </button>
+      {menu === 'plus' && (
+        <div class="menu up" role="menu">
+          <div class="hd">{ui.menus.addContext}</div>
+          <ItemButton
+            it={{ label: ui.menus.pickFile, hint: ui.menus.pickFileHint }}
+            onPick={() => {
+              close();
+              send({ type: 'attach.pick' });
+            }}
+          />
+          <button class="it" onClick={() => (autoFile.value = !autoFile.value)}>
+            <span>
+              {ui.menus.openFile}
+              <small>
+                {editor.value.file?.name ?? '—'} ·{' '}
+                {autoFile.value ? ui.menus.autoOn : ui.menus.autoOff}
+              </small>
+            </span>
+            <Switch on={autoFile.value} />
           </button>
-          {menu === 'plus' && (
-            <div class="menu up" role="menu">
-              <div class="hd">{ui.menus.addContext}</div>
+          <button class="it" onClick={() => (autoSelection.value = !autoSelection.value)}>
+            <span>
+              {ui.menus.selection}
+              <small>
+                {editor.value.selection
+                  ? `${attachmentLabel({ kind: 'selection', path: editor.value.selection.path, startLine: editor.value.selection.startLine, endLine: editor.value.selection.endLine }).range.trim()} · `
+                  : ''}
+                {autoSelection.value ? ui.menus.autoOn : ui.menus.autoOff}
+              </small>
+            </span>
+            <Switch on={autoSelection.value} />
+          </button>
+          <div class="sep" />
+          <ItemButton
+            it={{ label: ui.menus.image, small: ui.menus.imageSmall, hint: ui.menus.imageHint }}
+            onPick={() => {
+              close();
+              send({ type: 'image.pick' });
+            }}
+          />
+        </div>
+      )}
+    </span>
+  );
+}
+
+function ModeMenu({ menu, toggle, close }: MenuProps) {
+  const s = chat.value;
+  const modeLabel = ui.modes[s.mode]?.[0] ?? s.mode;
+  return (
+    <span class="pop" onKeyDown={menuKeys}>
+      <button
+        class="mode"
+        aria-haspopup="menu"
+        aria-expanded={menu === 'mode'}
+        onClick={() => toggle('mode')}
+      >
+        {ui.compose.mode} <b>{modeLabel}</b>
+      </button>
+      {menu === 'mode' && (
+        <div class="menu up" role="menu">
+          {(['default', 'acceptEdits', 'plan', 'bypassPermissions'] as PermissionMode[]).map((m) => {
+            const [label, small, hint] = ui.modes[m]!;
+            const off = m === 'bypassPermissions' && !s.allowBypass;
+            return (
               <ItemButton
-                it={{ label: ui.menus.pickFile, hint: ui.menus.pickFileHint }}
+                it={{
+                  label,
+                  small: off ? ui.menus.bypassOff : small,
+                  hint: m === 'default' ? '⇧⇥' : hint,
+                  dis: off,
+                }}
+                selected={s.mode === m}
                 onPick={() => {
-                  setMenu(undefined);
-                  send({ type: 'attach.pick' });
+                  close();
+                  setMode(m);
                 }}
               />
-              <button class="it" onClick={() => (autoFile.value = !autoFile.value)}>
-                <span>
-                  {ui.menus.openFile}
-                  <small>
-                    {editor.value.file?.name ?? '—'} ·{' '}
-                    {autoFile.value ? ui.menus.autoOn : ui.menus.autoOff}
-                  </small>
-                </span>
-                <Switch on={autoFile.value} />
-              </button>
-              <button class="it" onClick={() => (autoSelection.value = !autoSelection.value)}>
-                <span>
-                  {ui.menus.selection}
-                  <small>
-                    {editor.value.selection
-                      ? `${attachmentLabel({ kind: 'selection', path: editor.value.selection.path, startLine: editor.value.selection.startLine, endLine: editor.value.selection.endLine }).range.trim()} · `
-                      : ''}
-                    {autoSelection.value ? ui.menus.autoOn : ui.menus.autoOff}
-                  </small>
-                </span>
-                <Switch on={autoSelection.value} />
-              </button>
-              <div class="sep" />
-              <ItemButton
-                it={{ label: ui.menus.image, small: ui.menus.imageSmall, hint: ui.menus.imageHint }}
-                onPick={() => {
-                  setMenu(undefined);
-                  send({ type: 'image.pick' });
-                }}
-              />
-            </div>
-          )}
-        </span>
-        <span class="pop" onKeyDown={menuKeys}>
-          <button
-            class="mode"
-            aria-haspopup="menu"
-            aria-expanded={menu === 'mode'}
-            onClick={() => toggle('mode')}
-          >
-            {ui.compose.mode} <b>{modeLabel}</b>
-          </button>
-          {menu === 'mode' && (
-            <div class="menu up" role="menu">
-              {(['default', 'acceptEdits', 'plan', 'bypassPermissions'] as PermissionMode[]).map(
-                (m) => {
-                  const [label, small, hint] = ui.modes[m]!;
-                  const off = m === 'bypassPermissions' && !s.allowBypass;
-                  return (
-                    <ItemButton
-                      it={{
-                        label,
-                        small: off ? ui.menus.bypassOff : small,
-                        hint: m === 'default' ? '⇧⇥' : hint,
-                        dis: off,
-                      }}
-                      selected={s.mode === m}
-                      onPick={() => {
-                        setMenu(undefined);
-                        setMode(m);
-                      }}
-                    />
-                  );
-                },
-              )}
-            </div>
-          )}
-        </span>
-        <span class="pop" onKeyDown={menuKeys}>
-          <button
-            class="agent"
-            data-tip={ui.compose.agentTitle}
-            aria-haspopup="menu"
-            aria-expanded={menu === 'agent'}
-            onClick={() => toggle('agent')}
-          >
-            {ui.compose.agent} <b>claude</b>
-          </button>
-          {menu === 'agent' && (
-            <div class="menu up" role="menu">
-              <div class="hd">{ui.compose.agentMenu}</div>
-              <ItemButton
-                it={{
-                  label: 'Claude',
-                  small: ui.compose.claudeVia(s.engineVersion),
-                  hint: ui.compose.agentReady,
-                }}
-                selected
-                onPick={() => setMenu(undefined)}
-              />
-              <ItemButton
-                it={{
-                  label: 'Codex',
-                  small: ui.compose.acpAdapter,
-                  hint: ui.compose.agentSoon,
-                  dis: true,
-                }}
-              />
-              <ItemButton
-                it={{
-                  label: 'Gemini',
-                  small: ui.compose.acpAdapter,
-                  hint: ui.compose.agentSoon,
-                  dis: true,
-                }}
-              />
-            </div>
-          )}
-        </span>
-        <span class="pop" onKeyDown={menuKeys}>
-          <button
-            aria-haspopup="menu"
-            aria-expanded={menu === 'model'}
-            onClick={() => toggle('model')}
-          >
-            {ui.compose.model} <b>{s.model ? shortModel(s.model) : '—'}</b>
-          </button>
-          {menu === 'model' && (
-            <div class="menu up" role="menu">
-              <div class="hd">{ui.menus.model}</div>
-              {models.map((m) => (
-                <ItemButton
-                  it={{ label: m.displayName, small: m.description }}
-                  selected={m === curModel}
-                  onPick={() => {
-                    setMenu(undefined);
-                    setModel(m.value);
-                  }}
-                />
-              ))}
-            </div>
-          )}
-        </span>
-        <span class="pop" onKeyDown={menuKeys}>
-          <button
-            aria-haspopup="menu"
-            aria-expanded={menu === 'effort'}
-            onClick={() => toggle('effort')}
-          >
-            {ui.compose.effort} <b>{s.effort ?? 'auto'}</b>
-          </button>
-          {menu === 'effort' && (
-            <div class="menu up" role="menu">
-              <div class="hd">{ui.menus.effort}</div>
-              {efforts.map((l) => (
-                <ItemButton
-                  it={{ label: l }}
-                  selected={s.effort === l}
-                  onPick={() => {
-                    setMenu(undefined);
-                    setEffort(l);
-                  }}
-                />
-              ))}
-              <div class="sep" />
-              <button class="it" onClick={() => (showThinking.value = !showThinking.value)}>
-                <span>
-                  {ui.menus.thinking}
-                  <small>{ui.menus.thinkingHint}</small>
-                </span>
-                <Switch on={showThinking.value} />
-              </button>
-            </div>
-          )}
-        </span>
-        <span class="meters">
-          <span class="m" data-tip={hv.cache.title}>
-            <span
-              class="clock"
-              style={{
-                background: hv.cache.expired
-                  ? 'var(--bg-input)'
-                  : `conic-gradient(var(--info) ${Math.round(hv.cache.left * 100)}%, var(--bg-input) 0)`,
+            );
+          })}
+        </div>
+      )}
+    </span>
+  );
+}
+
+function AgentMenu({ menu, toggle, close }: MenuProps) {
+  const s = chat.value;
+  return (
+    <span class="pop" onKeyDown={menuKeys}>
+      <button
+        class="agent"
+        data-tip={ui.compose.agentTitle}
+        aria-haspopup="menu"
+        aria-expanded={menu === 'agent'}
+        onClick={() => toggle('agent')}
+      >
+        {ui.compose.agent} <b>claude</b>
+      </button>
+      {menu === 'agent' && (
+        <div class="menu up" role="menu">
+          <div class="hd">{ui.compose.agentMenu}</div>
+          <ItemButton
+            it={{
+              label: 'Claude',
+              small: ui.compose.claudeVia(s.engineVersion),
+              hint: ui.compose.agentReady,
+            }}
+            selected
+            onPick={close}
+          />
+          <ItemButton
+            it={{
+              label: 'Codex',
+              small: ui.compose.acpAdapter,
+              hint: ui.compose.agentSoon,
+              dis: true,
+            }}
+          />
+          <ItemButton
+            it={{
+              label: 'Gemini',
+              small: ui.compose.acpAdapter,
+              hint: ui.compose.agentSoon,
+              dis: true,
+            }}
+          />
+        </div>
+      )}
+    </span>
+  );
+}
+
+function ModelMenu({
+  menu,
+  toggle,
+  close,
+  models,
+  curModel,
+}: MenuProps & {
+  models: ReadonlyArray<{ value: string; displayName: string; description?: string }>;
+  curModel: unknown;
+}) {
+  const s = chat.value;
+  return (
+    <span class="pop" onKeyDown={menuKeys}>
+      <button aria-haspopup="menu" aria-expanded={menu === 'model'} onClick={() => toggle('model')}>
+        {ui.compose.model} <b>{s.model ? shortModel(s.model) : '—'}</b>
+      </button>
+      {menu === 'model' && (
+        <div class="menu up" role="menu">
+          <div class="hd">{ui.menus.model}</div>
+          {models.map((m) => (
+            <ItemButton
+              it={{ label: m.displayName, small: m.description }}
+              selected={m === curModel}
+              onPick={() => {
+                close();
+                setModel(m.value);
               }}
             />
-            {ui.compose.cache} <b>{hv.cache.time}</b> · <b>{hv.cache.hit}</b>
-          </span>
-          <LimitMeterView
-            label={ui.compose.fiveHour}
-            meter={hv.limits.five}
-            title={hv.limits.title}
-          />
-          {hv.limits.week && hv.limits.week.percent > 70 && (
-            <LimitMeterView
-              label={ui.compose.weekShort}
-              meter={hv.limits.week}
-              title={hv.limits.title}
+          ))}
+        </div>
+      )}
+    </span>
+  );
+}
+
+function EffortMenu({
+  menu,
+  toggle,
+  close,
+  efforts,
+}: MenuProps & { efforts: EffortLevel[] | string[] }) {
+  const s = chat.value;
+  return (
+    <span class="pop" onKeyDown={menuKeys}>
+      <button
+        aria-haspopup="menu"
+        aria-expanded={menu === 'effort'}
+        onClick={() => toggle('effort')}
+      >
+        {ui.compose.effort} <b>{s.effort ?? 'auto'}</b>
+      </button>
+      {menu === 'effort' && (
+        <div class="menu up" role="menu">
+          <div class="hd">{ui.menus.effort}</div>
+          {efforts.map((l) => (
+            <ItemButton
+              it={{ label: l }}
+              selected={s.effort === l}
+              onPick={() => {
+                close();
+                setEffort(l as EffortLevel);
+              }}
             />
-          )}
-        </span>
+          ))}
+          <div class="sep" />
+          <button class="it" onClick={() => (showThinking.value = !showThinking.value)}>
+            <span>
+              {ui.menus.thinking}
+              <small>{ui.menus.thinkingHint}</small>
+            </span>
+            <Switch on={showThinking.value} />
+          </button>
+        </div>
+      )}
+    </span>
+  );
+}
+
+/** Приборы: кэш, 5 часов, неделя (если >70 %). */
+function Meters({ hv }: { hv: Hv }) {
+  return (
+    <span class="meters">
+      <span class="m" data-tip={hv.cache.title}>
+        <span
+          class="clock"
+          style={{
+            background: hv.cache.expired
+              ? 'var(--bg-input)'
+              : `conic-gradient(var(--info) ${Math.round(hv.cache.left * 100)}%, var(--bg-input) 0)`,
+          }}
+        />
+        {ui.compose.cache} <b>{hv.cache.time}</b> · <b>{hv.cache.hit}</b>
+      </span>
+      <LimitMeterView label={ui.compose.fiveHour} meter={hv.limits.five} title={hv.limits.title} />
+      {hv.limits.week && hv.limits.week.percent > 70 && (
+        <LimitMeterView label={ui.compose.weekShort} meter={hv.limits.week} title={hv.limits.title} />
+      )}
+    </span>
+  );
+}
+
+/** Отправка; пока идёт ход — «↵ в очередь» и стоп (Esc делает то же). */
+function SendControl({
+  working,
+  disabled,
+  onSend,
+  onStop,
+}: {
+  working: boolean;
+  disabled: boolean;
+  onSend: () => void;
+  onStop: () => void;
+}) {
+  if (working) {
+    return (
+      <>
+        <span class="q">{ui.compose.queue}</span>
         <button
-          class="send"
-          data-tip={ui.compose.sendTitle}
-          data-tip-key="Enter"
-          // ответ карточке (вопрос, план) к лимиту не относится: Enter его пропускает — и кнопка тоже
-          disabled={closed || (!!blocked && !target)}
-          onClick={submit}
+          class="stopb"
+          data-tip={ui.compose.stopTitle}
+          data-tip-key="Esc"
+          aria-label={ui.compose.stopTitle}
+          onClick={onStop}
         >
-          {ui.compose.send}
+          <i aria-hidden="true" />
+          {ui.compose.stopKey}
         </button>
-      </div>
-    </footer>
+      </>
+    );
+  }
+  return (
+    <button
+      class="send"
+      data-tip={ui.compose.sendTitle}
+      data-tip-key="Enter"
+      // ответ карточке (вопрос, план) к лимиту не относится: Enter его пропускает — и кнопка тоже
+      disabled={disabled}
+      onClick={onSend}
+    >
+      {ui.compose.send}
+    </button>
   );
 }
 

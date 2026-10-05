@@ -1,6 +1,7 @@
 # 14 · Поле ввода: шесть раскладок с настройкой
 
-> Статус: спланировано 2026-10-05. Прототип — `prototype/screens/composer.html#a…#f` (+ `-typed`), стили —
+> Статус: этап 1 принят 2026-10-05 (ветка `stage-1-composer-parts`), следующий — 2. На подтверждение и ручную проверку —
+> `14-composer-layouts.pending.md`. Прототип — `prototype/screens/composer.html#a…#f` (+ `-typed`), стили —
 > `prototype/shared/composer.css`, картинки — галерея, раздел «Поле ввода: варианты» (v31).
 
 ## Цель
@@ -94,14 +95,32 @@
 
 ### 1. Разбор `Composer` на части + настройка + стоп в поле · sonnet, high
 
-- [ ] ветка `stage-1-composer-parts` от `main`
-- [ ] части из «Решения 3» (кроме новых `ContextRing`/`ContextBar`/`EngineMenu`), `Composer` = состояние + раскладка
+- [x] ветка `stage-1-composer-parts` от `main`
+- [x] части из «Решения 3» (кроме новых `ContextRing`/`ContextBar`/`EngineMenu`), `Composer` = состояние + раскладка
       `classic`; DOM `classic` не изменился (существующие проверки `composerDom.test.ts`/`imagesDom.test.ts` зелёные без правок)
-- [ ] `SendControl` с режимом «ход идёт» (Решение 4) + тест: в ходе видны «↵ в очередь» и стоп, клик → `interrupt`
-- [ ] настройка целиком по цепочке `feed.style` (Решение 1): manifest, nls, `settings.ts`, протокол, хост, QuickPick,
+- [x] `SendControl` с режимом «ход идёт» (Решение 4) + тест: в ходе видны «↵ в очередь» и стоп, клик → `interrupt`
+- [x] настройка целиком по цепочке `feed.style` (Решение 1): manifest, nls, `settings.ts`, протокол, хост, QuickPick,
       `l10n.ts`, store; `data-layout` на `footer`; значения ≠ `classic` пока рисуют `classic`
-- [ ] тесты настройки по эталонам (`settings.test.ts`, `manifest.test.ts`, `chatController.test.ts`)
-- [ ] `npm run check` зелёный
+- [x] тесты настройки по эталонам (`settings.test.ts`, `manifest.test.ts`, `chatController.test.ts`)
+- [x] `npm run check` зелёный
+
+### Решения (2026-10-05, по итогам сессии 1)
+
+- Части — функции в том же `Composer.tsx`. Всё состояние и все хуки (текст, каретка, меню `/` `@`, история, drop,
+  открытое меню) остались в `Composer`; части без хуков, получают пропсы. Сверх списка — `DraftHint` (`.hint` в `.ctx`).
+- Всплывающие меню (`PlusMenu`, `ModeMenu`, `AgentMenu`, `ModelMenu`, `EffortMenu`) — управляемые: пропсы
+  `MenuProps { menu, toggle, close }`, открыто одно меню на поле (`menu: MenuName` в `Composer`), закрытие кликом вне и по
+  Esc — эффект в `Composer` по `.closest('.pop')`, поэтому каждое меню рисуется в своей обёртке `span.pop`. Кнопка-триггер
+  и список пунктов пока зашиты внутри компонента (вид classic). Для этапов 2–3: внешний вид триггера задавать пропом
+  (класс/подпись или `children`), пункты меню для `EngineMenu` вынести в отдельные функции-списки (`ModelItems`,
+  `EffortItems`, `AgentItems`), не дублировать; новое меню — новое значение `MenuName`. DOM classic при этом не меняется.
+- `AutoContext` принимает `look`, но пока рисует только `chip`; `ref`/`plus` — этапы 2–3.
+- `SendControl` в ходе — фрагмент `span.q` + `button.stopb` (`<i>` — красный квадрат, подпись `esc`, `data-tip-key="Esc"`),
+  стоп возвращает фокус в поле. Стили — `media/hud.css` (`.compose .q`, `.compose .stopb`, по прототипу: рамка
+  `--line-strong`, квадрат `--del`), место в `.opts` — `margin-left: auto`, как у `.send`.
+- Условие хода — только `status === 'working'`; при `waiting` — обычная отправка (поле отвечает карточке, Esc отклоняет
+  карточку). На подтверждение — `14-composer-layouts.pending.md`.
+- Неизвестное значение настройки отсекается на хосте (`isComposerLayout` → `classic`), webview без поля → `classic`.
 
 ### 2. Раскладки `card`, `gauges`, `minimal` · sonnet, high · после 1
 
@@ -161,11 +180,14 @@ DoD: `npm run check` зелёный; существующие проверки `
 прототипу `prototype/screens/composer.html` (`#b`, `#d`, `#e`; разметка там, стили — `prototype/shared/composer.css`).
 Части поля и настройка уже есть (этап 1).
 
-Читай: этот файл — «Решения» (особенно 2–5) и «Решения (по итогам сессии 1)», если есть; «Этапы → 2». Эталон стилевого
+Читай: этот файл — «Решения» (особенно 2–5) и «Решения (2026-10-05, по итогам сессии 1)» — там устройство частей и
+меню (`MenuProps`, одно открытое меню, `span.pop`); «Этапы → 2». Эталон стилевого
 файла вида — `media/feed.css` и как он подключён. Открывать только фрагменты, которые правишь.
 
 Уже решено, не переспрашивать: всё в «Решения». Цвета — только токены (`var(--…)`), как в прототипе. Классы и
-вложенность — по прототипу, имена частей — из этапа 1.
+вложенность — по прототипу, имена частей — из этапа 1. Части живут в `src/webview/components/Composer.tsx`; триггеры
+меню под раскладки — через проп (вид триггера), пункты для `EngineMenu` — общие функции-списки, вынесенные из
+`AgentMenu`/`ModelMenu`/`EffortMenu`, без копий. Новые хуки в части не добавлять без нужды — состояние поля в `Composer`.
 
 Порядок: ветка `stage-2-composer-layouts` от `main` (после мержа этапа 1) → чекбоксы «Этапы → 2».
 

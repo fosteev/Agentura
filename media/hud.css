@@ -185,6 +185,14 @@ html:is([data-width="900"],[data-width="full"],[data-width="vscode"]) .body[data
 .opts .send { margin-left: auto; color: var(--fg); }
 .opts .send::after { content: ""; }
 .opts .mode b { color: var(--info); }
+/* ход идёт: «↵ в очередь» и стоп вместо кнопки отправки (SendControl; вид — в любой раскладке, место — в `.opts`) */
+.compose .q { color: var(--info); white-space: nowrap; }
+.opts .q { margin-left: auto; }
+.opts .meters + .q { margin-left: 0; }
+.compose .stopb { display: inline-flex; align-items: center; gap: 6px; color: var(--fg); padding: 0 8px;
+  border: 1px solid var(--line-strong); border-radius: 3px; font-size: 11px; }
+.compose .stopb::after { content: none; }
+.compose .stopb i { width: 7px; height: 7px; border-radius: 1px; background: var(--del); }
 
 /* ───── состояния приборов ───── */
 .compose .ctx .cn b.ok, .compose .ctx .cn b.zero { color: var(--fg); }

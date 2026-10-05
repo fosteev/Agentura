@@ -42,6 +42,7 @@ const values: SettingsValues = {
   'sessionList.time': true,
   'sidebar.top': 'detailed',
   'feed.style': 'journal',
+  'composer.layout': 'classic',
   'agents.view': 'list',
   'git.layout': 'stack',
   'feed.fontSize': 13,

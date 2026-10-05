@@ -23,6 +23,7 @@ import type {
   AgentsView,
   GitLayout,
   FeedStyle,
+  ComposerLayout,
   SessionListMode,
   SettingKey,
   SidebarTopMode,
@@ -166,6 +167,8 @@ export type ToWebview =
       contextThresholds?: number[];
       /** Вид ленты (`agentura.feed.style`); нет — `journal`. */
       feedStyle?: FeedStyle;
+      /** Раскладка поля ввода (`agentura.composer.layout`); нет — `classic`. */
+      composerLayout?: ComposerLayout;
       /** Вид вкладки «агенты» (`agentura.agents.view`); нет — `list`. */
       agentsView?: AgentsView;
       /** Раскладка вкладки «git» при нескольких репо (`agentura.git.layout`); нет — `stack`. */

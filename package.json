@@ -94,6 +94,11 @@
         "category": "Agentura"
       },
       {
+        "command": "agentura.composerLayout",
+        "title": "%command.composerLayout.title%",
+        "category": "Agentura"
+      },
+      {
         "command": "agentura.agentsView",
         "title": "%command.agentsView.title%",
         "category": "Agentura"
@@ -278,6 +283,27 @@
           ],
           "default": "journal",
           "description": "%config.feed.style.description%"
+        },
+        "agentura.composer.layout": {
+          "type": "string",
+          "enum": [
+            "classic",
+            "card",
+            "statusline",
+            "gauges",
+            "minimal",
+            "shell"
+          ],
+          "enumDescriptions": [
+            "%config.composer.layout.enum.classic%",
+            "%config.composer.layout.enum.card%",
+            "%config.composer.layout.enum.statusline%",
+            "%config.composer.layout.enum.gauges%",
+            "%config.composer.layout.enum.minimal%",
+            "%config.composer.layout.enum.shell%"
+          ],
+          "default": "classic",
+          "description": "%config.composer.layout.description%"
         },
         "agentura.agents.view": {
           "type": "string",

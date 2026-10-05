@@ -61,7 +61,7 @@ import {
   type ChatState,
   type QuestionCard,
 } from './chatState';
-import type { AgentsView, FeedStyle, GitLayout } from '../settings';
+import type { AgentsView, ComposerLayout, FeedStyle, GitLayout } from '../settings';
 import type { GitOp, GitSnapshot } from '../shared/git';
 import { pushHistory } from './composer';
 import { applyHud, contextMax, initialHud, resetHud, type HudState } from './hudState';
@@ -113,6 +113,8 @@ export const autoSelection = signal(true);
 export const showThinking = signal(true);
 /** Вид ленты (`agentura.feed.style`, приходит в `chat.info`): `data-feed` на корне чата. */
 export const feedStyle = signal<FeedStyle>('journal');
+/** Раскладка поля ввода (`agentura.composer.layout`, приходит в `chat.info`): `data-layout` на `footer.compose`. */
+export const composerLayout = signal<ComposerLayout>('classic');
 /** Вид вкладки «агенты» (`agentura.agents.view`, `chat.info`): `data-agents` на корне чата. */
 export const agentsView = signal<AgentsView>('list');
 /** Раскладка вкладки «git» при нескольких репо (`agentura.git.layout`, `chat.info`): `data-git` на корне чата. */
@@ -294,6 +296,7 @@ export function handleHostMessage(m: ToWebview): void {
     case 'chat.info':
       chat.value = { ...chat.value, project: m.project, cwd: m.cwd, allowBypass: m.allowBypass };
       feedStyle.value = m.feedStyle ?? 'journal';
+      composerLayout.value = m.composerLayout ?? 'classic';
       agentsView.value = m.agentsView ?? 'list';
       gitLayout.value = m.gitLayout ?? 'stack';
       if (m.contextThresholds?.length) {

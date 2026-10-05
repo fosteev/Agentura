@@ -16,6 +16,8 @@ import {
   isGitLayout,
   DEFAULT_GIT_LAYOUT,
   isFeedStyle,
+  isComposerLayout,
+  DEFAULT_COMPOSER_LAYOUT,
   thresholdsError,
 } from '../settings';
 import type { AccountService } from './account';
@@ -280,6 +282,9 @@ export class ChatPanel {
             cfg.get<number[]>('contextThresholds', [...DEFAULT_THRESHOLDS]),
           ),
           feedStyle: ((v) => (isFeedStyle(v) ? v : DEFAULT_FEED_STYLE))(cfg.get<unknown>('feed.style')),
+          composerLayout: ((v) => (isComposerLayout(v) ? v : DEFAULT_COMPOSER_LAYOUT))(
+            cfg.get<unknown>('composer.layout'),
+          ),
           agentsView: ((v) => (isAgentsView(v) ? v : DEFAULT_AGENTS_VIEW))(cfg.get<unknown>('agents.view')),
           gitLayout: ((v) => (isGitLayout(v) ? v : DEFAULT_GIT_LAYOUT))(cfg.get<unknown>('git.layout')),
           defaultPermissionMode: cfg.get<string>('defaultPermissionMode'),
