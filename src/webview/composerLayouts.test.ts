@@ -6,9 +6,11 @@ import {
   capabilities,
   chat,
   composerLayout,
+  dismissed,
   dispatchEvent,
   editor,
   extra,
+  handleHostMessage,
   history,
   hudState,
   limits,
@@ -70,16 +72,19 @@ beforeEach(() => {
   history.value = [];
   hudState.value = initialHud();
   limits.value = { windows: [], updatedAt: 0 };
+  dismissed.value = new Set();
 });
 
 /** Ключевые элементы каждой новой раскладки (после `data-layout`). */
 const KEY: Record<string, string[]> = {
   card: ['.frame .prompt', '.frame .row .plus', '.frame .row .pill.mode', '.frame .row .engine', '.frame .row .cr .ring', '.frame .row .send.go', '.under .cn', '.under .meters'],
   gauges: ['.top .bar', '.top .cn button', '.top .meters', '.prompt', '.sets .plus', '.sets .mode', '.sets .agent', '.sets .send.go'],
+  statusline: ['.inp .prompt', '.sl .plus', '.sl .blk.mode', '.sl .agent', '.sl .effort', '.sl .cs .bar', '.sl .meters', '.sl .send.go'],
+  shell: ['.pl .dir', '.pl .mdt.mode', '.pl .mdl .agent', '.pl .mdl .effort', '.pl .plus', '.pl .rg .bar', '.ln .prompt', '.ln .send.go'],
   minimal: ['.one .dollar', '.one .prompt', '.one .plus', '.one .engine', '.one .send.go'],
 };
 
-describe.each(['card', 'gauges', 'minimal'] as const)('раскладка %s', (layout) => {
+describe.each(['card', 'gauges', 'statusline', 'shell', 'minimal'] as const)('раскладка %s', (layout) => {
   beforeEach(() => {
     composerLayout.value = layout;
   });
@@ -279,5 +284,119 @@ describe('приёмка этапа 2', () => {
     expect(small.marks).toEqual([]);
     const zero = contextView({ ...initialHud(), context: { used: 0, max: 0 } });
     expect([zero.percent, zero.fill]).toEqual([0, 0]);
+  });
+});
+
+describe('statusline и shell', () => {
+  function withEditor(path = 'src/Counter.tsx') {
+    handleHostMessage({
+      type: 'editor.context',
+      file: { path, name: 'Counter.tsx' },
+      selection: { path, name: 'Counter.tsx', startLine: 12, endLine: 40 },
+    });
+  }
+
+  it('statusline: автоконтекст — @файл:строки перед полем, ✕ снимает; кромка — заполнение контекста', async () => {
+    composerLayout.value = 'statusline';
+    usage(131_250);
+    withEditor();
+    const host = mount();
+    await flush();
+    const refs = [...host.querySelectorAll('.inp .chips .auto')].map((c) => c.textContent);
+    expect(refs).toEqual(['@Counter.tsx✕', '@Counter.tsx:12–40✕']);
+    expect(host.querySelector('.inp .chips')!.compareDocumentPosition(host.querySelector('.typed')!)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(host.querySelector('footer')?.getAttribute('style')).toMatch(/--p: ?66/);
+    host.querySelector<HTMLElement>('.inp .auto .x')!.click();
+    await flush();
+    expect(host.querySelectorAll('.inp .auto')).toHaveLength(1);
+  });
+
+  it('statusline: ctx 131k/200k, «сжать» — только вне зоны ok и шлёт compact', async () => {
+    composerLayout.value = 'statusline';
+    usage(40_000);
+    const host = mount();
+    await flush();
+    expect(host.querySelector('.sl .cs b')?.textContent).toBe('40k/200k');
+    expect(host.querySelector('.sl .cs button')).toBeNull();
+    usage(131_250);
+    await flush();
+    expect(host.querySelector('.sl .cs b')?.textContent).toBe('131k/200k');
+    host.querySelector<HTMLButtonElement>('.sl .cs button')!.click();
+    expect(posted).toContainEqual({ type: 'compact', sessionId: 's1' });
+  });
+
+  it('statusline: сегмент режима открывает меню режима, agent — своё меню', async () => {
+    composerLayout.value = 'statusline';
+    const host = mount();
+    await flush();
+    host.querySelector<HTMLElement>('.sl .blk')!.click();
+    await flush();
+    expect(host.querySelectorAll('.menu .it')).toHaveLength(4);
+    host.querySelector<HTMLElement>('.sl .agent')!.click();
+    await flush();
+    expect(host.querySelectorAll('.menu')).toHaveLength(1);
+    expect(host.querySelector('.sl .agent')?.getAttribute('aria-expanded')).toBe('true');
+    expect(host.querySelector('.sl .blk')?.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('statusline и shell: пока идёт сжатие — крутилка, кнопки «сжать» нет', async () => {
+    usage(131_250);
+    hudState.value = { ...hudState.value, compacting: true };
+    composerLayout.value = 'statusline';
+    const host = mount();
+    await flush();
+    expect(host.querySelector('.sl .cs .spin')).not.toBeNull();
+    expect(host.querySelector('.sl .cs button')).toBeNull();
+    composerLayout.value = 'shell';
+    await flush();
+    expect(host.querySelector('.pl .rg .cs .spin')).not.toBeNull();
+  });
+
+  it('statusline: вручную добавленный файл — ✕ убирает его из extra', async () => {
+    composerLayout.value = 'statusline';
+    extra.value = [{ kind: 'file', path: 'src/a.ts' }] as typeof extra.value;
+    const host = mount();
+    await flush();
+    expect(host.querySelector('.inp .chips .man')?.textContent).toBe('@a.ts✕');
+    host.querySelector<HTMLElement>('.inp .man .x')!.click();
+    await flush();
+    expect(extra.value).toHaveLength(0);
+  });
+
+  it('shell: проект, + файл:строки, ❯-строка; процент контекста', async () => {
+    composerLayout.value = 'shell';
+    usage(131_250);
+    withEditor();
+    const host = mount();
+    await flush();
+    expect(host.querySelector('.pl .dir')?.textContent).toBe('p');
+    const refs = [...host.querySelectorAll('.chips.refs .auto')].map((c) => c.textContent);
+    expect(refs).toEqual(['+Counter.tsx✕', '+Counter.tsx:12–40✕']);
+    expect(host.querySelector('.pl .rg .pc')?.textContent).toBe('66%');
+    expect(host.querySelectorAll('.pl .rg .bar u')).toHaveLength(2);
+  });
+
+  it('shell: без проекта нет пустого .dir и лишней «·» перед режимом', async () => {
+    handleHostMessage({ type: 'chat.info', project: '', cwd: '', allowBypass: false, composerLayout: 'shell' });
+    const host = mount();
+    await flush();
+    expect(host.querySelector('.pl .dir')).toBeNull();
+    expect(host.querySelector('.pl')!.firstElementChild?.querySelector('.mode')).not.toBeNull();
+  });
+
+  it('shell: agent, model и effort — каждый открывает своё меню; effort шлёт effort.set', async () => {
+    composerLayout.value = 'shell';
+    const host = mount();
+    await flush();
+    host.querySelector<HTMLElement>('.pl .mdl .effort')!.click();
+    await flush();
+    expect(host.querySelectorAll('.menu')).toHaveLength(1);
+    const low = [...host.querySelectorAll<HTMLElement>('.menu .it')].find((i) =>
+      i.textContent?.startsWith('low'),
+    );
+    low!.click();
+    expect(posted).toContainEqual(expect.objectContaining({ type: 'effort.set' }));
   });
 });

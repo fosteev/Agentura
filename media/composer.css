@@ -94,5 +94,86 @@
 .compose[data-layout="minimal"] .sub .note { color: var(--fg-mute); }
 .compose[data-layout="minimal"] .sub .hint { color: var(--fg-faint); }
 
+/* ── В · statusline: поле без обвеса, кромка — заполнение контекста, всё остальное — полоса снизу ── */
+.compose[data-layout="statusline"] { border-top: 0; padding: 0; position: relative; }
+.compose[data-layout="statusline"]::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 2px; z-index: 1;
+  background: linear-gradient(90deg, var(--c, var(--ok)) calc(var(--p, 0) * 1%), var(--line) 0); }
+.compose[data-layout="statusline"] > .att { margin: 0; padding: 10px 14px 0; }
+.compose[data-layout="statusline"] .inp { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; padding: 10px 14px 12px; min-height: 52px; }
+.compose[data-layout="statusline"] .inp > .pop { flex: 1 1 160px; min-width: 0; }
+.compose[data-layout="statusline"] .prompt { border: 0; background: none; padding: 0; min-height: 0; }
+.compose[data-layout="statusline"] .prompt .p { color: var(--accent); font-weight: 600; }
+.compose[data-layout="statusline"] .note { padding: 0 14px 6px; }
+.compose[data-layout="statusline"] .sl { display: flex; align-items: stretch; flex-wrap: wrap; min-height: 22px; font-size: 11px;
+  background: var(--bg-raise); border-top: 1px solid var(--line); color: var(--fg-mute); position: relative; }
+.compose[data-layout="statusline"] .sl > * { display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; border-right: 1px solid var(--line); white-space: nowrap; }
+.compose[data-layout="statusline"] .sl > .pop { padding: 0; position: static; }
+.compose[data-layout="statusline"] .sl > .pop > button { height: 100%; padding: 0 10px; color: var(--fg-mute); font-size: 11px; }
+.compose[data-layout="statusline"] .sl > .pop > button:hover { background: var(--bg-hover); }
+.compose[data-layout="statusline"] .sl > .pop > button b { font-weight: 500; color: var(--fg); }
+.compose[data-layout="statusline"] .sl .blk { background: var(--info); color: #fff; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.compose[data-layout="statusline"] .sl .blk:hover { background: var(--info); filter: brightness(1.1); }
+.compose[data-layout="statusline"] .sl .sp { flex: 1; border-right: 0; padding: 0; }
+.compose[data-layout="statusline"] .sl .bar { width: 60px; }
+.compose[data-layout="statusline"] .sl .cs button, .compose[data-layout="statusline"] .sl .cn button { color: var(--link); font-size: 11px; padding: 0; }
+.compose[data-layout="statusline"] .sl .meters { border-left: 1px solid var(--line); gap: 10px; }
+.compose[data-layout="statusline"] .sl > .hint { color: var(--fg-faint); }
+.compose[data-layout="statusline"] .sl .go { background: none; color: var(--fg); padding: 0 10px; border-radius: 0; border-right: 0; font-size: 11px; }
+.compose[data-layout="statusline"] .sl .go:hover { background: var(--bg-hover); }
+.compose[data-layout="statusline"] .sl .q, .compose[data-layout="statusline"] .sl .stopb { border-left: 0; }
+
+/* @файл:строки / + файл:строки — цветом ссылки, без рамок */
+.compose:not([data-layout="classic"]) .chips.refs > span:not(.hint) { background: none; border: 0; padding: 0; color: var(--link); font-size: 12px; }
+.compose:not([data-layout="classic"]) .chips.refs > span:not(.hint) { display: inline-flex; gap: 0; align-items: baseline; max-width: 100%; min-width: 0; white-space: nowrap; }
+.compose:not([data-layout="classic"]) .chips.refs > span .mk { margin-right: .35em; }
+.compose:not([data-layout="classic"]) .chips.refs > span .x { margin-left: 4px; }
+.compose:not([data-layout="classic"]) .chips.refs > span b { font-weight: 400; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.compose:not([data-layout="classic"]) .chips.refs > span .x { opacity: 0; }
+.compose:not([data-layout="classic"]) .chips.refs > span:hover .x, .compose:not([data-layout="classic"]) .chips.refs > span .x:focus-visible { opacity: 1; }
+.compose:not([data-layout="classic"]) .chips.refs .att { color: var(--link); }
+
+/* ── Е · shell: «приглашение» — проект · режим · agent/model:effort, строка ввода с ❯ ── */
+.compose[data-layout="shell"] { padding: 8px 14px 12px; background: var(--bg-code); }
+.compose[data-layout="shell"] .pl { display: flex; align-items: center; flex-wrap: wrap; row-gap: 4px; font-size: 11px; color: var(--fg-mute); }
+.compose[data-layout="shell"] .pl > span, .compose[data-layout="shell"] .pl > .pop { display: inline-flex; align-items: center; gap: 6px; }
+.compose[data-layout="shell"] .pl > span + span::before, .compose[data-layout="shell"] .pl > .pop + span::before,
+.compose[data-layout="shell"] .pl > span + .pop::before, .compose[data-layout="shell"] .pl > .pop + .pop::before { content: "·"; color: var(--fg-faint); margin: 0 8px; }
+.compose[data-layout="shell"] .pl > .pop { position: static; }
+.compose[data-layout="shell"] .pl { position: relative; }
+.compose[data-layout="shell"] .pl .dir { color: var(--info); font-weight: 600; }
+.compose[data-layout="shell"] .pl > .dir { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.compose[data-layout="shell"] .pl .mdt { color: var(--info); }
+.compose[data-layout="shell"] .pl .pop > button { padding: 0; font-size: 11px; color: var(--fg-mute); }
+.compose[data-layout="shell"] .pl .pop > button:hover { color: var(--fg); }
+.compose[data-layout="shell"] .pl .pop > button b { font-weight: 500; color: var(--fg); }
+.compose[data-layout="shell"] .pl .mdl { gap: 0; }
+.compose[data-layout="shell"] .pl .mdl::before { content: "·"; color: var(--fg-faint); margin: 0 8px; }
+.compose[data-layout="shell"] .pl .mdl > .pop { position: static; }
+.compose[data-layout="shell"] .pl .mdl .sep-c { color: var(--fg-faint); margin: 0 2px; }
+.compose[data-layout="shell"] .pl .mdl > span::before { content: none; }
+.compose[data-layout="shell"] .pl .rg { margin-left: auto; gap: 10px; }
+.compose[data-layout="shell"] .pl .rg::before { content: none !important; }
+.compose[data-layout="shell"] .pl .rg .bar { width: 60px; }
+.compose[data-layout="shell"] .pl .meters { gap: 10px; }
+.compose[data-layout="shell"] .chips.refs { padding-top: 3px; gap: 4px 10px; }
+.compose[data-layout="shell"] .ln { display: flex; gap: 8px; align-items: baseline; padding-top: 6px; font-size: 13px; }
+.compose[data-layout="shell"] .ln > .pop { flex: 1; min-width: 0; }
+.compose[data-layout="shell"] .prompt { border: 0; background: none; padding: 0; min-height: 0; caret-shape: block; }
+.compose[data-layout="shell"] .prompt .p { font-size: 0; }
+.compose[data-layout="shell"] .prompt .p::before { content: "❯"; font-size: 13px; color: var(--ok); font-weight: 700; }
+.compose[data-layout="shell"] .go { background: none; color: var(--fg-faint); font-size: 11px; padding: 0 4px; }
+.compose[data-layout="shell"] .go:hover { color: var(--fg); }
+.compose[data-layout="shell"] .note { padding-top: 4px; }
+
+/* узкая вкладка: statusline и шапка shell — в две строки, правая группа уходит на свою */
+html[data-width="380"] .compose[data-layout="statusline"] .sl .sp { flex-basis: 100%; height: 0; min-height: 0; padding: 0; }
+html[data-width="380"] .compose[data-layout="statusline"] .sl > * { min-height: 22px; }
+html[data-width="380"] .compose[data-layout="shell"] .pl .rg { flex: 1 0 100%; margin-left: 0; flex-wrap: wrap; row-gap: 2px; }
+html[data-width="380"] .compose[data-layout="shell"] .pl .meters, html[data-width="380"] .compose[data-layout="statusline"] .sl .meters { flex-wrap: wrap; white-space: normal; }
+html[data-width="380"] .compose[data-layout="statusline"] .sl .bar, html[data-width="380"] .compose[data-layout="shell"] .pl .rg .bar { width: 48px; }
+
 /* узкая вкладка: ряды и так переносятся (flex-wrap выше и у .ctx в hud.css); приборы gauges — с левого края */
 html[data-width="380"] .compose[data-layout="gauges"] .top .g { margin-left: 0; }
+
+/* перетаскивание файла: подсветка поля и в раскладках без рамки поля (attach.css проигрывает им по специфичности); outline — без сдвига */
+.compose.drop:not([data-layout="classic"]):not([data-layout="gauges"]) .prompt { outline: 1px dashed var(--info); outline-offset: 2px; background: color-mix(in srgb, var(--info) 8%, var(--bg-input)); }

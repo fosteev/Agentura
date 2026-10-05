@@ -755,6 +755,18 @@ export const en: Ui = {
         cards: 'cards — a turn in a frame',
       },
     },
+    composerLayout: {
+      name: 'Input field layout',
+      desc: 'How the chat input is arranged: classic — as before, card — one frame with a bottom row, status line — a settings strip under the field, gauges on top — context and limits above the field, minimal — a single line, shell prompt — a prompt with the project and mode. Keys and behavior are the same everywhere. Open tabs switch immediately.',
+      options: {
+        classic: 'classic — as before',
+        card: 'card — one frame',
+        statusline: 'status line — a strip under the field',
+        gauges: 'gauges on top — context and limits',
+        minimal: 'minimal — a single line',
+        shell: 'shell prompt — like a terminal',
+      },
+    },
     agentsView: {
       name: 'Agents map',
       desc: 'The agents tab of the right panel: a list with details, a session tree, time lanes, cards, or a graph in an editor tab (the panel keeps the list then). Open tabs switch immediately.',

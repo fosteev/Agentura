@@ -709,6 +709,71 @@ export function Composer() {
     );
   }
 
+  if (layout === 'statusline') {
+    const c = hv.context;
+    return (
+      <footer {...rootProps} style={`--p:${c.percent};--c:${c.color}`}>
+        <Drafts drafts={drafts} fileDrafts={fileDrafts} />
+        <div class="inp">
+          <div class="chips refs">
+            <AutoContext auto={auto} manual={manual} look="ref" />
+          </div>
+          {promptEl}
+        </div>
+        <Note histIdx={histIdx} blocked={blocked} />
+        <div class="sl">
+          <PlusMenu {...menuProps} />
+          <ModeMenu {...menuProps} look="block" />
+          <AgentMenu {...menuProps} look="value" />
+          <ModelMenu {...menuProps} {...modelProps} look="value" />
+          <EffortMenu {...menuProps} efforts={efforts} look="value" />
+          <span class="sp" />
+          <ContextStatus hv={hv} look="sl" />
+          <Meters hv={hv} look="time" />
+          <DraftHint drafts={drafts.length} files={fileDrafts.length} />
+          {sendCtl('enter')}
+        </div>
+      </footer>
+    );
+  }
+
+  if (layout === 'shell') {
+    return (
+      <footer {...rootProps}>
+        <div class="pl">
+          {s.project && (
+            <span class="dir" data-tip={s.cwd || s.project}>
+              {s.project}
+            </span>
+          )}
+          <ModeMenu {...menuProps} look="text" />
+          <span class="mdl">
+            <AgentMenu {...menuProps} look="value" />
+            <span class="sep-c">/</span>
+            <ModelMenu {...menuProps} {...modelProps} look="value" />
+            <span class="sep-c">:</span>
+            <EffortMenu {...menuProps} efforts={efforts} look="value" />
+          </span>
+          <PlusMenu {...menuProps} />
+          <span class="rg">
+            <ContextStatus hv={hv} look="sh" />
+            <Meters hv={hv} look="time" />
+          </span>
+        </div>
+        <div class="chips refs">
+          <Drafts drafts={drafts} fileDrafts={fileDrafts} />
+          <AutoContext auto={auto} manual={manual} look="plus" />
+          <DraftHint drafts={drafts.length} files={fileDrafts.length} />
+        </div>
+        <div class="ln">
+          {promptEl}
+          {sendCtl('enter')}
+        </div>
+        <Note histIdx={histIdx} blocked={blocked} />
+      </footer>
+    );
+  }
+
   return (
     <footer {...rootProps}>
       <ContextBlocks blocks={hv.context.blocks} />
@@ -783,15 +848,53 @@ function DraftHint({ drafts, files }: { drafts: number; files: number }) {
   return null;
 }
 
-/** Автоконтекст (файл / выделение) и вручную добавленное. `look` — вид чипа; пока рисуется только `chip`. */
+/**
+ * Автоконтекст (файл / выделение) и вручную добавленное. `look`: `chip` — «открыт <b>name</b> ✕»; `ref` —
+ * `@name:строки` цветом ссылки (statusline); `plus` — `+ name:строки` (shell).
+ */
 function AutoContext({
   auto,
   manual,
+  look,
 }: {
   auto: Attachment[];
   manual: Attachment[];
   look: 'chip' | 'ref' | 'plus';
 }) {
+  const x = (drop: () => void) => (
+    <span
+      class="x"
+      role="button"
+      tabIndex={0}
+      aria-label={ui.compose.removeChip}
+      data-tip={ui.compose.removeChip}
+      onClick={drop}
+      onKeyDown={(e: KeyboardEvent) => pressKey(e, drop)}
+    >
+      ✕
+    </span>
+  );
+  if (look !== 'chip') {
+    const mark = look === 'ref' ? '@' : <span class="mk">+</span>;
+    const one = (a: Attachment, drop: () => void, cls: string) => {
+      const l = attachmentLabel(a);
+      const range = l.range.trim();
+      return (
+        <span class={`${cls} ${look}`}>
+          {mark}
+          <b>{l.name}</b>
+          {range && <span class="rg-l">:{range}</span>}
+          {x(drop)}
+        </span>
+      );
+    };
+    return (
+      <>
+        {auto.map((a) => one(a, () => dismiss(attachmentKey(a)), 'auto'))}
+        {manual.map((a) => one(a, () => removeExtra(attachmentKey(a)), 'man'))}
+      </>
+    );
+  }
   return (
     <>
       {auto.map((a) => {
@@ -800,17 +903,7 @@ function AutoContext({
           <span class="auto">
             {a.kind === 'selection' ? ui.compose.autoSelection : ui.compose.autoFile}{' '}
             <b>{a.kind === 'selection' ? l.range.trim() : l.name}</b>
-            <span
-              class="x"
-              role="button"
-              tabIndex={0}
-              aria-label={ui.compose.removeChip}
-              data-tip={ui.compose.removeChip}
-              onClick={() => dismiss(attachmentKey(a))}
-              onKeyDown={(e: KeyboardEvent) => pressKey(e, () => dismiss(attachmentKey(a)))}
-            >
-              ✕
-            </span>
+            {x(() => dismiss(attachmentKey(a)))}
           </span>
         );
       })}
@@ -820,17 +913,7 @@ function AutoContext({
           <span>
             <code>{l.name}</code>
             {l.range}
-            <span
-              class="x"
-              role="button"
-              tabIndex={0}
-              aria-label={ui.compose.removeChip}
-              data-tip={ui.compose.removeChip}
-              onClick={() => removeExtra(attachmentKey(a))}
-              onKeyDown={(e: KeyboardEvent) => pressKey(e, () => removeExtra(attachmentKey(a)))}
-            >
-              ✕
-            </span>
+            {x(() => removeExtra(attachmentKey(a)))}
           </span>
         );
       })}
@@ -1041,7 +1124,7 @@ function ModeMenu({
   toggle,
   close,
   look = 'label',
-}: MenuProps & { look?: 'label' | 'pill' | 'dollar' }) {
+}: MenuProps & { look?: 'label' | 'pill' | 'dollar' | 'block' | 'text' }) {
   const s = chat.value;
   const modeLabel = ui.modes[s.mode]?.[0] ?? s.mode;
   return (
@@ -1057,7 +1140,15 @@ function ModeMenu({
         </button>
       ) : (
         <button
-          class={look === 'pill' ? 'pill mode' : 'dollar mode'}
+          class={
+            look === 'pill'
+              ? 'pill mode'
+              : look === 'dollar'
+                ? 'dollar mode'
+                : look === 'block'
+                  ? 'blk mode'
+                  : 'mdt mode'
+          }
           data-mode={s.mode}
           data-tip={`${ui.compose.mode}: ${modeLabel}`}
           aria-label={`${ui.compose.mode}: ${modeLabel}`}
@@ -1065,7 +1156,7 @@ function ModeMenu({
           aria-expanded={menu === 'mode'}
           onClick={() => toggle('mode')}
         >
-          {look === 'pill' ? <b>{modeLabel}</b> : '$'}
+          {look === 'pill' ? <b>{modeLabel}</b> : look === 'dollar' ? '$' : modeLabel}
         </button>
       )}
       {menu === 'mode' && (
@@ -1250,16 +1341,24 @@ function EffortMenu({
   toggle,
   close,
   efforts,
-}: MenuProps & { efforts: EffortLevel[] | string[] }) {
+  look = 'label',
+}: MenuProps & { efforts: EffortLevel[] | string[]; look?: TriggerLook }) {
   const s = chat.value;
   return (
     <span class="pop" onKeyDown={menuKeys}>
       <button
+        class={look === 'label' ? undefined : 'effort'}
         aria-haspopup="menu"
         aria-expanded={menu === 'effort'}
         onClick={() => toggle('effort')}
       >
-        {ui.compose.effort} <b>{s.effort ?? 'auto'}</b>
+        {look === 'label' ? (
+          <>
+            {ui.compose.effort} <b>{s.effort ?? 'auto'}</b>
+          </>
+        ) : (
+          <b>{s.effort ?? 'auto'}</b>
+        )}
       </button>
       {menu === 'effort' && (
         <div class="menu up" role="menu">
@@ -1336,6 +1435,30 @@ function ContextBar({ hv }: { hv: Hv }) {
       {c.marks.map((m) => (
         <u style={`left:${m}%`} />
       ))}
+    </span>
+  );
+}
+
+/**
+ * Контекст в строке состояния (`sl`: «ctx [полоса] 131k/200k», «сжать» — если зона не ok) и в командной строке
+ * (`sh`: полоса и процент). Пока идёт сжатие — крутилка в обоих видах, кнопки «сжать» нет.
+ */
+function ContextStatus({ hv, look }: { hv: Hv; look: 'sl' | 'sh' }) {
+  const c = hv.context;
+  return (
+    <span class="cr cs" data-tip={c.title}>
+      {look === 'sl' && 'ctx'} <ContextBar hv={hv} />{' '}
+      {look === 'sl' ? (
+        <b class={c.numCls}>{c.short}</b>
+      ) : (
+        <b class="pc" style={`color:${c.color}`}>
+          {c.percent}%
+        </b>
+      )}
+      {c.compacting && <span class="spin" role="status" aria-label={ui.log.compacting} />}
+      {look === 'sl' && c.zone !== 'ok' && !c.compacting && (
+        <button onClick={compact}>{ui.compose.compact}</button>
+      )}
     </span>
   );
 }

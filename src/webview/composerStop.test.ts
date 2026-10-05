@@ -109,7 +109,7 @@ describe('поле ввода: раскладка из настройки', () =
     expect(host.querySelector('footer.compose')?.getAttribute('data-layout')).toBe('classic');
   });
 
-  it('chat.info с composerLayout меняет data-layout; без поля — classic; DOM один и тот же', async () => {
+  it('chat.info с composerLayout меняет data-layout; без поля — classic; DOM другой', async () => {
     const host = mount();
     await flush();
     const before = host.querySelector('footer.compose')!.innerHTML;
@@ -123,7 +123,9 @@ describe('поле ввода: раскладка из настройки', () =
     await flush();
     const footer = host.querySelector('footer.compose')!;
     expect(footer.getAttribute('data-layout')).toBe('shell');
-    expect(footer.innerHTML).toBe(before);
+    expect(footer.innerHTML).not.toBe(before);
+    expect(footer.querySelector('.pl .mdl')).not.toBeNull();
+    expect(footer.querySelector('.opts')).toBeNull();
     handleHostMessage({ type: 'chat.info', project: 'p', cwd: '/p', allowBypass: false });
     await flush();
     expect(host.querySelector('footer.compose')?.getAttribute('data-layout')).toBe('classic');

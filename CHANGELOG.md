@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Input layouts** (`agentura.composer.layout`, ⚙ → "Look", command "Composer Layout…"): the chat input can be
+  `classic` (default, as before), `card` (one frame with a bottom row and a context ring), `statusline` (a settings
+  strip under the field, a context-filled top edge, `@file:lines` references), `gauges` (context and limits above
+  the field), `minimal` (one line; context and limits appear only past their thresholds) or `shell` (a prompt with
+  the project, mode and `agent/model:effort`, `+ file:lines` references). Keys, `/` and `@`, history, drafts and
+  the context numbers behave the same in all of them; narrow tabs wrap instead of scrolling.
+- While a turn is running, every layout shows "↵ queue" and a stop button (Esc does the same).
+
 ## 0.3.0 — 2026-10-05
 
 ### Added
