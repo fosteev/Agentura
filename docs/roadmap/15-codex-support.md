@@ -1,6 +1,6 @@
 # 15 — Codex как второй движок
 
-> **Статус:** этап 1 принят 2026-10-05 — следующий: 2. Автопилот `/roadmap-run`, ветки
+> **Статус:** этап 2 принят 2026-10-05 — следующий: 3. Автопилот `/roadmap-run`, ветки
 > `stage-<N>-<slug>` от main, приёмка Opus. Ручные проверки и решения — `15-codex-support.pending.md`.
 
 Исходное ТЗ написал Codex (2026-10-05) — оно ниже целиком в «Контекст и ограничения». Этапы
@@ -120,27 +120,118 @@
 
 **Сессия:** sonnet.
 
-- [ ] `src/agent/codex/adapter.ts` — `CodexAdapter implements AgentAdapter`: процесс
+- [x] `src/agent/codex/adapter.ts` — `CodexAdapter implements AgentAdapter`: процесс
       `codex app-server --listen stdio://` на сессию (cwd сессии, `shell: false`, stderr →
       `Logger.debug`), handshake `initialize` → `initialized` → `thread/start` | `thread/resume`
       → `turn/start`. `listSessions`/`loadHistory`/`renameSession` — пока пусто/no-op (этап 5).
-- [ ] `src/agent/codex/mapper.ts` — notifications → `AgentEvent`: `session.init`, `turn.start`,
+- [x] `src/agent/codex/mapper.ts` — notifications → `AgentEvent`: `session.init`, `turn.start`,
       `text.delta` (`item/agentMessage/delta`, messageId из item id), `thinking.*` из
       `item/reasoning/*` только при наличии текста, `turn.result` (ok только при
       `status === 'completed'`), `error` + `session.closed` при падении процесса/протокола.
-- [ ] `send()` с текстом и картинками (`localImage`/`image` по схеме); пока идёт turn — очередь
+- [x] `send()` с текстом и картинками (`image` с data-URL по схеме; на живом картинки не гонял); пока идёт turn — очередь
       в сессии (следующий `turn/start` после `turn/completed`), не склеивать.
-- [ ] `interrupt()` — `turn/interrupt { threadId, turnId }`, ждём `turn/completed` с
+- [x] `interrupt()` (только fake-сервер, на живом не гонял) — `turn/interrupt { threadId, turnId }`, ждём `turn/completed` с
       `interrupted`; процесс не убивать. `dispose()` — закрыть stdin, grace, потом kill.
-- [ ] `setModel` → `model` в следующем `turn/start`; `capabilities()` — модели из `model/list`.
-- [ ] Fake app-server в тестах проверяет порядок сообщений и сценарии: delta, completed /
+- [x] `setModel` → `model` в следующем `turn/start`; `capabilities()` — модели из `model/list`.
+- [x] Fake app-server в тестах проверяет порядок сообщений и сценарии: delta, completed /
       failed / interrupted, падение процесса, resume.
-- [ ] Живой smoke (`scripts/codex-smoke.mjs`, opt-in): handshake, `model/list`, один короткий
+- [x] Живой smoke (`scripts/codex-smoke.mjs`, opt-in): handshake, `model/list`, один короткий
       turn на самой дешёвой модели во временной папке; записанная фикстура событий в
       `test/fixtures/codex/` (без личных путей/токенов) и тест маппера по ней.
-- [ ] `npm run check` зелёный.
+- [x] `npm run check` зелёный.
 
 **Готово, когда:** адаптер проходит fake-тесты и тест по живой фикстуре; в UI ещё не подключён.
+
+**Решения (2026-10-05, по итогам сессии 2):**
+
+- **Раскладка.** `src/agent/codex/adapter.ts` — `CodexAdapter` + внутренний `CodexSession`; `mapper.ts` —
+  `CodexEventMapper` (notifications → `AgentEvent`, без раздельного состояния от сессии); `fakeServer.ts` —
+  поддельный app-server для тестов (`FakeAppServer`, только тесты); тесты `adapter.test.ts`, `mapper.test.ts`;
+  `scripts/codex-smoke.mjs` (opt-in живой прогон, `--turn`, `--record <файл>`); фикстура
+  `test/fixtures/codex/ok-turn.json` (ответ `thread/start`, `model/list`, 11 notifications хода; пути/имя/хост/почта
+  заменены, проверено grep).
+- **Контракт `CodexAdapter`.** Конфиг: `executablePath` (строка или функция — `() => services.codexEngine.path()`;
+  нет пути — `createSession` бросает «Codex CLI (codex) was not found.»), `log`, `env`, `clientVersion`, `thread`
+  (`approvalPolicy`/`sandbox` — только для smoke/тестов), `timeoutMs`, `graceMs`, `spawn`, `trace`. Процесс на сессию,
+  `spawn(path, ['app-server','--listen','stdio://'], {cwd, env: process.env, shell:false})`, `maxLineBytes` 64 МБ.
+  **Handshake ленивый:** `initialize` → `initialized` сразу при создании сессии (чтобы `capabilities()` работал до
+  первого сообщения), `thread/start` — при первом `send()` (пустой тред в истории Codex не нужен), `thread/resume`
+  (`excludeTurns: true`) — сразу при `resumeSession`, `session.init` на ответ треда. Поэтому у новой сессии `session.init`
+  приходит перед первым `turn.start`, а не при открытии.
+- **Approval/sandbox не задаём:** `thread/start` получает только `cwd` и `model` — политику берёт `~/.codex/config.toml`
+  (ТЗ §4). Ответ живого сервера на `on-request` + `read-only` проверен только в smoke. Server requests до этапа 4 — warn в лог и
+  явный отказ по схеме (ревью): `commandExecution`/`fileChange` → `{decision:'decline'}`, `permissions` → пустой
+  grant на `turn`, `mcpServer/elicitation/request` → `decline`; остальные (`item/tool/requestUserInput`, …) —
+  `-32601`. Исполнитель отвечал `-32601` на всё; поведение сервера на ошибку вместо решения схема не описывает (риск
+  зависшего хода), `decline` — штатный путь «отказано, ход продолжается». Это место (`REFUSALS` в `adapter.ts`)
+  заменяет этап 4.
+- **Маппинг.** `session.init`: `permissionMode:'default'`, `tools/slashCommands/skills/agents:[]`, `apiKeySource:'none'`,
+  `engineVersion = thread.cliVersion`. `turn.start` — на `turn/started`, промпт из FIFO `notePrompt` (адаптер объявляет
+  его прямо перед `turn/start`). `text.delta` — по `item/agentMessage/delta` (messageId = id item); нет дельт — текст из
+  `item/completed`. `thinking.*` — из `item/reasoning/{summaryTextDelta,textDelta}` только при непустом тексте, части
+  сводки разделены пустой строкой, `thinking.stop` на `item/completed` или конце хода. `turn.result`: `ok` только при
+  `completed`; `subtype` success/error/interrupted; `usage` хода — разность `total` между `thread/tokenUsage/updated`
+  (первое обновление: база = total − last; `input` = inputTokens − cached − cacheWrite, т.к. у Codex ввод включает кэш);
+  `totalCostUsd: 0` — «неизвестно» (у Codex стоимости нет, этап 3 прячет HUD цены); `text` — последнее сообщение
+  агента. `context.usage` (`source:'usage'`, used = inputTokens последнего ответа, окно из `modelContextWindow`) — после
+  каждого `turn/completed`. `error`-notification с `willRetry:false` → `error{fatal:false, code}`, а сама ошибка не
+  дублируется в `turn.result.errors`; `willRetry:true` молчит. Процесс/протокол умер → `error{fatal}` + `session.closed`
+  (`exit` или `error`), поток событий закрывается. `usage.message` не эмитим (по-вызовная раскладка Codex не даёт
+  messageId/цены). Команды, правки, MCP, approval — этап 4 (мапперу они неизвестны и игнорируются).
+- **Очередь и Stop.** `send()` кладёт в очередь сессии, `turn/start` следующего — после `turn/completed`; сообщения не
+  склеиваются. **`interrupt()` сбрасывает и очередь** (скоуп-деталь: Stop = «стоп всё»; у Claude следующее сообщение в
+  очереди продолжило бы работу — обратимо, одна строка `queue.length = 0` в `interrupt`). Stop до старта хода: `turn/start` не
+  уходит, лента получает `turn.start` + `turn.result{interrupted}`. `turn/start`/`thread/start` отклонены → `turn.start`,
+  `error`, `turn.result{ok:false}` (лента не остаётся в «идёт»), сессия жива. `interrupt()` ждёт `turn/completed` не
+  дольше 10 с.
+- **`dispose()`**: `session.closed{disposed}`, закрытие stdin (штатный выход app-server), через `graceMs` (2 с) —
+  `kill()`. Клиент процесс не убивает сам.
+- **Отступления от плана.** (1) `files` (`PromptFile`) не отправляются (у Codex нет document-блоков), в лог — warn;
+  этап 3 должен спрятать вложение файлов флагом. Картинки — `{type:'image', url:'data:…;base64,…'}`. (2) `effortLevels` в
+  `capabilities()` — только из `EffortLevel` (`ultra`/`minimal` отброшены), `commands: []`. (3) `setMode`, `compact`,
+  `stopTask`, `decidePlan`, `answerQuestion`, `respondPermission` — no-op/`false`. (4) `listSessions`/`loadHistory`/
+  `renameSession`/`accountInfo` — пустые заглушки (этап 5).
+- **Живой smoke (codex-cli 0.160.0) — сюрпризы протокола.**
+  1. **Сервер не ставит `"jsonrpc":"2.0"`** в ответах и notifications (`{"id":1,"result":…}`) — клиент этапа 1 закрывался на
+     первом же ответе («unsupported version»). Исправлено в `client.ts`: поле необязательно, чужая версия отвергается;
+     тест добавлен. Мораль: unit-тесты клиента с «правильным» jsonrpc этого не ловили.
+  2. `initialize` с `capabilities: null` работает; в `userAgent` приходит наше имя клиента. Сервер шлёт кучу посторонних
+     notifications (`remoteControl/status/changed`, `mcpServer/startupStatus/updated`, `hook/*`, `account/*`) — маппер
+     их игнорирует; **MCP-серверы и хуки пользователя из `~/.codex` стартуют на каждую сессию** (хуки видны в
+     `hook/started` — это чужой код пользователя, не наш).
+  3. Порядок на ходе: ответ `turn/start` (c `turn.id`, `status:inProgress`) → `thread/started` → `turn/started` →
+     `item/started userMessage` → `item/completed userMessage` → `item/started agentMessage` (`phase:final_answer`) →
+     `item/agentMessage/delta` → `item/completed` → `thread/tokenUsage/updated` → `account/rateLimits/updated` →
+     `thread/status/changed idle` → `turn/completed`. Reasoning-items на `gpt-6-luna` (low) не было.
+  4. `model/list`: 7 моделей; «самая дешёвая» — `gpt-6-luna` («Fast and affordable»; цены в ответе нет — выбор по
+     описанию). `efforts` включают `ultra` (нет в `EffortLevel`).
+  5. `thread/start` создаёт тред в `~/.codex/sessions/…` (`originator:"agentura"`, `source:"vscode"` — пригодится для
+     фильтра в этапе 5); `turn/completed.turn.items` — «summary»-вид (`itemsView`), полный список не гарантирован.
+  6. **`thread/resume` сразу после выхода предыдущего процесса того же треда даёт «thread … already has an active writer»**
+     (блокировка снимается при выходе app-server). С паузой 3 с resume работает (`excludeTurns:true` принят).
+     Этап 5/3: при resume вкладки сразу после закрытия — повтор с ожиданием.
+  7. `rateLimits` приходят отдельным notification `account/rateLimits/updated` (primary/secondary с `usedPercent`,
+     `windowDurationMins`, `resetsAt`) — возможный источник `limit.update` для Codex, в MVP не используем.
+- **Не проверено на живом:** `interrupt` (только fake-сервер), картинки, approval/server requests, падение процесса
+  в реальных условиях, `failed`-ход (ошибка модели/лимита), reasoning-события, очередь двух сообщений. Ход гонял дважды
+  (probe + smoke, `gpt-6-luna`), оба раза «OK». Процессов `app-server --listen stdio://` после прогонов нет
+  (`pgrep`); системный `app-server --managed-daemon` — не наш. Временные папки удалены; `~/.codex/sessions` получил
+  два записанных CLI треда (очищать не стали — это файлы Codex).
+- **Проверки:** `TZ=UTC npm run check` зелёный, 1121 тест (было 1085).
+- **Ревью (2026-10-05).** Починено: (1) approval — явный `decline` вместо `-32601` (см. выше); (2) `turn/completed`
+  чужого хода (id известен и не совпал) не закрывает ленту и не пускает очередь — и в мапере, и в адаптере;
+  (3) usage-разности не уходят в минус и терпят отсутствующее поле; (4) клиент ищет перевод строки только в новом
+  чанке и считает размер хвоста по ходу — строка на десятки МБ (лимит адаптера 64 МБ) больше не разбирается
+  квадратично. Второй проход (Opus): (5) `turn/started`/`turn/completed` чужого треда адаптер не трогает, id хода
+  берётся из ответа `turn/start` приоритетно; (6) страховка Stop — `turn/interrupt` отклонён или `turn/completed` не
+  пришёл за 10 с → ход закрывается `turn.result{interrupted}` (`mapper.abandonTurn`), очередь не висит, поздний
+  `turn/completed` того же хода второго результата не даёт; (7) **таймаут `thread/start`/`turn/start` фатален для
+  сессии** (поздний ответ = ход/тред уже есть, повтор поверх сломал бы ленту; `startTimeoutMs`, 60 с); (8) ответ без
+  `result`/`error` — мусор (закрывает клиент), а не «успех с undefined»; (9) `drain()` не теряет исключения;
+  (10) после SIGTERM ещё grace — SIGKILL; (11) stdout закрылся раньше `exit` — `session.closed{exit}`, а не `error`;
+  (12) сбой `model/list` не кэшируется навсегда; (13) `context.usage.usedTokens` = `last.totalTokens` (ввод + ответ),
+  а не только ввод. Живая проверка `decline`: ход с `untrusted`/`read-only` и просьбой выполнить `touch` — модель
+  отказалась сама, server request не пришёл; `decline` на живом не подтверждён (этап 4).
 
 ### 3. Подключение к чату: выбор движка, возможности, скрытие Claude-only UI
 
@@ -284,6 +375,16 @@
 - Ошибки Codex-локатора (`executable.ts`, `notFound` в `createAdapter`) английские — при подключении
   карточки «движок не найден» решить локализацию через `hostStrings`.
 
+По реальному коду (после этапа 2): `new CodexAdapter({ executablePath: () => codexEngine.path(), log,
+clientVersion })` (`adapter.ts`); `createSession` без пути бросает «Codex CLI (codex) was not found.».
+`session.init` у НОВОЙ сессии приходит только при первом `send()` (тред стартует лениво), у resume — сразу;
+`capabilities()` работает до первого сообщения (модели из `model/list`, `commands: []`, effort без `ultra`).
+Для флагов возможностей: `files` (PromptFile) адаптер молча отбрасывает (warn в лог) — вложение файлов для
+Codex прятать; `images` уходят data-URL'ом (на живом не проверено); `compact/mode/plan/questions/
+stopTask` — no-op; у `turn.result` `totalCostUsd: 0` означает «неизвестно» — HUD цены/кэша прятать. `Stop`
+(`interrupt`) сбрасывает очередь сообщений сессии. Таймаут `thread/start`/`turn/start` (60 с) закрывает сессию (`error` +
+`session.closed`) — UI должен предложить новый чат/повтор, как при падении процесса.
+
 ### Промт 4
 
 Этап 4 «Подтверждения и инструменты». Ориентир — как Claude-маппер выдаёт
@@ -291,10 +392,26 @@
 генерированным типам. Особое внимание: не оставить висящий pending-запрос при interrupt/
 dispose/падении процесса.
 
+По реальному коду (после этапа 2): `src/agent/codex/adapter.ts` — `CodexSession` создаёт
+`CodexRpcClient` с заглушкой `onServerRequest` (warn + явный отказ из таблицы `REFUSALS`: `decline` / пустой grant,
+прочее `-32601`): её заменить брокером.
+Маппер `CodexEventMapper` (`mapper.ts`) игнорирует `item/*` кроме `agentMessage`/`reasoning`; команды и
+правки добавлять в `map()`/`itemCompleted()`. `respondPermission`/`answerQuestion` в сессии пока `false`.
+`thread/start` не передаёт approval/sandbox (политика из `~/.codex/config.toml`): тесты этапа — через
+`CodexAdapterConfig.thread` и `FakeAppServer` (`fakeServer.ts`: `request(id, method, params)` шлёт server
+request). До этапа 4 отказы `decline` маппер не показывает — агент молча «не может»; брокер должен выдавать
+`permission.request`/`permission.resolved`, а отказ по таймауту/без UI — видимым событием. Ход, у которого
+`turn/completed` не пришёл после Stop, адаптер закрывает сам (`abandon`) — открытые approval-запросы этого хода
+брокер должен закрыть ответом там же, иначе pending повиснет. Живой сервер НЕ ставит `jsonrpc` в сообщениях; сервер шлёт и чужие notifications (`hook/*`,
+`mcpServer/*`, `account/*`) — это нормально.
+
 ### Промт 5
 
 Этап 5 «История Codex». Перед началом прочитай `15-codex-support.pending.md` — решение
-владельца по истории. `SessionsService` (`src/extension/sessionsService.ts`) сейчас целиком
+владельца по истории. По реальному коду (после этапа 2): `CodexAdapter.listSessions/loadHistory/
+renameSession` — пустые заглушки в `adapter.ts`; `thread/resume` сразу после выхода предыдущего
+процесса того же треда падает «already has an active writer» (нужен повтор с паузой ~3 с, см. «Решения»
+сессии 2); треды Agentura в `thread/list` различимы по `originator:"agentura"`/`source:"vscode"`. `SessionsService` (`src/extension/sessionsService.ts`) сейчас целиком
 про `~/.claude/projects` — объединение провайдеров сделать так, чтобы Claude-путь не изменился.
 
 ### Промт 6
