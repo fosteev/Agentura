@@ -37,6 +37,8 @@ const values: SettingsValues = {
   usagePollMinutes: 15,
   'limits.readKeychain': true,
   claudeExecutable: '',
+  codexExecutable: '',
+  defaultProvider: 'claude',
   'sessionList.view': 'compact',
   'sessionList.context': true,
   'sessionList.time': true,

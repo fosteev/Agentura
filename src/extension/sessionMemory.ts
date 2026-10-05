@@ -1,3 +1,4 @@
+import type { SessionRef } from '../agent/types';
 /** Минимум от `vscode.Memento`: тесты обходятся картой. */
 export interface MementoLike {
   get<T>(key: string): T | undefined;
@@ -14,13 +15,30 @@ const ENGINE = 'agentura.engineVersion';
 export class SessionMemory {
   constructor(private readonly state: MementoLike) {}
 
-  openSessions(): string[] {
+  /** Старый `string[]` мигрируется как Claude-сессии. */
+  openSessions(): SessionRef[] {
     const v = this.state.get<unknown>(OPEN);
-    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+    if (!Array.isArray(v)) return [];
+    const refs = v.flatMap((x): SessionRef[] => {
+      if (typeof x === 'string') return [{ provider: 'claude', id: x }];
+      if (
+        x &&
+        typeof x === 'object' &&
+        ((x as SessionRef).provider === 'claude' || (x as SessionRef).provider === 'codex') &&
+        typeof (x as SessionRef).id === 'string' &&
+        (x as SessionRef).id
+      )
+        return [{ provider: (x as SessionRef).provider, id: (x as SessionRef).id }];
+      return [];
+    });
+    return refs.filter((ref, index) => refs.findIndex((x) => x.provider === ref.provider && x.id === ref.id) === index);
   }
 
-  setOpenSessions(ids: readonly string[]): void {
-    void this.state.update(OPEN, [...new Set(ids)]);
+  setOpenSessions(refs: readonly SessionRef[]): void {
+    const unique = refs.filter(
+      (ref, index) => refs.findIndex((x) => x.provider === ref.provider && x.id === ref.id) === index,
+    );
+    void this.state.update(OPEN, unique);
   }
 
   engineVersion(): string | undefined {

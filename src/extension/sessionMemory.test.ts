@@ -13,12 +13,21 @@ function memento(): MementoLike & { data: Record<string, unknown> } {
 }
 
 describe('SessionMemory', () => {
-  it('открытые сессии: без дублей; мусор в состоянии игнорируется', () => {
+  it('открытые сессии: хранит provider, мигрирует строки в Claude и игнорирует мусор', () => {
     const m = memento();
     const mem = new SessionMemory(m);
     expect(mem.openSessions()).toEqual([]);
-    mem.setOpenSessions(['a', 'b', 'a']);
-    expect(mem.openSessions()).toEqual(['a', 'b']);
+    mem.setOpenSessions([
+      { provider: 'claude', id: 'a' },
+      { provider: 'codex', id: 'a' },
+      { provider: 'claude', id: 'a' },
+    ]);
+    expect(mem.openSessions()).toEqual([
+      { provider: 'claude', id: 'a' },
+      { provider: 'codex', id: 'a' },
+    ]);
+    m.data['agentura.openSessions'] = ['legacy'];
+    expect(mem.openSessions()).toEqual([{ provider: 'claude', id: 'legacy' }]);
     m.data['agentura.openSessions'] = 'не массив';
     expect(mem.openSessions()).toEqual([]);
   });

@@ -4,6 +4,7 @@
  */
 import type {
   AgentEvent,
+  AgentProvider,
   CommandOption,
   EffortLevel,
   LimitWindow,
@@ -332,7 +333,7 @@ export type FromWebview =
   | { type: 'agents.snapshot'; sessionId: string; graph: AgentGraphView }
   | { type: 'session.new' }
   | { type: 'limits.refresh' }
-  | { type: 'session.resume'; sessionId: string }
+  | { type: 'session.resume'; sessionId: string; provider?: AgentProvider }
   /** Этап 6: переименование по двойному клику в списке (B9). */
   | { type: 'session.rename'; sessionId: string; title: string }
   /**

@@ -3,9 +3,13 @@
  * Правила: сессия, уже открытая во вкладке, — показать её (два движка на один транскрипт не
  * нужны); пустая нетронутая вкладка — занять её; иначе — новая вкладка.
  */
+import type { AgentProvider, SessionRef } from '../agent/types';
+
 export interface PanelView {
   /** Сессия вкладки: живая или возобновляемая; нет — новая ещё не стартовала. */
   sessionId?: string | undefined;
+  /** Движок сессии вкладки; нет — `claude`. Один и тот же id у разных движков — разные сессии. */
+  provider?: AgentProvider | undefined;
   /** Новая сессия без сообщений. */
   pristine: boolean;
   /** Вкладка сейчас в фокусе. */
@@ -15,8 +19,15 @@ export interface PanelView {
 export type Route = { kind: 'reveal' | 'reuse'; index: number } | { kind: 'new' };
 
 /** Возобновить `id`. `from` — вкладка, из которой пришёл клик (экран empty, попап). */
-export function routeResume(panels: readonly PanelView[], id: string, from?: number): Route {
-  const open = panels.findIndex((p) => p.sessionId === id);
+export function routeResume(
+  panels: readonly PanelView[],
+  ref: SessionRef | string,
+  from?: number,
+): Route {
+  const want: SessionRef = typeof ref === 'string' ? { provider: 'claude', id: ref } : ref;
+  const open = panels.findIndex(
+    (p) => p.sessionId === want.id && (p.provider ?? 'claude') === want.provider,
+  );
   if (open >= 0) return { kind: 'reveal', index: open };
   if (from !== undefined && panels[from]?.pristine) return { kind: 'reuse', index: from };
   const spare = panels.findIndex((p) => p.pristine && p.active);
@@ -49,13 +60,22 @@ export function routeOpen(panels: readonly PanelView[]): Route {
  */
 export function restoredSessionId(
   state: unknown,
-  claimed: readonly (string | undefined)[],
-  remembered: readonly string[],
-): string | undefined {
-  const taken = new Set(claimed);
+  claimed: readonly (SessionRef | undefined)[],
+  remembered: readonly SessionRef[],
+): SessionRef | undefined {
+  const isTaken = (ref: SessionRef) =>
+    claimed.some((c) => c?.id === ref.id && c.provider === ref.provider);
   if (state !== undefined && state !== null) {
     const own = (state as { sessionId?: unknown }).sessionId;
-    return typeof own === 'string' && own && !taken.has(own) ? own : undefined;
+    if (typeof own !== 'string' || !own) return undefined;
+    // состояние webview хранит только id: движок берём из памяти воркспейса, нет записи — Claude
+    const stated = (state as { provider?: unknown }).provider;
+    const provider: AgentProvider =
+      stated === 'claude' || stated === 'codex'
+        ? stated
+        : (remembered.find((x) => x.id === own)?.provider ?? 'claude');
+    const ref: SessionRef = { provider, id: own };
+    return isTaken(ref) ? undefined : ref;
   }
-  return remembered.find((x) => !taken.has(x));
+  return remembered.find((x) => !isTaken(x));
 }

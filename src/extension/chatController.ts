@@ -1,6 +1,7 @@
 import { isAbsolute } from 'node:path';
 import { resolveFrom } from './pathKey';
 import type {
+  AgentProvider,
   LimitWindow,
   AgentAdapter,
   AgentEvent,
@@ -137,7 +138,7 @@ export interface ChatDeps {
   /** Возобновить эту сессию сразу (вкладка восстановлена сериализатором или открыта из списка). */
   resumeId?: string;
   /** Клик по сессии в попапе или на экране empty: вкладку выбирает менеджер вкладок. */
-  openSession?(id: string): void;
+  openSession?(id: string, provider: AgentProvider): void;
   /** Название сессии по id (строка списка) — заголовок вкладки и webview после `resume`. */
   titleOf?(id: string): Promise<string | undefined>;
   /** Вкладка сменила сессию (`undefined` — пока нет): реестр открытых сессий и строка `cur` списка. */
@@ -589,7 +590,8 @@ export class ChatController {
         return;
       case 'session.resume':
         // какую вкладку занять — решает менеджер вкладок (та же, открытая или новая)
-        if (deps.openSession) deps.openSession(m.sessionId);
+        // нет поля provider — Claude (контракт `session.resume`)
+        if (deps.openSession) deps.openSession(m.sessionId, m.provider ?? 'claude');
         else await this.resume(m.sessionId);
         return;
       case 'diff.open':

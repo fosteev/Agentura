@@ -48,7 +48,7 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     lang: currentLanguage,
   });
   const usage = new UsageService(limits.fetch);
-  const { adapter, engine } = createAdapter(log);
+  const { adapter, engine, codexEngine } = createAdapter(log);
   engine.warm();
   const folder = vscode.workspace.workspaceFolders?.[0];
   const cwd = folder?.uri.fsPath ?? '';
@@ -109,6 +109,7 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     account,
     memory,
     engine,
+    codexEngine,
     git: new GitService({
       loadApi: getGitApi,
       ui: vscodeGitUi(),
@@ -272,8 +273,11 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     }),
     vscode.commands.registerCommand('agentura.resumeSession', () => pickSession()),
     // служебная: клик по строке списка в боковой панели (в палитру не выносится)
-    vscode.commands.registerCommand('agentura.openSession', (id: unknown) => {
-      if (typeof id === 'string') ChatPanel.resume(context, log, services, id);
+    vscode.commands.registerCommand('agentura.openSession', (id: unknown, provider?: unknown) => {
+      if (typeof id !== 'string') return;
+      // нет поля provider (старые вызовы, строки списка Claude) — `claude`
+      const p = provider === 'codex' ? 'codex' : 'claude';
+      ChatPanel.resume(context, log, services, { provider: p, id });
     }),
     vscode.commands.registerCommand('agentura.showStatus', () =>
       ChatPanel.runStatus(context, log, services),

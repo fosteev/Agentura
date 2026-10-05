@@ -29,6 +29,7 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "test": "vitest run",
+    "codex:protocol": "node scripts/codex-protocol.mjs",
     "check": "npm run typecheck && npm run lint && npm test && npm run build",
     "package": "npm run build && vsce package",
     "test:integration": "npm run build && tsc -p test/integration/tsconfig.json && node test/integration/out/runTest.js"
@@ -219,6 +220,26 @@
           "scope": "machine",
           "default": "",
           "description": "%config.claudeExecutable.description%"
+        },
+        "agentura.codexExecutable": {
+          "type": "string",
+          "scope": "machine",
+          "default": "",
+          "description": "%config.codexExecutable.description%"
+        },
+        "agentura.defaultProvider": {
+          "type": "string",
+          "scope": "application",
+          "enum": [
+            "claude",
+            "codex"
+          ],
+          "enumDescriptions": [
+            "Claude Code",
+            "Codex"
+          ],
+          "default": "claude",
+          "description": "%config.defaultProvider.description%"
         },
         "agentura.usagePollMinutes": {
           "type": "number",

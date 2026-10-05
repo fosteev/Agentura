@@ -1399,7 +1399,9 @@ describe('ChatController: сессии (этап 6)', () => {
     controller.start();
     await tick();
     await controller.handle({ type: 'session.resume', sessionId: 'other' });
-    expect(openSession).toHaveBeenCalledWith('other');
+    expect(openSession).toHaveBeenCalledWith('other', 'claude');
+    await controller.handle({ type: 'session.resume', sessionId: 'cx', provider: 'codex' });
+    expect(openSession).toHaveBeenLastCalledWith('cx', 'codex');
     expect(resumed).toHaveLength(0);
     expect(created).toHaveLength(1);
   });

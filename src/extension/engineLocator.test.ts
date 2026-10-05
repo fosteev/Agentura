@@ -79,4 +79,27 @@ describe('EngineLocator', () => {
     await expect(loc.path()).rejects.toThrow('boom');
     expect(await loc.path()).toBe('/a/claude');
   });
+
+  it('Codex-локатор: своё имя в журнале и своя ошибка «не найден», без смешения с Claude', async () => {
+    const info = vi.fn();
+    const codexFound: ResolvedExecutable = { path: '/a/codex', version: '0.160.0', source: 'system' };
+    const loc = new EngineLocator({
+      setting: () => '',
+      resolve: vi.fn(() => Promise.resolve(codexFound)),
+      name: 'codex',
+      info,
+      warn: vi.fn(),
+    });
+    expect(await loc.path()).toBe('/a/codex');
+    expect(info).toHaveBeenCalledWith('codex: /a/codex 0.160.0 (system)');
+    const missing = new EngineLocator({
+      setting: () => '',
+      resolve: () => Promise.resolve({ source: 'none' } as ResolvedExecutable),
+      name: 'codex',
+      notFound: 'Codex CLI (codex) was not found.',
+      info,
+      warn: vi.fn(),
+    });
+    expect(await missing.ready()).toEqual({ ok: false, problem: 'Codex CLI (codex) was not found.' });
+  });
 });

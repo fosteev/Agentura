@@ -41,7 +41,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           void vscode.commands.executeCommand('agentura.newSession');
           break;
         case 'session.resume':
-          void vscode.commands.executeCommand('agentura.openSession', m.sessionId);
+          void vscode.commands.executeCommand('agentura.openSession', m.sessionId, m.provider);
           break;
         case 'session.rename':
           void this.rename(m.sessionId, m.title);
