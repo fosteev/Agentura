@@ -72,7 +72,7 @@ with live previews.
 
 You need:
 
-- VS Code 1.138 or newer.
+- VS Code 1.100 or newer.
 - Claude Code 2.1.285 or newer, installed and logged in (`claude`, then `/login`).
 
 The extension does not ship the engine binary (200+ MB). It finds the system `claude` in `PATH`, `~/.local/bin`,

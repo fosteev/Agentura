@@ -76,6 +76,12 @@
   colors, after 0.5 s (neighbors — instantly), above the button near the bottom edge, the second line dimmed, keys as
   badges (`Enter`, `Esc`, `⌘⇧N`); shown on Tab focus too, hidden on Esc, click, scroll.
 
+### Changed
+
+- Minimum VS Code lowered from 1.138 to **1.100**, so the extension installs in Cursor and other forks (typecheck and
+  integration tests pass on 1.100). Publisher ID is now `fosteev` (extension ID `fosteev.agentura`); Marketplace icon
+  added.
+
 ## 0.2.0 — 2026-10-01
 
 Personal release, not published to the Marketplace.

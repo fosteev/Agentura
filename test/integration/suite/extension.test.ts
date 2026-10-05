@@ -1,7 +1,7 @@
 import * as assert from 'node:assert/strict';
 import * as vscode from 'vscode';
 
-const EXT_ID = 'fost.agentura';
+const EXT_ID = 'fosteev.agentura';
 
 async function waitFor(cond: () => boolean, what: string, ms = 10000): Promise<void> {
   const t0 = Date.now();

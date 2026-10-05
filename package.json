@@ -4,14 +4,14 @@
   "description": "%ext.description%",
   "version": "0.3.0",
   "private": true,
-  "publisher": "fost",
+  "publisher": "fosteev",
   "repository": {
     "type": "git",
     "url": "https://github.com/fosteev/Agentura.git"
   },
   "license": "UNLICENSED",
   "engines": {
-    "vscode": "^1.138.0"
+    "vscode": "^1.100.0"
   },
   "categories": [
     "AI",
@@ -375,7 +375,7 @@
     "@eslint/js": "^10.0.1",
     "@preact/signals": "^2.11.3",
     "@types/node": "^24.19.0",
-    "@types/vscode": "^1.138.0",
+    "@types/vscode": "^1.100.0",
     "@vscode/test-electron": "^3.1.0",
     "@vscode/vsce": "^4.0.0",
     "diff": "^9.0.0",
@@ -389,5 +389,6 @@
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.71.0",
     "vitest": "^5.0.3"
-  }
+  },
+  "icon": "media/icon.png"
 }
