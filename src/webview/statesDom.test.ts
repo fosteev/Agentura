@@ -289,12 +289,12 @@ describe('экран limit (limit.html)', () => {
     await flush();
     const banner = host.querySelector('.banner')!;
     expect(banner.textContent).toContain('Лимит 5-часового окна исчерпан.');
-    expect(banner.textContent).toMatch(/Сброс в \d\d:\d\d, через 2 ч \d\d мин/);
+    expect(banner.textContent).toMatch(/Сброс в (?:[а-я]{2} )?\d\d:\d\d, через 2 ч \d\d мин/);
     expect(banner.textContent).toContain('Недельное окно свободно на 64 %');
     expect(host.querySelector('.log .sys.bad')?.textContent).toContain('ход не начат');
     expect(host.querySelector('footer.compose.off')).toBeTruthy();
     expect(host.querySelector('footer .note')?.textContent).toMatch(
-      /отправка отложена до \d\d:\d\d/,
+      /отправка отложена до (?:[а-я]{2} )?\d\d:\d\d/,
     );
     expect((host.querySelector('button.send') as HTMLButtonElement).disabled).toBe(true);
     // автоотправки нет (A14 «Потом»): кнопки «Отправить в 17:00 автоматически» не существует
