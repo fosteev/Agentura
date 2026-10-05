@@ -9,6 +9,7 @@ import {
   chooseOption,
   decidePlan,
   declineQuestion,
+  provider,
   replyTarget,
   replyToQuestion,
   respondPermission,
@@ -211,15 +212,16 @@ export function FailCardView({ c }: { c: FailCard }) {
 /** Карточка «Claude Code не найден»: движок не запускался; инструкция, настройки ⚙, «Проверить снова». */
 function EngineMissingCard({ c }: { c: FailCard }) {
   const retrying = c.state === 'retrying';
+  const codex = provider.value === 'codex';
   return (
     <div class="ask danger" role="alert">
       <div class="h">
-        {ui.fail.missingTitle}
+        {codex ? ui.fail.missingTitleCodex : ui.fail.missingTitle}
         <span class="tag">{ui.fail.tag(c.at)}</span>
       </div>
       <div class="bd">
         <p>{c.message}</p>
-        <p class="dim">{ui.fail.missingHint}</p>
+        <p class="dim">{codex ? ui.fail.missingHintCodex : ui.fail.missingHint}</p>
       </div>
       <div class="acts">
         {retrying ? (

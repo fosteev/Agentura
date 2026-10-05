@@ -5,6 +5,8 @@ import { addSys } from '../chatState';
 import {
   applyCompletion,
   buildSlashItems,
+  OWN_COMMANDS,
+  ownCommands,
   detectTrigger,
   filterSlash,
   historyStep,
@@ -27,11 +29,13 @@ import {
   addImages,
   draftFiles,
   draftImages,
+  features,
   history,
   imagesBusy,
   limitBlocked,
   meters,
   newSession,
+  provider,
   removeExtra,
   removeFile,
   removeImage,
@@ -197,7 +201,9 @@ function DraftChip({ d }: { d: DraftImage }) {
       <img class="mock" src={`data:${i.mediaType};base64,${i.data}`} alt="" />
       <b>{d.name}</b>
       <small
-        data-tip={d.original ? ui.compose.imageScaled(d.original.width, d.original.height) : undefined}
+        data-tip={
+          d.original ? ui.compose.imageScaled(d.original.width, d.original.height) : undefined
+        }
       >
         {size}
       </small>
@@ -327,6 +333,7 @@ export function Composer() {
             s.slashCommands,
             s.skills,
             Object.fromEntries(Object.entries(ui.commands).map(([k, v]) => [k, v[0]])),
+            ownCommands(features.value),
           ),
           trig.query,
         )
@@ -390,6 +397,12 @@ export function Composer() {
     if (blocked && !(cmd && ['clear', 'status', 'plan'].includes(cmd[1]!))) return;
     if (cmd) {
       const name = cmd[1]!;
+      // команды, которых у движка нет (`/plan`, `/compact` у Codex): не уходят ему текстом, а отвечают на месте
+      if (!ownCommands(features.value).includes(name) && OWN_COMMANDS.some((n) => n === name)) {
+        chat.value = addSys(chat.value, [ui.sys.commandUnavailable(name)]);
+        writeText('');
+        return;
+      }
       if (name === 'clear') {
         newSession();
         writeText('');
@@ -451,7 +464,7 @@ export function Composer() {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       submit();
-    } else if (e.key === 'Tab' && e.shiftKey) {
+    } else if (e.key === 'Tab' && e.shiftKey && features.value.modes) {
       e.preventDefault();
       const i = MODE_ORDER.indexOf(s.mode);
       setMode(MODE_ORDER[(i + 1) % MODE_ORDER.length]!);
@@ -540,13 +553,18 @@ export function Composer() {
   const autoKeys = new Set(auto.map(attachmentKey));
   const manual = extra.value.filter((x) => !autoKeys.has(attachmentKey(x)));
 
-  const models = capabilities.value.models.length ? capabilities.value.models : FALLBACK_MODELS;
+  // запасной список — модели Claude: другому движку его не показываем, ждём `model/list`
+  const models = capabilities.value.models.length
+    ? capabilities.value.models
+    : provider.value === 'claude'
+      ? FALLBACK_MODELS
+      : [];
   const cur = s.model ?? '';
   const curModel = models.find((m) => cur === m.value || cur.includes(m.value));
   const efforts = (() => {
     const levels = (curModel as { effortLevels?: readonly EffortLevel[] } | undefined)
       ?.effortLevels;
-    return levels?.length ? [...levels] : [...ui.efforts];
+    return levels?.length ? [...levels] : provider.value === 'claude' ? [...ui.efforts] : [];
   })();
 
   const toggle = (name: MenuName) => setMenu(menu === name ? undefined : name);
@@ -598,7 +616,11 @@ export function Composer() {
       onInput={onInput}
       onKeyDown={onKeyDown}
       onPaste={onPaste}
-      menu={menuOpen && trig ? { kind: trig.kind, items, slash: slashItems, selected, onPick: accept } : undefined}
+      menu={
+        menuOpen && trig
+          ? { kind: trig.kind, items, slash: slashItems, selected, onPick: accept }
+          : undefined
+      }
     />
   );
   const sendCtl = (look: SendLook) => (
@@ -933,6 +955,7 @@ function ContextCount({
   fileEstimate: ReturnType<typeof filesTokens>;
   withFiles: boolean;
 }) {
+  if (!features.value.metrics) return null;
   return (
     <span class="cn" data-tip={hv.context.title}>
       {ui.compose.context} <b class={hv.context.numCls}>{hv.context.now}</b>{' '}
@@ -1107,7 +1130,15 @@ function PlusMenu({
           </button>
           <div class="sep" />
           <ItemButton
-            it={{ label: ui.menus.image, small: ui.menus.imageSmall, hint: ui.menus.imageHint }}
+            it={
+              features.value.files
+                ? { label: ui.menus.image, small: ui.menus.imageSmall, hint: ui.menus.imageHint }
+                : {
+                    label: ui.menus.imageOnly,
+                    small: ui.menus.imageOnlySmall,
+                    hint: ui.menus.imageHint,
+                  }
+            }
             onPick={() => {
               close();
               send({ type: 'image.pick' });
@@ -1126,6 +1157,8 @@ function ModeMenu({
   look = 'label',
 }: MenuProps & { look?: 'label' | 'pill' | 'dollar' | 'block' | 'text' }) {
   const s = chat.value;
+  // режимы разрешений — Claude; у Codex политику задаёт его конфиг
+  if (!features.value.modes) return null;
   const modeLabel = ui.modes[s.mode]?.[0] ?? s.mode;
   return (
     <span class="pop" onKeyDown={menuKeys}>
@@ -1161,53 +1194,68 @@ function ModeMenu({
       )}
       {menu === 'mode' && (
         <div class="menu up" role="menu">
-          {(['default', 'acceptEdits', 'plan', 'bypassPermissions'] as PermissionMode[]).map((m) => {
-            const [label, small, hint] = ui.modes[m]!;
-            const off = m === 'bypassPermissions' && !s.allowBypass;
-            return (
-              <ItemButton
-                it={{
-                  label,
-                  small: off ? ui.menus.bypassOff : small,
-                  hint: m === 'default' ? '⇧⇥' : hint,
-                  dis: off,
-                }}
-                selected={s.mode === m}
-                onPick={() => {
-                  close();
-                  setMode(m);
-                }}
-              />
-            );
-          })}
+          {(['default', 'acceptEdits', 'plan', 'bypassPermissions'] as PermissionMode[]).map(
+            (m) => {
+              const [label, small, hint] = ui.modes[m]!;
+              const off = m === 'bypassPermissions' && !s.allowBypass;
+              return (
+                <ItemButton
+                  it={{
+                    label,
+                    small: off ? ui.menus.bypassOff : small,
+                    hint: m === 'default' ? '⇧⇥' : hint,
+                    dis: off,
+                  }}
+                  selected={s.mode === m}
+                  onPick={() => {
+                    close();
+                    setMode(m);
+                  }}
+                />
+              );
+            },
+          )}
         </div>
       )}
     </span>
   );
 }
 
+/** Движок выбирается, пока сессия не началась: без id и без сообщения пользователя (карточка ошибки не в счёт). */
+function engineLocked(): boolean {
+  const s = chat.value;
+  return s.sessionId !== '' || s.rows.some((r) => r.kind === 'user');
+}
+
 function AgentItems({ close }: { close: () => void }) {
   const s = chat.value;
+  const cur = provider.value;
+  const locked = engineLocked();
+  const item = (p: 'claude' | 'codex', label: string, small: string) => (
+    <ItemButton
+      it={{
+        label,
+        small,
+        hint: cur === p ? ui.compose.agentReady : locked ? ui.compose.agentLocked : '',
+        dis: locked && cur !== p,
+      }}
+      selected={cur === p}
+      onPick={() => {
+        close();
+        // после первого сообщения — только показ; хост всё равно примет выбор лишь в пустой вкладке
+        if (cur !== p && !locked) send({ type: 'engine.set', provider: p });
+      }}
+    />
+  );
   return (
     <>
       <div class="hd">{ui.compose.agentMenu}</div>
-      <ItemButton
-        it={{
-          label: 'Claude',
-          small: ui.compose.claudeVia(s.engineVersion),
-          hint: ui.compose.agentReady,
-        }}
-        selected
-        onPick={close}
-      />
-      <ItemButton
-        it={{
-          label: 'Codex',
-          small: ui.compose.acpAdapter,
-          hint: ui.compose.agentSoon,
-          dis: true,
-        }}
-      />
+      {item(
+        'claude',
+        'Claude',
+        ui.compose.claudeVia(cur === 'claude' ? s.engineVersion : undefined),
+      )}
+      {item('codex', 'Codex', ui.compose.codexVia)}
       <ItemButton
         it={{
           label: 'Gemini',
@@ -1243,13 +1291,7 @@ function ModelItems({ close, models, curModel }: { close: () => void } & ModelPr
   );
 }
 
-function EffortItems({
-  close,
-  efforts,
-}: {
-  close: () => void;
-  efforts: EffortLevel[] | string[];
-}) {
+function EffortItems({ close, efforts }: { close: () => void; efforts: EffortLevel[] | string[] }) {
   const s = chat.value;
   return (
     <>
@@ -1291,10 +1333,10 @@ function AgentMenu({ menu, toggle, close, look = 'label' }: MenuProps & { look?:
       >
         {look === 'label' ? (
           <>
-            {ui.compose.agent} <b>claude</b>
+            {ui.compose.agent} <b>{provider.value}</b>
           </>
         ) : (
-          'claude'
+          provider.value
         )}
       </button>
       {menu === 'agent' && (
@@ -1384,7 +1426,7 @@ function EngineMenu({
 }: MenuProps & ModelProps & { efforts: EffortLevel[] | string[]; look: 'full' | 'short' }) {
   const s = chat.value;
   const parts = [
-    ...(look === 'full' ? ['claude'] : []),
+    ...(look === 'full' ? [provider.value] : []),
     s.model ? shortModel(s.model) : '—',
     s.effort ?? 'auto',
   ];
@@ -1415,6 +1457,7 @@ function EngineMenu({
 
 /** Кольцо заполнения контекста (`used / fullAt`) и процент; цвет — по зоне. */
 function ContextRing({ hv }: { hv: Hv }) {
+  if (!features.value.metrics) return null;
   const c = hv.context;
   return (
     <span class="cr" data-tip={c.title}>
@@ -1444,6 +1487,7 @@ function ContextBar({ hv }: { hv: Hv }) {
  * (`sh`: полоса и процент). Пока идёт сжатие — крутилка в обоих видах, кнопки «сжать» нет.
  */
 function ContextStatus({ hv, look }: { hv: Hv; look: 'sl' | 'sh' }) {
+  if (!features.value.metrics) return null;
   const c = hv.context;
   return (
     <span class="cr cs" data-tip={c.title}>
@@ -1465,6 +1509,7 @@ function ContextStatus({ hv, look }: { hv: Hv; look: 'sl' | 'sh' }) {
 
 /** «контекст [полоса] 131k/200k · сжать» — компактная замена `ContextCount`. */
 function ContextGauge({ hv }: { hv: Hv }) {
+  if (!features.value.metrics) return null;
   const c = hv.context;
   return (
     <span class="cn gauge" data-tip={c.title}>
@@ -1490,6 +1535,8 @@ function Meters({
   hv: Hv;
   look?: 'classic' | 'time' | 'under' | 'alert';
 }) {
+  // лимиты подписки, кэш и стоимость — Claude; у других движков достоверных чисел нет, виджет прячется целиком
+  if (!features.value.metrics) return null;
   const weekShown = hv.limits.week && hv.limits.week.percent > 70;
   if (look === 'alert') {
     const five = hv.limits.five && hv.limits.five.percent > 70 ? hv.limits.five : undefined;
@@ -1523,22 +1570,18 @@ function Meters({
       </span>
       <LimitMeterView label={ui.compose.fiveHour} meter={hv.limits.five} title={hv.limits.title} />
       {weekShown && (
-        <LimitMeterView label={ui.compose.weekShort} meter={hv.limits.week} title={hv.limits.title} />
+        <LimitMeterView
+          label={ui.compose.weekShort}
+          meter={hv.limits.week}
+          title={hv.limits.title}
+        />
       )}
     </span>
   );
 }
 
 /** Окно лимита текстом «5ч 82%» (раскладка `minimal`). */
-function LimitText({
-  label,
-  meter,
-  title,
-}: {
-  label: string;
-  meter: LimitMeter;
-  title: string;
-}) {
+function LimitText({ label, meter, title }: { label: string; meter: LimitMeter; title: string }) {
   return (
     <span class={`m lim ${meter.level}`} data-tip={title}>
       {label} <b class={meter.full ? 'pct full' : 'pct'}>{meter.percent}%</b>

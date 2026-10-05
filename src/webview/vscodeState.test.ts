@@ -23,6 +23,14 @@ describe('состояние webview', () => {
     expect(stored).toEqual({ sessionId: 'a', panel: { w: 400 } });
   });
 
+  it('persistSession с движком пишет provider рядом с sessionId; forgetSession его убирает', () => {
+    stored = { panel: { w: 400 } };
+    persistSession('thr-1', 'codex');
+    expect(stored).toEqual({ sessionId: 'thr-1', provider: 'codex', panel: { w: 400 } });
+    forgetSession();
+    expect(stored).toEqual({ panel: { w: 400 } });
+  });
+
   it('forgetSession убирает sessionId, но оставляет panel', () => {
     stored = { sessionId: 'a', panel: { w: 400, tab: 'agents' } };
     forgetSession();

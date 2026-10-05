@@ -1,3 +1,4 @@
+import type { AgentProvider } from '../agent/types';
 import { postToHost, type FromWebview, type ToWebview, type VsCodeApiLike } from '../protocol';
 
 declare function acquireVsCodeApi(): VsCodeApiLike;
@@ -39,6 +40,8 @@ export interface PanelState {
 /** Всё, что webview кладёт в `setState`: id сессии (для сериализатора) и панель. Поля независимы. */
 export interface WebviewState {
   sessionId?: string;
+  /** Движок сессии (`claude` | `codex`): без него сериализатор гадает по памяти воркспейса. */
+  provider?: AgentProvider;
   panel?: PanelState;
   /** Боковая панель: свёрнутые секции. */
   fold?: SidebarFold;
@@ -82,8 +85,8 @@ function writeState(state: WebviewState): void {
 }
 
 /** Запомнить id сессии вкладки: по нему сериализатор панели возобновит её после перезагрузки окна. */
-export function persistSession(sessionId: string): void {
-  writeState({ ...readState(), sessionId });
+export function persistSession(sessionId: string, provider?: AgentProvider): void {
+  writeState({ ...readState(), sessionId, ...(provider ? { provider } : {}) });
 }
 
 /**

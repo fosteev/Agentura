@@ -263,7 +263,7 @@ describe('CodexAdapter: interrupt', () => {
     session.dispose();
   });
 
-  it('Stop сбрасывает очередь: сообщения за активным ходом не стартуют', async () => {
+  it('Stop не сбрасывает очередь: следующее сообщение стартует новый ход после interrupted', async () => {
     const s = server();
     s.handle('turn/interrupt', () => {
       setTimeout(() => finishTurn(s, 'turn-1', 'interrupted'), 5);
@@ -275,8 +275,8 @@ describe('CodexAdapter: interrupt', () => {
     session.send('queued');
     await until(() => types(events).includes('turn.start'));
     await session.interrupt();
-    await new Promise((r) => setTimeout(r, 30));
-    expect(s.methods().filter((m) => m === 'turn/start')).toHaveLength(1);
+    await until(() => s.methods().filter((m) => m === 'turn/start').length === 2);
+    expect(events.find((e) => e.type === 'turn.result')).toMatchObject({ interrupted: true, ok: false });
     session.dispose();
   });
 

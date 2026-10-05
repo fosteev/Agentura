@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   applyCompletion,
   buildSlashItems,
+  ownCommands,
   detectTrigger,
   filterSlash,
   historyStep,
@@ -76,5 +77,29 @@ describe('история', () => {
     expect(pushHistory(['a'], ' ')).toEqual(['a']);
     expect(pushHistory(['a'], 'a')).toEqual(['a']);
     expect(pushHistory(['a', 'b'], 'c', 2)).toEqual(['b', 'c']);
+  });
+});
+
+describe('собственные команды по возможностям движка', () => {
+  it('Claude — все четыре; Codex — только /clear и /status', () => {
+    expect(ownCommands({ modes: true, compact: true })).toEqual([
+      'plan',
+      'compact',
+      'clear',
+      'status',
+    ]);
+    expect(ownCommands({ modes: false, compact: false })).toEqual(['clear', 'status']);
+    expect(ownCommands({ modes: false, compact: true })).toEqual(['compact', 'clear', 'status']);
+  });
+
+  it('buildSlashItems с урезанным списком не добавляет /plan и /compact', () => {
+    const names = buildSlashItems(
+      [],
+      [],
+      [],
+      {},
+      ownCommands({ modes: false, compact: false }),
+    ).map((i) => i.name);
+    expect(names).toEqual(['clear', 'status']);
   });
 });

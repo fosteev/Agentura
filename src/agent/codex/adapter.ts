@@ -264,10 +264,9 @@ class CodexSession implements AgentSession {
     this.effort = effort;
   }
 
-  /** `turn/interrupt`, потом ждём `turn/completed` (процесс не убиваем); очередь после Stop не стартует. */
+  /** `turn/interrupt`, потом ждём `turn/completed` (процесс не убиваем); очередь сообщений Stop не сбрасывает (как у Claude). */
   async interrupt(): Promise<void> {
     this.generation++;
-    this.queue.length = 0;
     const turn = this.turn;
     if (!turn || turn.done.settled || this.closed) return;
     try {
