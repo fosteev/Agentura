@@ -65,6 +65,7 @@ const EXIT_GRACE_MS = 1000;
 export class CodexRpcClient {
   private nextId = 1;
   private buffer = '';
+  private bufferBytes = 0;
   /** Хвост stderr без перевода строки: redact видит строку целиком, а не обрывки чанков. */
   private stderrTail = '';
   private exitMessage: string | undefined;
@@ -166,13 +167,17 @@ export class CodexRpcClient {
     this.fail('Codex RPC client disposed.');
   }
 
+  // Перевод строки ищем только в новом чанке, размер хвоста считаем по ходу: строка в десятки мегабайт
+  // (`thread/read`, вывод команды) приходит сотнями чанков, и пересканировать буфер на каждом — квадратично.
   private read(chunk: string): void {
     if (this.closed) return;
-    this.buffer += chunk;
+    let start = 0;
     let newline: number;
-    while ((newline = this.buffer.indexOf('\n')) >= 0) {
-      const line = this.buffer.slice(0, newline).replace(/\r$/, '');
-      this.buffer = this.buffer.slice(newline + 1);
+    while ((newline = chunk.indexOf('\n', start)) >= 0) {
+      const line = (this.buffer + chunk.slice(start, newline)).replace(/\r$/, '');
+      start = newline + 1;
+      this.buffer = '';
+      this.bufferBytes = 0;
       if (Buffer.byteLength(line) > this.maxLineBytes) {
         this.fail(`Codex app-server emitted a line larger than ${this.maxLineBytes} bytes.`);
         return;
@@ -180,8 +185,12 @@ export class CodexRpcClient {
       if (line) this.handleLine(line);
       if (this.closed) return;
     }
+    const rest = chunk.slice(start);
+    if (!rest) return;
+    this.buffer += rest;
+    this.bufferBytes += Buffer.byteLength(rest);
     // хвост без перевода строки тоже ограничен: иначе буфер растёт без предела
-    if (Buffer.byteLength(this.buffer) > this.maxLineBytes)
+    if (this.bufferBytes > this.maxLineBytes)
       this.fail(`Codex app-server emitted a line larger than ${this.maxLineBytes} bytes.`);
   }
 
@@ -198,7 +207,8 @@ export class CodexRpcClient {
       return;
     }
     const value = parsed as RpcResponse & RpcNotification;
-    if (value.jsonrpc !== '2.0') {
+    // app-server (0.160.0) опускает поле `jsonrpc` в ответах и notifications — живой smoke; чужую версию отвергаем
+    if (value.jsonrpc !== undefined && value.jsonrpc !== '2.0') {
       this.fail('Codex app-server emitted JSON-RPC with an unsupported version.');
       return;
     }
@@ -210,7 +220,8 @@ export class CodexRpcClient {
       this.serverRequest(value.id, value.method, value.params);
       return;
     }
-    if (typeof value.id === 'number') {
+    // ответ — только с `result` или `error`: `{"id":1}` без них — мусор, а не «успех с undefined»
+    if (typeof value.id === 'number' && ('result' in value || 'error' in value)) {
       const pending = this.pending.get(value.id);
       if (!pending) return;
       clearTimeout(pending.timer);

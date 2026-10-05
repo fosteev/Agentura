@@ -246,4 +246,44 @@ describe('CodexRpcClient', () => {
     client.respond(1, {});
     expect(sent).toEqual([]);
   });
+
+  it('принимает сообщения без поля jsonrpc (так отвечает живой app-server 0.160.0), чужую версию — нет', async () => {
+    const a = fake();
+    const note = vi.fn();
+    const withNote = new CodexRpcClient(a.process as unknown as RpcProcess, { onNotification: note });
+    const reply = withNote.request('initialize');
+    a.process.stdout.write('{"id":1,"result":{"userAgent":"x"}}\n{"method":"thread/started","params":{}}\n');
+    await expect(reply).resolves.toEqual({ userAgent: 'x' });
+    expect(note).toHaveBeenCalledWith('thread/started', {});
+
+    const b = fake();
+    const bad = b.client.request('x');
+    b.process.stdout.write('{"jsonrpc":"1.0","id":1,"result":1}\n');
+    await expect(bad).rejects.toThrow(/unsupported version/);
+  });
+
+  it('без поля jsonrpc объект без id и method — всё ещё мусор: клиент закрывается', async () => {
+    const { process, client } = fake();
+    const pending = client.request('x');
+    process.stdout.write('{"foo":1}\n');
+    await expect(pending).rejects.toThrow(/invalid JSON-RPC/);
+
+    // ответ без result и error — тоже мусор, а не «успех с undefined»
+    const b = fake();
+    const bare = b.client.request('x');
+    b.process.stdout.write('{"id":1}\n');
+    await expect(bare).rejects.toThrow(/invalid JSON-RPC/);
+  });
+
+  it('длинная строка сотнями чанков, CRLF и начало следующего сообщения в том же чанке', async () => {
+    const { process, client } = fake();
+    const big = client.request('thread/read');
+    const next = client.request('model/list');
+    const payload = 'x'.repeat(200_000);
+    const line = `{"id":1,"result":{"text":"${payload}"}}\r\n{"id":2,`;
+    for (let i = 0; i < line.length; i += 1000) process.stdout.write(line.slice(i, i + 1000));
+    process.stdout.write('"result":"ok"}\n');
+    await expect(big).resolves.toEqual({ text: payload });
+    await expect(next).resolves.toBe('ok');
+  });
 });
