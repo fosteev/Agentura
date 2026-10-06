@@ -13,7 +13,7 @@ import { SessionsService } from './sessionsService';
 import { showDebugState } from './debugPanel';
 import { SettingsPanel } from './settingsPanel';
 import { AGENTS_GRAPH_VIEW_TYPE } from './agentsGraphPanel';
-import { AGENTS_VIEWS, COMPOSER_LAYOUTS, FEED_STYLES, GIT_LAYOUTS, readSettings, writeSetting, type SettingKey } from '../settings';
+import { AGENTS_VIEWS, COMPOSER_LAYOUTS, FEED_STYLES, GIT_LAYOUTS, isProvider, readSettings, writeSetting, type SettingKey } from '../settings';
 import { hostStrings } from '../shared/l10n';
 import { currentLanguage, setUserFonts, userFontsDir } from './webviewHost';
 import { UserFonts } from './googleFonts';
@@ -22,7 +22,7 @@ import { WorkspaceFiles } from './workspaceFiles';
 import { GitService, countLines, runGit } from './git/gitService';
 import { getGitApi } from './git/gitApi';
 import { vscodeGitUi } from './git/gitUi';
-import type { CompletionRequest } from '../agent/types';
+import type { AgentProvider, CompletionRequest } from '../agent/types';
 
 /** Что активация отдаёт интеграционным тестам (только при запуске из исходников). */
 export interface TestApi {
@@ -276,7 +276,7 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     vscode.commands.registerCommand('agentura.openSession', (id: unknown, provider?: unknown) => {
       if (typeof id !== 'string') return;
       // нет поля provider (старые вызовы, строки списка Claude) — `claude`
-      const p = provider === 'codex' ? 'codex' : 'claude';
+      const p: AgentProvider = isProvider(provider) ? provider : 'claude';
       ChatPanel.resume(context, log, services, { provider: p, id });
     }),
     vscode.commands.registerCommand('agentura.showStatus', () =>

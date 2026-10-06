@@ -56,6 +56,9 @@ describe('validateSetting', () => {
     expect(validateSetting('codexExecutable', ' /bin/codex ')).toEqual({ ok: true, value: '/bin/codex' });
     expect(validateSetting('codexExecutable', 1).ok).toBe(false);
     expect(validateSetting('defaultProvider', 'codex')).toEqual({ ok: true, value: 'codex' });
+    expect(validateSetting('defaultProvider', 'antigravity')).toEqual({ ok: true, value: 'antigravity' });
+    expect(validateSetting('antigravityExecutable', ' /bin/agy ')).toEqual({ ok: true, value: '/bin/agy' });
+    expect(validateSetting('antigravityExecutable', 1).ok).toBe(false);
     expect(validateSetting('defaultProvider', 'gpt').ok).toBe(false);
   });
   it('опрос лимитов — целое не меньше 5', () => {
@@ -230,6 +233,8 @@ describe('readSettings: движок', () => {
   it('по умолчанию claude; мусор заменяется значением по умолчанию', () => {
     expect(readSettings(cfgOf({})).defaultProvider).toBe('claude');
     expect(readSettings(cfgOf({ defaultProvider: 'codex' })).defaultProvider).toBe('codex');
+    expect(readSettings(cfgOf({ defaultProvider: 'antigravity' })).defaultProvider).toBe('antigravity');
+    expect(readSettings(cfgOf({ antigravityExecutable: '/x/agy' })).antigravityExecutable).toBe('/x/agy');
     expect(readSettings(cfgOf({ defaultProvider: 5 })).defaultProvider).toBe('claude');
     expect(readSettings(cfgOf({ codexExecutable: '/x/codex' })).codexExecutable).toBe('/x/codex');
   });
@@ -239,7 +244,7 @@ describe('overriddenKeys', () => {
   it('значение рабочей области перекрывает пользовательское; machine-ключи не считаются', () => {
     const cfg = {
       inspect: (k: string) =>
-        k === 'defaultModel' || k === 'claudeExecutable' || k === 'codexExecutable' ? { workspaceValue: 'x' } : {},
+        k === 'defaultModel' || k === 'claudeExecutable' || k === 'codexExecutable' || k === 'antigravityExecutable' ? { workspaceValue: 'x' } : {},
     };
     expect(overriddenKeys(cfg)).toEqual(['defaultModel']);
   });

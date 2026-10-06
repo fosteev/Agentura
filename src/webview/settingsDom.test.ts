@@ -38,6 +38,7 @@ const values: SettingsValues = {
   'limits.readKeychain': true,
   claudeExecutable: '',
   codexExecutable: '',
+  antigravityExecutable: '',
   defaultProvider: 'claude',
   'sessionList.view': 'compact',
   'sessionList.context': true,
