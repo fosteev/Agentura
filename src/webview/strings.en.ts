@@ -163,7 +163,9 @@ export const en: Ui = {
           ? 'Allow editing this file?'
           : tool === 'Write'
             ? 'Allow writing this file?'
-            : `Allow ${tool}?`,
+            : tool === 'Permissions'
+              ? 'Allow additional permissions?'
+              : `Allow ${tool}?`,
     modeTag: (mode: string) => `mode ${mode}`,
     subagent: 'subagent',
     allow: 'Allow',
@@ -182,7 +184,9 @@ export const en: Ui = {
           ? '.claude/settings.json'
           : d === 'userSettings'
             ? '~/.claude/settings.json'
-            : 'this session',
+            : d === 'codexRules'
+              ? '~/.codex/rules'
+              : 'this session',
     alwaysHint: (where: string) => `“always” is written to ${where}`,
     sessionHint: '“always” lasts until the end of the session',
     plusDirs: (dir: string, more: number) =>

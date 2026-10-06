@@ -35,7 +35,8 @@ export const CLAUDE_FEATURES: Readonly<ProviderFeatures> = {
 };
 
 /**
- * Codex (app-server 0.160): режимов, compact, субагентов, плана и вопросов в нашем адаптере нет (no-op);
+ * Codex (app-server 0.160): режимов, compact, субагентов и плана в нашем адаптере нет (no-op); вопросы агента
+ * (`item/tool/requestUserInput`) приходят карточкой — `questions: true`;
  * приборов нет (`totalCostUsd: 0` = «неизвестно», лимитов подписки и cache TTL нет); `files` адаптер отбрасывает.
  * Картинки уходят data-URL'ом (на живом не проверено).
  */
@@ -45,7 +46,7 @@ export const CODEX_FEATURES: Readonly<ProviderFeatures> = {
   metrics: false,
   subagents: false,
   plan: false,
-  questions: false,
+  questions: true,
   images: true,
   files: false,
 };

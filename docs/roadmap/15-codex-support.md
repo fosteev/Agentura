@@ -1,6 +1,6 @@
 # 15 — Codex как второй движок
 
-> **Статус:** этап 3 принят 2026-10-06 — следующий: 4. Автопилот `/roadmap-run`, ветки
+> **Статус:** этап 4 принят 2026-10-06 — следующий: 5. Автопилот `/roadmap-run`, ветки
 > `stage-<N>-<slug>` от main, приёмка Opus. Ручные проверки и решения — `15-codex-support.pending.md`.
 
 Исходное ТЗ написал Codex (2026-10-05) — оно ниже целиком в «Контекст и ограничения». Этапы
@@ -317,24 +317,120 @@
 
 **Сессия:** sonnet.
 
-- [ ] Server requests `item/commandExecution/requestApproval`, `item/fileChange/requestApproval`,
+- [x] Server requests `item/commandExecution/requestApproval`, `item/fileChange/requestApproval`,
       `item/permissions/requestApproval` → `permission.request` (`toolUseId` = id запроса);
       `respondPermission` отвечает JSON-RPC response с решением из схемы; «Разрешить всегда»
       только если в enum решения есть сессионный/постоянный вариант; `serverRequest/resolved`
       → `permission.resolved`.
-- [ ] `item/tool/requestUserInput` → `question.request`, если ложится на текущую карточку;
+- [x] `item/tool/requestUserInput` → `question.request` (ложится на карточку; по схеме и тестам, живого запроса не было), если ложится на текущую карточку;
       иначе отказ ответом и запись в «Решения».
-- [ ] `item/started|completed` для commandExecution (имя `Bash`, вывод в `content`, exit≠0 →
+- [x] `item/started|completed` для commandExecution (имя `Bash`, вывод в `content`, exit≠0 →
       `isError`, `item/commandExecution/outputDelta` → `tool.progress`), fileChange (пути +
       summary; нативный дифф — только если событие даёт до/после), mcpToolCall, webSearch.
-- [ ] Вкладка «изменения» (`editFiles`/`fileSpans`) получает файлы Codex, если это не требует
+- [x] Вкладка «изменения» (`editFiles`/`fileSpans`) получает файлы Codex, если это не требует
       переделки её модели; иначе — запись в «Решения» и отложить.
-- [ ] Неизвестные server requests не виснут: ответ ошибкой + лог.
-- [ ] Тесты по fake-серверу: allow / deny / неизвестный запрос / прерывание при открытом
+- [x] Неизвестные server requests не виснут: ответ ошибкой + лог.
+- [x] Тесты по fake-серверу: allow / deny / неизвестный запрос / прерывание при открытом
       запросе; `npm run check` зелёный.
 - [ ] Пользователь: попросить создать файл — карточка подтверждения, allow и deny работают.
 
 **Готово, когда:** команды и правки Codex видны карточками, подтверждения работают.
+
+**Решения (2026-10-06, по итогам сессии 4):**
+
+- **Раскладка.** `src/agent/codex/approvals.ts` — `CodexApprovals` (брокер server requests: `pending`, карточки,
+  ответы, закрытие); `tools.ts` — `CodexToolMapper` (`item/*` инструментов → `tool.*`), `mapper.ts` только
+  делегирует (`changesOf(itemId)` для превью карточки); `patch.ts` — разбор unified diff (`parseHunks`,
+  `sidesOfHunks`) и `displayCommand`. В `adapter.ts` таблица `REFUSALS` удалена: `onServerRequest` →
+  `approvals.handle`. Фикстура `test/fixtures/codex/approvals.json` — живая запись пяти сценариев (отказ команды,
+  allow команды, запрос команды ПОСЛЕ `turn/completed`, создание файла, правка файла), пути/id заменены (grep чист).
+- **Контракт.** `toolUseId` карточки = `String(id запроса JSON-RPC)`. Решения: `allow` → `accept`; `deny` → `decline`
+  (текст отказа Codex не принимает — `message` игнорируется); `allow-always`/`allow-edits` → см. ниже; закрытие без
+  решения (Stop) → `cancel`. `item/permissions/requestApproval`: `allow` — выдать запрошенное (непустые части
+  `network`/`fileSystem`) со `scope:'turn'`, «всегда» — `scope:'session'`, отказ — пустой grant. Вопросы
+  (`item/tool/requestUserInput`) → `question.request` (`multiSelect:false`, ответы по тексту вопроса → `answers[id].answers`;
+  отказ по карточке — пустые `answers`; секретный вопрос `isSecret` не показываем: ошибка `-32601` ответом +
+  видимая ошибка). `serverRequest/resolved` на запрос, который закрыли не мы, → `permission.resolved{deny, abort}`;
+  на наш собственный ответ — ничего (одно событие). Флаг `questions` у Codex → `true` (`features.ts`).
+- **«Всегда» — только по списку решений запроса.** Живой сервер шлёт в `commandExecution`-запросе поле
+  **`availableDecisions`, которого нет в сгенерированных типах 0.160.0** (`["accept", {acceptWithExecpolicyAmendment:
+  {execpolicy_amendment:["ls"]}}, "cancel"]` — без `acceptForSession` и без `decline`). Правило: `acceptForSession` в
+  списке (или списка нет — схема его допускает) → сессионное «всегда» (`destination:'session'`); иначе постоянная
+  поправка execpolicy из списка → кнопка «Всегда для `ls`» с подписью «пишется в ~/.codex/rules» (новый
+  `destination:'codexRules'`, en/ru); иначе кнопки нет. На живом у команд предлагается именно постоянное правило.
+  У `fileChange`-запроса списка не было → «принимать правки на сессию» = `acceptForSession` (подсказка карточки у
+  Codex про сессию, а не про режим `acceptEdits`).
+- **`decline` вне `availableDecisions` сервер принимает** (живой прогон): item закрывается `status:'declined'`, ход
+  продолжается, модель сообщает об отказе. Закрывало пункт «`decline` на живом не подтверждён» этапа 2.
+- **Инструменты — под имена Claude**, чтобы лента, таймлайн и вкладка «изменения» работали без правок их моделей:
+  `commandExecution` → `Bash` (`input.command` без обёртки `/bin/zsh -lc` — снимается только однозначная форма: одно
+  слово или одна пара кавычек без спецсимволов, иначе строка как есть; в `result` — `stdout`/`exitCode`);
+  `fileChange` → по одному вызову на файл: `add` → `Write` (`content`, результат `type:'create'`), `update`/перенос/удаление →
+  `Edit` (`file_path` — новый путь переноса; `old_string`/`new_string` из ханков, результат со `structuredPatch` и
+  `oldString`/`newString`); id вызова — `item.id`, у второго и далее файла `item.id#N`; `mcpToolCall` →
+  `mcp__<server>__<tool>`; `webSearch` → `WebSearch`; `dynamicToolCall` → имя инструмента. `outputDelta` копится
+  (до 100 КБ) и в `tool.result.content` идёт, если `aggregatedOutput` пуст; `tool.progress` — не чаще раза в секунду.
+  `isError` — `failed`/`declined`/`exitCode≠0`. Остальные виды элементов (`imageView`, `collabAgentToolCall`, …)
+  по-прежнему молчат.
+- **«Изменения» и «diff» работают без переделки модели:** `trackEdit` видит `Write`/`Edit` с `file_path`. У `Write` стороны
+  «до/после» точные (создание), у `Edit` — **фрагмент** (`oldString`/`newString` из ханков; у `update` событие даёт только
+  unified diff, содержимого файла «до» нет) — вкладка показывает счётчики `+N −M` и открывает фрагментарный diff, как
+  у Claude при несовпадении патча; цельный до/после по `fileSpans` для Codex-правок не склеивается. Тест — через настоящий
+  мапер (`chatControllerProvider.test.ts`).
+- **Превью в карточке файловой правки** — из `item/started` (`changesOf`): один файл `add` → `diff.write`, `update` с
+  ханками → `diff.edit` (старое/новое из ханков; многоханковая правка контроллер покажет фрагментом); несколько файлов —
+  без превью, список файлов в описании. Превью отдаётся только когда сервер допускает `acceptForSession` (иначе кнопка
+  «принимать правки» обещала бы то, чего нет).
+- **Stop/закрытие/смерть процесса — ни одного висящего запроса.** `interrupt()` и `abandon()` отвечают `cancel` на все
+  открытые запросы и шлют `permission.resolved{abort}` (проверено на живом: Stop при открытой карточке → `cancel` →
+  item `declined` → `turn.result{interrupted}`); `turn/completed` карточки не снимает (см. приёмку ниже);
+  `dispose()`/падение процесса снимают карточки до `session.closed` (отвечать некому).
+- **Неизвестные/неотображаемые запросы** (`mcpServer/elicitation/request`, любой неизвестный метод, секретный ввод)
+  получают ответ (decline по схеме или `-32601`) + `warn` в лог + **видимую** нефатальную ошибку (`code:
+  'unsupported_request'`, красная карточка; текст английский, строится в агентском слое). Раньше агент молча «не мог».
+- **Живой прогон (codex-cli 0.160.0, `gpt-6-luna`, `untrusted` + `workspace-write`, temp-папка, только на тестовый
+  тред; настройки пользователя не трогали): увиденное.** (1) approval-запрос приходит не сразу и **может прийти ПОСЛЕ
+  `turn/completed`** (модель отвечает «команда ещё идёт», затем сервер шлёт `item/started` + запрос; зафиксировано
+  сценарием `commandLate`): запрос после конца хода — обычная карточка. Задержка запроса от `item/started` бывала от секунд до ~3 минут (причина не выяснена). (2) `item/started` у
+  `fileChange` уже содержит `changes` (add — содержимое, update — ханки без заголовков файла); `turn/diff/updated`
+  (полный git-diff хода) не используем. (3) `commandExecution`: `aggregatedOutput` на живом **null** даже после успеха,
+  `outputDelta` в прогонах не пришёл — вывод команд в ленте может быть пустым (на `status` и `exitCode` опираемся).
+  (4) Сквозной прогон настоящего `CodexAdapter` (скрипт вне репо): allow на создание файла (файл создан), deny на `ls`
+  (`tool.result` `declined`, ход `success`), Stop при открытой карточке — события по порядку, процессов не осталось.
+  Модель в части ходов сама отказывалась/«ждала» — формулировка «wait for the result» и `untrusted` стабильно давали запрос.
+- **Не проверено на живом.** `item/permissions/requestApproval` и `item/tool/requestUserInput` (ни один не пришёл —
+  только схема и тесты), `mcpToolCall`/`webSearch`/`dynamicToolCall` (только формы из типов), `outputDelta`, `grantRoot`,
+  `writeStdin`, `acceptForSession` и постоянное правило (сервер их не получал), правка нескольких файлов, `patchUpdated`,
+  политика `on-request` с реальной эскалацией, Windows.
+- **Отступления/скоуп.** (1) Постоянное «всегда» у команд (`~/.codex/rules`) — выставлено в UI, см. pending. (2) Видимая
+  ошибка на отказ неподдерживаемых запросов — см. pending. (3) Агентский слой даёт английские тексты (`description`
+  «send input to a running process», `read /path`, `declined`, сообщение `unsupported_request`); новые строки вебвью —
+  заголовок «Разрешить дополнительные права?» и пометка `~/.codex/rules`, en и ru. (4) Настройки approval/sandbox (ТЗ §4,
+  «отдельные настройки Codex») по-прежнему не добавлены: политику берёт `~/.codex/config.toml`; без неё `thread/start`
+  не передаёт ничего — у пользователя с `never` карточек не будет вовсе.
+- **Решение (2026-10-06, приёмка этапа 4).** (1) `turn/completed` **больше не снимает** открытые карточки (у исполнителя
+  снимал без ответа серверу): живой прогон показал, что сервер доделывает элементы и после конца хода, — снятая без
+  ответа карточка оставила бы сервер ждать решения, которое пользователь уже не может дать. Карточку закрывают только ответ
+  пользователя, `serverRequest/resolved` (сервер шлёт его на каждый закрытый запрос, в записи — всегда), Stop (`cancel`),
+  закрытие/падение сессии; `CodexApprovals.endTurn` удалён. (2) `item/permissions/requestApproval`: в карточке видны и
+  `fileSystem.entries` (новая форма 0.160, в том числе `write / (root)`), а выдаются только показанные поля
+  (`read`/`write`/`entries` + сеть) — раньше `entries` выдавались, но не показывались. (3) Команда с
+  `networkApprovalContext` без `command` показывает «network access to <host> (<protocol>)» вместо пустого блока;
+  пояснения (`writeStdin`, сеть) идут в `input.description` — карточка команды показывает только его. (4) Команда без
+  вывода (`aggregatedOutput: null`, delta не было) с exit≠0 даёт в строке `exit code N`, `failed` — `failed`, а не пустую
+  ошибку; `aggregatedOutput` тоже режется до 100 КБ. (5) `toolUseId` карточки = `codex-<N>:<id запроса>` (`N` — счётчик
+  сессий в `adapter.ts`): id запросов у каждого процесса с 0, а отвеченные карточки остаются в ленте — после падения и
+  нового процесса в той же вкладке новая карточка совпала бы со старой и не показалась (`findCard`); у брокера `key(id)`.
+  (6) `displayCommand` снимает обёртку только у системного шелла (голое имя, `/bin`, `/usr/bin`, `/usr/local/bin`,
+  `/opt/homebrew/bin`): `./bash -c ls` показывался бы как `ls`. (7) Битый запрос, успевший встать в `pending`, удаляется
+  из него при ответе-ошибке — второго ответа (Stop → `cancel`) на тот же id нет. Известные мелочи, не чинили: удаление
+  файла в карточке — «Разрешить правку файла?» без превью; без превью (нет `acceptForSession`, несколько файлов)
+  `saveBeforeEdit` не сохраняет грязный буфер редактора; рабочая папка команды (`params.cwd`) не показывается — карточка
+  пишет папку сессии.
+- **Проверки:** приёмка — `TZ=UTC npm run check` зелёный, 1248 тестов. Исполнитель: зелёный, 1241 тест (было 1175): новые `approvals.test.ts` (брокер: команда/файл/права/вопрос/
+  неизвестное/Stop/закрытие), `tools.test.ts` (мапер инструментов), `patch.test.ts`; `adapter.test.ts` (сквозные сценарии на
+  fake-сервере + 5 по живой записи `approvals.json`, старый тест «decline до этапа 4» заменён), `chatControllerProvider.test.ts`
+  (правки Codex → «изменения»/превью/ответ), `cardsDom.test.ts`, `cardView.test.ts`, `features.test.ts`.
 
 ### 5. История Codex: список, лента, resume, rename
 
@@ -365,6 +461,7 @@
 - [ ] `docs/` — заметка о протоколе и регенерации типов при обновлении Codex.
 - [ ] Список ручного smoke из ТЗ («Проверки и DoD») перенесён в pending «Проверить руками».
 - [ ] `npm run check` зелёный; vsix собирается (`.codex/`, `AGENTS.md` не попадают).
+- [ ] Решение владельца 2026-10-06: у Codex показывать контекст — флаг `metrics` в `src/agent/features.ts` разделить на `context` и `cost`; контекст из настоящего `context.usage` (без порогов автосжатия, если их нет у Codex), цена/кэш/лимиты скрыты; в строке итога хода у Codex не показывать `cache w0` и прочие неизвестные Codex величины.
 
 **Готово, когда:** фича документирована, check и сборка vsix зелёные.
 
@@ -504,6 +601,14 @@ Codex-вкладка после Reload Window делает `thread/resume` с п
 — пустой экран и список сессий) и строковые вызовы `ChatPanel.resume` в `extension.ts` (`openLast`, `pickSession`) пока
 `provider` не передают — нет поля = Claude; со списком Codex-тредов передавать обязательно.
 
+По реальному коду (после этапа 4): история Codex-вкладки должна показывать команды и правки так же, как живая лента —
+для этого `item/*` из `thread/read` прогоняй через `CodexToolMapper` (`src/agent/codex/tools.ts`): `completed(item, undefined)`
+сам выдаёт `tool.start` + `tool.result` (Bash/Write/Edit/mcp__…/WebSearch, id вызова `item.id` или `item.id#N` у многофайловой
+правки), `started` для истории не нужен. `agentMessage`/`reasoning`/`userMessage` мапер этапа 2 из `item/completed` без хода не
+собирает — для истории писать отдельную сборку `AgentEvent[]` (`turn.start` с промптом, `text.delta`, `turn.result`). Карточек
+подтверждения в истории нет (запрос живёт только пока сервер ждёт). Помни: `item/completed` после `turn/completed` — штатный
+случай, `commandExecution.aggregatedOutput` у живого сервера бывает `null`, у `fileChange.update` в `diff` только ханки.
+
 ### Промт 6
 
 Этап 6 «Полировка». Настройки — `src/webview/components/Settings.tsx` и
@@ -516,6 +621,13 @@ Codex-вкладка после Reload Window делает `thread/resume` с п
 проверкой `codex --version`. Не-«не найден» проблемы резолвера Codex (`.cmd`-обёртка, «не запускается») английские —
 локализовать через `hostStrings`, если нужно. В CHANGELOG: выбор движка в композере, Codex без режимов/приборов/
 субагентов/файлов, формат `agentura.openSessions` и состояния webview (`provider`).
+
+По реальному коду (после этапа 4): настроек approval/sandbox Codex в расширении нет — `thread/start` их не передаёт, политика из
+`~/.codex/config.toml` (ТЗ §4); `CodexAdapterConfig.thread` — только для smoke/тестов. Если добавлять строки настроек, это
+`approvalPolicy`/`sandbox` (`AskForApproval`, `SandboxMode` в `protocol.ts`), а карточки подтверждения от них не зависят. В
+CHANGELOG: подтверждения Codex (команды, правки, права, вопросы), «всегда» у команд пишет правило в `~/.codex/rules`, вкладка
+«изменения» у правок Codex показывает фрагменты, вывод команд Codex бывает пустым. `scripts/codex-protocol.mjs` не знает про
+`availableDecisions` (поле вне схемы 0.160.0) — при смене версии CLI перепроверить на живом.
 
 ## Контекст и ограничения
 

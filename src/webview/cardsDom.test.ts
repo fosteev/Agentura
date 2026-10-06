@@ -7,7 +7,7 @@ import type { AgentEvent } from '../agent/types';
 import { initialState } from './chatState';
 import { Chat } from './components/Chat';
 import { initialHud } from './hudState';
-import { chat, dispatchEvent, handleHostMessage, hudState, replyTarget } from './store';
+import { chat, dispatchEvent, handleHostMessage, hudState, provider, replyTarget } from './store';
 import * as vscode from './vscode';
 
 /** Теги и классы без текстов — как в markup.test.ts. */
@@ -66,6 +66,7 @@ beforeEach(() => {
   };
   hudState.value = initialHud();
   replyTarget.value = undefined;
+  provider.value = 'claude';
   dispatchEvent(ev({ type: 'turn.start', at: Date.now(), prompt: 'прогони тесты' }));
 });
 
@@ -313,5 +314,57 @@ describe('карточка плана (plan.html)', () => {
     await flush();
     const sys = [...host.querySelectorAll('.log .sys')].map((s) => s.textContent);
     expect(sys.some((t) => t?.includes('план принят · выполняю'))).toBe(true);
+  });
+});
+
+describe('карточки подтверждений Codex', () => {
+  it('правка нескольких файлов: «принимать правки» с подсказкой про сессию, а не про режим acceptEdits; ответ allow-edits', async () => {
+    provider.value = 'codex';
+    const host = mount();
+    dispatchEvent(
+      ev({
+        type: 'permission.request',
+        toolUseId: '4',
+        toolName: 'Edit',
+        input: { file_path: '/p/queue-board/a.ts' },
+        description: '/p/queue-board/a.ts, /p/queue-board/b.ts',
+        canAlwaysAllow: true,
+        always: { rules: [], directories: [], mode: 'acceptEdits' },
+      }),
+    );
+    await flush();
+    expect(host.querySelector('.ask .h')?.textContent).toContain('Разрешить правку файла?');
+    expect(host.querySelector('.ask .hint')?.textContent).toBe('«всегда» — до конца сессии');
+    click(button(host, 'Принимать правки'));
+    expect(posted.at(-1)).toMatchObject({ type: 'permission.respond', toolUseId: '4', decision: 'allow-always' });
+  });
+
+  it('постоянное правило Codex: подпись называет ~/.codex/rules; права — свой заголовок', async () => {
+    provider.value = 'codex';
+    const host = mount();
+    dispatchEvent(
+      ev({
+        type: 'permission.request',
+        toolUseId: '5',
+        toolName: 'Bash',
+        input: { command: 'ls' },
+        canAlwaysAllow: true,
+        always: { rules: ['Bash(ls:*)'], destination: 'codexRules', directories: [] },
+      }),
+    );
+    dispatchEvent(
+      ev({
+        type: 'permission.request',
+        toolUseId: '6',
+        toolName: 'Permissions',
+        input: { command: 'network' },
+        canAlwaysAllow: false,
+      }),
+    );
+    await flush();
+    const cards = [...host.querySelectorAll('.ask')];
+    expect(cards[0]!.querySelector('.hint')?.textContent).toBe('«всегда» пишется в ~/.codex/rules');
+    expect(cards[1]!.querySelector('.h')?.textContent).toContain('Разрешить дополнительные права?');
+    expect(cards[1]!.querySelector('pre')?.textContent).toBe('network');
   });
 });

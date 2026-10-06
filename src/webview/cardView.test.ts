@@ -16,6 +16,15 @@ describe('кнопка «всегда»', () => {
     });
   });
 
+  it('Codex: постоянное правило называет ~/.codex/rules, сессионное — сессию', () => {
+    expect(
+      alwaysButton({ rules: ['Bash(ls:*)'], destination: 'codexRules', directories: [] }),
+    ).toEqual({ label: 'Всегда для', code: 'ls', hint: '«всегда» пишется в ~/.codex/rules' });
+    expect(
+      alwaysButton({ rules: ['Bash(ls)'], destination: 'session', directories: [] })?.hint,
+    ).toBe('«всегда» — до конца сессии');
+  });
+
   it('правила с разными destination: подпись называет все места', () => {
     expect(
       alwaysButton({

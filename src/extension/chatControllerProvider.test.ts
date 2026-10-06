@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { EventHub } from '../agent/stream';
+import { CodexEventMapper } from '../agent/codex/mapper';
 import { providerFeatures } from '../agent/features';
 import type {
   AgentAdapter,
@@ -20,7 +21,9 @@ class Session implements AgentSession {
     this.sent.push(text);
     return true;
   }
-  respondPermission() {
+  responded: [string, string][] = [];
+  respondPermission(toolUseId: string, decision: string) {
+    this.responded.push([toolUseId, decision]);
     return true;
   }
   answerQuestion() {
@@ -264,5 +267,57 @@ describe('ChatController: выбор движка engine.set', () => {
     expect(isFromWebview({ type: 'engine.set', provider: 'codex' })).toBe(true);
     expect(isFromWebview({ type: 'engine.set', provider: 'gemini' })).toBe(false);
     expect(isFromWebview({ type: 'engine.set' })).toBe(false);
+  });
+
+  it('Codex: события инструментов мапера попадают в «изменения» и превью карточки; решение уходит сессии Codex', async () => {
+    const opened: { filePath: string; before: string; after: string }[] = [];
+    const { controller, codex, posted } = setup({
+      provider: 'codex',
+      openDiff: async (d) => void opened.push(d),
+      readText: async () => undefined,
+    });
+    controller.start();
+    await tick();
+    const session = codex.sessions[0]!;
+    // события — те, что выдаёт настоящий маппер на живых формах item/*
+    const m = new CodexEventMapper(() => 1);
+    m.threadId = 'thr';
+    const base = { threadId: 'thr', turnId: 'turn-1' };
+    const update = {
+      path: '/p/b.txt',
+      kind: { type: 'update', move_path: null },
+      diff: '@@ -1,3 +1,3 @@\n line1\n-line2\n+line two\n line3\n',
+    };
+    const add = { path: '/p/a.txt', kind: { type: 'add' }, diff: 'hi\n' };
+    const item = (id: string, change: unknown, status: string) => ({ type: 'fileChange', id, changes: [change], status });
+    for (const e of [
+      ...m.map('item/started', { ...base, startedAtMs: 1, item: item('fc-1', add, 'inProgress') }),
+      ...m.map('item/completed', { ...base, completedAtMs: 2, item: item('fc-1', add, 'completed') }),
+      ...m.map('item/started', { ...base, startedAtMs: 3, item: item('fc-2', update, 'inProgress') }),
+      ...m.map('item/completed', { ...base, completedAtMs: 4, item: item('fc-2', update, 'completed') }),
+    ])
+      session.events.emit(e);
+    await controller.handle({ type: 'diff.changes', sessionId: '', toolUseIds: ['fc-1'] });
+    await controller.handle({ type: 'diff.changes', sessionId: '', toolUseIds: ['fc-2'] });
+    expect(opened).toMatchObject([
+      { filePath: '/p/a.txt', before: '', after: 'hi\n' },
+      { filePath: '/p/b.txt', before: 'line1\nline2\nline3', after: 'line1\nline two\nline3' },
+    ]);
+
+    // карточка подтверждения на создание файла: превью уходит в вебвью, ответ — сессии Codex
+    session.events.emit({
+      type: 'permission.request',
+      toolUseId: '0',
+      toolName: 'Write',
+      input: { file_path: '/p/a.txt' },
+      canAlwaysAllow: true,
+      always: { rules: [], directories: [], mode: 'acceptEdits' },
+      diff: { kind: 'write', filePath: '/p/a.txt', content: 'hi\n' },
+    });
+    await tick();
+    await tick();
+    expect(posted.some((p) => p.type === 'diff.preview')).toBe(true);
+    await controller.handle({ type: 'permission.respond', sessionId: '', toolUseId: '0', decision: 'allow-edits' });
+    expect(session.responded).toEqual([['0', 'allow-edits']]);
   });
 });

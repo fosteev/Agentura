@@ -7,6 +7,7 @@ import type {
   EffortLevel,
   ModelOption,
   PromptFile,
+  PermissionDecision,
   PromptImage,
   ResumeOptions,
   SessionCapabilities,
@@ -17,8 +18,9 @@ import type {
 } from '../types';
 import { EventHub } from '../stream';
 import type { LogFn } from '../claude/adapter';
-import { CodexRpcClient, type RpcProcess } from './client';
+import { CodexRpcClient, type RpcId, type RpcProcess } from './client';
 import { CodexEventMapper, type NotedPrompt } from './mapper';
+import { CodexApprovals } from './approvals';
 import type {
   AskForApproval,
   CodexRequestMethod,
@@ -77,14 +79,8 @@ const DEFAULT_GRACE_MS = 2000;
 /** Сколько `interrupt()` ждёт `turn/completed`, прежде чем вернуть управление. */
 const INTERRUPT_WAIT_MS = 10_000;
 const EFFORTS: readonly string[] = ['low', 'medium', 'high', 'xhigh', 'max'];
-/** Ответы-отказы на server requests, пока подтверждений нет (этап 4): по схеме 0.160.0, ход продолжается без действия. */
-const REFUSALS: Record<string, unknown> = {
-  'item/commandExecution/requestApproval': { decision: 'decline' },
-  'item/fileChange/requestApproval': { decision: 'decline' },
-  'item/permissions/requestApproval': { permissions: {}, scope: 'turn' },
-  'mcpServer/elicitation/request': { action: 'decline', content: null, _meta: null },
-};
-
+/** Счётчик сессий для префикса `toolUseId` карточек подтверждения (id запросов у каждого процесса с 0). */
+let approvalScopes = 0;
 function defaultSpawn(path: string, args: string[], options: CodexSpawnOptions): CodexProcess {
   return spawn(path, args, {
     cwd: options.cwd,
@@ -160,6 +156,7 @@ function isTimeout(error: unknown): boolean {
 class CodexSession implements AgentSession {
   readonly events: EventHub<AgentEvent>;
   private readonly mapper = new CodexEventMapper();
+  private readonly approvals: CodexApprovals;
   private readonly log: LogFn;
   private readonly proc: CodexProcess;
   private readonly client: CodexRpcClient;
@@ -205,18 +202,19 @@ class CodexSession implements AgentSession {
       { cwd: options.cwd, env: config.env ?? process.env },
     );
     this.proc.on('exit', () => (this.procExited = true));
+    this.approvals = new CodexApprovals({
+      emit: (event) => this.emit(event),
+      respond: (id, result) => this.client.respond(id, result),
+      respondError: (id, message, code) => this.client.respondError(id, message, code),
+      log: this.log,
+      changesOf: (itemId) => this.mapper.changesOf(itemId),
+    }, `codex-${++approvalScopes}:`);
     this.client = new CodexRpcClient(this.proc, {
       timeoutMs: config.timeoutMs ?? 15_000,
       maxLineBytes: MAX_LINE_BYTES,
       onNotification: (method, params) => this.onNotification(method, params),
-      // approval — этап 4: до него явный отказ по схеме (`decline`/пустой grant), а не ошибка RPC — так сервер
-      // гарантированно продолжает ход; остальное — `-32601`. Политику пользователя не ослабляем: отказ = отказ.
-      onServerRequest: (id, method) => {
-        const refusal = REFUSALS[method];
-        this.log('warn', `codex server request ${method} is not supported yet; ${refusal ? 'declined' : 'rejected'}`);
-        if (refusal) this.client.respond(id, refusal);
-        else this.client.respondError(id, `Method not supported: ${method}`, -32601);
-      },
+      // approval, вопросы и неизвестные запросы — брокер: каждый получает ответ (в том числе отказ)
+      onServerRequest: (id, method, params) => this.approvals.handle(id, method, params),
       onStderr: (line) => this.log('debug', `codex: ${line}`),
       onClose: (error) => this.onClientClose(error.message),
     });
@@ -239,13 +237,19 @@ class CodexSession implements AgentSession {
     return true;
   }
 
-  // Режимы разрешений, план, вопросы, компакция, задачи — Claude-специфика: no-op (UI прячет флагами, этап 3).
-  respondPermission(): boolean {
-    return false;
+  /**
+   * Решение по карточке подтверждения: `allow` → accept, `allow-always`/`allow-edits` → сессионное или
+   * постоянное решение, если запрос его допускает, `deny` → decline (текст отказа Codex не принимает).
+   */
+  respondPermission(toolUseId: string, decision: PermissionDecision): boolean {
+    if (this.closed) return false;
+    return this.approvals.respondPermission(toolUseId, decision);
   }
-  answerQuestion(): boolean {
-    return false;
+  answerQuestion(toolUseId: string, answers: Record<string, string>): boolean {
+    if (this.closed) return false;
+    return this.approvals.answerQuestion(toolUseId, answers);
   }
+  // Режимы разрешений, план, компакция, задачи — Claude-специфика: no-op (UI прячет флагами, этап 3).
   decidePlan(): boolean {
     return false;
   }
@@ -267,6 +271,8 @@ class CodexSession implements AgentSession {
   /** `turn/interrupt`, потом ждём `turn/completed` (процесс не убиваем); очередь сообщений Stop не сбрасывает (как у Claude). */
   async interrupt(): Promise<void> {
     this.generation++;
+    // открытые подтверждения хода закрываем отменой: иначе сервер ждёт ответа, а карточка висит
+    this.approvals.cancelAll();
     const turn = this.turn;
     if (!turn || turn.done.settled || this.closed) return;
     try {
@@ -294,6 +300,7 @@ class CodexSession implements AgentSession {
    */
   private abandon(turn: NonNullable<CodexSession['turn']>): void {
     if (turn.done.settled || this.closed) return;
+    this.approvals.cancelAll();
     this.emitAll(this.mapper.abandonTurn(turn.id, turn.prompt));
     turn.done.resolve();
   }
@@ -436,6 +443,12 @@ class CodexSession implements AgentSession {
       const ours = !p?.threadId || !this.id || p.threadId === this.id;
       const turnId = p?.turn?.id;
       if (method === 'turn/started' && ours && this.turn && turnId) this.turn.id ??= turnId;
+      if (method === 'serverRequest/resolved' && ours) {
+        this.approvals.resolved((params as { requestId: RpcId }).requestId);
+        return;
+      }
+      // `turn/completed` карточки НЕ снимает: сервер доделывает элементы и после конца хода (живой прогон —
+      // approval пришёл после `turn/completed`), открытый запрос он закрывает сам `serverRequest/resolved`.
       const events = this.mapper.map(method, params);
       this.emitAll(events);
       if (method === 'turn/completed' && events.some((e) => e.type === 'turn.result')) {
@@ -490,6 +503,8 @@ class CodexSession implements AgentSession {
 
   private close(reason: 'exit' | 'error' | 'disposed', message?: string): void {
     if (this.closed) return;
+    // отвечать некому (процесс ушёл или закрываем): карточки снимаем до `session.closed`
+    this.approvals.dropAll();
     this.closed = true;
     this.queue.length = 0;
     this.turn?.done.resolve();

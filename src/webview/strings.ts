@@ -166,7 +166,9 @@ const ru = {
           ? 'Разрешить правку файла?'
           : tool === 'Write'
             ? 'Разрешить запись файла?'
-            : `Разрешить ${tool}?`,
+            : tool === 'Permissions'
+              ? 'Разрешить дополнительные права?'
+              : `Разрешить ${tool}?`,
     modeTag: (mode: string) => `режим ${mode}`,
     subagent: 'субагент',
     allow: 'Разрешить',
@@ -185,7 +187,9 @@ const ru = {
           ? '.claude/settings.json'
           : d === 'userSettings'
             ? '~/.claude/settings.json'
-            : 'эта сессия',
+            : d === 'codexRules'
+              ? '~/.codex/rules'
+              : 'эта сессия',
     alwaysHint: (where: string) => `«всегда» пишется в ${where}`,
     sessionHint: '«всегда» — до конца сессии',
     plusDirs: (dir: string, more: number) =>
