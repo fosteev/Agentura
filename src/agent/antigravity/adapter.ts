@@ -15,6 +15,7 @@ import type {
   SessionInfo,
   SessionOptions,
 } from '../types';
+import { realpath } from 'node:fs/promises';
 import { EventHub } from '../stream';
 import type { LogFn } from '../claude/adapter';
 import { editResultOf } from './edits';
@@ -30,7 +31,9 @@ import {
   type AgySpawn,
 } from './process';
 import { userInputLine, type AgyEvent } from './protocol';
-import { defaultAgyRoot } from './storage';
+import { buildAgyHistory, userRequestText } from './history';
+import { AgySessionIndex, type AgyStateStore } from './sessionIndex';
+import { defaultAgyRoot, readConversationSummaries, readTranscriptHistory } from './storage';
 
 export interface AntigravityAdapterConfig {
   /** Путь к `agy` (`antigravityEngine.path()`); нет пути — `createSession` бросает «не найден». */
@@ -58,6 +61,8 @@ export interface AntigravityAdapterConfig {
   transcriptDelayMs?: number;
   /** Общий предел подгрузки диффа одной правки, мс (по умолчанию 2000): не успели — карточка без диффа, лента не стоит. */
   editTimeoutMs?: number;
+  /** Хранилище Agentura (`globalState`) для своих имён бесед и индекса бесед; нет — только в памяти процесса. */
+  state?: AgyStateStore;
   /** Сырые события agy (smoke, запись фикстур). */
   trace?: (event: AgyEvent) => void;
 }
@@ -96,30 +101,83 @@ export function isAgySession(session: AgentSession): session is AgyRetrySession 
   return typeof (session as Partial<AgyRetrySession>).retryWithMode === 'function';
 }
 
+/** Заголовок в одну строку: переводы строк и повторные пробелы схлопываем, длинное обрезаем. */
+function tidy(text: string): string {
+  const flat = text.replace(/\s+/g, ' ').trim();
+  return flat.length > 200 ? `${flat.slice(0, 199)}…` : flat;
+}
+
+/** Совпадение пути воркспейса беседы с папкой чата: точное (без слеша на конце; на Windows — без регистра), в т.ч. по realpath. */
+async function workspaceMatcher(dir: string): Promise<(path: string) => boolean> {
+  const norm = (p: string): string => {
+    const trimmed = p.length > 1 ? p.replace(/[\\/]+$/, '') : p;
+    return process.platform === 'win32' ? trimmed.toLowerCase() : trimmed;
+  };
+  const wanted = new Set([norm(dir)]);
+  const real = await realpath(dir).catch(() => undefined);
+  if (real) wanted.add(norm(real));
+  return (path) => wanted.has(norm(path));
+}
+
 export class AntigravityAdapter implements AgentAdapter {
   readonly id = 'antigravity';
   private modelsCache: Promise<ModelOption[]> | undefined;
 
-  constructor(private readonly config: AntigravityAdapterConfig = {}) {}
+  constructor(private readonly config: AntigravityAdapterConfig = {}) {
+    this.index = new AgySessionIndex(config.state);
+  }
 
   async createSession(options: SessionOptions): Promise<AgentSession> {
-    return new AgySession(this.config, await this.executable(), options, () => this.models(), undefined);
+    return new AgySession(this.config, await this.executable(), options, () => this.models(), undefined, this.index);
   }
 
   async resumeSession(sessionId: string, options: ResumeOptions): Promise<AgentSession> {
-    return new AgySession(this.config, await this.executable(), options, () => this.models(), sessionId);
+    return new AgySession(this.config, await this.executable(), options, () => this.models(), sessionId, this.index);
   }
 
-  // История, список и переименование — этап 3 (хранилище agy читает `storage.ts`): пока пусто, а не выдумки.
-  async listSessions(): Promise<SessionInfo[]> {
-    return [];
+  private readonly index: AgySessionIndex;
+
+  /** Список бесед папки: `conversation_summaries.db` (если есть `node:sqlite`) плюс начатые из Agentura (индекс). */
+  async listSessions(dir: string): Promise<SessionInfo[]> {
+    const root = this.config.agyRoot ?? defaultAgyRoot();
+    const match = await workspaceMatcher(dir);
+    const byId = new Map<string, SessionInfo>();
+    for (const row of (await readConversationSummaries(root, this.config.log)) ?? []) {
+      if (!row.workspaces.some(match)) continue;
+      const preview = tidy(userRequestText(row.preview));
+      const info: SessionInfo = { id: row.id, title: tidy(row.title) || preview || row.id, cwd: dir, updatedAt: row.lastModified };
+      if (preview) info.firstPrompt = preview;
+      byId.set(row.id, info);
+    }
+    for (const entry of this.index.entries()) {
+      if (!match(entry.cwd)) continue;
+      const known = byId.get(entry.id);
+      if (known) {
+        known.createdAt = entry.createdAt;
+        continue;
+      }
+      const info: SessionInfo = { id: entry.id, title: entry.firstPrompt || entry.id, cwd: dir, createdAt: entry.createdAt, updatedAt: entry.updatedAt };
+      if (entry.firstPrompt) info.firstPrompt = entry.firstPrompt;
+      byId.set(entry.id, info);
+    }
+    for (const info of byId.values()) info.title = this.index.nameOf(info.id) ?? info.title;
+    return [...byId.values()].sort((a, b) => b.updatedAt - a.updatedAt);
   }
 
-  async loadHistory(): Promise<SessionHistory> {
-    return { events: [], turns: 0, skippedTurns: 0 };
+  async loadHistory(sessionId: string, _cwd: string, options: { live?: boolean; maxTurns?: number } = {}): Promise<SessionHistory> {
+    const { steps, skippedTurns } = await readTranscriptHistory(this.config.agyRoot ?? defaultAgyRoot(), sessionId, this.config.log);
+    return buildAgyHistory(steps, {
+      silentPrompts: [AGY_RETRY_PROMPT],
+      skippedBefore: skippedTurns,
+      ...(options.live !== undefined ? { live: options.live } : {}),
+      ...(options.maxTurns !== undefined ? { maxTurns: options.maxTurns } : {}),
+    });
   }
 
-  async renameSession(): Promise<void> {}
+  /** У agy API переименования нет: имя хранит Agentura (`~/.gemini` только читаем). */
+  async renameSession(sessionId: string, title: string): Promise<void> {
+    await this.index.rename(sessionId, title);
+  }
 
   async accountInfo(): Promise<AccountInfo> {
     return {};
@@ -207,6 +265,8 @@ class AgySession implements AgyRetrySession {
   private stale = false;
   private closed = false;
   private initEmitted = false;
+  /** Первое сообщение новой беседы — для индекса Agentura (запасной список без `node:sqlite`). */
+  private firstPrompt: string | undefined;
   private draining = false;
   /** Растёт на каждый `interrupt()`: сообщения, взятые из очереди до него, процессу не уходят. */
   private generation = 0;
@@ -220,6 +280,7 @@ class AgySession implements AgyRetrySession {
     options: SessionOptions | ResumeOptions,
     private readonly loadModels: () => Promise<ModelOption[]>,
     resume: string | undefined,
+    private readonly index: AgySessionIndex,
   ) {
     this.log = config.log ?? (() => {});
     this.cwd = options.cwd;
@@ -247,6 +308,10 @@ class AgySession implements AgyRetrySession {
     // image-блоки у agy в бинарнике есть, но не проверены; document-блоков нет: не отправляем и не показываем
     if (images?.length) this.log('warn', `agy: ${images.length} image(s) are not supported yet and were dropped`);
     if (files?.length) this.log('warn', `agy: ${files.length} file attachment(s) are not supported and were dropped`);
+    if (this.firstPrompt === undefined && !this.resumedId) {
+      this.firstPrompt = text;
+      if (this.id) this.noteIndex();
+    }
     return this.enqueue({ text });
   }
 
@@ -259,6 +324,14 @@ class AgySession implements AgyRetrySession {
     if (this.effective(mode) !== mode) return false;
     await this.setMode(mode);
     return this.enqueue({ text: AGY_RETRY_PROMPT, silent: true });
+  }
+
+  private noteIndex(): void {
+    const id = this.id;
+    if (!id) return;
+    this.index
+      .note({ id, cwd: this.cwd, at: Date.now(), ...(this.firstPrompt ? { firstPrompt: this.firstPrompt } : {}) })
+      .catch((error) => this.log('warn', `agy session index: ${String(error)}`));
   }
 
   private enqueue(prompt: NotedPrompt): boolean {
@@ -508,6 +581,9 @@ class AgySession implements AgyRetrySession {
       // повторные `init` (процесс пересоздан) ленте не нужны: id и модель те же, что мы сами передали
       if (!wasInit) {
         this.initEmitted = true;
+        // новая беседа попадает в индекс с первым сообщением (`send`), а не на `init`: пустая открытая вкладка —
+        // не беседа (база agy такие тоже отбрасывает, `step_count = 0`)
+        if (this.resumedId || this.firstPrompt !== undefined) this.noteIndex();
         this.emit(init);
       }
       return;

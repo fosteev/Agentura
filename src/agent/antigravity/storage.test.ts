@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { editResultOf } from './edits';
-import { findEditDetail, readEditDetail, readTranscriptFull, transcriptFullPath } from './storage';
+import { countMark, findEditDetail, readEditDetail, readTranscriptHistory, transcriptFullPath } from './storage';
 
 const ID = '00000000-0000-4000-8000-000000000001';
 const fixture = (name: string) => readFileSync(new URL(`../../../test/fixtures/antigravity/${name}`, import.meta.url), 'utf8');
@@ -23,18 +23,18 @@ async function put(content: string, id = ID): Promise<void> {
 
 describe('storage: transcript_full', () => {
   it('читает шаги; нет файла, мусорный id и оборванная строка — мягко', async () => {
-    expect(await readTranscriptFull(root, ID)).toEqual([]);
+    expect((await readTranscriptHistory(root, ID)).steps).toEqual([]);
     expect(transcriptFullPath(root, '../../etc')).toBeUndefined();
-    expect(await readTranscriptFull(root, '../x')).toEqual([]);
+    expect((await readTranscriptHistory(root, '../x')).steps).toEqual([]);
     await put(`${fixture('transcript_full.jsonl')}{"step_index":9,"ty`);
-    const steps = await readTranscriptFull(root, ID);
+    const steps = (await readTranscriptHistory(root, ID)).steps;
     expect(steps.map((s) => s.step_index)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
     expect(steps[3]?.tool_calls?.[0]?.name).toBe('replace_file_content');
   });
 
   it('findEditDetail: вызов в предыдущем PLANNER_RESPONSE, результат — в GENERIC с тем же индексом, что шаг tool', async () => {
     await put(fixture('transcript_full.jsonl'));
-    const steps = await readTranscriptFull(root, ID);
+    const steps = (await readTranscriptHistory(root, ID)).steps;
     const found = findEditDetail(steps, 4, 'replace_file_content', '/tmp/agentura-agy/hello.txt');
     expect(found?.args).toMatchObject({ TargetContent: 'hi', ReplacementContent: 'hello world' });
     expect(found?.resultText).toContain('[diff_block_start]');
@@ -68,7 +68,34 @@ describe('storage: transcript_full', () => {
 
   it('не обычный файл (папка/FIFO на месте транскрипта) — пусто, без зависания', async () => {
     await mkdir(join(root, 'brain', ID, '.system_generated', 'logs', 'transcript_full.jsonl'), { recursive: true });
-    expect(await readTranscriptFull(root, ID)).toEqual([]);
+    expect((await readTranscriptHistory(root, ID)).steps).toEqual([]);
+  });
+
+  it('история больше окна: последние целые ходы, ранние только посчитаны', async () => {
+    const line = (step_index: number, type: string, content = 'x'.repeat(200)) => JSON.stringify({ step_index, type, content });
+    const turns = Array.from({ length: 10 }, (_, t) => [line(t * 2, 'USER_INPUT', `<USER_REQUEST>q${t}</USER_REQUEST>`), line(t * 2 + 1, 'PLANNER_RESPONSE')].join('\n'));
+    await put(`${turns.join('\n')}\n`);
+    const whole = await readTranscriptHistory(root, ID);
+    expect(whole).toMatchObject({ skippedTurns: 0 });
+    expect(whole.steps).toHaveLength(20);
+    const warns: string[] = [];
+    const cut = await readTranscriptHistory(root, ID, (_l, m) => warns.push(m), 900);
+    expect(cut.steps[0]?.type).toBe('USER_INPUT');
+    const kept = cut.steps.filter((s) => s.type === 'USER_INPUT').length;
+    expect(kept).toBeGreaterThan(0);
+    expect(kept + cut.skippedTurns).toBe(10);
+    expect(warns.some((m) => m.includes('latest turns'))).toBe(true);
+  });
+
+  it('countMark: маркер на стыке чанков считается один раз; граница по байтам', async () => {
+    const mark = Buffer.from('"type":"USER_INPUT"');
+    const body = Array.from({ length: 5 }, (_, i) => `{"step_index":${i},"type":"USER_INPUT","content":"\\"type\\":\\"USER_INPUT\\""}`).join('\n');
+    await put(body);
+    const path = transcriptFullPath(root, ID) as string;
+    for (const hwm of [3, 7, 19, 20, 64, 65536]) expect(await countMark(path, mark, Buffer.byteLength(body), hwm)).toBe(5);
+    const second = body.indexOf('\n') + 1;
+    expect(await countMark(path, mark, second, 5)).toBe(1);
+    expect(await countMark(path, mark, 0)).toBe(0);
   });
 
   it('readEditDetail читает хвост: окно меньше файла — вызов всё равно находится (окно расширяется)', async () => {

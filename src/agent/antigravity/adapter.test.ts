@@ -452,10 +452,8 @@ describe('AntigravityAdapter: resume, сбои, закрытие', () => {
     s2.dispose();
   });
 
-  it('история и список пока пусты, Claude-специфика — no-op', async () => {
+  it('Claude-специфика — no-op (список и история — sessions.test.ts)', async () => {
     const { adapter } = setup();
-    expect(await adapter.listSessions()).toEqual([]);
-    expect(await adapter.loadHistory()).toEqual({ events: [], turns: 0, skippedTurns: 0 });
     const session = await adapter.createSession(OPTIONS);
     expect(session.respondPermission('t', 'allow')).toBe(false);
     expect(session.compact()).toBe(false);
