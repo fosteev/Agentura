@@ -12,6 +12,12 @@ describe('protocol', () => {
     expect(isFromWebview({ type: 'fonts.add', kind: 'code' })).toBe(true);
     expect(isFromWebview({ type: 'fonts.add', kind: 'panels' })).toBe(true);
     expect(isFromWebview({ type: 'fonts.remove', family: 'Onest' })).toBe(true);
+    // roadmap 17: Remote Control вкладки
+    expect(isFromWebview({ type: 'remote.set', on: true })).toBe(true);
+    expect(isFromWebview({ type: 'remote.set', sessionId: 's', on: false })).toBe(true);
+    expect(isFromWebview({ type: 'remote.set', on: 'yes' })).toBe(false);
+    expect(isFromWebview({ type: 'remote.set' })).toBe(false);
+    expect(isFromWebview({ type: 'remote.set', sessionId: 5, on: true })).toBe(false);
     expect(isFromWebview({ type: 'unknown' })).toBe(false);
     expect(isFromWebview({ type: 'toString' })).toBe(false);
     expect(isFromWebview(null)).toBe(false);

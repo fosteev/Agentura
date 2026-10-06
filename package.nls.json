@@ -22,6 +22,8 @@
   "config.defaultPermissionMode.enum.bypassPermissions": "No confirmations (only if agentura.allowBypassPermissions is on, otherwise acts as manual)",
   "config.defaultEffort.description": "Effort of new sessions (how much to think before answering); empty means the engine default.",
   "config.defaultEffort.enum.default": "Engine default",
+  "config.remoteControl.description": "Turn on Remote Control for every new and resumed Claude tab: the session is visible and controllable from claude.ai/code and the Claude mobile app.",
+  "config.remoteControlNamePrefix.description": "Session name prefix on claude.ai (\"prefix · title\"); empty means the machine name.",
   "config.defaultModel.description": "Default model for new sessions (empty means the engine default).",
   "config.claudeExecutable.description": "Path to the claude executable (empty: look for the system one: PATH, ~/.local/bin, Homebrew). The version is checked on the first engine start. User settings only: workspace settings are ignored.",
   "config.codexExecutable.description": "Path to the codex executable (empty: look for the system one: PATH, ~/.local/bin, Homebrew). User settings only: workspace settings are ignored.",

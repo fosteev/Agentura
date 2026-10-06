@@ -105,6 +105,8 @@ export const AGENT_EVENT_TYPES = [
   'agent.end',
   'limit.update',
   'mode.changed',
+  'remote.state', // roadmap 17: мост Remote Control (connecting/on/off/error, ссылка claude.ai)
+  'remote.prompt', // roadmap 17: промпт с claude.ai или телефона
   'session.closed', // этап 2 (приёмка): движок завершился / сессия закрыта — последнее событие потока
   'error',
 ] as const satisfies readonly AgentEvent['type'][];
@@ -329,6 +331,8 @@ export type FromWebview =
   | { type: 'mode.set'; sessionId: string; mode: PermissionMode }
   | { type: 'model.set'; sessionId: string; model: string }
   | { type: 'effort.set'; sessionId: string; effort: string }
+  /** Roadmap 17: Remote Control вкладки — кнопка «rc», `/rc`, `/remote-control`. Только Claude. */
+  | { type: 'remote.set'; sessionId?: string; on: boolean }
   | { type: 'compact'; sessionId: string }
   | { type: 'agent.stop'; sessionId: string; taskId: string }
   /**
@@ -454,6 +458,7 @@ const FROM_WEBVIEW_TYPES: Record<FromWebview['type'], true> = {
   'mode.set': true,
   'model.set': true,
   'effort.set': true,
+  'remote.set': true,
   'compact': true,
   'agent.stop': true,
   'agent.transcript': true,
@@ -505,6 +510,7 @@ const FIELD_CHECKS: Partial<Record<FromWebview['type'], (m: Record<string, unkno
   'agy.retry': (m) => m.mode === 'acceptEdits' || m.mode === 'bypassPermissions',
   'agents.openGraph': (m) => m.agentId === undefined || typeof m.agentId === 'string',
   'agents.snapshot': (m) => typeof m.sessionId === 'string' && isAgentGraphView(m.graph),
+  'remote.set': (m) => bool(m.on) && (m.sessionId === undefined || str(m.sessionId)),
   'agent.stop': (m) => typeof m.sessionId === 'string' && typeof m.taskId === 'string',
   'agent.transcript': (m) =>
     typeof m.sessionId === 'string' && typeof m.agentId === 'string' && typeof m.taskId === 'string',

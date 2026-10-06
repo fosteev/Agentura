@@ -95,6 +95,8 @@ export type SettingKey =
   | 'allowBypassPermissions'
   | 'defaultModel'
   | 'defaultEffort'
+  | 'remoteControl'
+  | 'remoteControlNamePrefix'
   | 'contextThresholds'
   | 'usagePollMinutes'
   | 'limits.readKeychain'
@@ -122,6 +124,8 @@ export const SETTING_KEYS: readonly SettingKey[] = [
   'allowBypassPermissions',
   'defaultModel',
   'defaultEffort',
+  'remoteControl',
+  'remoteControlNamePrefix',
   'contextThresholds',
   'usagePollMinutes',
   'limits.readKeychain',
@@ -165,6 +169,10 @@ export interface SettingsValues {
   defaultModel: string;
   /** Пусто — выбор движка. */
   defaultEffort: '' | EffortLevel;
+  /** Remote Control (roadmap 17) для каждой новой и восстановленной вкладки Claude. */
+  remoteControl: boolean;
+  /** Префикс имени сессии на claude.ai; пусто — имя машины. */
+  remoteControlNamePrefix: string;
   contextThresholds: [number, number];
   usagePollMinutes: number;
   'limits.readKeychain': boolean;
@@ -357,11 +365,13 @@ export function validateSetting(key: SettingKey, value: unknown, lang: ErrLang =
         ? { ok: true, value }
         : bad(t.allowedOrEmpty(EFFORT_LEVELS.join(', ')));
     case 'allowBypassPermissions':
+    case 'remoteControl':
     case 'limits.readKeychain':
     case 'sessionList.context':
     case 'sessionList.time':
       return typeof value === 'boolean' ? { ok: true, value } : bad(t.yesNo);
     case 'defaultModel':
+    case 'remoteControlNamePrefix':
     case 'claudeExecutable':
     case 'codexExecutable':
     case 'antigravityExecutable':
@@ -438,6 +448,8 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
     allowBypassPermissions: cfg.get<unknown>('allowBypassPermissions') === true,
     defaultModel: str('defaultModel'),
     defaultEffort: isEffort(effort) ? effort : '',
+    remoteControl: cfg.get<unknown>('remoteControl') === true,
+    remoteControlNamePrefix: str('remoteControlNamePrefix'),
     // кривые пороги показываем как есть, если это два числа (ошибку покажет поле); иначе — по умолчанию
     contextThresholds:
       Array.isArray(th) && th.length === 2 && th.every((n) => typeof n === 'number')

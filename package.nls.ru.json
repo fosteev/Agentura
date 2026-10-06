@@ -22,6 +22,8 @@
   "config.defaultPermissionMode.enum.bypassPermissions": "Без подтверждений (только если включён agentura.allowBypassPermissions, иначе — как manual)",
   "config.defaultEffort.description": "Effort новых сессий (сколько думать перед ответом); пусто — выбор движка.",
   "config.defaultEffort.enum.default": "Выбор движка",
+  "config.remoteControl.description": "Включать Remote Control для каждой новой и восстановленной вкладки Claude: сессия видна и управляема с claude.ai/code и в мобильном приложении Claude.",
+  "config.remoteControlNamePrefix.description": "Префикс имени сессии на claude.ai («префикс · заголовок»); пусто — имя машины.",
   "config.defaultModel.description": "Модель по умолчанию для новых сессий (пусто — выбор движка).",
   "config.claudeExecutable.description": "Путь к исполняемому файлу claude (пусто — искать системный: PATH, ~/.local/bin, Homebrew). Версия проверяется при первом запуске движка. Только в пользовательских настройках: настройки рабочей папки игнорируются.",
   "config.codexExecutable.description": "Путь к исполняемому файлу codex (пусто — искать системный: PATH, ~/.local/bin, Homebrew). Только в пользовательских настройках: настройки рабочей папки игнорируются.",

@@ -23,6 +23,8 @@ export interface ProviderFeatures {
   images: boolean;
   /** Файлы (pdf/текст) как `document`-блоки. */
   files: boolean;
+  /** Remote Control (roadmap 17): кнопка «rc», `/rc` — сессия на claude.ai и в телефоне. Только Claude. */
+  remote: boolean;
 }
 
 export const CLAUDE_FEATURES: Readonly<ProviderFeatures> = {
@@ -35,6 +37,7 @@ export const CLAUDE_FEATURES: Readonly<ProviderFeatures> = {
   questions: true,
   images: true,
   files: true,
+  remote: true,
 };
 
 /**
@@ -54,6 +57,7 @@ export const CODEX_FEATURES: Readonly<ProviderFeatures> = {
   questions: true,
   images: true,
   files: false,
+  remote: false,
 };
 
 /**
@@ -71,6 +75,7 @@ export const ANTIGRAVITY_FEATURES: Readonly<ProviderFeatures> = {
   questions: false,
   images: false,
   files: false,
+  remote: false,
 };
 
 export function providerFeatures(provider: AgentProvider): ProviderFeatures {

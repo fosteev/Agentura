@@ -237,8 +237,11 @@ export type AgentEvent =
       type: 'permission.resolved';
       toolUseId: string;
       decision: 'allow' | 'deny';
-      /** `user` — ответ из интерфейса; `abort` — движок отменил запрос (прерывание, закрытие). */
-      by: 'user' | 'abort';
+      /**
+       * `user` — ответ из интерфейса; `remote` — ответили на claude.ai / с телефона (Remote Control);
+       * `abort` — движок отменил запрос (прерывание, закрытие).
+       */
+      by: 'user' | 'remote' | 'abort';
     })
   | (Base & {
       type: 'usage.message';
@@ -343,6 +346,20 @@ export type AgentEvent =
       resetsAt?: number;
     })
   | (Base & { type: 'mode.changed'; mode: PermissionMode })
+  /**
+   * Remote Control (roadmap 17): состояние моста к claude.ai. `on` — сессия видна на claude.ai/code и в
+   * приложении, `url` — её ссылка. `error` — причина: нет токена, OAuth отвергнут, сервер отказал, сеть,
+   * транспорт закрыт; `superseded` (при `off`) — сессию подхватил другой воркер.
+   */
+  | (Base & {
+      type: 'remote.state';
+      state: 'connecting' | 'on' | 'off' | 'error';
+      url?: string;
+      error?: 'no-token' | 'oauth' | 'rejected' | 'network' | 'closed' | 'superseded';
+      detail?: string;
+    })
+  /** Промпт, набранный на claude.ai (`web`) или в мобильном приложении (`phone`): уже ушёл движку. */
+  | (Base & { type: 'remote.prompt'; uuid: string; text: string; from: 'phone' | 'web' })
   | (Base & {
       type: 'session.closed';
       /** `exit` — процесс движка завершился; `error` — поток оборвался ошибкой; `disposed` — закрыли мы. */
@@ -455,6 +472,11 @@ export interface AgentSession {
   capabilities(): Promise<SessionCapabilities>;
   /** Точный контекст от движка; то же уходит событием `context.usage` после каждого хода. */
   contextUsage(): Promise<AgentEventOf<'context.usage'> | undefined>;
+  /**
+   * Remote Control (roadmap 17): сессия видна и управляема с claude.ai/code и телефона. Состояние приходит
+   * событием `remote.state`. Необязателен: есть только у Claude (`features.remote`).
+   */
+  setRemote?(on: boolean): Promise<void>;
   dispose(): void;
 }
 

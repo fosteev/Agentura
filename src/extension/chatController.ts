@@ -102,6 +102,8 @@ export interface ChatDeps {
     defaultPermissionMode?: string | undefined;
     /** `agentura.defaultEffort` (пусто — выбор движка): применяется к новым сессиям. */
     defaultEffort?: string | undefined;
+    /** `agentura.remoteControl`: Remote Control для каждой новой и восстановленной вкладки Claude (roadmap 17). */
+    remoteControl?: boolean | undefined;
   };
   /** Лимиты подписки (этап 4): `refresh` ограничен кулдауном сервиса, ответ уходит в webview. */
   usage?: { refresh(): Promise<{ windows: LimitWindow[]; updatedAt: number; error?: string }> };
@@ -281,6 +283,13 @@ export class ChatController {
   /** Режим и effort новой сессии из настроек: webview получает их снова, если готов позже создания сессии. */
   private defaults: Extract<ToWebview, { type: 'session.defaults' }> | undefined;
   private lastContext: Extract<AgentEvent, { type: 'context.usage' }> | undefined;
+  /** Последнее состояние моста Remote Control: кнопка «rc» после пересева webview. */
+  private lastRemote: Extract<AgentEvent, { type: 'remote.state' }> | undefined;
+  /**
+   * Выбор Remote Control во вкладке (кнопка «rc», `/rc`): переживает `/clear` и смену сессии вкладки.
+   * Нет — по настройке `agentura.remoteControl`.
+   */
+  private remoteWanted: boolean | undefined;
   private turnStartedAt: number | undefined;
   /** С прошлого итога приходил `turn.start` — иначе итог закрывает самое старое сообщение очереди. */
   private turnSeen = false;
@@ -519,6 +528,7 @@ export class ChatController {
     this.postAttach();
     if (this.lastInit) this.forward(id, this.lastInit);
     if (this.lastContext) this.forward(id, this.lastContext);
+    if (this.lastRemote) this.forward(id, this.lastRemote);
     if (this.title) this.forward(id, { type: 'session.title', title: this.title });
     if (this.inTurn && this.turnStartedAt !== undefined) {
       this.forward(id, { type: 'turn.start', at: this.turnStartedAt });
@@ -752,6 +762,11 @@ export class ChatController {
       default:
         break;
     }
+    // выключить Remote Control у вкладки без сессии — нечего: движок ради этого не поднимаем
+    if (m.type === 'remote.set' && !m.on && !this.session) {
+      this.remoteWanted = false;
+      return;
+    }
     const session = await this.ensureSession();
     if (!session) {
       if (m.type === 'send' && !this.disposed) {
@@ -817,6 +832,15 @@ export class ChatController {
           return;
         case 'compact':
           session.compact();
+          return;
+        // Remote Control (roadmap 17): только Claude — у других движков `setRemote` нет
+        case 'remote.set':
+          this.remoteWanted = m.on;
+          if (!session.setRemote) {
+            this.log.warn(`remote.set: у движка ${this.engineProvider} Remote Control нет`);
+            return;
+          }
+          await session.setRemote(m.on);
           return;
         case 'agent.stop':
           await session.stopTask(m.taskId);
@@ -1399,6 +1423,8 @@ export class ChatController {
         this.current = session;
         this.unsubscribe = session.events.on((e) => this.onEvent(session, e));
         this.log.info('Сессия агента создана');
+        // Remote Control по настройке — новой и восстановленной вкладке Claude; ошибку покажет `remote.state`
+        if (claude && (this.remoteWanted ?? s.remoteControl) && session.setRemote) void session.setRemote(true);
         return session;
       });
       this.session.catch((e: unknown) => {
@@ -1486,6 +1512,10 @@ export class ChatController {
         break;
       case 'context.usage':
         if (e.source === 'engine' && !e.agentId) this.lastContext = e;
+        break;
+      case 'remote.state':
+        this.lastRemote = e;
+        this.log.info(`Remote Control: ${e.state}${e.error ? ` (${e.error}${e.detail ? ` ${e.detail}` : ''})` : ''}`);
         break;
       case 'mode.changed':
         // пересев webview (`lastInit` уходит после истории) не должен вернуть меню к режиму начала сессии
@@ -1601,6 +1631,7 @@ export class ChatController {
     this.lastInit = undefined;
     this.defaults = undefined;
     this.lastContext = undefined;
+    this.lastRemote = undefined;
     this.attached = { pdfPages: 0, chars: 0 };
     this.usedDrop = false;
     this.turnStartedAt = undefined;

@@ -36,6 +36,7 @@ import { AsyncQueue, EventHub } from '../stream';
 import type { Lang } from '../../shared/l10n';
 import { ClaudeEventMapper } from './mapper';
 import { PermissionBroker } from './permissions';
+import { RemoteBridge, type RemoteConfig } from './remote';
 import { buildHistory, DEFAULT_MAX_TURNS, findRetryPoint, type HistoryMessage } from './history';
 import { defaultClaudeHome, transcriptPath } from '../../data/sessions';
 import { readTranscriptExtras } from '../../data/transcriptExtras';
@@ -89,6 +90,8 @@ export interface ClaudeAdapterConfig {
   settingSources?: ('user' | 'project' | 'local')[];
   /** Диагностика: каждое сырое сообщение SDK до маппинга (smoke, отладка). */
   trace?: (message: unknown) => void;
+  /** Remote Control (roadmap 17): модуль моста, токен, префикс имени, bypass — инъекцией для тестов. */
+  remote?: RemoteConfig;
 }
 
 /**
@@ -486,6 +489,13 @@ class ClaudeSession implements AgentSession {
   private resumedId: string | undefined;
   /** Effort, заданный расширением (при создании или из меню): движок его в `init` не сообщает. */
   private effort: EffortLevel | undefined;
+  /** Модель из последнего `session.init` (или из опций) — для сессии на claude.ai. */
+  private model: string | undefined;
+  /** Мост Remote Control: создаётся при первом включении. */
+  private remote: RemoteBridge | undefined;
+  private readonly remoteConfig: RemoteConfig | undefined;
+  private readonly cwd: string;
+  private readonly title: string | undefined;
 
   constructor(
     sdk: SdkModule,
@@ -500,6 +510,10 @@ class ClaudeSession implements AgentSession {
       this.log('error', `подписчик событий упал: ${String(e)}`),
     );
     this.resumedId = resume;
+    this.remoteConfig = config.remote;
+    this.cwd = options.cwd;
+    this.title = options.title;
+    this.model = options.model;
     this.mapper = new ClaudeEventMapper({
       baselineCostUsd: resume ? options.baselineCostUsd : 0,
       ...(config.lang ? { lang: config.lang } : {}),
@@ -553,12 +567,14 @@ class ClaudeSession implements AgentSession {
       images?.length ? images : undefined,
       files?.length ? files : undefined,
     );
-    this.input.push({
+    const message: SDKUserMessage = {
       type: 'user',
       message: { role: 'user', content: userContent(text, images, files) },
       parent_tool_use_id: null,
       uuid: uuid as SDKUserMessage['uuid'],
-    });
+    };
+    this.input.push(message);
+    this.remote?.notePrompt(message);
     return true;
   }
 
@@ -634,6 +650,34 @@ class ClaudeSession implements AgentSession {
     return result;
   }
 
+  /** Remote Control вкладки: включение — мост к claude.ai (лениво), выключение — досылка и закрытие. */
+  async setRemote(on: boolean): Promise<void> {
+    if (!on) {
+      await this.remote?.disable();
+      return;
+    }
+    if (this.closed) return;
+    this.remote ??= new RemoteBridge(
+      {
+        cwd: this.cwd,
+        title: this.title,
+        model: () => this.model,
+        closed: () => this.closed,
+        emit: (e) => this.emit(e),
+        prompt: (message, text) => {
+          this.mapper.notePrompt(text, message.uuid as string);
+          this.input.push(message);
+        },
+        resolvePermission: (toolUseId, result) => this.broker.resolveExternal(toolUseId, result),
+        query: this.q,
+        log: this.log,
+      },
+      this.remoteConfig,
+    );
+    this.broker.observer = this.remote;
+    await this.remote.enable();
+  }
+
   dispose(): void {
     if (this.closed) return;
     this.close('disposed');
@@ -652,6 +696,8 @@ class ClaudeSession implements AgentSession {
     if (this.closed) return;
     this.closed = true;
     this.broker.cancelAll();
+    // мост — без ожидания: закрытие сессии не ждёт досылки на claude.ai
+    if (this.remote) void this.remote.disable();
     this.input.end();
     this.events.emit({ type: 'session.closed', reason, ...(message ? { message } : {}) });
     this.events.close();
@@ -667,6 +713,7 @@ class ClaudeSession implements AgentSession {
       for await (const message of this.q) {
         if (this.closed) break;
         this.trace?.(message);
+        this.remote?.mirror(message);
         for (const event of this.mapper.map(message)) {
           this.emit(
             event.type === 'session.init' && this.effort
@@ -674,6 +721,7 @@ class ClaudeSession implements AgentSession {
               : event,
           );
           // Окно до первого ответа неизвестно: `getContextUsage()` работает и до хода (раздел 4 пробы).
+          if (event.type === 'session.init') this.model = event.model || this.model;
           if (event.type === 'session.init' && first) {
             first = false;
             void this.emitContext();

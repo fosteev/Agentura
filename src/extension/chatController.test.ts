@@ -80,6 +80,10 @@ class FakeSession implements AgentSession {
   async contextUsage() {
     return undefined;
   }
+  remotes: boolean[] = [];
+  async setRemote(on: boolean) {
+    this.remotes.push(on);
+  }
   async capabilities(): Promise<SessionCapabilities> {
     return { models: [{ value: 'opus', displayName: 'Opus' }], commands: [] };
   }
@@ -647,6 +651,54 @@ describe('ChatController', () => {
     await controller.handle({ type: 'effort.set', sessionId: '', effort: 'nope' });
     const s = sessions[0]!;
     expect([s.interrupts, s.modes, s.compacts]).toEqual([1, ['plan'], 1]);
+  });
+
+  it('remote.set доходит до сессии; выключение без сессии движок не поднимает', async () => {
+    const { controller, sessions } = setup();
+    await controller.handle({ type: 'remote.set', on: false });
+    expect(sessions).toHaveLength(0);
+    await controller.handle({ type: 'remote.set', sessionId: '', on: true });
+    await controller.handle({ type: 'remote.set', on: false });
+    expect(sessions[0]!.remotes).toEqual([true, false]);
+  });
+
+  it('выбор rc во вкладке переживает новую сессию (/clear) и перекрывает настройку', async () => {
+    const { controller, sessions, deps } = setup();
+    controller.start();
+    await tick();
+    await controller.handle({ type: 'remote.set', on: true });
+    await controller.handle({ type: 'session.new' });
+    await controller.handle({ type: 'send', sessionId: '', text: 'hi' });
+    await tick();
+    expect(sessions).toHaveLength(2);
+    expect(sessions[1]!.remotes).toEqual([true]);
+    // выключили руками — настройка «вкл» новую сессию вкладки больше не включает
+    deps.settings = () => ({ allowBypass: false, remoteControl: true });
+    await controller.handle({ type: 'remote.set', on: false });
+    await controller.handle({ type: 'session.new' });
+    await controller.handle({ type: 'send', sessionId: '', text: 'hi' });
+    await tick();
+    expect(sessions[2]!.remotes).toEqual([]);
+  });
+
+  it('agentura.remoteControl: новая сессия Claude включает Remote Control сама', async () => {
+    const { controller, sessions, deps } = setup();
+    deps.settings = () => ({ allowBypass: false, remoteControl: true });
+    controller.start();
+    await tick();
+    expect(sessions[0]!.remotes).toEqual([true]);
+  });
+
+  it('remote.state уходит в webview как событие агента', async () => {
+    const { controller, sessions, posted } = setup();
+    controller.start();
+    await tick();
+    sessions[0]!.emit({ type: 'remote.state', state: 'on', url: 'https://claude.ai/code/cse_1' });
+    expect(posted).toContainEqual({
+      type: 'agent.event',
+      sessionId: 'sess-1',
+      event: { type: 'remote.state', state: 'on', url: 'https://claude.ai/code/cse_1' },
+    });
   });
 
   it('files.find → files.result с тем же requestId', async () => {

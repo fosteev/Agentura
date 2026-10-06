@@ -17,6 +17,7 @@ describe('providerFeatures', () => {
       questions: true,
       images: true,
       files: false,
+      remote: false,
     });
   });
 
@@ -31,6 +32,7 @@ describe('providerFeatures', () => {
       questions: false,
       images: false,
       files: false,
+      remote: false,
     });
   });
 

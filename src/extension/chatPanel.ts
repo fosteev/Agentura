@@ -10,7 +10,7 @@ import { AntigravityAdapter } from '../agent/antigravity/adapter';
 import { AGY_NOT_FOUND, resolveAgyExecutable } from '../agent/antigravity/executable';
 import type { AgyStateStore } from '../agent/antigravity/sessionIndex';
 import type { AgentAdapter, AgentProvider, SessionRef } from '../agent/types';
-import type { LimitsSource } from '../data/limits';
+import { readOAuthToken, type LimitsSource } from '../data/limits';
 import type { LiveSessions, TranscriptCache } from '../data/sessions';
 import { postToWebview } from '../protocol';
 import {
@@ -159,6 +159,12 @@ export function createAdapter(
     clientApp: 'agentura',
     log: (level, message) => log[level](message),
     lang: currentLanguage,
+    // Remote Control (roadmap 17): токен — при каждом включении и обновлении JWT, настройки — на лету
+    remote: {
+      readToken: () => readOAuthToken(),
+      namePrefix: () => cfg().get<string>('remoteControlNamePrefix') ?? '',
+      allowBypass: () => cfg().get<boolean>('allowBypassPermissions', false),
+    },
   });
   let codex: AgentAdapter | undefined;
   const codexAdapter = (): AgentAdapter =>
@@ -396,6 +402,7 @@ export class ChatPanel {
           gitLayout: ((v) => (isGitLayout(v) ? v : DEFAULT_GIT_LAYOUT))(cfg.get<unknown>('git.layout')),
           defaultPermissionMode: cfg.get<string>('defaultPermissionMode'),
           defaultEffort: cfg.get<string>('defaultEffort'),
+          remoteControl: cfg.get<boolean>('remoteControl', false),
         };
       },
       usage: services.usage,

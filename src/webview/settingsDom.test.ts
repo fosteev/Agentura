@@ -35,6 +35,8 @@ const values: SettingsValues = {
   allowBypassPermissions: false,
   defaultModel: '',
   defaultEffort: '',
+  remoteControl: false,
+  remoteControlNamePrefix: '',
   contextThresholds: [120_000, 150_000],
   usagePollMinutes: 15,
   'limits.readKeychain': true,

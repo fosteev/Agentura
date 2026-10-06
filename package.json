@@ -210,6 +210,16 @@
           "default": "",
           "description": "%config.defaultEffort.description%"
         },
+        "agentura.remoteControl": {
+          "type": "boolean",
+          "default": false,
+          "description": "%config.remoteControl.description%"
+        },
+        "agentura.remoteControlNamePrefix": {
+          "type": "string",
+          "default": "",
+          "description": "%config.remoteControlNamePrefix.description%"
+        },
         "agentura.defaultModel": {
           "type": "string",
           "default": "",

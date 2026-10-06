@@ -34,6 +34,23 @@ export interface ToolPermissionOptions {
 
 type Kind = 'permission' | 'question' | 'plan';
 
+/** Кто закрыл запрос (`permission.resolved.by`). */
+export type ResolvedBy = 'user' | 'remote' | 'abort';
+
+/**
+ * Наблюдатель запросов (Remote Control, roadmap 17): каждый запрос уходит и в ленту, и на claude.ai;
+ * кто ответил первым — тот и решил, второму запрос снимается по `onSettled`.
+ */
+export interface PermissionObserver {
+  onRequest(
+    toolUseId: string,
+    toolName: string,
+    input: Record<string, unknown>,
+    options: ToolPermissionOptions,
+  ): void;
+  onSettled(toolUseId: string, by: ResolvedBy): void;
+}
+
 interface Pending {
   kind: Kind;
   input: Record<string, unknown>;
@@ -49,6 +66,8 @@ const ABORT_MESSAGE = 'The request was cancelled.';
 export class PermissionBroker {
   private readonly pending = new Map<string, Pending>();
   private seq = 0;
+  /** Наблюдатель (мост Remote Control); нет — запросы только в ленте. */
+  observer: PermissionObserver | undefined;
 
   constructor(
     private readonly emit: (event: AgentEvent) => void,
@@ -119,8 +138,17 @@ export class PermissionBroker {
           ...(diff ? { diff } : {}),
         });
       }
+      this.notify(() => this.observer?.onRequest(toolUseId, toolName, input, options));
     });
   };
+
+  /**
+   * Ответ извне ленты (claude.ai, телефон): форму ответа проверил вызывающий. `false` — запроса уже нет
+   * (ответили в ленте или движок отменил).
+   */
+  resolveExternal(toolUseId: string, result: ToolPermissionResult): boolean {
+    return this.finish(toolUseId, result, 'remote');
+  }
 
   /**
    * Ответ на запрос разрешения. «Всегда» возвращает подсказки движка как есть — так SDK
@@ -196,9 +224,10 @@ export class PermissionBroker {
       decision: 'deny',
       by: 'abort',
     });
+    this.notify(() => this.observer?.onSettled(toolUseId, 'abort'));
   }
 
-  private finish(toolUseId: string, result: ToolPermissionResult): boolean {
+  private finish(toolUseId: string, result: ToolPermissionResult, by: ResolvedBy = 'user'): boolean {
     const p = this.pending.get(toolUseId);
     if (!p) return false;
     this.pending.delete(toolUseId);
@@ -208,9 +237,19 @@ export class PermissionBroker {
       ...(p.agentId !== undefined ? { agentId: p.agentId } : {}),
       toolUseId,
       decision: result.behavior,
-      by: 'user',
+      by,
     });
+    this.notify(() => this.observer?.onSettled(toolUseId, by));
     return true;
+  }
+
+  /** Сбой наблюдателя (мост) не должен ломать ответ движку. */
+  private notify(call: () => void): void {
+    try {
+      call();
+    } catch {
+      // мост логирует сам; здесь — только не дать исключению дойти до движка
+    }
   }
 }
 

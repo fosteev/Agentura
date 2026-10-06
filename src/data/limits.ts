@@ -242,6 +242,20 @@ export function parsePlan(raw: string): { subscriptionType?: string; rateLimitTi
   }
 }
 
+/**
+ * OAuth-токен Claude Code для Remote Control (roadmap 17): `.credentials.json`, затем Keychain — всегда, без
+ * оглядки на `agentura.limits.readKeychain`: включение моста — явное действие пользователя. Нет — `undefined`.
+ */
+export async function readOAuthToken(
+  claudeHome = join(homedir(), '.claude'),
+  platform: NodeJS.Platform = process.platform,
+): Promise<string | undefined> {
+  const fromFile = readToken({ claudeHome, platform, keychain: () => undefined });
+  if (fromFile.token) return fromFile.token;
+  const raw = await defaultKeychainAsync(platform)();
+  return readToken({ claudeHome, platform, keychain: () => raw }).token;
+}
+
 /** Как `defaultKeychain` Agentmeter, но через асинхронный `execFile`: extension host не ждёт `security`. */
 function defaultKeychainAsync(platform: NodeJS.Platform): () => Promise<string | undefined> {
   if (platform !== 'darwin') return async () => undefined;
