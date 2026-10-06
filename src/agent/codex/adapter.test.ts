@@ -70,6 +70,8 @@ async function until(cond: () => boolean, what = 'condition'): Promise<void> {
   throw new Error(`timeout: ${what}`);
 }
 const types = (events: AgentEvent[]) => events.map((e) => e.type);
+/** `toolUseId` карточки для id запроса: у сессии свой префикс (id запросов у каждого процесса с 0). */
+const tid = (session: AgentSession, id: number) => (session as unknown as { approvals: { key(id: number): string } }).approvals.key(id);
 const finishTurn = (s: FakeAppServer, id: string, status = 'completed', extra: Record<string, unknown> = {}) =>
   s.notify('turn/completed', { threadId: THREAD, turn: t(id, status, extra) });
 
@@ -263,7 +265,7 @@ describe('CodexAdapter: interrupt', () => {
     session.dispose();
   });
 
-  it('Stop сбрасывает очередь: сообщения за активным ходом не стартуют', async () => {
+  it('Stop не сбрасывает очередь: следующее сообщение стартует новый ход после interrupted', async () => {
     const s = server();
     s.handle('turn/interrupt', () => {
       setTimeout(() => finishTurn(s, 'turn-1', 'interrupted'), 5);
@@ -275,8 +277,8 @@ describe('CodexAdapter: interrupt', () => {
     session.send('queued');
     await until(() => types(events).includes('turn.start'));
     await session.interrupt();
-    await new Promise((r) => setTimeout(r, 30));
-    expect(s.methods().filter((m) => m === 'turn/start')).toHaveLength(1);
+    await until(() => s.methods().filter((m) => m === 'turn/start').length === 2);
+    expect(events.find((e) => e.type === 'turn.result')).toMatchObject({ interrupted: true, ok: false });
     session.dispose();
   });
 
@@ -449,26 +451,6 @@ describe('CodexAdapter: resume, процесс, возможности', () => {
     session.dispose();
   });
 
-  it('approval до этапа 4 — явный отказ по схеме (decline), неизвестный запрос — -32601; лог говорит об этом', async () => {
-    const s = server();
-    const { adapter, logs } = open(s);
-    const session = await adapter.createSession({ cwd: '/work' });
-    session.send('one');
-    await until(() => s.methods().includes('turn/start'));
-    s.request(77, 'item/commandExecution/requestApproval', { command: 'rm -rf x' });
-    s.request(78, 'item/fileChange/requestApproval', {});
-    s.request(79, 'item/tool/requestUserInput', {});
-    await until(() => s.received.filter((m) => m.method === '<response>').length === 3);
-    const responses = s.received.filter((m) => m.method === '<response>').map((m) => m.params);
-    expect(responses).toMatchObject([
-      { id: 77, result: { decision: 'decline' } },
-      { id: 78, result: { decision: 'decline' } },
-      { id: 79, error: { code: -32601 } },
-    ]);
-    expect(logs.some((l) => /requestApproval/.test(l))).toBe(true);
-    session.dispose();
-  });
-
   it('turn/completed чужого хода не закрывает текущий и не пускает очередь', async () => {
     const s = server();
     const session = await open(s).adapter.createSession({ cwd: '/work' });
@@ -536,6 +518,304 @@ describe('CodexAdapter: resume, процесс, возможности', () => {
     await expect(session.contextUsage()).resolves.toBeUndefined();
     await expect(adapter.listSessions()).resolves.toEqual([]);
     await expect(adapter.loadHistory()).resolves.toMatchObject({ events: [], turns: 0 });
+    session.dispose();
+  });
+});
+
+describe('CodexAdapter: подтверждения и инструменты (этап 4)', () => {
+  const COMMAND = {
+    kind: 'command',
+    threadId: THREAD,
+    turnId: 'turn-1',
+    itemId: 'exec-1',
+    startedAtMs: 1,
+    environmentId: 'local',
+    command: '/bin/zsh -lc ls',
+    cwd: '/work',
+    availableDecisions: ['accept', 'cancel'],
+  };
+  const responses = (s: FakeAppServer) =>
+    s.received.filter((m) => m.method === '<response>').map((m) => m.params as { id: number; result?: unknown; error?: { code: number } });
+
+  async function started() {
+    const s = server();
+    const { adapter, logs } = open(s);
+    const session = await adapter.createSession({ cwd: '/work' });
+    const events = collect(session);
+    session.send('go');
+    await until(() => types(events).includes('turn.start'));
+    return { s, session, events, logs };
+  }
+
+  it('allow: permission.request → respondPermission → ответ серверу с тем же id → permission.resolved', async () => {
+    const { s, session, events } = await started();
+    s.request(77, 'item/commandExecution/requestApproval', COMMAND);
+    await until(() => types(events).includes('permission.request'));
+    expect(events.find((e) => e.type === 'permission.request')).toMatchObject({ toolUseId: tid(session, 77), toolName: 'Bash', input: { command: 'ls' } });
+    expect(session.respondPermission(tid(session, 77), 'allow')).toBe(true);
+    await until(() => responses(s).length === 1);
+    expect(responses(s)).toMatchObject([{ id: 77, result: { decision: 'accept' } }]);
+    expect(events.find((e) => e.type === 'permission.resolved')).toMatchObject({ toolUseId: tid(session, 77), decision: 'allow', by: 'user' });
+    // сервер подтверждает своим уведомлением — второго события нет
+    s.notify('serverRequest/resolved', { threadId: THREAD, requestId: 77 });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(events.filter((e) => e.type === 'permission.resolved')).toHaveLength(1);
+    session.dispose();
+  });
+
+  it('deny: decline; повторный ответ на тот же запрос — false', async () => {
+    const { s, session } = await started();
+    s.request(5, 'item/fileChange/requestApproval', { threadId: THREAD, turnId: 'turn-1', itemId: 'fc-1', startedAtMs: 1 });
+    await until(() => (session as unknown as { approvals: { size: number } }).approvals.size === 1);
+    expect(session.respondPermission(tid(session, 5), 'deny')).toBe(true);
+    expect(session.respondPermission(tid(session, 5), 'deny')).toBe(false);
+    await until(() => responses(s).length === 1);
+    expect(responses(s)).toMatchObject([{ id: 5, result: { decision: 'decline' } }]);
+    session.dispose();
+  });
+
+  it('неизвестный server request: ответ ошибкой -32601, лог, видимая ошибка; ход не виснет', async () => {
+    const { s, session, events, logs } = await started();
+    s.request(9, 'item/something/new', {});
+    await until(() => responses(s).length === 1);
+    expect(responses(s)).toMatchObject([{ id: 9, error: { code: -32601 } }]);
+    expect(logs.some((l) => /item\/something\/new/.test(l))).toBe(true);
+    expect(events.find((e) => e.type === 'error')).toMatchObject({ fatal: false, code: 'unsupported_request' });
+    session.dispose();
+  });
+
+  it('вопрос: question.request → answerQuestion → ответ по id вопроса', async () => {
+    const { s, session, events } = await started();
+    s.request(3, 'item/tool/requestUserInput', {
+      threadId: THREAD,
+      turnId: 'turn-1',
+      itemId: 'q',
+      isBlocking: true,
+      autoResolutionMs: null,
+      questions: [{ id: 'a', header: 'H', question: 'Pick?', isOther: true, isSecret: false, options: [{ label: 'X', description: '' }] }],
+    });
+    await until(() => types(events).includes('question.request'));
+    expect(session.answerQuestion(tid(session, 3), { 'Pick?': 'X' })).toBe(true);
+    await until(() => responses(s).length === 1);
+    expect(responses(s)[0]).toMatchObject({ id: 3, result: { answers: { a: { answers: ['X'] } } } });
+    session.dispose();
+  });
+
+  it('Stop при открытом запросе: cancel серверу, карточка снимается (abort), ход закрывается', async () => {
+    const { s, session, events } = await started();
+    s.request(1, 'item/commandExecution/requestApproval', COMMAND);
+    await until(() => types(events).includes('permission.request'));
+    const stopping = session.interrupt();
+    await until(() => s.methods().includes('turn/interrupt'));
+    expect(responses(s)).toMatchObject([{ id: 1, result: { decision: 'cancel' } }]);
+    expect(events.find((e) => e.type === 'permission.resolved')).toMatchObject({ toolUseId: tid(session, 1), decision: 'deny', by: 'abort' });
+    finishTurn(s, 'turn-1', 'interrupted');
+    await stopping;
+    expect(events.filter((e) => e.type === 'turn.result')).toHaveLength(1);
+    expect(session.respondPermission(tid(session, 1), 'allow')).toBe(false);
+    session.dispose();
+  });
+
+  it('Stop: turn/completed не пришёл — abandon тоже снимает открытые запросы', async () => {
+    const s = server();
+    s.handle('turn/interrupt', () => {
+      throw new Error('no active turn');
+    });
+    const session = await open(s).adapter.createSession({ cwd: '/work' });
+    const events = collect(session);
+    session.send('go');
+    await until(() => types(events).includes('turn.start'));
+    s.request(1, 'item/commandExecution/requestApproval', COMMAND);
+    await until(() => types(events).includes('permission.request'));
+    await session.interrupt();
+    expect(events.filter((e) => e.type === 'permission.resolved')).toHaveLength(1);
+    expect(types(events)).toContain('turn.result');
+    session.dispose();
+  });
+
+  it('dispose с открытым запросом: permission.resolved(abort) раньше session.closed', async () => {
+    const { s, session, events } = await started();
+    s.request(1, 'item/commandExecution/requestApproval', COMMAND);
+    await until(() => types(events).includes('permission.request'));
+    session.dispose();
+    const t = types(events);
+    expect(t.indexOf('permission.resolved')).toBeGreaterThan(-1);
+    expect(t.indexOf('permission.resolved')).toBeLessThan(t.indexOf('session.closed'));
+  });
+
+  it('падение процесса с открытым запросом: карточка снимается до session.closed', async () => {
+    const { s, events } = await started();
+    s.request(1, 'item/commandExecution/requestApproval', COMMAND);
+    await until(() => types(events).includes('permission.request'));
+    s.exit(1);
+    await until(() => types(events).includes('session.closed'));
+    const t = types(events);
+    expect(t.indexOf('permission.resolved')).toBeLessThan(t.indexOf('session.closed'));
+  });
+
+  it('turn/completed с открытым запросом: карточка остаётся (сервер может ждать), снимает serverRequest/resolved', async () => {
+    const { s, session, events } = await started();
+    s.request(1, 'item/commandExecution/requestApproval', COMMAND);
+    await until(() => types(events).includes('permission.request'));
+    finishTurn(s, 'turn-1');
+    await until(() => types(events).includes('turn.result'));
+    expect(types(events)).not.toContain('permission.resolved');
+    expect(responses(s)).toEqual([]);
+    s.notify('serverRequest/resolved', { threadId: THREAD, requestId: 1 });
+    await until(() => types(events).includes('permission.resolved'));
+    expect(session.respondPermission(tid(session, 1), 'allow')).toBe(false);
+    expect(responses(s)).toEqual([]);
+    session.dispose();
+  });
+
+  it('serverRequest/resolved от сервера (таймаут на его стороне) снимает карточку', async () => {
+    const { s, session, events } = await started();
+    s.request(1, 'item/commandExecution/requestApproval', COMMAND);
+    await until(() => types(events).includes('permission.request'));
+    s.notify('serverRequest/resolved', { threadId: THREAD, requestId: 1 });
+    await until(() => types(events).includes('permission.resolved'));
+    expect(events.find((e) => e.type === 'permission.resolved')).toMatchObject({ by: 'abort' });
+    expect(session.respondPermission(tid(session, 1), 'allow')).toBe(false);
+    session.dispose();
+  });
+
+  it('инструменты: item/started → approval → item/completed — строка Bash и вывод по порядку', async () => {
+    const { s, session, events } = await started();
+    const item = (status: string, extra = {}) => ({
+      type: 'commandExecution', id: 'exec-1', command: '/bin/zsh -lc ls', cwd: '/work', status, source: 'agent',
+      aggregatedOutput: null, exitCode: null, durationMs: null, ...extra,
+    });
+    s.notify('item/started', { threadId: THREAD, turnId: 'turn-1', startedAtMs: 1, item: item('inProgress') });
+    s.request(1, 'item/commandExecution/requestApproval', COMMAND);
+    await until(() => types(events).includes('permission.request'));
+    session.respondPermission(tid(session, 1), 'allow');
+    s.notify('item/commandExecution/outputDelta', { threadId: THREAD, turnId: 'turn-1', itemId: 'exec-1', delta: 'a.txt\n' });
+    s.notify('item/completed', { threadId: THREAD, turnId: 'turn-1', completedAtMs: 9, item: item('completed', { exitCode: 0 }) });
+    await until(() => types(events).includes('tool.result'));
+    const order = types(events).filter((t) => /^(tool|permission)\./.test(t));
+    expect(order).toEqual(['tool.start', 'permission.request', 'permission.resolved', 'tool.progress', 'tool.result']);
+    expect(events.find((e) => e.type === 'tool.result')).toMatchObject({ isError: false, content: 'a.txt\n' });
+    session.dispose();
+  });
+});
+
+// Живая запись (codex-cli 0.160.0, untrusted + workspace-write): порядок и формы сообщений как на проводе.
+type Recorded = { dir: 'in' | 'out'; msg?: { id?: number; method: string; params: Record<string, unknown> } };
+const live = JSON.parse(
+  readFileSync(new URL('../../../test/fixtures/codex/approvals.json', import.meta.url), 'utf8'),
+) as Record<'commandDeclined' | 'commandAccepted' | 'commandLate' | 'fileAdd' | 'fileUpdate', Recorded[]>;
+
+describe('CodexAdapter: по живой записи подтверждений', () => {
+  /** Проигрывает записанные сообщения сервера; на запросе останавливается — дальше ответит тест. */
+  function player(s: FakeAppServer, seq: Recorded[]) {
+    const queue = seq.filter((r) => r.dir === 'in' && r.msg).map((r) => r.msg!);
+    const fix = (params: Record<string, unknown>) => {
+      const out = JSON.parse(JSON.stringify(params)) as { threadId?: string; turnId?: string; turn?: { id?: string } };
+      if (out.threadId) out.threadId = THREAD;
+      if (out.turnId) out.turnId = 'turn-1';
+      if (out.turn) out.turn = { ...out.turn, id: 'turn-1' };
+      return out;
+    };
+    return {
+      /** Шлёт сообщения до запроса включительно (или до конца); `skipTurnStart` — turn/started уже дал fake. */
+      play(): void {
+        while (queue.length) {
+          const m = queue.shift()!;
+          if (m.method === 'turn/started') continue;
+          if (m.id !== undefined) {
+            s.request(m.id, m.method, fix(m.params));
+            return;
+          }
+          s.notify(m.method, fix(m.params));
+        }
+      },
+      get done(): boolean {
+        return queue.length === 0;
+      },
+    };
+  }
+  async function open2(name: keyof typeof live) {
+    const s = server();
+    const session = await open(s).adapter.createSession({ cwd: '/work' });
+    const events = collect(session);
+    session.send('go');
+    await until(() => types(events).includes('turn.start'));
+    return { s, session, events, play: player(s, live[name]) };
+  }
+  const sent = (s: FakeAppServer) =>
+    s.received.filter((m) => m.method === '<response>').map((m) => m.params as { id: number; result?: unknown });
+
+  it('команда: отказ — decline, строка Bash закрывается ошибкой declined', async () => {
+    const { s, session, events, play } = await open2('commandDeclined');
+    play.play();
+    await until(() => types(events).includes('permission.request'));
+    expect(events.find((e) => e.type === 'tool.start')).toMatchObject({ name: 'Bash', input: { command: 'ls' } });
+    const req = events.find((e) => e.type === 'permission.request') as AgentEventOf<'permission.request'>;
+    expect(req).toMatchObject({ toolName: 'Bash', input: { command: 'ls' }, canAlwaysAllow: true, always: { destination: 'codexRules' } });
+    session.respondPermission(req.toolUseId, 'deny');
+    play.play();
+    await until(() => types(events).includes('turn.result'));
+    expect(sent(s)).toMatchObject([{ result: { decision: 'decline' } }]);
+    expect(events.find((e) => e.type === 'tool.result')).toMatchObject({ isError: true, content: 'declined' });
+    expect(events.filter((e) => e.type === 'permission.resolved')).toHaveLength(1);
+    session.dispose();
+  });
+
+  it('команда: allow-always по записанному списку решений — постоянное правило ls', async () => {
+    const { s, session, events, play } = await open2('commandAccepted');
+    play.play();
+    await until(() => types(events).includes('permission.request'));
+    const req = events.find((e) => e.type === 'permission.request') as AgentEventOf<'permission.request'>;
+    session.respondPermission(req.toolUseId, 'allow-always');
+    play.play();
+    await until(() => types(events).includes('tool.result'));
+    expect(sent(s)).toMatchObject([{ result: { decision: { acceptWithExecpolicyAmendment: { execpolicy_amendment: ['ls'] } } } }]);
+    // aggregatedOutput у живого сервера null — вывода нет, но это не ошибка
+    expect(events.find((e) => e.type === 'tool.result')).toMatchObject({ isError: false, content: '' });
+    session.dispose();
+  });
+
+  it('команда: запрос пришёл ПОСЛЕ turn/completed — карточка есть и ответ работает', async () => {
+    const { s, session, events, play } = await open2('commandLate');
+    play.play();
+    await until(() => types(events).includes('permission.request'));
+    const t = types(events);
+    expect(t.indexOf('turn.result')).toBeLessThan(t.indexOf('permission.request'));
+    const req = events.find((e) => e.type === 'permission.request') as AgentEventOf<'permission.request'>;
+    expect(req.input).toEqual({ command: "echo hello-agentura; sleep 2; echo done-agentura" });
+    expect(session.respondPermission(req.toolUseId, 'allow')).toBe(true);
+    await until(() => sent(s).length === 1);
+    expect(sent(s)).toMatchObject([{ result: { decision: 'accept' } }]);
+    session.dispose();
+  });
+
+  it('создание файла: карточка Write с превью, затем Write с результатом create', async () => {
+    const { s, session, events, play } = await open2('fileAdd');
+    play.play();
+    await until(() => types(events).includes('permission.request'));
+    const req = events.find((e) => e.type === 'permission.request') as AgentEventOf<'permission.request'>;
+    expect(req).toMatchObject({ toolName: 'Write', input: { file_path: '/work/a.txt' }, diff: { kind: 'write', content: 'hi\n' } });
+    session.respondPermission(req.toolUseId, 'allow');
+    play.play();
+    await until(() => types(events).includes('turn.result'));
+    expect(sent(s)).toMatchObject([{ result: { decision: 'accept' } }]);
+    expect(events.find((e) => e.type === 'tool.result')).toMatchObject({ isError: false, result: { type: 'create', filePath: '/work/a.txt' } });
+    session.dispose();
+  });
+
+  it('правка файла: карточка Edit с превью из ханков; «принимать правки» — acceptForSession', async () => {
+    const { s, session, events, play } = await open2('fileUpdate');
+    play.play();
+    await until(() => types(events).includes('permission.request'));
+    const req = events.find((e) => e.type === 'permission.request') as AgentEventOf<'permission.request'>;
+    expect(req).toMatchObject({ toolName: 'Edit', diff: { kind: 'edit', oldText: 'line1\nline2\nline3', newText: 'line1\nline two\nline3' } });
+    session.respondPermission(req.toolUseId, 'allow-edits');
+    play.play();
+    await until(() => types(events).includes('turn.result'));
+    expect(sent(s)).toMatchObject([{ result: { decision: 'acceptForSession' } }]);
+    expect(events.find((e) => e.type === 'tool.result')).toMatchObject({
+      result: { structuredPatch: [{ lines: [' line1', '-line2', '+line two', ' line3'] }] },
+    });
     session.dispose();
   });
 });

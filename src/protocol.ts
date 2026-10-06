@@ -14,6 +14,7 @@ import type {
   PromptFile,
   PromptImage,
 } from './agent/types';
+import type { ProviderFeatures } from './agent/features';
 import type { Attachment, FileHit } from './shared/prompt';
 import type { ImageProblem } from './shared/images';
 import type { FileProblem } from './shared/files';
@@ -174,6 +175,10 @@ export type ToWebview =
       agentsView?: AgentsView;
       /** Раскладка вкладки «git» при нескольких репо (`agentura.git.layout`); нет — `stack`. */
       gitLayout?: GitLayout;
+      /** Движок вкладки (roadmap 15, этап 3); нет — `claude` (старое сообщение). */
+      provider?: AgentProvider;
+      /** Что движок умеет: UI прячет остальное. Нет — Claude, все `true`. */
+      features?: ProviderFeatures;
     }
   | { type: 'capabilities'; sessionId: string; models: ModelOption[]; commands: CommandOption[] }
   | ({ type: 'editor.context' } & EditorContext)
@@ -202,6 +207,8 @@ export type ToWebview =
    * первого сообщения показывало бы «спрашивать», а движок уже шёл бы в `acceptEdits`/`bypassPermissions`.
    */
   | { type: 'session.defaults'; mode: PermissionMode; effort?: EffortLevel }
+  /** Хост не принял `agy.retry` (режим уже такой, «всё разрешено» недоступно этой сессии): карточка отказа снова с кнопками. */
+  | { type: 'agy.retryRejected' }
   /** Этап 5: превью правки к `permission.request` с `diff` — приходит вдогонку, по `toolUseId`. */
   | { type: 'diff.preview'; sessionId: string; toolUseId: string; preview: EditPreview }
   /**
@@ -332,6 +339,8 @@ export type FromWebview =
   /** Чат: снимок карты агентов для его вкладки графа — только пока граф открыт (`agents.graph`). */
   | { type: 'agents.snapshot'; sessionId: string; graph: AgentGraphView }
   | { type: 'session.new' }
+  /** Выбор движка в пустой вкладке (до первого сообщения); хост запоминает его как дефолт новых чатов. */
+  | { type: 'engine.set'; provider: AgentProvider }
   | { type: 'limits.refresh' }
   | { type: 'session.resume'; sessionId: string; provider?: AgentProvider }
   /** Этап 6: переименование по двойному клику в списке (B9). */
@@ -342,6 +351,8 @@ export type FromWebview =
    * `turn: false` («Возобновить сессию») — только возобновление.
    */
   | { type: 'turn.retry'; sessionId: string; turn: boolean }
+  /** Карточка отказа Antigravity: повторить в более свободном режиме (`AntigravityAdapter.retryWithMode`). */
+  | { type: 'agy.retry'; sessionId: string; mode: 'acceptEdits' | 'bypassPermissions' }
   /** Этап 7: «Открыть журнал расширения» — канал Output → Agentura. */
   | { type: 'log.show' }
   /** Этап 3 roadmap 0.2: ⚙ в боковой панели открывает вкладку настроек. */
@@ -438,10 +449,12 @@ const FROM_WEBVIEW_TYPES: Record<FromWebview['type'], true> = {
   'agents.openGraph': true,
   'agents.snapshot': true,
   'session.new': true,
+  'engine.set': true,
   'limits.refresh': true,
   'session.resume': true,
   'session.rename': true,
   'turn.retry': true,
+  'agy.retry': true,
   'log.show': true,
   'settings.open': true,
   'settings.set': true,
@@ -477,6 +490,8 @@ const gitFiles = (m: Record<string, unknown>): boolean => str(m.root) && strings
  * проверяет по полям обработчик.
  */
 const FIELD_CHECKS: Partial<Record<FromWebview['type'], (m: Record<string, unknown>) => boolean>> = {
+  'engine.set': (m) => m.provider === 'claude' || m.provider === 'codex' || m.provider === 'antigravity',
+  'agy.retry': (m) => m.mode === 'acceptEdits' || m.mode === 'bypassPermissions',
   'agents.openGraph': (m) => m.agentId === undefined || typeof m.agentId === 'string',
   'agents.snapshot': (m) => typeof m.sessionId === 'string' && isAgentGraphView(m.graph),
   'agent.stop': (m) => typeof m.sessionId === 'string' && typeof m.taskId === 'string',

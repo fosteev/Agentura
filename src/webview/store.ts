@@ -2,6 +2,7 @@
 import { computed, signal } from '@preact/signals';
 import type {
   AgentEvent,
+  AgentProvider,
   CommandOption,
   EffortLevel,
   FileRef,
@@ -12,6 +13,7 @@ import type {
   PromptFile,
   PromptImage,
 } from '../agent/types';
+import { providerFeatures, type ProviderFeatures } from '../agent/features';
 import { attachmentKey, type Attachment, type FileHit } from '../shared/prompt';
 import { imageTokens, MAX_IMAGES_PER_MESSAGE, type ImageProblem } from '../shared/images';
 import {
@@ -42,6 +44,7 @@ import type {
   ToWebview,
 } from '../protocol';
 import {
+  addRefusal,
   addSys,
   answersOf,
   applyEvent,
@@ -49,6 +52,9 @@ import {
   initialState,
   markPermission,
   markPlan,
+  markRefusalSent,
+  retireRefusals,
+  unmarkRefusalSent,
   markRetrying,
   unmarkRetrying,
   markQuestionSent,
@@ -72,6 +78,9 @@ import { shortModel } from './toolView';
 import { forgetSession, persistSession, send } from './vscode';
 
 export const chat = signal<ChatState>(initialState());
+/** Движок вкладки и его возможности (`chat.info`); нет полей в сообщении — Claude. Переживают `session.reset`. */
+export const provider = signal<AgentProvider>('claude');
+export const features = signal<ProviderFeatures>(providerFeatures('claude'));
 /** Агрегаты приборов: контекст, кэш, итоги сессии, таймлайн хода, агенты (`hudState.ts`). */
 export const hudState = signal<HudState>(initialHud());
 /** Лимиты подписки от хоста (`limits.update`); `updatedAt: 0` — ещё не получены. */
@@ -223,15 +232,18 @@ const limitDismissed = signal<number | undefined>(undefined);
  * будущем — общий на аккаунт `limits.update` доходит до всех вкладок. Пересчитывается секундным тиком.
  */
 export const limitBlocked = computed<LimitBlock | undefined>(() =>
-  limitBlock(
-    {
-      status: chat.value.status,
-      resetsAt: chat.value.limitResetsAt,
-      windows: limits.value.windows,
-      dismissed: limitDismissed.value,
-    },
-    tick.value,
-  ),
+  // лимиты подписки Claude не касаются других движков: Codex-вкладку они не блокируют
+  !features.value.metrics
+    ? undefined
+    : limitBlock(
+        {
+          status: chat.value.status,
+          resetsAt: chat.value.limitResetsAt,
+          windows: limits.value.windows,
+          dismissed: limitDismissed.value,
+        },
+        tick.value,
+      ),
 );
 
 /** Значения приборов у поля ввода: пересчитываются по событиям и по секундному тику. */
@@ -264,7 +276,7 @@ export function handleHostMessage(m: ToWebview): void {
       // `session.history` (иначе её `init` отфильтровался бы как событие брошенной)
       if (m.event.type === 'session.init') {
         abandonedSessionId = undefined;
-        persistSession(m.event.sessionId);
+        persistSession(m.event.sessionId, provider.value);
       }
       dispatchEvent(m.event);
       break;
@@ -279,11 +291,14 @@ export function handleHostMessage(m: ToWebview): void {
       let hud = resetHud(hudState.value);
       for (const e of m.events) hud = applyHud(hud, e, now);
       hudState.value = hud;
-      persistSession(m.sessionId);
+      persistSession(m.sessionId, provider.value);
       break;
     }
     case 'chat.command':
       if (m.name === 'status') showStatus();
+      break;
+    case 'agy.retryRejected':
+      chat.value = addSys(unmarkRefusalSent(chat.value), [ui.cards.refusal.rejected], 'bad');
       break;
     case 'session.defaults': {
       // новая сессия: режим и effort из настроек (до `session.init`, который придёт после первого хода)
@@ -294,6 +309,16 @@ export function handleHostMessage(m: ToWebview): void {
       break;
     }
     case 'chat.info':
+      // другой движок — другие модели и команды: прежний список не показываем, пока не придут новые
+      if ((m.provider ?? 'claude') !== provider.value)
+        capabilities.value = { models: [], commands: [] };
+      provider.value = m.provider ?? 'claude';
+      features.value = m.features ?? providerFeatures(provider.value);
+      // файл прикрепили до смены движка: новый файлов не принимает — плашка, а не молча потерянное вложение
+      if (!features.value.files && draftFiles.value.some((d) => d.file))
+        draftFiles.value = draftFiles.value.map((d) =>
+          d.file ? { id: d.id, name: d.name, problem: 'engine' } : d,
+        );
       chat.value = { ...chat.value, project: m.project, cwd: m.cwd, allowBypass: m.allowBypass };
       feedStyle.value = m.feedStyle ?? 'journal';
       composerLayout.value = m.composerLayout ?? 'classic';
@@ -404,7 +429,8 @@ export function handleHostMessage(m: ToWebview): void {
       }
       // общий черновик `unified` сбрасываем, только если прошли все; иначе сообщение остаётся для повтора
       if (m.results.length > 0 && m.results.every((r) => r.ok)) {
-        if (gitDrafts.value[GIT_UNIFIED]) setGitDraft(GIT_UNIFIED, { summary: '', desc: '', amend: false });
+        if (gitDrafts.value[GIT_UNIFIED])
+          setGitDraft(GIT_UNIFIED, { summary: '', desc: '', amend: false });
       }
       gitCommitted.value = m.results.filter((r) => r.ok).map((r) => r.root);
       break;
@@ -419,6 +445,18 @@ export function handleHostMessage(m: ToWebview): void {
 
 export function dispatchEvent(event: AgentEvent, now = Date.now()): void {
   chat.value = applyEvent(chat.value, event, now);
+  // Antigravity без подтверждений по действию: отказ режима — карточка с повтором; в «всё разрешено» отказывать нечему,
+  // после Stop повторять нечего. Следующий ход (повтор, новое сообщение) карточку закрывает
+  if (event.type === 'turn.start' && !event.agentId) chat.value = retireRefusals(chat.value);
+  if (
+    event.type === 'turn.result' &&
+    !event.agentId &&
+    !event.interrupted &&
+    provider.value === 'antigravity' &&
+    chat.value.mode !== 'bypassPermissions'
+  ) {
+    chat.value = addRefusal(chat.value, event.permissionDenials);
+  }
   // карточка, которой адресован ответ из поля, закрыта (ответ, отмена движком) — поле снова обычное
   const t = replyTarget.value;
   if (t && event.type === 'permission.resolved' && event.toolUseId === t.toolUseId) {
@@ -438,7 +476,8 @@ export function dispatchEvent(event: AgentEvent, now = Date.now()): void {
  * прототипе (`limit.html`). Раз на пересечение: после сжатия и нового роста — снова.
  */
 function noteThreshold(before: HudState, after: HudState, event: AgentEvent): void {
-  if (event.type !== 'context.usage' || event.agentId) return;
+  // «сжать» у Codex нет: строка про порог и автосжатие была бы фальшивой
+  if (event.type !== 'context.usage' || event.agentId || !features.value.compact) return;
   const top = Math.max(0, ...after.thresholds);
   const was = before.context?.used ?? 0;
   const used = after.context?.used ?? 0;
@@ -451,7 +490,11 @@ function noteThreshold(before: HudState, after: HudState, event: AgentEvent): vo
 export function showStatus(): void {
   const st = chat.value;
   chat.value = addSys(st, [
-    ui.sys.status(st.model ? shortModel(st.model) : '—', ui.modes[st.mode]?.[0] ?? st.mode, st.cwd),
+    ui.sys.status(
+      st.model ? shortModel(st.model) : '—',
+      features.value.modes ? (ui.modes[st.mode]?.[0] ?? st.mode) : undefined,
+      st.cwd,
+    ),
   ]);
 }
 
@@ -647,6 +690,13 @@ function filesChars(): number {
  * содержимым второй раз не добавляется.
  */
 export function addFiles(items: readonly PickedFile[]): void {
+  // движок без вложений-файлов (Codex): красная плашка вместо молча потерянного файла
+  if (!features.value.files) {
+    items = items.map((it) => ({
+      name: it.name || (it.path ? fileName(it.path) : 'file'),
+      problem: 'engine',
+    }));
+  }
   for (const it of items) {
     const id = ++fileSeq;
     const name = it.name || (it.path ? fileName(it.path) : 'file');
@@ -856,6 +906,12 @@ export function submitReply(text: string): boolean {
   const card = questionCard(t.toolUseId);
   if (card && card.questions.length === 1) submitQuestion(t.toolUseId);
   return true;
+}
+
+/** Карточка отказа Antigravity: повторить ход в режиме «правки» или «всё» (хост пересоздаёт процесс agy). */
+export function retryRefusal(mode: 'acceptEdits' | 'bypassPermissions'): void {
+  chat.value = markRefusalSent(chat.value);
+  send({ type: 'agy.retry', sessionId: chat.value.sessionId, mode });
 }
 
 /** «Повторить ход» на карточке ошибки: хост возобновляет сессию и отправляет промпт ещё раз. */

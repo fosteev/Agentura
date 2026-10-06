@@ -48,7 +48,11 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     lang: currentLanguage,
   });
   const usage = new UsageService(limits.fetch);
-  const { adapter, engine, codexEngine } = createAdapter(log);
+  const { adapter, codexAdapter, antigravityAdapter, engine, codexEngine, antigravityEngine } = createAdapter(
+    log,
+    String(context.extension.packageJSON.version),
+    context.globalState,
+  );
   engine.warm();
   const folder = vscode.workspace.workspaceFolders?.[0];
   const cwd = folder?.uri.fsPath ?? '';
@@ -99,6 +103,8 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
 
   const services: ChatServices = {
     adapter,
+    codexAdapter,
+    antigravityAdapter,
     live,
     transcripts,
     usage,
@@ -110,6 +116,7 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     memory,
     engine,
     codexEngine,
+    antigravityEngine,
     git: new GitService({
       loadApi: getGitApi,
       ui: vscodeGitUi(),

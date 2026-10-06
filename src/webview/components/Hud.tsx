@@ -13,6 +13,7 @@ export function Hud({
   tab,
   onTab,
   sidePanesEnabled,
+  agentsTab = true,
   badges,
   sessions,
   currentId,
@@ -26,6 +27,8 @@ export function Hud({
   onTab: (t: Tab) => void;
   /** Панели «изменения» и «агенты» недоступны в пустой сессии (экран empty). */
   sidePanesEnabled: boolean;
+  /** Вкладка «агенты» есть только у движка с субагентами (`features.subagents`). */
+  agentsTab?: boolean;
   /** Бейджи вкладок: число файлов сессии (`live` — идёт правка) и агенты хода `идут / всего` (A6). */
   badges: {
     changes?: { count: number; live: boolean };
@@ -61,7 +64,7 @@ export function Hud({
     };
   }, [open]);
   const now = Date.now();
-  const tabs: readonly TabItem<Tab>[] = [
+  const allTabs: readonly TabItem<Tab>[] = [
     { key: 'chat', label: ui.tabs.chat },
     {
       key: 'changes',
@@ -84,6 +87,7 @@ export function Hud({
       ...(badges.agents ? { badge: badges.agents } : {}),
     },
   ];
+  const tabs = agentsTab ? allTabs : allTabs.filter((i) => i.key !== 'agents');
   return (
     <header class="hud" aria-label={ui.hud.aria}>
       <TabBar

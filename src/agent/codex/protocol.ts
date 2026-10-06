@@ -99,8 +99,13 @@ export type ThreadItem =
     }
   | { type: 'contextCompaction'; id: string }
   | {
+      type: 'webSearch';
+      id: string;
+      query: string;
+      action: { type: string; query?: string | null; queries?: string[] | null; url?: string | null } | null;
+    }
+  | {
       type:
-        | 'webSearch'
         | 'imageView'
         | 'sleep'
         | 'imageGeneration'
@@ -391,7 +396,8 @@ export type CommandApprovalDecision =
   | 'acceptForSession'
   | 'decline'
   | 'cancel'
-  | { acceptWithExecpolicyAmendment: { execpolicy_amendment: string[] } };
+  | { acceptWithExecpolicyAmendment: { execpolicy_amendment: string[] } }
+  | { applyNetworkPolicyAmendment: { network_policy_amendment: { host: string; action: string } } };
 export type FileChangeApprovalDecision = 'accept' | 'acceptForSession' | 'decline' | 'cancel';
 
 export interface CommandApprovalParams {
@@ -407,7 +413,13 @@ export interface CommandApprovalParams {
   commandActions?: unknown[] | null;
   proposedExecpolicyAmendment?: string[] | null;
   proposedNetworkPolicyAmendments?: unknown[] | null;
-  networkApprovalContext?: unknown;
+  /** Запрос сетевого доступа к хосту (команды может не быть). */
+  networkApprovalContext?: { host: string; protocol: string } | null;
+  /**
+   * Нет в сгенерированных типах 0.160.0, но живой сервер шлёт: какие решения запрос принимает
+   * (например `["accept", {acceptWithExecpolicyAmendment: …}, "cancel"]`). Нет поля — любое из схемы.
+   */
+  availableDecisions?: (CommandApprovalDecision | string)[] | null;
 }
 export interface FileChangeApprovalParams {
   threadId: string;
@@ -415,6 +427,8 @@ export interface FileChangeApprovalParams {
   itemId: string;
   reason?: string | null;
   grantRoot?: string | null;
+  /** См. `CommandApprovalParams.availableDecisions`. */
+  availableDecisions?: string[] | null;
 }
 export interface PermissionsApprovalParams {
   threadId: string;
@@ -422,9 +436,34 @@ export interface PermissionsApprovalParams {
   itemId: string;
   cwd: string;
   reason: string | null;
-  /** `{ network, fileSystem }`: структура разрешений не разбирается до этапа 4. */
-  permissions: unknown;
+  /** Что просят: `network.enabled` и пути `fileSystem.read|write` (`null` — не просят). */
+  permissions: RequestedPermissions;
 }
+export interface RequestedPermissions {
+  network?: { enabled: boolean | null } | null;
+  fileSystem?: {
+    read?: string[] | null;
+    write?: string[] | null;
+    /** Новая форма (0.160 помечает read/write устаревшими): путь + `read`/`write`/`deny`. */
+    entries?: { path: FileSystemEntryPath; access: 'read' | 'write' | 'deny' }[];
+    [k: string]: unknown;
+  } | null;
+}
+export type FileSystemEntryPath =
+  | { type: 'path'; path: string }
+  | { type: 'glob_pattern'; pattern: string }
+  | {
+      type: 'special';
+      value:
+        | { kind: 'root' | 'minimal' | 'tmpdir' | 'slash_tmp' }
+        | { kind: 'project_roots'; subpath: string | null }
+        | { kind: 'unknown'; path: string; subpath: string | null };
+    };
+/** Что отдаём в ответ (`GrantedPermissionProfile`): только непустые поля запроса. */
+export type GrantedPermissions = {
+  network?: { enabled: boolean | null };
+  fileSystem?: NonNullable<RequestedPermissions['fileSystem']>;
+};
 export interface UserInputQuestion {
   id: string;
   header: string;
@@ -454,7 +493,7 @@ export interface CodexServerRequests {
   ];
   'item/permissions/requestApproval': [
     PermissionsApprovalParams,
-    { permissions: unknown; scope: 'turn' | 'session' },
+    { permissions: GrantedPermissions; scope: 'turn' | 'session' },
   ];
   'item/tool/requestUserInput': [
     UserInputParams,

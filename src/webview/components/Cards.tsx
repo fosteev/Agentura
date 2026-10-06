@@ -1,17 +1,20 @@
 /** Карточки `.ask` (этап 5): разрешение (команда, правка), вопрос агента, план. Экраны permission, diff, plan. */
 import { useMemo } from 'preact/hooks';
-import type { FailCard, PermCard, PlanCard, QuestionCard } from '../chatState';
+import type { FailCard, PermCard, PlanCard, QuestionCard, RefusalCard } from '../chatState';
 import { alwaysButton, planView } from '../cardView';
 import { ENGINE_MISSING_CODE } from '../../protocol';
 import { send } from '../vscode';
 import { onCodeCopyClick, renderMarkdown } from '../markdown';
 import {
+  chat,
   chooseOption,
   decidePlan,
   declineQuestion,
+  provider,
   replyTarget,
   replyToQuestion,
   respondPermission,
+  retryRefusal,
   retryTurn,
   showLog,
   submitQuestion,
@@ -72,6 +75,8 @@ export function PermissionCard({
   onDiff: (toolUseId: string) => void;
 }) {
   const edit = EDIT_TOOLS.has(c.toolName) && !!c.diff;
+  // «принимать правки» у Codex — решение `acceptForSession`, а не режим acceptEdits: подсказка про режим была бы неправдой
+  const codex = provider.value === 'codex';
   const sent = !!c.sent;
   const always = edit ? undefined : alwaysButton(c.always);
   const cmd = typeof c.input['command'] === 'string' ? (c.input['command'] as string) : undefined;
@@ -155,7 +160,13 @@ export function PermissionCard({
               {ui.cards.deny}
               {active && <kbd>{ui.cards.esc}</kbd>}
             </button>
-            <span class="hint">{edit ? ui.cards.editsHint : always?.hint}</span>
+            <span class="hint">
+              {edit || (always && !always.code && always.label === ui.cards.acceptEditsSession)
+                ? codex
+                  ? ui.cards.sessionHint
+                  : ui.cards.editsHint
+                : always?.hint}
+            </span>
           </>
         )}
       </div>
@@ -208,18 +219,78 @@ export function FailCardView({ c }: { c: FailCard }) {
   );
 }
 
+const isEditTool = (tool: string): boolean =>
+  tool === 'Write' || tool === 'Edit' || tool === 'MultiEdit' || tool === 'NotebookEdit';
+
+/**
+ * Карточка отказа Antigravity: кнопки живут только у последней карточки без новых сообщений после неё и пока режим
+ * ниже нужного («правки» не помогают против команд, «всё» — только если разрешено настройкой).
+ */
+export function RefusalCardView({ c }: { c: RefusalCard }) {
+  const s = chat.value;
+  // по позиции в ленте, а не по id: строка из очереди при доставке переезжает в конец со старым id
+  const at = s.rows.findIndex((r) => r.id === c.id);
+  const after = s.rows.slice(at + 1);
+  const live =
+    !c.sent &&
+    !c.closed &&
+    s.mode !== 'bypassPermissions' &&
+    !after.some((r) => r.kind === 'refusal' || (r.kind === 'user' && !r.queued));
+  // «правки» помогают только против правок файлов; всё прочее (команды, неопознанные имена agy) — только «всё»
+  const edits = c.tools.every(isEditTool);
+  const canEdits = edits && s.mode !== 'acceptEdits';
+  const actions = [...new Set(c.tools.map((t) => ui.cards.refusal.action(isEditTool(t))))].join(', ');
+  return (
+    <div class="ask warn" role="alert">
+      <div class="h">{ui.cards.refusal.title(actions)}</div>
+      <div class="bd">
+        <p class="dim">{ui.cards.refusal.hint}</p>
+        {live && !s.allowBypass && <p class="dim">{ui.cards.refusal.allOff}</p>}
+      </div>
+      <div class="acts">
+        {c.closed ? null : c.sent ? (
+          <span class="hint" style={{ marginLeft: 0 }}>
+            {ui.cards.refusal.sent}
+          </span>
+        ) : (
+          live && (
+            <>
+              {canEdits && (
+                <button class="btn pri" onClick={() => retryRefusal('acceptEdits')}>
+                  {ui.cards.refusal.edits}
+                </button>
+              )}
+              <button
+                class={canEdits ? 'btn ghost' : 'btn pri'}
+                disabled={!s.allowBypass}
+                onClick={() => retryRefusal('bypassPermissions')}
+              >
+                {ui.cards.refusal.all}
+              </button>
+            </>
+          )
+        )}
+      </div>
+    </div>
+  );
+}
+
 /** Карточка «Claude Code не найден»: движок не запускался; инструкция, настройки ⚙, «Проверить снова». */
 function EngineMissingCard({ c }: { c: FailCard }) {
   const retrying = c.state === 'retrying';
+  const codex = provider.value === 'codex';
+  const agy = provider.value === 'antigravity';
   return (
     <div class="ask danger" role="alert">
       <div class="h">
-        {ui.fail.missingTitle}
+        {agy ? ui.fail.missingTitleAgy : codex ? ui.fail.missingTitleCodex : ui.fail.missingTitle}
         <span class="tag">{ui.fail.tag(c.at)}</span>
       </div>
       <div class="bd">
         <p>{c.message}</p>
-        <p class="dim">{ui.fail.missingHint}</p>
+        <p class="dim">
+          {agy ? ui.fail.missingHintAgy : codex ? ui.fail.missingHintCodex : ui.fail.missingHint}
+        </p>
       </div>
       <div class="acts">
         {retrying ? (

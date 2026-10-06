@@ -76,7 +76,7 @@ export function feedTurns(items: readonly FeedItem[]): FeedBlock[] {
       if (it.kind === 'fail' || (it.kind === 'sys' && it.tag === 'fail')) cur = undefined;
       continue;
     }
-    if (it.kind === 'sys' || !seenTurn) {
+    if (it.kind === 'sys' || it.kind === 'refusal' || !seenTurn) {
       out.push({ kind: 'loose', item: it });
       continue;
     }

@@ -1,6 +1,6 @@
 # 16 — Antigravity (Gemini) как третий движок
 
-> **Статус:** этап 3 принят 2026-10-06 — следующий: 4 (заблокирован до мержа этапа 3 Codex в main). Автопилот `/roadmap-run` в worktree
+> **Статус:** этап 4 принят 2026-10-06 — следующий: 5 (первый пункт — сайдбар с беседами agy — ждёт этап 5 Codex в main). Автопилот `/roadmap-run` в worktree
 > `/Users/fost/Projects/Agentura-gemini`, ветки `stage-<N>-agy-<slug>` от `feature/gemini-support`,
 > мерж в `feature/gemini-support`; в main — после этапа 4. Ручные проверки и решения —
 > `16-antigravity-support.pending.md`.
@@ -375,31 +375,84 @@ ERROR выходит, и сообщение из очереди уходило �
 **Сессия:** sonnet. **Блокер:** этап 3 Codex влит в main. Перед стартом:
 `git merge main` в `feature/gemini-support`, конфликты — в пользу main.
 
-- [ ] Экземпляр `EngineLocator` для agy (`antigravityEngine` рядом с `codexEngine`, `resolveAgyExecutable`,
-      `AGY_NOT_FOUND`) + прогрев при активации; `engineVersion` из него в конфиг адаптера.
-- [ ] Регистрация `AntigravityAdapter` в фабрике провайдеров Codex-этапа 3; `chat.info` —
+- [x] Экземпляр `EngineLocator` для agy (`antigravityEngine` рядом с `codexEngine`, `resolveAgyExecutable`,
+      `AGY_NOT_FOUND`) + ~~прогрев при активации~~ (убран на приёмке: версию даёт `ready()` перед стартом); `engineVersion` из него в конфиг адаптера.
+- [x] Регистрация `AntigravityAdapter` в фабрике провайдеров Codex-этапа 3; `chat.info` —
       флаги возможностей agy: нет `/compact`, субагентов, подписочных лимитов Claude, thinking;
       режимы — 4 (с пометкой, что `default` = авто-отказ).
-- [ ] EngineMenu в Composer: пункт «Antigravity», выбор модели из `capabilities()`.
-- [ ] Карточка отказа (этап 2) с кнопками повтора; строки en/ru (`strings.ts`, `strings.en.ts`,
+- [x] EngineMenu в Composer: пункт «Antigravity», выбор модели из `capabilities()`.
+- [x] Карточка отказа (этап 2) с кнопками повтора; строки en/ru (`strings.ts`, `strings.en.ts`,
       nls) одновременно.
-- [ ] Сайдбар и пустой экран показывают беседы agy (этап 3), открытые вкладки
-      восстанавливаются после перезагрузки окна.
-- [ ] `agentura.defaultProvider` уже принимает `antigravity` (этап 1, `isProvider`/`PROVIDERS`): после
+- [ ] Сайдбар и пустой экран показывают беседы agy — **перенесено в этап 5** (в main сайдбар только Claude, объединение
+      провайдеров в `SessionsService` делает этап 5 Codex). Сделано здесь: открытие/восстановление agy-вкладок по `SessionRef`
+      (`agentura.openSession`, сериализатор, память воркспейса — провайдер доходит до адаптера agy).
+- [x] `agentura.defaultProvider` уже принимает `antigravity` (этап 1, `isProvider`/`PROVIDERS`): после
       `git merge main` проверить, что фабрика Codex-этапа 3 обрабатывает его (а не падает/не молчит), и
       что `agentura.openSession`/восстановление вкладок с `provider: 'antigravity'` доходят до адаптера
       (сейчас `ChatPanel.resume` для не-Claude пишет warn и не открывает). **Сразу при мерже main**: в main
       `adapterFor: p === 'codex' ? codex : claude`, `resume` без гейта провайдера, `features.ts` всё не-Codex
       считает Claude — ссылка `antigravity` (openSession, память воркспейса, состояние webview) уйдёт в Claude-
       адаптер с id agy. Ветку `antigravity` в фабрике/`resume`/`features` добавить в том же коммите, что мерж.
-- [ ] Тесты контроллера на маршрутизацию; `npm run check` зелёный.
+- [x] Тесты контроллера на маршрутизацию; `npm run check` зелёный.
 - [ ] Пользователь: новый чат → Antigravity → ответ стримится; Stop; попросить создать файл в
       default → карточка отказа → «Разрешить правки и повторить» → файл создан.
 
+**Решения (2026-10-06, по итогам сессии 4):**
+
+- Мерж `main` (e00d09c) прошёл без конфликтов; `isProvider`/union/настройки этапа 1 легли поверх. Сразу добавлена ветка
+  `antigravity` в `adapterFor`/`engineFor` (`chatPanel.ts`), `providerFeatures` (`ANTIGRAVITY_FEATURES`), `defaultProvider()` и
+  `engine.set`; `resume` в main без гейта провайдера — отдельной правки не потребовалось.
+- Флаги agy: `modes: true` (4 режима, у `default` пометка «agy сам отклоняет…» в меню), `compact/metrics/subagents/plan/
+  questions/images/files: false`. `metrics: false` — нет окна контекста, кэша, стоимости и лимитов подписки Claude;
+  токены хода остаются в итоговой строке ленты.
+- Контроллер: у agy те же режимы и «всё разрешено», что у Claude (`hasModes`), режим новой сессии — из
+  `agentura.defaultPermissionMode`; `defaultModel` и effort — про Claude, agy не передаются (модель — `DEFAULT_AGY_MODEL`
+  адаптера, выбор — из `agy models` через `capabilities()`). Возобновлённая agy-сессия — в `default` (транскрипт режим не хранит).
+- Локатор `antigravityEngine` (`agentura.antigravityExecutable`, `AGY_NOT_FOUND` → строка на языке интерфейса), прогрев при
+  активации (убран на приёмке, см. ниже); версия для `session.init` — через ленивую функцию `engineVersion` в конфиге адаптера (адаптер создаётся раньше,
+  чем поиск закончится). В адаптер передан `state: context.globalState`.
+- Карточка отказа — новая строка ленты `refusal` (`chatState.ts`), добавляется в `store.dispatchEvent` на живой
+  `turn.result` с `permissionDenials` только при провайдере agy и режиме не `bypassPermissions`; из `seedHistory` её нет
+  (кнопки в старых ходах были бы ложью — после перезагрузки вкладки карточка исчезает, строки инструментов с ошибкой остаются).
+  Кнопки только у последней карточки без новых сообщений после неё: «Разрешить правки и повторить» — если нет `Bash` и режим не
+  `acceptEdits`; «Разрешить всё и повторить» — выключена без `agentura.allowBypassPermissions` (с подсказкой). Новое
+  сообщение webview→хост `agy.retry {mode}` → `isAgySession(session) && session.retryWithMode(mode)`; хост повторно проверяет
+  `allowBypass`. Общий `AgentSession` не расширен.
+- Меню «агент»: пункт «Gemini · скоро» заменён на «Antigravity» (строки `acpAdapter`/`agentSoon` удалены); сообщение про
+  файлы вложений (`attach.engine`) стало нейтральным. Нет `agy`: карточка `engine_missing` с текстом про agy.
+- Не сделано здесь: сайдбар/пустой экран с agy (см. этап 5), `refresh` сайдбара на `turn.result` agy — хука под него в
+  main пока нет (`SessionsService` знает только Claude).
+
+**Решения (2026-10-06, приёмка этапа 4):**
+
+- Заголовок возобновлённой agy-вкладки: `ChatDeps.titleOf(id, provider)` — для `antigravity` берётся из
+  `antigravityAdapter().listSessions(cwd)` (кэш этапа 3, дёшево), строка без заголовка (title = id) → без заголовка. Claude
+  и Codex — как было (список сайдбара).
+- Прогрев `agy` при активации убран (план требовал): `engineFor('antigravity').ready()` и так ищет `agy` перед стартом
+  сессии и задаёт версию для `session.init`, а прогрев гонял `agy --version` и писал warn «agy не найден» в журнал каждому
+  пользователю без agy. Как у Codex — без прогрева.
+- Карточка отказа: закрывается на следующем `turn.start` (повтор или новое сообщение) — раньше кнопки оставались живыми,
+  если сообщение из очереди доставлялось со старым id; «живость» — по позиции в ленте, не по id; в bypass кнопок нет.
+  «Правки» — только когда все отклонённые инструменты из `Write/Edit/MultiEdit/NotebookEdit`; прочее (`Bash`, неопознанные
+  имена agy, если отказ не сопоставился с шагом) — команда, только «всё». На `turn.result` с `interrupted` (Stop) карточки нет.
+- Хост не принял `agy.retry` (bypass без настройки; адаптер вернул `false` — режим уже такой или `allowBypassPermissions`
+  сессии снят при её создании) → новое сообщение хост→webview `agy.retryRejected`: «повторяю…» снимается, в ленте строка
+  с причиной. Раньше «повторяю…» висело навсегда.
+- `ChatController.lastInit.permissionMode` обновляется на `mode.changed` (всех провайдеров): пересев webview пересылает
+  `lastInit` после истории и возвращал меню к режиму начала сессии — после повтора agy в «всё разрешено» меню показывало бы
+  «по запросу». Поведение Claude/Codex меняется только в этом (раньше то же расхождение было и у них).
+- Известное, не чинилось: `allowBypassPermissions` адаптер agy фиксирует при создании сессии (как Claude). Выключили
+  настройку посреди сессии, уже включённый bypass остаётся до конца сессии (у agy переживает пересоздание процесса);
+  включили посреди — bypass в этой сессии недоступен (карточка скажет «откройте новый чат»).
+
 ### 5. Полировка: квота, настройки, документация
 
-**Сессия:** sonnet.
+**Сессия:** sonnet. **Блокер для первого пункта:** этап 5 Codex (история: `SessionsService` объединяет провайдеров) влит в main.
 
+- [ ] Сайдбар и пустой экран показывают беседы agy (перенесено из этапа 4): встроить `listSessions(cwd)` agy в
+      объединённый `SessionsService` Codex-этапа 5; `schedule`/`refresh` дергать на `turn.result` agy-сессий и после
+      `renameSession` (`~/.gemini` не вотчить). Заголовок возобновляемой agy-вкладки уже берётся из списка адаптера
+      (`titleOf(id, provider)` в `chatPanel.ts`, приёмка этапа 4) — при объединении можно перевести на общий список.
 - [ ] Квота: `agy -p "/usage"` (короткоживущий процесс, не чаще раза в N минут) → HUD/сайдбар
       вместо лимитов Claude; не распарсили — не показываем.
 - [ ] Карточка настроек: путь к agy с кнопкой проверки, движок по умолчанию.
@@ -466,7 +519,7 @@ interrupt и dispose. В UI адаптер не подключать. Новые
 `isAgySession(session) && session.retryWithMode('acceptEdits' | 'bypassPermissions')` из `adapter.ts`
 (для `Bash` — только «всё»); общий `AgentSession` не расширять. Этап 3 дал адаптеру `listSessions`/`loadHistory`/
 `renameSession` (см. «Решения … сессии 3»): в конфиг `AntigravityAdapter` передать `state: context.globalState` (имена
-бесед и запасной индекс; без этого они живут только в памяти), в сайдбаре объединять `listSessions(cwd)` провайдеров.
+бесед и запасной индекс; без этого они живут только в памяти), в сайдбаре объединять `listSessions(cwd)` провайдеров (сайдбар — перенесён в этап 5, см. решения сессии 4).
 
 **По реальному коду (после приёмки этапа 3):** `listSessions(cwd)` дешёв при повторе (кэш по размеру/mtime базы agy), но
 сам сайдбар (`sessionsService.ts`) обновляется по `fs.watch` каталога Claude и статусам живых сессий — изменений в
@@ -478,4 +531,4 @@ interrupt и dispose. В UI адаптер не подключать. Новые
 
 ### Промт 5
 
-Этап 5 «Полировка». Формат `/usage` — по `spikes/antigravity-probe/usage.txt`, парсер мягкий.
+Этап 5 «Полировка». Первым делом проверь, влит ли в main этап 5 Codex (объединение провайдеров в `SessionsService`): если да — `git merge main` и встрой беседы agy в сайдбар/пустой экран (пункт перенесён из этапа 4; дергай `schedule` на `turn.result` agy и после `renameSession`, `titleOf(id, provider)` для agy уже читает список адаптера — можно перевести на общий), если нет — этот пункт пропусти и скажи об этом в отчёте. Формат `/usage` — по `spikes/antigravity-probe/usage.txt`, парсер мягкий.

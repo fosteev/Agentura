@@ -89,7 +89,8 @@ const MAX_PATH_CHARS = 1024;
  * Почему файл не взят: `binary` — не UTF-8 или есть NUL, `size` — больше лимита, `empty` — пустой
  * (API не принимает пустой документ), `folder` — папка, `pages` — pdf больше 100 страниц, `read` —
  * не прочитался, `count`/`total` — сверх лимита сообщения (webview), `foreign` — перетащили не
- * картинку не из VS Code (webview сам файлы не читает, путь к ним ему не дают), `pdf` — pdf
+ * картинку не из VS Code (webview сам файлы не читает, путь к ним ему не дают), `engine` — движок вкладки
+ * (Codex) не принимает файлы, только картинки, `pdf` — pdf
  * зашифрован или в нём не найти страниц (API не примет, а отказ остался бы в сессии).
  */
 export type FileProblem =
@@ -102,6 +103,7 @@ export type FileProblem =
   | 'count'
   | 'total'
   | 'foreign'
+  | 'engine'
   | 'pdf'
   | 'sessionPages'
   | 'session'
