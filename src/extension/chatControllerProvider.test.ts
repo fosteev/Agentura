@@ -270,6 +270,21 @@ describe('ChatController: Antigravity', () => {
     expect(agy.created).toHaveLength(1);
   });
 
+  it('смена движка в пустой вкладке сразу обновляет приборы: agy — квота, обратно на Claude — лимиты', async () => {
+    const agyQuota = { refresh: vi.fn(async () => ({ rows: [{ label: 'Gemini', remaining: 20 }], updatedAt: 1 })) };
+    const usage = { refresh: vi.fn(async () => ({ windows: [], updatedAt: 2 })) };
+    const { controller, posted } = setup({ agyQuota, usage });
+    await controller.handle({ type: 'engine.set', provider: 'antigravity' });
+    await tick();
+    expect(agyQuota.refresh).toHaveBeenCalledTimes(1);
+    expect(posted).toContainEqual({ type: 'quota.update', rows: [{ label: 'Gemini', remaining: 20 }], updatedAt: 1 });
+    expect(usage.refresh).not.toHaveBeenCalled();
+    await controller.handle({ type: 'engine.set', provider: 'claude' });
+    await tick();
+    expect(usage.refresh).toHaveBeenCalledTimes(1);
+    expect(agyQuota.refresh).toHaveBeenCalledTimes(1);
+  });
+
   it('agy.retry: повтор уходит сессии agy; bypass без разрешения в настройках — нет', async () => {
     const { controller, agy } = setup({ provider: 'antigravity' });
     controller.start();

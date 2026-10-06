@@ -705,6 +705,20 @@ describe('ChatController', () => {
     expect(posted).toContainEqual({ type: 'limits.update', ...snap });
   });
 
+  it('на движке Antigravity вместо лимитов Claude уходит квота agy (quota.update)', async () => {
+    const { posted, deps } = setup();
+    const rows = [{ label: 'Gemini', remaining: 20 }];
+    const agy = vi.fn(async () => ({ rows, updatedAt: 5 }));
+    const refresh = vi.fn(async () => snap);
+    const agyController = new ChatController({ ...deps, provider: 'antigravity', usage: { refresh }, agyQuota: { refresh: agy } });
+    agyController.start();
+    await agyController.handle({ type: 'ready' });
+    await tick();
+    expect(posted).toContainEqual({ type: 'quota.update', rows, updatedAt: 5 });
+    expect(refresh).not.toHaveBeenCalled();
+    expect(posted.some((m) => m.type === 'limits.update')).toBe(false);
+  });
+
   it('limits.refresh и конец хода перечитывают лимиты; ошибка источника не роняет чат', async () => {
     const { controller, sessions, posted, deps } = setup();
     const refresh = vi.fn(async () => snap);

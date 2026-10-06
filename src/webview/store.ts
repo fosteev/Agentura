@@ -38,6 +38,7 @@ import {
 import type {
   EditorContext,
   LimitWindowSummary,
+  QuotaRow,
   PickedFile,
   PlanChoice,
   SessionSummary,
@@ -89,6 +90,8 @@ export const limits = signal<{
   updatedAt: number;
   error?: string;
 }>({ windows: [], updatedAt: 0 });
+/** Квота Antigravity (`quota.update`): пусто — не получена или не разобрана, HUD ничего не рисует. */
+export const quota = signal<{ rows: QuotaRow[]; updatedAt: number }>({ rows: [], updatedAt: 0 });
 export const capabilities = signal<{ models: ModelOption[]; commands: CommandOption[] }>({
   models: [],
   commands: [],
@@ -335,6 +338,9 @@ export function handleHostMessage(m: ToWebview): void {
         updatedAt: m.updatedAt,
         ...(m.error ? { error: m.error } : {}),
       };
+      break;
+    case 'quota.update':
+      quota.value = { rows: m.rows, updatedAt: m.updatedAt };
       break;
     case 'capabilities':
       capabilities.value = { models: m.models, commands: m.commands };

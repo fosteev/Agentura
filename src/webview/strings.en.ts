@@ -502,6 +502,8 @@ export const en: Ui = {
     week: 'week',
     weekShort: 'wk',
     limitsUnknown: 'Subscription limits not received yet',
+    quotaTitle: (label: string, left: number, reset: string | undefined) =>
+      `${label}: weekly limit, ${left}% left${reset ? ` · resets ${reset}` : ''}`,
     send: 'enter ↵',
     sendTitle: 'Send',
     queue: '↵ to queue',
@@ -861,6 +863,16 @@ export const en: Ui = {
       found: 'found',
       notFound: 'not found',
       source: { setting: 'from setting', system: 'system', none: '' },
+    },
+    exeAgy: {
+      name: 'Path to agy (Antigravity)',
+      desc: 'Empty: look for the system one (PATH, ~/.local/bin, Homebrew). Only needed for the Antigravity engine; agy must be signed in (run it once).',
+      placeholder: 'empty: look for the system one',
+    },
+    provider: {
+      name: 'Engine for new chats',
+      desc: 'Which engine a new chat opens with; in an empty tab the engine menu under the input switches it.',
+      options: { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity' } as Record<string, string>,
     },
   },
   sidebar: {

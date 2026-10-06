@@ -130,6 +130,8 @@ describe('вкладка настроек', () => {
       'agentura.font.code',
       'agentura.language',
       'agentura.claudeExecutable · только эта машина',
+      'agentura.antigravityExecutable · только эта машина',
+      'agentura.defaultProvider · только эта машина',
     ]);
   });
 

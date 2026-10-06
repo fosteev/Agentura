@@ -12,6 +12,7 @@ import {
   FEED_STYLES,
   AGENTS_VIEWS,
   GIT_LAYOUTS,
+  PROVIDERS,
   DEFAULT_FEED_FONT_SIZE,
   MAX_FEED_FONT_SIZE,
   MIN_FEED_FONT_SIZE,
@@ -391,22 +392,31 @@ function ThresholdScale({ value }: { value: [number, number] }) {
   );
 }
 
-function EngineRow({ value }: { value: string }) {
+function EngineRow({
+  value,
+  engine = 'claude',
+}: {
+  value: string;
+  engine?: 'claude' | 'antigravity';
+}) {
   const [draft, setDraft] = useDraft(value);
   const c = engineCheck.value;
-  const r = c.result;
+  // результат «проверить» показывает строка того движка, чей путь проверяли
+  const r = (c.engine ?? 'claude') === engine ? c.result : undefined;
+  const key: SettingKey = engine === 'antigravity' ? 'antigravityExecutable' : 'claudeExecutable';
+  const text = engine === 'antigravity' ? T.exeAgy : T.exe;
   const save = (text: string) => {
-    if (text.trim() !== value) commit('claudeExecutable', text);
-    else setError('claudeExecutable', undefined);
+    if (text.trim() !== value) commit(key, text);
+    else setError(key, undefined);
   };
   return (
-    <Row name={T.exe.name} desc={T.exe.desc} k="claudeExecutable" machine below={checkLine()}>
+    <Row name={text.name} desc={text.desc} k={key} machine below={checkLine()}>
       <input
         class="num wide"
         type="text"
-        aria-label="claudeExecutable"
+        aria-label={key}
         value={draft}
-        placeholder={T.exe.placeholder}
+        placeholder={text.placeholder}
         spellcheck={false}
         onInput={(e) => setDraft((e.currentTarget as HTMLInputElement).value)}
         onChange={(e) => save((e.currentTarget as HTMLInputElement).value)}
@@ -414,8 +424,8 @@ function EngineRow({ value }: { value: string }) {
           if (e.key === 'Enter') save((e.currentTarget as HTMLInputElement).value);
         }}
       />
-      <button type="button" class="btn" disabled={c.pending} onClick={() => checkEngine(draft)}>
-        {c.pending ? T.exe.checking : T.exe.check}
+      <button type="button" class="btn" disabled={c.pending} onClick={() => checkEngine(draft, engine)}>
+        {c.pending && (c.engine ?? 'claude') === engine ? T.exe.checking : T.exe.check}
       </button>
     </Row>
   );
@@ -516,6 +526,7 @@ export function Settings() {
     context: v['sessionList.context'],
     time: v['sessionList.time'],
   };
+  const providerOptions = PROVIDERS.map((p): [string, string] => [p, T.provider.options[p] ?? p]);
   const languageModes = LANGUAGE_MODES.map((m): [string, string] => [
     m,
     T.language.options[m] ?? m,
@@ -857,7 +868,16 @@ export function Settings() {
             </>,
           )}
 
-          {page('engine', <EngineRow value={v.claudeExecutable} />)}
+          {page(
+            'engine',
+            <>
+              <EngineRow value={v.claudeExecutable} />
+              <EngineRow value={v.antigravityExecutable} engine="antigravity" />
+              <Row name={T.provider.name} desc={T.provider.desc} k="defaultProvider" machine>
+                <Select k="defaultProvider" value={v.defaultProvider} options={providerOptions} />
+              </Row>
+            </>,
+          )}
         </div>
       </div>
     </div>

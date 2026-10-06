@@ -22,6 +22,7 @@ import type {
   PickedFile,
   PickedImage,
   PlanChoice,
+  QuotaRow,
   SessionSummary,
   ToWebview,
 } from '../protocol';
@@ -104,6 +105,8 @@ export interface ChatDeps {
   };
   /** Лимиты подписки (этап 4): `refresh` ограничен кулдауном сервиса, ответ уходит в webview. */
   usage?: { refresh(): Promise<{ windows: LimitWindow[]; updatedAt: number; error?: string }> };
+  /** Квота Antigravity: сервис сам ограничивает частоту запусков `agy -p "/usage"`. */
+  agyQuota?: { refresh(): Promise<{ rows: QuotaRow[]; updatedAt: number }> };
   /** Окна из `rate_limit_event` движка — запас для `LimitsSource`. */
   observeLimits?(windows: LimitWindow[]): void;
   findFiles(query: string): Promise<FileHit[]>;
@@ -347,6 +350,8 @@ export class ChatController {
     this.deps.rememberProvider?.(provider);
     this.engineProvider = provider;
     this.pushInfo();
+    // у движков разные приборы: квота agy или лимиты Claude — свежие сразу, а не после первого хода
+    void this.refreshLimits();
     // пустая сессия прежнего движка (процесс поднят при открытии вкладки) закрывается, поднимается новая
     this.newSession(true);
   }
@@ -378,6 +383,7 @@ export class ChatController {
     if (provider && provider !== this.engineProvider) {
       this.engineProvider = provider;
       this.pushInfo();
+      void this.refreshLimits();
     }
     const run = this.doResume(id, engine);
     this.loading = run;
@@ -1283,7 +1289,18 @@ export class ChatController {
 
   /** Лимиты подписки → webview (`limits.update`). Не чаще кулдауна `UsageService`. */
   private async refreshLimits(): Promise<void> {
-    const { usage, post } = this.deps;
+    const { usage, post, agyQuota } = this.deps;
+    if (this.engineProvider === 'antigravity') {
+      // квота Antigravity вместо лимитов Claude: у agy своих окон 5ч/неделя нет
+      if (!agyQuota) return;
+      try {
+        const snap = await agyQuota.refresh();
+        post({ type: 'quota.update', rows: snap.rows, updatedAt: snap.updatedAt });
+      } catch (e) {
+        this.log.warn(`квота agy: ${String(e)}`);
+      }
+      return;
+    }
     if (!usage) return;
     try {
       const snap = await usage.refresh();

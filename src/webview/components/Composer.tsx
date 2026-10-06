@@ -36,6 +36,7 @@ import {
   meters,
   newSession,
   provider,
+  quota,
   removeExtra,
   removeFile,
   removeImage,
@@ -51,7 +52,7 @@ import {
   showThinking,
   tick,
 } from '../store';
-import type { LimitMeter } from '../hudView';
+import { quotaView, type LimitMeter } from '../hudView';
 import { deferredNote } from '../limitView';
 import { menuKeys } from '../a11y';
 import { ui, uiLang } from '../strings';
@@ -1536,8 +1537,19 @@ function Meters({
   hv: Hv;
   look?: 'classic' | 'time' | 'under' | 'alert';
 }) {
-  // лимиты подписки, кэш и стоимость — Claude; у других движков достоверных чисел нет, виджет прячется целиком
-  if (!features.value.metrics) return null;
+  // лимиты подписки, кэш и стоимость — Claude; у других движков достоверных чисел нет, виджет прячется целиком.
+  // Исключение — квота Antigravity (`/usage`): недельные окна семейств моделей, пока она получена и разобрана.
+  if (!features.value.metrics) {
+    const items = provider.value === 'antigravity' ? quotaView(quota.value.rows, Date.now()) : [];
+    if (!items.length) return null;
+    return (
+      <span class="meters alert">
+        {items.map((q, i) => (
+          <LimitText key={i} label={q.label} meter={q.meter} title={q.title} />
+        ))}
+      </span>
+    );
+  }
   const weekShown = hv.limits.week && hv.limits.week.percent > 70;
   if (look === 'alert') {
     const five = hv.limits.five && hv.limits.five.percent > 70 ? hv.limits.five : undefined;
