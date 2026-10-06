@@ -121,11 +121,25 @@ describe('SettingsController', () => {
   it('checkEngine: тот же поиск, что при старте, результат в webview', async () => {
     const { c, posted, deps } = setup();
     await c.handle({ type: 'settings.checkEngine', path: '' });
-    expect(deps.checkEngine).toHaveBeenCalledWith('');
+    expect(deps.checkEngine).toHaveBeenCalledWith('', 'claude');
     expect(posted[0]).toMatchObject({
       type: 'settings.engine',
       result: { ok: true, version: '2.1.285' },
     });
+  });
+
+  it('checkEngine: для Antigravity проверяет agy и помечает ответ', async () => {
+    const { c, posted, deps } = setup();
+    await c.handle({ type: 'settings.checkEngine', path: '/x/agy', engine: 'antigravity' });
+    expect(deps.checkEngine).toHaveBeenCalledWith('/x/agy', 'antigravity');
+    expect(posted[0]).toMatchObject({ type: 'settings.engine', engine: 'antigravity' });
+  });
+
+  it('checkEngine: исключение проверки — ответ с ошибкой, кнопка не остаётся в «проверяю»', async () => {
+    const { c, posted, deps } = setup();
+    vi.mocked(deps.checkEngine).mockRejectedValueOnce(new Error('boom'));
+    await c.handle({ type: 'settings.checkEngine', path: '/x/agy', engine: 'antigravity' });
+    expect(posted[0]).toMatchObject({ type: 'settings.engine', engine: 'antigravity', result: { ok: false } });
   });
 
   it('checkEngine: ответ устаревшей проверки не перебивает последнюю', async () => {

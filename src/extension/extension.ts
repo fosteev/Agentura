@@ -5,6 +5,7 @@ import { SIDEBAR_VIEW_ID, SidebarProvider } from './sidebarView';
 import { LimitsSource, startLimitsPolling } from '../data/limits';
 import { LiveSessions, TranscriptCache } from '../data/sessions';
 import { UsageService } from './usage';
+import { AgyQuotaService } from './agyQuota';
 import { DiffDocuments } from './diffDocuments';
 import { PreviewPanels } from './previewPanels';
 import { AccountService } from './account';
@@ -109,6 +110,7 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     transcripts,
     usage,
     limits,
+    agyQuota: new AgyQuotaService(() => antigravityEngine.path()),
     diffs: new DiffDocuments(),
     previews: new PreviewPanels(),
     sessions,

@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { AGY_NOT_FOUND, resolveAgyExecutable } from '../agent/antigravity/executable';
 import { resolveExecutable } from '../agent/claude/executable';
 import { postToWebview } from '../protocol';
 import { hostStrings } from '../shared/l10n';
@@ -38,7 +39,19 @@ export class SettingsPanel {
       config: () => vscode.workspace.getConfiguration('agentura'),
       globalTarget: vscode.ConfigurationTarget.Global,
       post: (m) => postToWebview(webview, m),
-      checkEngine: async (path) => {
+      checkEngine: async (path, engine) => {
+        if (engine === 'antigravity') {
+          const r = await resolveAgyExecutable(path.trim());
+          return {
+            ok: r.version !== undefined,
+            source: r.source,
+            ...(r.path ? { path: r.path } : {}),
+            ...(r.version ? { version: r.version } : {}),
+            ...(r.problem
+              ? { problem: r.problem === AGY_NOT_FOUND ? hostStrings(currentLanguage()).antigravityNotFound : r.problem }
+              : {}),
+          };
+        }
         const r = await resolveExecutable(path.trim(), { lang: currentLanguage() });
         return {
           ok: r.version !== undefined,

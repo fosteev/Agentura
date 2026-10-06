@@ -15,6 +15,7 @@ import {
   limitLevel,
   limitMeter,
   limitsView,
+  quotaView,
   sessionTotals,
   segClass,
 } from './hudView';
@@ -290,5 +291,23 @@ describe('прототип: шкала блоков совпадает с chat.h
     // в прототипе: 12 «сжатых» on-блока до порога, 13-й warn, частичный 14-й (131k)
     const mine = contextBlocks(131_250, 200_000, TH, 200_000).map((b) => b.cls);
     expect(mine).toEqual(proto);
+  });
+});
+
+describe('quotaView (квота Antigravity)', () => {
+  it('осталось 26% — израсходовано 74%, подсказка с остатком и сбросом', () => {
+    const [q] = quotaView([{ label: 'Gemini', remaining: 26, resetsAt: Date.parse('2026-10-12T16:21:42Z') }], 0);
+    expect(q?.label).toBe('Gemini');
+    expect(q?.meter.percent).toBe(74);
+    expect(q?.title).toContain('26%');
+  });
+
+  it('без сброса — подсказка без времени; пусто — пусто', () => {
+    expect(quotaView([{ label: 'Claude/GPT', remaining: 100 }], 0)[0]?.meter.percent).toBe(0);
+    expect(quotaView([], 0)).toEqual([]);
+  });
+
+  it('окно уже сбросилось — строка не показывается', () => {
+    expect(quotaView([{ label: 'Gemini', remaining: 5, resetsAt: 1000 }], 2000)).toEqual([]);
   });
 });

@@ -509,6 +509,9 @@ const ru = {
     week: 'неделя',
     weekShort: 'нед',
     limitsUnknown: 'Лимиты подписки пока не получены',
+    /** Подсказка квоты Antigravity: недельный лимит семейства моделей. */
+    quotaTitle: (label: string, left: number, reset: string | undefined) =>
+      `${label}: недельный лимит, осталось ${left}%${reset ? ` · сброс ${reset}` : ''}`,
     send: 'enter ↵',
     sendTitle: 'Отправить',
     queue: '↵ в очередь',
@@ -878,6 +881,16 @@ const ru = {
       found: 'найден',
       notFound: 'не найден',
       source: { setting: 'из настройки', system: 'system', none: '' } as Record<string, string>,
+    },
+    exeAgy: {
+      name: 'Путь к agy (Antigravity)',
+      desc: 'Пусто — искать системный: PATH, ~/.local/bin, Homebrew. Нужен только для движка Antigravity; agy должен быть залогинен (запустите его один раз).',
+      placeholder: 'пусто — искать системный',
+    },
+    provider: {
+      name: 'Движок новых чатов',
+      desc: 'На каком движке открывается новый чат; в пустой вкладке его можно сменить меню движка под полем ввода.',
+      options: { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity' } as Record<string, string>,
     },
   },
   sidebar: {

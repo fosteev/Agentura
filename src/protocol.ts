@@ -148,7 +148,7 @@ export type ToWebview =
   /** Отказ записи настройки (проверка не прошла или запись не удалась) — текст у поля. */
   | { type: 'settings.error'; key: SettingKey; message: string }
   /** Ответ на «проверить» у пути к claude. */
-  | { type: 'settings.engine'; result: EngineCheck }
+  | { type: 'settings.engine'; result: EngineCheck; engine?: 'antigravity' }
   | { type: 'agent.event'; sessionId: string; event: AgentEvent }
   /**
    * Граф агентов (roadmap 11, этап 2). Чату: открыта ли (и видна ли) его вкладка графа — пока да, чат шлёт
@@ -253,6 +253,8 @@ export type ToWebview =
       updatedAt: number;
       error?: string;
     }
+  /** Квота Antigravity (`agy -p "/usage"`): строки по семействам моделей; пусто — не показываем. */
+  | { type: 'quota.update'; rows: QuotaRow[]; updatedAt: number }
   /**
    * Вкладка «git» (roadmap 12): `git.state` — снимок на каждое изменение и на `ready`, `git.error` — отказ
    * действия, `git.commit.result` — итог коммита по каждому репозиторию, `git.message.result` — ✦ сообщение.
@@ -359,8 +361,8 @@ export type FromWebview =
   | { type: 'settings.open' }
   /** Вкладка настроек: записать настройку (в пользовательские настройки VS Code). */
   | { type: 'settings.set'; key: SettingKey; value: unknown }
-  /** «проверить»: найти claude по этому пути (пусто — системный) и показать версию и источник. */
-  | { type: 'settings.checkEngine'; path: string }
+  /** «проверить»: найти claude (или agy — `engine: 'antigravity'`) по этому пути (пусто — системный) и показать версию и источник. */
+  | { type: 'settings.checkEngine'; path: string; engine?: 'claude' | 'antigravity' }
   /** «в настройках VS Code» / «settings.json». */
   | { type: 'settings.reveal'; target: 'ui' | 'json' }
   /** «Добавить из Google Fonts…» под карточками: выбор семейства для интерфейса, кода или панелей (все семейства). */
@@ -416,6 +418,13 @@ export interface SessionSummary {
   updatedAt: number;
   /** Контекст последнего запроса, токены — «131k» в строке списка. */
   contextTokens?: number;
+}
+
+/** Строка квоты Antigravity: осталось % (0…100) и сброс в мс; `label` — `Gemini`, `Claude/GPT`. */
+export interface QuotaRow {
+  label: string;
+  remaining: number;
+  resetsAt?: number;
 }
 
 /** Окно лимита: `kind`, проценты 0…100, сброс в мс. */

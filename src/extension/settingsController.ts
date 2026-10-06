@@ -18,7 +18,7 @@ export interface SettingsDeps {
   globalTarget: unknown;
   post(m: ToWebview): void;
   /** Тот же поиск, что при старте движка (`resolveExecutable`). */
-  checkEngine(path: string): Promise<EngineCheck>;
+  checkEngine(path: string, engine?: 'claude' | 'antigravity'): Promise<EngineCheck>;
   reveal(target: 'ui' | 'json'): void;
   warn(message: string): void;
   /** Скачать шрифт из Google Fonts (`kind` — назначение карточки) / удалить скачанный. */
@@ -58,8 +58,12 @@ export class SettingsController {
       case 'settings.checkEngine': {
         // проверки асинхронные (до 5 с): ответ устаревшей не должен перебить ответ последней
         const seq = ++this.checkSeq;
-        const result = await this.deps.checkEngine(typeof m.path === 'string' ? m.path : '');
-        if (seq === this.checkSeq) this.deps.post({ type: 'settings.engine', result });
+        const engine = m.engine === 'antigravity' ? 'antigravity' : 'claude';
+        // исключение проверки не должно оставить кнопки «проверить» заблокированными (pending общий на обе строки)
+        const result: EngineCheck = await this.deps
+          .checkEngine(typeof m.path === 'string' ? m.path : '', engine)
+          .catch((e: unknown) => ({ ok: false, source: 'none' as const, problem: String(e) }));
+        if (seq === this.checkSeq) this.deps.post({ type: 'settings.engine', result, ...(engine === 'antigravity' ? { engine } : {}) });
         break;
       }
       case 'settings.reveal':

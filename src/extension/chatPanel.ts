@@ -43,6 +43,7 @@ import {
 import type { SessionMemory } from './sessionMemory';
 import type { SessionsService } from './sessionsService';
 import type { UsageService } from './usage';
+import type { AgyQuotaService } from './agyQuota';
 import type { GitService } from './git/gitService';
 import { isGitRequest } from '../shared/git';
 import type { Logger } from './logger';
@@ -82,6 +83,8 @@ export interface ChatServices {
   transcripts: TranscriptCache;
   usage: UsageService;
   limits: LimitsSource;
+  /** Квота Antigravity (`agy -p "/usage"`, не чаще раза в 10 минут). */
+  agyQuota: AgyQuotaService;
   /** Нативный дифф правок агента (`agentura-diff:`), этап 5. */
   diffs: DiffDocuments;
   /** Превью `.html` в соседней вкладке. */
@@ -396,6 +399,7 @@ export class ChatPanel {
         };
       },
       usage: services.usage,
+      agyQuota: services.agyQuota,
       observeLimits: (windows) => services.limits.observeEngine(windows),
       findFiles: (q) => files.find(q),
       pickFiles: () => files.pick(),
@@ -556,6 +560,12 @@ export class ChatPanel {
       {
         dispose: services.usage.onUpdate((snap) =>
           postToWebview(panel.webview, { type: 'limits.update', ...snap }),
+        ),
+      },
+      // свежая квота agy доходит до открытых чатов (на движке agy её рисует HUD)
+      {
+        dispose: services.agyQuota.onUpdate((snap) =>
+          postToWebview(panel.webview, { type: 'quota.update', rows: snap.rows, updatedAt: snap.updatedAt }),
         ),
       },
       // список сессий — и во вкладку: попап «sessions» и экран empty
