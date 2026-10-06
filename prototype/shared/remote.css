@@ -1,0 +1,34 @@
+/* Экран remote: Remote Control (/rc) — управлять сессией с телефона и claude.ai (предложение 06.10, ждёт выбора).
+   Хэш: #slash — набрано «/r» в поле ввода, #on — включён, #menu — включён и открыто меню «rc».
+   Кнопка «rc» в строке под полем ввода, метка в шапке, системная строка и отметка «с телефона» в ленте. */
+
+.opts .rcw { position: relative; display: inline-flex; }
+.opts .rc .dot { display: none; width: 6px; height: 6px; border-radius: 50%; background: var(--ok); margin-right: 5px; vertical-align: 1px; }
+.webview[data-rc="on"] .opts .rc .dot { display: inline-block; }
+.webview[data-rc="on"] .opts .rc b { color: var(--ok); }
+
+.hud .acts .rcb { display: none; color: var(--ok); }
+.hud .acts .rcb::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--ok); margin-right: 6px; vertical-align: 1px; }
+.webview[data-rc="on"] .hud .acts .rcb { display: inline; }
+
+.when-on, .when-slash, .when-menu { display: none !important; }
+.webview[data-rc="on"] .when-on { display: grid !important; }
+.webview[data-rc="on"] span.when-on { display: inline !important; }
+.webview[data-slash] .when-slash { display: block !important; }
+.webview[data-slash] .prompt .text.when-idle { display: none; }
+.webview[data-slash] .prompt .typed.when-slash { display: inline !important; color: var(--fg); }
+.webview[data-menu] .when-menu { display: block !important; }
+
+.log .u .at .src { color: var(--ok); margin-right: 6px; }
+
+/* меню «rc» над кнопкой */
+.rcmenu { right: -60px; left: auto !important; min-width: 320px; }
+.rcmenu .qr { display: grid; grid-template-columns: 84px 1fr; gap: 12px; align-items: center; padding: 6px 8px 8px; }
+.rcmenu .qr svg { width: 84px; height: 84px; background: #fff; border-radius: 2px; padding: 4px; }
+.rcmenu .qr p { margin: 0; color: var(--fg-mute); font-size: 11px; line-height: 1.45; }
+.rcmenu .qr p b { color: var(--fg); font-weight: 500; }
+.rcmenu .nt { padding: 4px 8px 6px; color: var(--fg-mute); font-size: 11px; line-height: 1.45; }
+
+/* меню «/» в поле ввода */
+.compose { position: relative; }
+.slashmenu { bottom: calc(100% - 4px); left: 14px; min-width: 380px; }

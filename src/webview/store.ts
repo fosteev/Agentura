@@ -831,6 +831,17 @@ export function setMode(mode: PermissionMode): void {
   send({ type: 'mode.set', sessionId: chat.value.sessionId, mode });
 }
 
+/** Remote Control вкладки (кнопка «rc», `/rc`): хост ответит событием `remote.state`. */
+export function setRemote(on: boolean): void {
+  send({ type: 'remote.set', sessionId: chat.value.sessionId, on });
+}
+
+/** `/rc`, `/remote-control`: включить, если выключен (или упал), иначе выключить. */
+export function toggleRemote(): void {
+  const st = chat.value.remote?.state;
+  setRemote(st !== 'on' && st !== 'connecting');
+}
+
 export function setModel(model: string): void {
   chat.value = { ...chat.value, model };
   send({ type: 'model.set', sessionId: chat.value.sessionId, model });

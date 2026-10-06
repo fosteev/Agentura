@@ -419,3 +419,8 @@ html:is([data-width="900"],[data-width="full"],[data-width="vscode"]) .body[data
 .sidebar .head .hl .refresh { color: var(--fg-mute); font-size: 13px; line-height: 1; padding: 0 2px; }
 .sidebar .head .hl .refresh:hover:not(:disabled) { color: var(--fg); }
 .sidebar .head .hl .refresh.busy { animation: spin .8s linear infinite; cursor: progress; }
+
+/* Remote Control: метка «● remote» в шапке и отметка «с телефона» у реплики (roadmap 17) */
+.hud .acts .rcb { color: var(--ok); }
+.hud .acts .rcb::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--ok); margin-right: 6px; vertical-align: 1px; }
+.log .u .at .src { color: var(--ok); margin-right: 6px; }

@@ -1,6 +1,6 @@
 # 17 — Remote Control (/rc): сессия Claude с телефона и claude.ai
 
-> **Статус:** спайк пройден 2026-10-06; этап 1 (хост) принят 2026-10-06; этап 2 (webview) — в работе;
+> **Статус:** спайк пройден 2026-10-06; этап 1 (хост) и этап 2 (webview) приняты 2026-10-06;
 > релиз 0.6.0 — после приёмки 2. Ветка `feature/remote-control` от main. Прототип — `prototype/screens/remote.html`
 > (`#slash|#on|#menu`), `settings.html#session`; галерея — раздел «Remote Control · /rc».
 > Ручные проверки и решения — `17-remote-control.pending.md`.
@@ -79,14 +79,23 @@ OAuth-токен — тот же, что для лимитов: `readToken()` и
 
 ### 2. Webview: кнопка, меню, лента, настройки — **sonnet, high**
 
-- [ ] кнопка «rc» и меню (переключатель, QR, ссылка, копирование, пояснение) во всех 6 раскладках
-- [ ] метка «remote» в шапке, системные строки, «с телефона / с claude.ai» у реплик
-- [ ] `/rc`, `/remote-control`
-- [ ] две строки на странице настроек «Новая сессия»
-- [ ] строки ru/en, CSS, DOM-тесты
-- [ ] `npm run check` зелёный
+- [x] кнопка «rc» и меню (переключатель, QR, ссылка, копирование, пояснение) во всех 6 раскладках
+- [x] метка «remote» в шапке, системные строки, «с телефона / с claude.ai» у реплик
+- [x] `/rc`, `/remote-control`
+- [x] две строки на странице настроек «Новая сессия»
+- [x] строки ru/en, CSS, DOM-тесты
+- [x] `npm run check` зелёный
 
 Готово, когда: `npm run check` зелёный; DOM-тесты из промта 2 есть и проходят.
+
+### Решения по итогам этапа 2 (2026-10-06)
+
+- Строка «Remote Control для новых сессий» без `.set.on` (в прототипе так) — `.on` у строки подсвечивает только
+  предупреждение bypass.
+- Вопрос/план, отвеченные с claude.ai, закрываются итогом «ответ отправлен» без выбранных вариантов — webview их не знает.
+- QR — `qrcode-generator` (MIT, devDependency, бандлится в webview), путь SVG без innerHTML (`src/webview/qr.ts`).
+  Приёмка: тихая зона 4 модуля (viewBox с отступом), размер 112 px — исполнитель дал ~1,7 модуля, камера ловит хуже.
+- Вёрстка меню «rc» в раскладках card/minimal/statusline/shell глазами не проверена — в pending.
 
 ### 3. Документация и релиз 0.6.0 — **сам (Opus), после приёмки 2**
 
@@ -267,6 +276,11 @@ prototype/screens/remote.html и prototype/shared/remote.css (разметка, 
    agentura.remoteControl) и «Префикс имени в Remote Control» (текст, placeholder «пусто — имя машины»);
    тексты описаний — из прототипа settings.html.
 7. Строки — в strings.ts и strings.en.ts (англ. «Remote Control», «from phone», «from claude.ai», …).
+9. src/webview/settingsDom.test.ts сверяет разметку строк и CSS-классы страницы настроек с
+   prototype/screens/settings.html: две строки RC там уже есть (в рабочем дереве, не коммичены) — Settings.tsx
+   должен дать ту же разметку. Прототип не менять; сейчас этот тест красный именно из-за них.
+10. Хост уже запоминает выбор «rc» на вкладку (переживает /clear) и шлёт последнее `remote.state` при пересеве
+   webview; после `session.reset` webview сбрасывает своё состояние remote в `off` без sys-строки.
 8. Тексты причин ошибок: no-token «нет входа Claude Code — выполните claude login»; oauth «вход Claude
    Code устарел — перезапустите claude»; rejected «claude.ai отклонил подключение (<detail>)»;
    network «нет связи с claude.ai»; closed «связь с claude.ai прервана»; superseded «сессию подхватил

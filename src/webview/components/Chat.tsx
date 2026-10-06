@@ -385,6 +385,8 @@ export function Chat() {
         onResume={resumeSession}
         onAllSessions={() => send({ type: 'sessions.show' })}
         onNew={newSession}
+        remote={s.remote?.state === 'on' ? { url: s.remote.url } : undefined}
+        onRemote={(url) => send({ type: 'link.open', url })}
       />
       {banner && (
         <div class="banner" role="alert">

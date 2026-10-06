@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { EffortLevel, PermissionMode } from '../../agent/types';
 import { attachmentKey, attachmentLabel, type Attachment } from '../../shared/prompt';
-import { addSys } from '../chatState';
+import { addSys, remoteErrorText } from '../chatState';
+import { qrPath } from '../qr';
 import {
   applyCompletion,
   buildSlashItems,
@@ -49,9 +50,11 @@ import {
   setEffort,
   setMode,
   setModel,
+  setRemote,
   showStatus,
   showThinking,
   tick,
+  toggleRemote,
 } from '../store';
 import { quotaView, type LimitMeter } from '../hudView';
 import { deferredNote } from '../limitView';
@@ -69,7 +72,7 @@ import {
 } from '../imageDraft';
 import { send } from '../vscode';
 
-type MenuName = 'mode' | 'model' | 'effort' | 'agent' | 'plus' | 'engine';
+type MenuName = 'mode' | 'model' | 'effort' | 'agent' | 'plus' | 'engine' | 'remote';
 
 /** Запасной список, пока движок не прислал `supportedModels()` (сессия ещё поднимается). */
 const FALLBACK_MODELS = [
@@ -396,12 +399,18 @@ export function Composer() {
     }
     const cmd = /^\/([\w:.-]+)(?:\s+([\s\S]*))?$/.exec(t);
     // лимит: уходит к движку всё, кроме локальных команд
-    if (blocked && !(cmd && ['clear', 'status', 'plan'].includes(cmd[1]!))) return;
+    if (blocked && !(cmd && ['clear', 'status', 'plan', 'rc', 'remote-control'].includes(cmd[1]!)))
+      return;
     if (cmd) {
       const name = cmd[1]!;
       // команды, которых у движка нет (`/plan`, `/compact` у Codex): не уходят ему текстом, а отвечают на месте
       if (!ownCommands(features.value).includes(name) && OWN_COMMANDS.some((n) => n === name)) {
         chat.value = addSys(chat.value, [ui.sys.commandUnavailable(name)]);
+        writeText('');
+        return;
+      }
+      if (name === 'rc' || name === 'remote-control') {
+        toggleRemote();
         writeText('');
         return;
       }
@@ -659,6 +668,7 @@ export function Composer() {
             <PlusMenu {...menuProps} look="circle" />
             <ModeMenu {...menuProps} look="pill" />
             <EngineMenu {...menuProps} {...modelProps} efforts={efforts} look="full" />
+            <RemoteMenu {...menuProps} />
             <span class="sp" />
             <ContextRing hv={hv} />
             {sendCtl('round')}
@@ -701,6 +711,7 @@ export function Composer() {
           <AgentMenu {...menuProps} look="value" />
           <ModelMenu {...menuProps} {...modelProps} look="value" />
           <EffortMenu {...menuProps} efforts={efforts} />
+          <RemoteMenu {...menuProps} />
           <span class="sp" />
           {sendCtl('long')}
         </div>
@@ -722,6 +733,7 @@ export function Composer() {
           <Meters hv={hv} look="alert" />
           <PlusMenu {...menuProps} look="circle" />
           <EngineMenu {...menuProps} {...modelProps} efforts={efforts} look="short" />
+          <RemoteMenu {...menuProps} />
           {sendCtl('enter')}
         </div>
         <div class="sub">
@@ -751,6 +763,7 @@ export function Composer() {
           <AgentMenu {...menuProps} look="value" />
           <ModelMenu {...menuProps} {...modelProps} look="value" />
           <EffortMenu {...menuProps} efforts={efforts} look="value" />
+          <RemoteMenu {...menuProps} />
           <span class="sp" />
           <ContextStatus hv={hv} look="sl" />
           <Meters hv={hv} look="time" />
@@ -778,6 +791,7 @@ export function Composer() {
             <span class="sep-c">:</span>
             <EffortMenu {...menuProps} efforts={efforts} look="value" />
           </span>
+          <RemoteMenu {...menuProps} />
           <PlusMenu {...menuProps} />
           <span class="rg">
             <ContextStatus hv={hv} look="sh" />
@@ -820,6 +834,7 @@ export function Composer() {
         <AgentMenu {...menuProps} />
         <ModelMenu {...menuProps} {...modelProps} />
         <EffortMenu {...menuProps} efforts={efforts} />
+        <RemoteMenu {...menuProps} />
         <Meters hv={hv} />
         {sendCtl('classic')}
       </div>
@@ -1412,6 +1427,109 @@ function EffortMenu({
       )}
     </span>
   );
+}
+
+/**
+ * «rc» — Remote Control вкладки (roadmap 17): значение (`выкл` / `…` / `вкл` / `ошибка`) и меню с переключателем,
+ * QR и ссылкой. Только у движков с `features.remote` (Claude). Состояние моста — `chat.remote` (из `remote.state`).
+ */
+function RemoteMenu({ menu, toggle }: MenuProps) {
+  if (!features.value.remote) return null;
+  const s = chat.value;
+  const r = s.remote;
+  const st = r?.state ?? 'off';
+  const busy = st === 'on' || st === 'connecting';
+  const value = ui.remote[st === 'connecting' ? 'connecting' : st];
+  const url = r?.url;
+  return (
+    <span class="pop rcw" onKeyDown={menuKeys}>
+      <button
+        class={`rc ${st}`}
+        data-tip={ui.remote.buttonTitle}
+        aria-haspopup="menu"
+        aria-expanded={menu === 'remote'}
+        onClick={() => toggle('remote')}
+      >
+        <span class="dot" />
+        {ui.remote.button} <b>{value}</b>
+      </button>
+      {menu === 'remote' && (
+        <div class="menu up rcmenu" role="menu">
+          <div class="hd">{ui.remote.menuTitle}</div>
+          <button
+            class="it"
+            role="menuitemcheckbox"
+            aria-checked={busy}
+            onClick={() => setRemote(!busy)}
+          >
+            <span>
+              {ui.remote.toggle}
+              <small>{ui.remote.toggleHint}</small>
+            </span>
+            <Switch on={busy} />
+          </button>
+          {st === 'error' && r && (
+            <>
+              <div class="nt err" role="alert">
+                {remoteErrorText(r)}
+              </div>
+              <ItemButton it={{ label: ui.remote.retry }} onPick={() => setRemote(true)} />
+            </>
+          )}
+          {st === 'on' && url && (
+            <>
+              <RemoteQr url={url} title={s.title || ui.hud.untitled} />
+              <ItemButton
+                it={{ label: ui.remote.open, hint: ui.remote.openHint }}
+                onPick={() => send({ type: 'link.open', url })}
+              />
+              <ItemButton
+                it={{ label: ui.remote.copy, hint: ui.remote.copyHint }}
+                onPick={() => copyLink(url)}
+              />
+            </>
+          )}
+          <div class="sep" />
+          <div class="nt">{ui.remote.note}</div>
+        </div>
+      )}
+    </span>
+  );
+}
+
+function RemoteQr({ url, title }: { url: string; title: string }) {
+  // тихая зона — 4 модуля по краям (viewBox с отступом): без неё камера телефона ловит код хуже
+  const { size, d } = qrPath(url);
+  return (
+    <div class="qr">
+      <svg
+        viewBox={`-4 -4 ${size + 8} ${size + 8}`}
+        fill="#111"
+        shape-rendering="crispEdges"
+        role="img"
+        aria-label={ui.remote.qrAria}
+      >
+        <path d={d} />
+      </svg>
+      <p>
+        {ui.remote.qrLead}
+        <b>{ui.remote.qrSite}</b>
+        {ui.remote.qrTail(title)}
+      </p>
+    </div>
+  );
+}
+
+/** Ссылка — в буфер; буфера нет (webview без доступа) — строкой в ленту, откуда её видно и выделить. */
+function copyLink(url: string): void {
+  const clip = typeof navigator === 'undefined' ? undefined : navigator.clipboard;
+  if (clip?.writeText) {
+    void clip.writeText(url).catch(() => {
+      chat.value = addSys(chat.value, [ui.sys.remoteLink(url)]);
+    });
+    return;
+  }
+  chat.value = addSys(chat.value, [ui.sys.remoteLink(url)]);
 }
 
 /**

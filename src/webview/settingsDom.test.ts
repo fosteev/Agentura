@@ -118,6 +118,8 @@ describe('вкладка настроек', () => {
       'agentura.allowBypassPermissions · только эта машина',
       'agentura.defaultModel',
       'agentura.defaultEffort',
+      'agentura.remoteControl · только движок Claude',
+      'agentura.remoteControlNamePrefix',
       'agentura.contextThresholds',
       'agentura.usagePollMinutes · не меньше 5',
       'agentura.limits.readKeychain',
@@ -162,6 +164,24 @@ describe('вкладка настроек', () => {
     expect(host.querySelector('.st-wrap > .st-nav')).not.toBeNull();
     expect(host.querySelector('.set.on .tg.on.danger')).not.toBeNull();
     expect(host.querySelector('.set.on .warn')).not.toBeNull();
+  });
+
+  it('Remote Control: переключатель и префикс пишут через settings.set', async () => {
+    const host = mount(Settings);
+    state();
+    await flush();
+    host.querySelector<HTMLElement>('.set[data-key$="remoteControl"] .tg')!.click();
+    await flush();
+    change(host.querySelector('.set[data-key$="remoteControlNamePrefix"] input')!, 'Мак');
+    expect(sets()).toEqual([
+      { type: 'settings.set', key: 'remoteControl', value: true },
+      { type: 'settings.set', key: 'remoteControlNamePrefix', value: 'Мак' },
+    ]);
+    expect(
+      host
+        .querySelector('.set[data-key$="remoteControlNamePrefix"] input')
+        ?.getAttribute('placeholder'),
+    ).toBe('пусто — имя машины');
   });
 
   it('разделы — страницы: видна одна, клик и стрелки переключают', async () => {

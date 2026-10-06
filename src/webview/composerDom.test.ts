@@ -102,7 +102,16 @@ describe('поле ввода', () => {
     const names = [...host.querySelectorAll('.menu .it')].map(
       (i) => i.firstElementChild?.firstChild?.textContent,
     );
-    expect(names).toEqual(['/plan', '/compact', '/clear', '/status', '/init', '/release-notes']);
+    expect(names).toEqual([
+      '/plan',
+      '/compact',
+      '/clear',
+      '/status',
+      '/rc',
+      '/remote-control',
+      '/init',
+      '/release-notes',
+    ]);
     expect(host.querySelector('.menu .hd')?.textContent).toBe('команды');
     expect(host.querySelectorAll('.menu .hd')).toHaveLength(2); // команды + скиллы проекта
     type(host, '/pl');

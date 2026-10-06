@@ -571,7 +571,12 @@ function UserRowView({
         onOpenImage={onOpenImage}
         onOpenFile={onOpenFile}
       />
-      <span class="at">{u.queued ? ui.log.queued : u.at}</span>
+      <span class="at">
+        {u.via && !u.queued && (
+          <span class="src">{u.via === 'phone' ? ui.remote.fromPhone : ui.remote.fromWeb} ·</span>
+        )}
+        {u.queued ? ui.log.queued : u.at}
+      </span>
       {tm && <span class="tm">{tmText}</span>}
     </div>
   );

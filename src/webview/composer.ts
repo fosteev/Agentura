@@ -43,11 +43,22 @@ export interface SlashItem {
 }
 
 /** Собственные команды расширения: обрабатываются в webview/хосте, не уходят движку. */
-export const OWN_COMMANDS = ['plan', 'compact', 'clear', 'status'] as const;
+export const OWN_COMMANDS = ['plan', 'compact', 'clear', 'status', 'rc', 'remote-control'] as const;
 
-/** Собственные команды, доступные движку: `/plan` — режим (`modes`), `/compact` — сжатие (`compact`). */
-export function ownCommands(f: { modes: boolean; compact: boolean }): string[] {
-  return OWN_COMMANDS.filter((n) => (n === 'plan' ? f.modes : n === 'compact' ? f.compact : true));
+/**
+ * Собственные команды, доступные движку: `/plan` — режим (`modes`), `/compact` — сжатие (`compact`),
+ * `/rc` и `/remote-control` — Remote Control (`remote`, только Claude).
+ */
+export function ownCommands(f: { modes: boolean; compact: boolean; remote?: boolean }): string[] {
+  return OWN_COMMANDS.filter((n) =>
+    n === 'plan'
+      ? f.modes
+      : n === 'compact'
+        ? f.compact
+        : n === 'rc' || n === 'remote-control'
+          ? !!f.remote
+          : true,
+  );
 }
 
 /**

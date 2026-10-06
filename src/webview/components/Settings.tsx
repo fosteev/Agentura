@@ -633,6 +633,27 @@ export function Settings() {
               <Row name={T.effort.name} isNew desc={T.effort.desc} k="defaultEffort">
                 <Select k="defaultEffort" value={v.defaultEffort} options={efforts} />
               </Row>
+              <Row
+                name={T.remoteControl.name}
+                isNew
+                desc={T.remoteControl.desc}
+                k="remoteControl"
+                keyNote={T.remoteControl.keyNote}
+              >
+                <Toggle k="remoteControl" value={v.remoteControl} />
+              </Row>
+              <Row
+                name={T.remoteControlNamePrefix.name}
+                desc={T.remoteControlNamePrefix.desc}
+                k="remoteControlNamePrefix"
+              >
+                <TextField
+                  k="remoteControlNamePrefix"
+                  value={v.remoteControlNamePrefix}
+                  placeholder={T.remoteControlNamePrefix.placeholder}
+                  wide
+                />
+              </Row>
             </>,
           )}
 
