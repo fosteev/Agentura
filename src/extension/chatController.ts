@@ -26,6 +26,7 @@ import type {
   ToWebview,
 } from '../protocol';
 import { ENGINE_MISSING_CODE } from '../protocol';
+import { isAgySession } from '../agent/antigravity/adapter';
 import { providerFeatures } from '../agent/features';
 import type {
   FileKind,
@@ -150,7 +151,7 @@ export interface ChatDeps {
   /** Клик по сессии в попапе или на экране empty: вкладку выбирает менеджер вкладок. */
   openSession?(id: string, provider: AgentProvider): void;
   /** Название сессии по id (строка списка) — заголовок вкладки и webview после `resume`. */
-  titleOf?(id: string): Promise<string | undefined>;
+  titleOf?(id: string, provider: AgentProvider): Promise<string | undefined>;
   /** Вкладка сменила сессию (`undefined` — пока нет): реестр открытых сессий и строка `cur` списка. */
   onSession?(id: string | undefined): void;
   /** Версия движка из `session.init` — секция «Аккаунт» боковой панели. */
@@ -422,7 +423,9 @@ export class ChatController {
         .catch(() => undefined);
       return;
     }
-    const title = await (deps.titleOf?.(id) ?? Promise.resolve(undefined)).catch(() => undefined);
+    const title = await (deps.titleOf?.(id, this.engineProvider) ?? Promise.resolve(undefined)).catch(
+      () => undefined,
+    );
     // пока читали, вкладку успели переключить (другой resume, /clear) — эта история уже не нужна
     if (token !== this.resumeToken) return;
     this.resumed = { history, ...(title ? { title } : {}) };
@@ -779,6 +782,23 @@ export class ChatController {
           await session.setMode(m.mode as PermissionMode);
           if (this.defaults) this.defaults = { ...this.defaults, mode: m.mode as PermissionMode };
           return;
+        case 'agy.retry': {
+          // карточка отказа Antigravity: процесс agy пересоздаётся в нужном режиме, агенту уходит служебный повтор
+          if (!isAgySession(session)) return;
+          if (m.mode === 'bypassPermissions' && !deps.settings().allowBypass) {
+            this.log.warn('agy.retry bypassPermissions: выключено настройкой agentura.allowBypassPermissions');
+            deps.post({ type: 'agy.retryRejected' });
+            return;
+          }
+          // режим в меню webview обновит `mode.changed` от адаптера
+          const ok = await session.retryWithMode(m.mode);
+          if (!ok) {
+            this.log.warn(`agy.retry ${m.mode}: адаптер повтор не принял`);
+            deps.post({ type: 'agy.retryRejected' });
+          }
+          if (ok && this.defaults) this.defaults = { ...this.defaults, mode: m.mode };
+          return;
+        }
         case 'model.set':
           await session.setModel(m.model);
           return;
@@ -1290,13 +1310,16 @@ export class ChatController {
       const resume = this.resumeId;
       const provider = this.engineProvider;
       const claude = provider === 'claude';
+      // режимы разрешений и «всё разрешено» есть у Claude и Antigravity (у agy — флаги процесса); Codex — своя политика
+      const agy = provider === 'antigravity';
+      const hasModes = claude || agy;
       // адаптер — на момент старта: `open()` зовётся после поиска движка, а движок вкладки к тому времени мог смениться
       const adapter = this.adapter;
       this.usedDrop = !!resume && !!this.retryDrop;
       const base = {
         cwd: deps.cwd,
         // режимов Claude у Codex нет: его политику задаёт конфиг, а не эти настройки
-        allowBypassPermissions: claude && s.allowBypass,
+        allowBypassPermissions: hasModes && s.allowBypass,
       };
       const open = (): Promise<AgentSession> =>
         resume
@@ -1304,7 +1327,7 @@ export class ChatController {
               const h = this.resumed?.history;
               // режим и модель — с конца сессии: движок при `resume` берёт их из опций, а не из записи
               const mode =
-                !claude || (h?.mode === 'bypassPermissions' && !s.allowBypass)
+                !hasModes || (h?.mode === 'bypassPermissions' && !s.allowBypass)
                   ? 'default'
                   : (h?.mode ?? 'default');
               // `agentura.defaultModel` — модель Claude: Codex она не подходит
@@ -1321,20 +1344,21 @@ export class ChatController {
                 ...(this.retryDrop ? { dropTurn: this.retryDrop } : {}),
               });
             })()
-          : !claude
+          : !hasModes
             ? // настройки режима, effort и модели — про Claude; Codex стартует со своими дефолтами (`model/list`)
               adapter.createSession({ ...base, permissionMode: 'default' })
             : (() => {
               // настройки «режим» и «effort по умолчанию» — только новым сессиям (resume берёт своё)
               const mode = resolveDefaultMode(s.defaultPermissionMode, s.allowBypass);
-              const effort = resolveDefaultEffort(s.defaultEffort);
+              // effort и `defaultModel` — про Claude: у agy нет thinking, модель — свой дефолт (`DEFAULT_AGY_MODEL`)
+              const effort = agy ? undefined : resolveDefaultEffort(s.defaultEffort);
               // меню под полем ввода — сразу, не дожидаясь `session.init` после первого хода
               this.defaults = { type: 'session.defaults', mode, ...(effort ? { effort } : {}) };
               deps.post(this.defaults);
               return adapter.createSession({
                 ...base,
                 permissionMode: mode,
-                ...(s.defaultModel ? { model: s.defaultModel } : {}),
+                ...(s.defaultModel && !agy ? { model: s.defaultModel } : {}),
                 ...(effort ? { effort } : {}),
               });
             })();
@@ -1445,6 +1469,10 @@ export class ChatController {
         break;
       case 'context.usage':
         if (e.source === 'engine' && !e.agentId) this.lastContext = e;
+        break;
+      case 'mode.changed':
+        // пересев webview (`lastInit` уходит после истории) не должен вернуть меню к режиму начала сессии
+        if (!e.agentId && this.lastInit) this.lastInit = { ...this.lastInit, permissionMode: e.mode };
         break;
       case 'turn.result':
         // отказ resume с отбрасыванием приходит итогом `error_during_execution` (и, бывает, ещё `error`)

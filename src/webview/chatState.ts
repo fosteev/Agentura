@@ -72,7 +72,23 @@ export type FeedRow =
   | PermCard
   | QuestionCard
   | PlanCard
-  | FailCard;
+  | FailCard
+  | RefusalCard;
+
+/**
+ * Карточка отказа Antigravity (roadmap 16, этап 4): agy не спрашивает разрешения по действию, а отклоняет то, что
+ * запрещает режим; карточка предлагает повторить в более свободном режиме. Только для живых ходов (не из истории).
+ */
+export interface RefusalCard {
+  id: number;
+  kind: 'refusal';
+  /** Имена отклонённых инструментов (`Bash`, `Write`, `Edit`), без повторов. */
+  tools: string[];
+  /** Кнопка нажата: ждём новый ход. */
+  sent?: boolean;
+  /** Начался следующий ход (повтор или новое сообщение): кнопок больше нет. */
+  closed?: boolean;
+}
 
 /**
  * Карточка ошибки движка (этап 7, экран error): «Движок остановился» с текстом ошибки и кнопками
@@ -216,6 +232,34 @@ function replaceAt(s: ChatState, index: number, row: FeedRow): ChatState {
 function lastIndex(rows: FeedRow[], pred: (r: FeedRow) => boolean): number {
   for (let i = rows.length - 1; i >= 0; i--) if (pred(rows[i]!)) return i;
   return -1;
+}
+
+/** Карточка отказа после `turn.result` с `permissionDenials`; нет отказов — состояние как было. */
+export function addRefusal(s: ChatState, denials: readonly { toolName: string }[]): ChatState {
+  const tools = [...new Set(denials.map((d) => d.toolName))];
+  if (tools.length === 0) return s;
+  return push(s, { kind: 'refusal', tools });
+}
+
+/** Кнопка карточки нажата: все открытые карточки отказа гаснут (повтор уйдёт одним). */
+export function markRefusalSent(s: ChatState): ChatState {
+  if (!s.rows.some((r) => r.kind === 'refusal' && !r.sent)) return s;
+  return { ...s, rows: s.rows.map((r) => (r.kind === 'refusal' && !r.sent ? { ...r, sent: true } : r)) };
+}
+
+/** Хост повтор не принял: нажатая карточка снова с кнопками. */
+export function unmarkRefusalSent(s: ChatState): ChatState {
+  if (!s.rows.some((r) => r.kind === 'refusal' && r.sent && !r.closed)) return s;
+  return {
+    ...s,
+    rows: s.rows.map((r) => (r.kind === 'refusal' && r.sent && !r.closed ? { ...r, sent: false } : r)),
+  };
+}
+
+/** Начался ход: открытые карточки отказа закрываются (повтор относился к прошлому ходу). */
+export function retireRefusals(s: ChatState): ChatState {
+  if (!s.rows.some((r) => r.kind === 'refusal' && !r.closed)) return s;
+  return { ...s, rows: s.rows.map((r) => (r.kind === 'refusal' && !r.closed ? { ...r, closed: true } : r)) };
 }
 
 /** Локальная системная строка (результат `/status`, `/plan`). */

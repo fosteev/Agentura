@@ -42,7 +42,7 @@ export interface AntigravityAdapterConfig {
   /** База окружения процесса; по умолчанию `process.env` целиком (вход agy живёт в `~/.gemini`). */
   env?: NodeJS.ProcessEnv;
   /** Версия `agy` для `session.init.engineVersion` (из локатора). */
-  engineVersion?: string;
+  engineVersion?: string | (() => string | undefined);
   /** Сколько ждать выхода процесса после SIGINT/закрытия stdin, прежде чем убить, мс. */
   graceMs?: number;
   /** Лимит строки stdout, символов. */
@@ -574,7 +574,7 @@ class AgySession implements AgyRetrySession {
       const wasInit = this.initEmitted;
       const init = this.mapper.init(event, {
         permissionMode: this.mode,
-        engineVersion: this.config.engineVersion ?? '',
+        engineVersion: (typeof this.config.engineVersion === 'function' ? this.config.engineVersion() : this.config.engineVersion) ?? '',
         cwd: this.cwd,
         ...(this.effort ? { effort: this.effort } : {}),
       });

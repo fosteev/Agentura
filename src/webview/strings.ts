@@ -132,6 +132,9 @@ const ru = {
     missingTitleCodex: 'Codex не найден',
     missingHintCodex:
       'Установите Codex CLI (https://developers.openai.com/codex/cli), выполните вход (codex login) или укажите путь к codex в настройках ⚙ (agentura.codexExecutable).',
+    missingTitleAgy: 'Antigravity не найден',
+    missingHintAgy:
+      'Установите Antigravity CLI (agy), выполните вход (запустите agy один раз) или укажите путь к agy в настройках ⚙ (agentura.antigravityExecutable).',
     missingRecheck: 'Проверить снова',
     missingChecking: 'проверяю…',
     openLog: 'Открыть журнал расширения',
@@ -159,6 +162,17 @@ const ru = {
     placeholder: 'лимит исчерпан — сообщение можно набрать, отправка после сброса',
   },
   cards: {
+    // карточка отказа Antigravity: agy без подтверждений по действию отклоняет запрещённое; повтор — в другом режиме
+    refusal: {
+      title: (actions: string) => `agy отклонил: ${actions}`,
+      action: (edit: boolean): string => (edit ? 'правка файла' : 'команда'),
+      hint: 'agy не спрашивает разрешений: что запрещает текущий режим, он отклоняет сам. Повтор перезапустит agy в более свободном режиме.',
+      rejected: 'Повтор не принят: режим уже такой, или «всё разрешено» недоступно этой сессии (настройку включили после её начала — откройте новый чат).',
+      edits: 'Разрешить правки и повторить',
+      all: 'Разрешить всё и повторить',
+      allOff: 'Режим «всё разрешено» выключен: включите agentura.allowBypassPermissions',
+      sent: 'повторяю…',
+    },
     permTitle: (tool: string) =>
       tool === 'Bash'
         ? 'Разрешить запуск команды?'
@@ -481,7 +495,7 @@ const ru = {
     model: 'модель',
     effort: 'effort',
     agent: 'агент',
-    agentTitle: 'Агент: Claude, Codex · Gemini — скоро',
+    agentTitle: 'Агент: Claude, Codex, Antigravity',
     context: 'контекст',
     compact: 'сжать',
     ctxTitle: (thresholds: string[], fullAt: string, scale?: string) =>
@@ -519,9 +533,8 @@ const ru = {
     claudeVia: (version?: string) =>
       `через Claude Agent SDK${version ? ` · claude ${version}` : ''}`,
     codexVia: 'через codex app-server',
+    antigravityVia: (version?: string) => `через agy (Antigravity CLI)${version ? ` · ${version}` : ''}`,
     agentLocked: 'выбирается в новом чате',
-    acpAdapter: 'адаптер по форме ACP',
-    agentSoon: 'скоро',
     imagesHint: '⌘V — вставить картинку · перетащить с ⇧',
     imagesPlus: (k: string) => `+${k} картинки`,
     imagesPlusTitle: 'Картинки считаются по размеру: ширина × высота / 750 токенов',
@@ -581,7 +594,7 @@ const ru = {
       total: 'картинки и файлы одного сообщения — до 20 МБ вместе (лимит запроса к API — 32 МБ)',
       foreign:
         'Не из VS Code перетаскиваются только картинки: текст и pdf добавьте через «+» или перетащите из проводника VS Code',
-      engine: 'Этот агент (Codex) принимает в сообщении только текст и картинки: файл не отправится, укажите его через @',
+      engine: 'Этот агент не принимает файлы в сообщении: файл не отправится, укажите его через @',
       pdf: 'pdf зашифрован, повреждён или в нём не найти страниц — API такой не примет, а отказ остался бы в сессии',
       sessionPages:
         'Лимит API — 100 страниц pdf на запрос, а в каждый запрос уходит вся история сессии: с этим pdf их стало бы больше. «Сжать» убирает старые вложения из запросов, новая сессия начинает с нуля',
@@ -617,6 +630,7 @@ const ru = {
     thinking: 'extended thinking',
     thinkingHint: 'показывать блоки think в ленте',
     byDefault: 'по умолчанию',
+    agyDefault: 'agy сам отклоняет команды и правки (карточка с повтором)',
     bypassOff: 'включается настройкой agentura.allowBypassPermissions',
     modelDesc: {
       opus: 'сложные задачи, планирование',

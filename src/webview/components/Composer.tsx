@@ -1202,7 +1202,11 @@ function ModeMenu({
                 <ItemButton
                   it={{
                     label,
-                    small: off ? ui.menus.bypassOff : small,
+                    small: off
+                      ? ui.menus.bypassOff
+                      : m === 'default' && provider.value === 'antigravity'
+                        ? ui.menus.agyDefault
+                        : small,
                     hint: m === 'default' ? '⇧⇥' : hint,
                     dis: off,
                   }}
@@ -1231,7 +1235,7 @@ function AgentItems({ close }: { close: () => void }) {
   const s = chat.value;
   const cur = provider.value;
   const locked = engineLocked();
-  const item = (p: 'claude' | 'codex', label: string, small: string) => (
+  const item = (p: 'claude' | 'codex' | 'antigravity', label: string, small: string) => (
     <ItemButton
       it={{
         label,
@@ -1256,14 +1260,11 @@ function AgentItems({ close }: { close: () => void }) {
         ui.compose.claudeVia(cur === 'claude' ? s.engineVersion : undefined),
       )}
       {item('codex', 'Codex', ui.compose.codexVia)}
-      <ItemButton
-        it={{
-          label: 'Gemini',
-          small: ui.compose.acpAdapter,
-          hint: ui.compose.agentSoon,
-          dis: true,
-        }}
-      />
+      {item(
+        'antigravity',
+        'Antigravity',
+        ui.compose.antigravityVia(cur === 'antigravity' ? s.engineVersion : undefined),
+      )}
     </>
   );
 }

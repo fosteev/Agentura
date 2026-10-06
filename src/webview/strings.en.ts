@@ -129,6 +129,9 @@ export const en: Ui = {
     missingTitleCodex: 'Codex not found',
     missingHintCodex:
       'Install the Codex CLI (https://developers.openai.com/codex/cli), sign in (codex login) or set the path to codex in settings ⚙ (agentura.codexExecutable).',
+    missingTitleAgy: 'Antigravity not found',
+    missingHintAgy:
+      'Install the Antigravity CLI (agy), sign in (run agy once) or set the path to agy in settings ⚙ (agentura.antigravityExecutable).',
     missingRecheck: 'Check again',
     missingChecking: 'checking…',
     openLog: 'Open extension log',
@@ -156,6 +159,17 @@ export const en: Ui = {
     placeholder: 'limit reached — you can type a message, it is sent after the reset',
   },
   cards: {
+    // Antigravity refusal card: agy has no per-action approvals and refuses what the mode forbids; retry runs in a looser mode
+    refusal: {
+      title: (actions: string) => `agy refused: ${actions}`,
+      action: (edit: boolean): string => (edit ? 'file edit' : 'command'),
+      hint: 'agy does not ask for permission: it refuses whatever the current mode forbids. Retrying restarts agy in a looser mode.',
+      rejected: 'Retry not accepted: the mode is already set, or “allow everything” is unavailable for this session (the setting was enabled after it started — open a new chat).',
+      edits: 'Allow edits and retry',
+      all: 'Allow everything and retry',
+      allOff: 'The “allow everything” mode is off: enable agentura.allowBypassPermissions',
+      sent: 'retrying…',
+    },
     permTitle: (tool: string) =>
       tool === 'Bash'
         ? 'Allow running this command?'
@@ -474,7 +488,7 @@ export const en: Ui = {
     model: 'model',
     effort: 'effort',
     agent: 'agent',
-    agentTitle: 'Agent: Claude, Codex · Gemini — coming soon',
+    agentTitle: 'Agent: Claude, Codex, Antigravity',
     context: 'context',
     compact: 'compact',
     ctxTitle: (thresholds: string[], fullAt: string, scale?: string) =>
@@ -511,9 +525,8 @@ export const en: Ui = {
     agentReady: 'ready',
     claudeVia: (version?: string) => `via Claude Agent SDK${version ? ` · claude ${version}` : ''}`,
     codexVia: 'via codex app-server',
+    antigravityVia: (version?: string) => `via agy (Antigravity CLI)${version ? ` · ${version}` : ''}`,
     agentLocked: 'chosen in a new chat',
-    acpAdapter: 'ACP-shaped adapter',
-    agentSoon: 'soon',
     imagesHint: '⌘V — paste an image · drag with ⇧',
     imagesPlus: (k: string) => `+${k} images`,
     imagesPlusTitle: 'Images are counted by size: width × height / 750 tokens',
@@ -576,7 +589,7 @@ export const en: Ui = {
       foreign:
         'Only images can be dragged in from outside VS Code: add text and pdf with “+” or drag them from the VS Code explorer',
       engine:
-        'This agent (Codex) takes only text and images in a message: the file will not be sent, mention it with @',
+        'This agent does not take files in a message: the file will not be sent, mention it with @',
       pdf: 'the pdf is encrypted, corrupted or has no pages — the API would reject it, and the rejection would stay in the session',
       sessionPages:
         'The API limit is 100 pdf pages per request, and every request carries the whole session history: with this pdf there would be more. “Compact” removes old attachments from requests, a new session starts from scratch',
@@ -612,6 +625,7 @@ export const en: Ui = {
     thinking: 'extended thinking',
     thinkingHint: 'show think blocks in the feed',
     byDefault: 'default',
+    agyDefault: 'agy refuses commands and edits itself (a card offers a retry)',
     bypassOff: 'enabled by the agentura.allowBypassPermissions setting',
     modelDesc: {
       opus: 'complex tasks, planning',

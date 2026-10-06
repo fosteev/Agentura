@@ -44,6 +44,7 @@ import type {
   ToWebview,
 } from '../protocol';
 import {
+  addRefusal,
   addSys,
   answersOf,
   applyEvent,
@@ -51,6 +52,9 @@ import {
   initialState,
   markPermission,
   markPlan,
+  markRefusalSent,
+  retireRefusals,
+  unmarkRefusalSent,
   markRetrying,
   unmarkRetrying,
   markQuestionSent,
@@ -293,6 +297,9 @@ export function handleHostMessage(m: ToWebview): void {
     case 'chat.command':
       if (m.name === 'status') showStatus();
       break;
+    case 'agy.retryRejected':
+      chat.value = addSys(unmarkRefusalSent(chat.value), [ui.cards.refusal.rejected], 'bad');
+      break;
     case 'session.defaults': {
       // новая сессия: режим и effort из настроек (до `session.init`, который придёт после первого хода)
       const next = { ...chat.value, mode: m.mode };
@@ -438,6 +445,18 @@ export function handleHostMessage(m: ToWebview): void {
 
 export function dispatchEvent(event: AgentEvent, now = Date.now()): void {
   chat.value = applyEvent(chat.value, event, now);
+  // Antigravity без подтверждений по действию: отказ режима — карточка с повтором; в «всё разрешено» отказывать нечему,
+  // после Stop повторять нечего. Следующий ход (повтор, новое сообщение) карточку закрывает
+  if (event.type === 'turn.start' && !event.agentId) chat.value = retireRefusals(chat.value);
+  if (
+    event.type === 'turn.result' &&
+    !event.agentId &&
+    !event.interrupted &&
+    provider.value === 'antigravity' &&
+    chat.value.mode !== 'bypassPermissions'
+  ) {
+    chat.value = addRefusal(chat.value, event.permissionDenials);
+  }
   // карточка, которой адресован ответ из поля, закрыта (ответ, отмена движком) — поле снова обычное
   const t = replyTarget.value;
   if (t && event.type === 'permission.resolved' && event.toolUseId === t.toolUseId) {
@@ -887,6 +906,12 @@ export function submitReply(text: string): boolean {
   const card = questionCard(t.toolUseId);
   if (card && card.questions.length === 1) submitQuestion(t.toolUseId);
   return true;
+}
+
+/** Карточка отказа Antigravity: повторить ход в режиме «правки» или «всё» (хост пересоздаёт процесс agy). */
+export function retryRefusal(mode: 'acceptEdits' | 'bypassPermissions'): void {
+  chat.value = markRefusalSent(chat.value);
+  send({ type: 'agy.retry', sessionId: chat.value.sessionId, mode });
 }
 
 /** «Повторить ход» на карточке ошибки: хост возобновляет сессию и отправляет промпт ещё раз. */

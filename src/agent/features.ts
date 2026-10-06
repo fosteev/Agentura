@@ -51,6 +51,24 @@ export const CODEX_FEATURES: Readonly<ProviderFeatures> = {
   files: false,
 };
 
+/**
+ * Antigravity (`agy`): режимы есть (4, `default` = авто-отказ без подтверждений по действию), compact, субагентов,
+ * плана и вопросов нет; приборов нет (стоимость неизвестна, окна контекста и лимитов подписки Claude нет);
+ * картинки и файлы адаптер отбрасывает (не проверены).
+ */
+export const ANTIGRAVITY_FEATURES: Readonly<ProviderFeatures> = {
+  modes: true,
+  compact: false,
+  metrics: false,
+  subagents: false,
+  plan: false,
+  questions: false,
+  images: false,
+  files: false,
+};
+
 export function providerFeatures(provider: AgentProvider): ProviderFeatures {
-  return { ...(provider === 'codex' ? CODEX_FEATURES : CLAUDE_FEATURES) };
+  return {
+    ...(provider === 'codex' ? CODEX_FEATURES : provider === 'antigravity' ? ANTIGRAVITY_FEATURES : CLAUDE_FEATURES),
+  };
 }
