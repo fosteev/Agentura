@@ -1,4 +1,5 @@
 import type { SessionRef } from '../agent/types';
+import { isProvider } from '../settings';
 /** Минимум от `vscode.Memento`: тесты обходятся картой. */
 export interface MementoLike {
   get<T>(key: string): T | undefined;
@@ -24,7 +25,7 @@ export class SessionMemory {
       if (
         x &&
         typeof x === 'object' &&
-        ((x as SessionRef).provider === 'claude' || (x as SessionRef).provider === 'codex') &&
+        isProvider((x as SessionRef).provider) &&
         typeof (x as SessionRef).id === 'string' &&
         (x as SessionRef).id
       )

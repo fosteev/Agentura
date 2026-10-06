@@ -6,6 +6,9 @@ import { EngineLocator } from './engineLocator';
 import { ClaudeAdapter } from '../agent/claude/adapter';
 import { CodexAdapter } from '../agent/codex/adapter';
 import { CODEX_NOT_FOUND, resolveCodexExecutable } from '../agent/codex/executable';
+import { AntigravityAdapter } from '../agent/antigravity/adapter';
+import { AGY_NOT_FOUND, resolveAgyExecutable } from '../agent/antigravity/executable';
+import type { AgyStateStore } from '../agent/antigravity/sessionIndex';
 import type { AgentAdapter, AgentProvider, SessionRef } from '../agent/types';
 import type { LimitsSource } from '../data/limits';
 import type { LiveSessions, TranscriptCache } from '../data/sessions';
@@ -21,6 +24,7 @@ import {
   isComposerLayout,
   DEFAULT_COMPOSER_LAYOUT,
   thresholdsError,
+  isProvider,
 } from '../settings';
 import type { AccountService } from './account';
 import { ChatController } from './chatController';
@@ -39,6 +43,7 @@ import {
 import type { SessionMemory } from './sessionMemory';
 import type { SessionsService } from './sessionsService';
 import type { UsageService } from './usage';
+import type { AgyQuotaService } from './agyQuota';
 import type { GitService } from './git/gitService';
 import { isGitRequest } from '../shared/git';
 import type { Logger } from './logger';
@@ -72,10 +77,14 @@ export interface ChatServices {
   adapter: AgentAdapter;
   /** Адаптер Codex (лениво); `adapter` — Claude. */
   codexAdapter: () => AgentAdapter;
+  /** Адаптер Antigravity (лениво). */
+  antigravityAdapter: () => AgentAdapter;
   live: LiveSessions;
   transcripts: TranscriptCache;
   usage: UsageService;
   limits: LimitsSource;
+  /** Квота Antigravity (`agy -p "/usage"`, не чаще раза в 10 минут). */
+  agyQuota: AgyQuotaService;
   /** Нативный дифф правок агента (`agentura-diff:`), этап 5. */
   diffs: DiffDocuments;
   /** Превью `.html` в соседней вкладке. */
@@ -88,6 +97,8 @@ export interface ChatServices {
   engine: EngineLocator;
   /** Поиск `codex` (без прогрева: нужен только тому, кто выбрал Codex). */
   codexEngine: EngineLocator;
+  /** Поиск `agy` (без прогрева, как Codex: `ready()` перед стартом сессии даёт и версию для `session.init`). */
+  antigravityEngine: EngineLocator;
   /** Вкладка «git» (roadmap 12): репозитории рабочей папки над API встроенного git. */
   git: GitService;
 }
@@ -95,12 +106,16 @@ export interface ChatServices {
 export function createAdapter(
   log: Logger,
   clientVersion?: string,
+  state?: AgyStateStore,
 ): {
   adapter: AgentAdapter;
   /** Codex-адаптер создаётся при первом обращении: пока никто не выбрал Codex, его нет вовсе. */
   codexAdapter: () => AgentAdapter;
+  /** Antigravity-адаптер — тоже лениво. */
+  antigravityAdapter: () => AgentAdapter;
   engine: EngineLocator;
   codexEngine: EngineLocator;
+  antigravityEngine: EngineLocator;
 } {
   const cfg = () => vscode.workspace.getConfiguration('agentura');
   // `.vsix` без бинарника движка: настройка → системный `claude` (с проверкой версии). Поиск асинхронный
@@ -125,6 +140,20 @@ export function createAdapter(
     warn: (m) => log.warn(m),
     lang: currentLanguage,
   });
+  // версия `agy` для `session.init.engineVersion`: запоминаем из успешного поиска (адаптер читает её лениво)
+  let agyVersion: string | undefined;
+  const antigravityEngine = new EngineLocator({
+    setting: () => cfg().get<string>('antigravityExecutable') ?? '',
+    resolve: async (s) => {
+      const r = await resolveAgyExecutable(s);
+      if (r.version) agyVersion = r.version;
+      return r.problem === AGY_NOT_FOUND ? { ...r, problem: hostStrings(currentLanguage()).antigravityNotFound } : r;
+    },
+    name: 'agy',
+    info: (m) => log.info(m),
+    warn: (m) => log.warn(m),
+    lang: currentLanguage,
+  });
   const adapter = new ClaudeAdapter({
     executablePath: () => engine.path(),
     clientApp: 'agentura',
@@ -138,13 +167,21 @@ export function createAdapter(
       log: (level, message) => log[level](message),
       ...(clientVersion ? { clientVersion } : {}),
     }));
-  return { adapter, codexAdapter, engine, codexEngine };
+  let agy: AgentAdapter | undefined;
+  const antigravityAdapter = (): AgentAdapter =>
+    (agy ??= new AntigravityAdapter({
+      executablePath: () => antigravityEngine.path(),
+      engineVersion: () => agyVersion,
+      log: (level, message) => log[level](message),
+      ...(state ? { state } : {}),
+    }));
+  return { adapter, codexAdapter, antigravityAdapter, engine, codexEngine, antigravityEngine };
 }
 
 /** `agentura.defaultProvider` (application-scope: из настроек рабочей папки не читается); кривое значение — `claude`. */
 function defaultProvider(): AgentProvider {
   const v = vscode.workspace.getConfiguration('agentura').get<unknown>('defaultProvider');
-  return v === 'codex' ? 'codex' : 'claude';
+  return isProvider(v) ? v : 'claude';
 }
 
 interface OpenOptions {
@@ -323,8 +360,10 @@ export class ChatPanel {
       adapter: services.adapter,
       // возобновляемая сессия — своего движка; новая вкладка — `agentura.defaultProvider`
       provider: open.provider ?? defaultProvider(),
-      adapterFor: (p) => (p === 'codex' ? services.codexAdapter() : services.adapter),
-      engineFor: (p) => (p === 'codex' ? services.codexEngine : undefined),
+      adapterFor: (p) =>
+        p === 'codex' ? services.codexAdapter() : p === 'antigravity' ? services.antigravityAdapter() : services.adapter,
+      engineFor: (p) =>
+        p === 'codex' ? services.codexEngine : p === 'antigravity' ? services.antigravityEngine : undefined,
       // только User (`Global`): настройка application-scope; отказ (политика, битый settings.json) — в журнал.
       // `claude` — значение по умолчанию: ключ убираем, а не пишем его явно
       rememberProvider: (p) =>
@@ -360,6 +399,7 @@ export class ChatPanel {
         };
       },
       usage: services.usage,
+      agyQuota: services.agyQuota,
       observeLimits: (windows) => services.limits.observeEngine(windows),
       findFiles: (q) => files.find(q),
       pickFiles: () => files.pick(),
@@ -468,7 +508,15 @@ export class ChatPanel {
       openExternal: (u) => void vscode.env.openExternal(vscode.Uri.parse(u)),
       ...(open.resumeId ? { resumeId: open.resumeId } : {}),
       openSession: (id, provider) => ChatPanel.resume(context, log, services, { provider, id }, this),
-      titleOf: async (id) => (await services.sessions.list()).find((r) => r.id === id)?.title,
+      // общий список сайдбара (Claude, Codex, Antigravity); беседа agy, которой в нём ещё нет, — из списка её адаптера
+      titleOf: async (id, p) => {
+        const listed = (await services.sessions.list()).find((r) => r.id === id)?.title;
+        if (p !== 'antigravity') return listed;
+        // у беседы agy без заголовка и превью адаптер подставляет id — такой заголовок не показываем
+        if (listed) return listed !== id ? listed : undefined;
+        const row = (await services.antigravityAdapter().listSessions(folder.uri.fsPath)).find((r) => r.id === id);
+        return row && row.title !== id ? row.title : undefined;
+      },
       onSession: () => {
         this.graph.claimPending();
         ChatPanel.sessionsChanged(services);
@@ -515,6 +563,12 @@ export class ChatPanel {
       {
         dispose: services.usage.onUpdate((snap) =>
           postToWebview(panel.webview, { type: 'limits.update', ...snap }),
+        ),
+      },
+      // свежая квота agy доходит до открытых чатов (на движке agy её рисует HUD)
+      {
+        dispose: services.agyQuota.onUpdate((snap) =>
+          postToWebview(panel.webview, { type: 'quota.update', rows: snap.rows, updatedAt: snap.updatedAt }),
         ),
       },
       // список сессий — и во вкладку: попап «sessions» и экран empty

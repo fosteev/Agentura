@@ -26,6 +26,10 @@ describe('SessionMemory', () => {
       { provider: 'claude', id: 'a' },
       { provider: 'codex', id: 'a' },
     ]);
+    mem.setOpenSessions([{ provider: 'antigravity', id: 'g1' }]);
+    expect(mem.openSessions()).toEqual([{ provider: 'antigravity', id: 'g1' }]);
+    m.data['agentura.openSessions'] = [{ provider: 'gemini', id: 'x' }];
+    expect(mem.openSessions()).toEqual([]);
     m.data['agentura.openSessions'] = ['legacy'];
     expect(mem.openSessions()).toEqual([{ provider: 'claude', id: 'legacy' }]);
     m.data['agentura.openSessions'] = 'не массив';

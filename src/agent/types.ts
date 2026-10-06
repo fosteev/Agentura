@@ -6,7 +6,7 @@
 
 export type PermissionMode = 'default' | 'acceptEdits' | 'plan' | 'bypassPermissions';
 /** Внешний движок сессии. Во всех долговечных ссылках id хранится вместе с провайдером. */
-export type AgentProvider = 'claude' | 'codex';
+export type AgentProvider = 'claude' | 'codex' | 'antigravity';
 export interface SessionRef {
   provider: AgentProvider;
   id: string;

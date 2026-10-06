@@ -23,6 +23,16 @@
   - Hidden for Codex instead of faked: permission modes, plan review, `/compact`, the agents tab, file attachments,
     cost, cache and subscription limits. The turn summary line shows only what Codex reports (no `cache w`, no
     zeros).
+- **Antigravity engine (experimental).** A chat tab can run on Google's Antigravity CLI (`agy`): chat, streaming,
+  tool rows and edit diffs, conversation history and resume, rename, model and permission-mode menus. `agy` has no
+  per-action approvals, so what it denies shows as an "agy declined" card with retry buttons that restart the
+  process in a wider mode. Stop restarts the process on the same conversation. Requires `agy` installed and signed in.
+- **Antigravity conversations in the session list.** The sidebar and the empty screen list the folder's `agy`
+  conversations next to Claude and Codex, with an engine label; resume and rename work.
+- **Antigravity quota.** The weekly limit per model family (from `agy -p "/usage"`, at most once per 10 minutes) is
+  shown by the input box on Antigravity tabs; if the output can't be parsed, nothing is shown.
+- **Settings.** ⚙ → "Engine" also has `agentura.antigravityExecutable` with a "check" button, and "Engine for new
+  chats" (`agentura.defaultProvider`) offers Antigravity next to Claude and Codex.
 
 ### Changed
 

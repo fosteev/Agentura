@@ -23,6 +23,7 @@ import {
   addFont,
   checkEngine,
   commit,
+  agyCheck,
   codexCheck,
   engineCheck,
   errors,
@@ -392,11 +393,18 @@ function ThresholdScale({ value }: { value: [number, number] }) {
   );
 }
 
-function EngineRow({ value, engine = 'claude' }: { value: string; engine?: 'claude' | 'codex' }) {
+type EngineId = 'claude' | 'codex' | 'antigravity';
+const ENGINE_KEY = {
+  claude: 'claudeExecutable',
+  codex: 'codexExecutable',
+  antigravity: 'antigravityExecutable',
+} as const;
+
+function EngineRow({ value, engine = 'claude' }: { value: string; engine?: EngineId }) {
   const [draft, setDraft] = useDraft(value);
-  const k = engine === 'codex' ? 'codexExecutable' : 'claudeExecutable';
-  const text = engine === 'codex' ? T.exeCodex : T.exe;
-  const c = (engine === 'codex' ? codexCheck : engineCheck).value;
+  const k = ENGINE_KEY[engine];
+  const text = engine === 'codex' ? T.exeCodex : engine === 'antigravity' ? T.exeAgy : T.exe;
+  const c = (engine === 'codex' ? codexCheck : engine === 'antigravity' ? agyCheck : engineCheck).value;
   const r = c.result;
   const save = (text: string) => {
     if (text.trim() !== value) commit(k, text);
@@ -522,6 +530,7 @@ export function Settings() {
   const providers: [string, string][] = [
     ['claude', T.provider.options.claude],
     ['codex', T.provider.options.codex],
+    ['antigravity', T.provider.options.antigravity],
   ];
   const languageModes = LANGUAGE_MODES.map((m): [string, string] => [
     m,
@@ -872,6 +881,7 @@ export function Settings() {
               </Row>
               <EngineRow value={v.claudeExecutable} />
               <EngineRow engine="codex" value={v.codexExecutable} />
+              <EngineRow engine="antigravity" value={v.antigravityExecutable} />
             </>,
           )}
         </div>

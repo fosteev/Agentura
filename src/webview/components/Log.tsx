@@ -16,7 +16,7 @@ import {
   toolLinks,
   toolView,
 } from '../toolView';
-import { FailCardView, PermissionCard, PlanCardView, QuestionCardView, ToolOutput } from './Cards';
+import { FailCardView, PermissionCard, RefusalCardView, PlanCardView, QuestionCardView, ToolOutput } from './Cards';
 import { agentGroupView, feedItems, type FeedItem } from '../agentsView';
 import { feedTurns, foldSummary, stepRows, type FoldSummary, type Turn } from '../turnView';
 import { initialHud, type HudState } from '../hudState';
@@ -454,6 +454,8 @@ export function Log({
         return <PlanCardView key={it.id} c={it} cwd={cwd} />;
       case 'fail':
         return <FailCardView key={it.id} c={it} />;
+      case 'refusal':
+        return <RefusalCardView key={it.id} c={it} />;
       case 'sum':
         return <SumView key={it.id} r={it} />;
     }

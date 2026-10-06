@@ -47,6 +47,35 @@ describe('EngineLocator', () => {
     expect(b.deps.notify).not.toHaveBeenCalled();
   });
 
+  it('тихая проба (списки сайдбара): «не найден» не пишется в журнал и не съедает предупреждение запуска', async () => {
+    const { loc, deps } = make([none, none, none]);
+    expect(await loc.available()).toBe(false);
+    expect(await loc.available()).toBe(false);
+    expect(deps.info).not.toHaveBeenCalled();
+    expect(deps.warn).not.toHaveBeenCalled();
+    // запуск сессии без движка — предупреждение, как раньше
+    expect((await loc.ready()).ok).toBe(false);
+    expect(deps.warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('тихая проба, к которой присоединился запуск, — «не найден» в журнале', async () => {
+    const { loc, deps, resolve } = make([none]);
+    const [quiet, loud] = await Promise.all([loc.available(), loc.ready()]);
+    expect(quiet).toBe(false);
+    expect(loud.ok).toBe(false);
+    expect(resolve).toHaveBeenCalledTimes(1);
+    expect(deps.warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('тихая проба: найденный путь кэшируется и пишется в журнал, старая версия предупреждает', async () => {
+    const { loc, deps, resolve } = make([{ ...found, problem: 'старая версия' }]);
+    expect(await loc.available()).toBe(true);
+    expect(await loc.ready()).toEqual({ ok: true });
+    expect(resolve).toHaveBeenCalledTimes(1);
+    expect(deps.info).toHaveBeenCalledTimes(1);
+    expect(deps.warn).toHaveBeenCalledTimes(1);
+  });
+
   it('путь из настройки не запускается — движок не готов, без всплывашки и без кэша', async () => {
     const broken: ResolvedExecutable = {
       path: '/x/claude',

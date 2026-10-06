@@ -7,6 +7,8 @@ import type { SettingsValues } from '../settings';
 import { Settings } from './components/Settings';
 import { Sidebar } from './components/Sidebar';
 import {
+  agyCheck,
+  codexCheck,
   engineCheck,
   errors,
   handleSettingsMessage,
@@ -38,6 +40,7 @@ const values: SettingsValues = {
   'limits.readKeychain': true,
   claudeExecutable: '',
   codexExecutable: '',
+  antigravityExecutable: '',
   defaultProvider: 'claude',
   'sessionList.view': 'compact',
   'sessionList.context': true,
@@ -79,6 +82,8 @@ beforeEach(() => {
   overridden.value = [];
   errors.value = {};
   engineCheck.value = { pending: false };
+  codexCheck.value = { pending: false };
+  agyCheck.value = { pending: false };
   userFonts.value = { ui: [], code: [] };
 });
 afterEach(() => vi.restoreAllMocks());
@@ -131,6 +136,7 @@ describe('вкладка настроек', () => {
       'agentura.defaultProvider',
       'agentura.claudeExecutable · только эта машина',
       'agentura.codexExecutable · только эта машина',
+      'agentura.antigravityExecutable · только эта машина',
     ]);
   });
 
@@ -439,6 +445,30 @@ describe('вкладка настроек', () => {
     sel.value = 'claude';
     sel.dispatchEvent(new Event('change', { bubbles: true }));
     expect(posted).toContainEqual({ type: 'settings.set', key: 'defaultProvider', value: 'claude' });
+  });
+
+  it('Antigravity: строка пути с «проверить» (свой результат) и вариант движка по умолчанию', async () => {
+    const host = mount(Settings);
+    state({ antigravityExecutable: '/x/agy', defaultProvider: 'antigravity' });
+    await flush();
+    host.querySelector<HTMLButtonElement>('.set[data-key$="antigravityExecutable"] .btn')!.click();
+    expect(posted).toContainEqual({
+      type: 'settings.checkEngine',
+      path: '/x/agy',
+      engine: 'antigravity',
+    });
+    handleSettingsMessage({
+      type: 'settings.engine',
+      engine: 'antigravity',
+      result: { ok: true, source: 'setting', path: '/x/agy', version: '1.2.3' },
+    });
+    await flush();
+    const row = host.querySelector('.set[data-key$="antigravityExecutable"]')!;
+    expect(row.querySelector('.ok[role="status"]')!.textContent).toContain('1.2.3');
+    expect(host.querySelector('.set[data-key$="claudeExecutable"] .ok')).toBeNull();
+    expect(host.querySelector('.set[data-key$="codexExecutable"] .ok')).toBeNull();
+    const sel = host.querySelector<HTMLSelectElement>('select[aria-label="defaultProvider"]')!;
+    expect(sel.value).toBe('antigravity');
   });
 
   it('ссылки «в настройках VS Code» и settings.json', async () => {

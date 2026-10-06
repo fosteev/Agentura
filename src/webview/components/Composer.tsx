@@ -37,6 +37,7 @@ import {
   meters,
   newSession,
   provider,
+  quota,
   removeExtra,
   removeFile,
   removeImage,
@@ -52,7 +53,7 @@ import {
   showThinking,
   tick,
 } from '../store';
-import type { LimitMeter } from '../hudView';
+import { quotaView, type LimitMeter } from '../hudView';
 import { deferredNote } from '../limitView';
 import { menuKeys } from '../a11y';
 import { ui, uiLang } from '../strings';
@@ -1203,7 +1204,11 @@ function ModeMenu({
                 <ItemButton
                   it={{
                     label,
-                    small: off ? ui.menus.bypassOff : small,
+                    small: off
+                      ? ui.menus.bypassOff
+                      : m === 'default' && provider.value === 'antigravity'
+                        ? ui.menus.agyDefault
+                        : small,
                     hint: m === 'default' ? '⇧⇥' : hint,
                     dis: off,
                   }}
@@ -1232,7 +1237,7 @@ function AgentItems({ close }: { close: () => void }) {
   const s = chat.value;
   const cur = provider.value;
   const locked = engineLocked();
-  const item = (p: 'claude' | 'codex', label: string, small: string) => (
+  const item = (p: 'claude' | 'codex' | 'antigravity', label: string, small: string) => (
     <ItemButton
       it={{
         label,
@@ -1257,14 +1262,11 @@ function AgentItems({ close }: { close: () => void }) {
         ui.compose.claudeVia(cur === 'claude' ? s.engineVersion : undefined),
       )}
       {item('codex', 'Codex', ui.compose.codexVia)}
-      <ItemButton
-        it={{
-          label: 'Gemini',
-          small: ui.compose.acpAdapter,
-          hint: ui.compose.agentSoon,
-          dis: true,
-        }}
-      />
+      {item(
+        'antigravity',
+        'Antigravity',
+        ui.compose.antigravityVia(cur === 'antigravity' ? s.engineVersion : undefined),
+      )}
     </>
   );
 }
@@ -1536,8 +1538,19 @@ function Meters({
   hv: Hv;
   look?: 'classic' | 'time' | 'under' | 'alert';
 }) {
-  // лимиты подписки, кэш и стоимость — Claude; у других движков достоверных чисел нет, виджет прячется целиком
-  if (!features.value.cost) return null;
+  // лимиты подписки, кэш и стоимость — Claude; у других движков достоверных чисел нет, виджет прячется целиком.
+  // Исключение — квота Antigravity (`/usage`): недельные окна семейств моделей, пока она получена и разобрана.
+  if (!features.value.cost) {
+    const items = provider.value === 'antigravity' ? quotaView(quota.value.rows, Date.now()) : [];
+    if (!items.length) return null;
+    return (
+      <span class="meters alert">
+        {items.map((q, i) => (
+          <LimitText key={i} label={q.label} meter={q.meter} title={q.title} />
+        ))}
+      </span>
+    );
+  }
   const weekShown = hv.limits.week && hv.limits.week.percent > 70;
   if (look === 'alert') {
     const five = hv.limits.five && hv.limits.five.percent > 70 ? hv.limits.five : undefined;

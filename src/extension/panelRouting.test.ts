@@ -76,6 +76,8 @@ describe('restoredSessionId (сериализатор)', () => {
     expect(restoredSessionId({ sessionId: 'a' }, [], [cl('b')])).toEqual(cl('a'));
     expect(restoredSessionId({ sessionId: 'a' }, [], [cx('a')])).toEqual(cx('a'));
     expect(restoredSessionId({ sessionId: 'a', provider: 'codex' }, [], [])).toEqual(cx('a'));
+    expect(restoredSessionId({ sessionId: 'a', provider: 'antigravity' }, [], [])).toEqual({ provider: 'antigravity', id: 'a' });
+    expect(restoredSessionId({ sessionId: 'a', provider: 'nope' }, [], [])).toEqual(cl('a'));
   });
   it('своя уже открыта в другой вкладке — не поднимать второй раз; тот же id другого движка — другая', () => {
     expect(restoredSessionId({ sessionId: 'a' }, [cl('a')], [])).toBeUndefined();

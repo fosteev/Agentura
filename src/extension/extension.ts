@@ -5,6 +5,7 @@ import { SIDEBAR_VIEW_ID, SidebarProvider } from './sidebarView';
 import { LimitsSource, startLimitsPolling } from '../data/limits';
 import { LiveSessions, TranscriptCache } from '../data/sessions';
 import { UsageService } from './usage';
+import { AgyQuotaService } from './agyQuota';
 import { DiffDocuments } from './diffDocuments';
 import { PreviewPanels } from './previewPanels';
 import { AccountService } from './account';
@@ -13,7 +14,7 @@ import { SessionsService } from './sessionsService';
 import { showDebugState } from './debugPanel';
 import { SettingsPanel } from './settingsPanel';
 import { AGENTS_GRAPH_VIEW_TYPE } from './agentsGraphPanel';
-import { AGENTS_VIEWS, COMPOSER_LAYOUTS, FEED_STYLES, GIT_LAYOUTS, readSettings, writeSetting, type SettingKey } from '../settings';
+import { AGENTS_VIEWS, COMPOSER_LAYOUTS, FEED_STYLES, GIT_LAYOUTS, isProvider, readSettings, writeSetting, type SettingKey } from '../settings';
 import { hostStrings } from '../shared/l10n';
 import { currentLanguage, setUserFonts, userFontsDir } from './webviewHost';
 import { UserFonts } from './googleFonts';
@@ -22,7 +23,7 @@ import { WorkspaceFiles } from './workspaceFiles';
 import { GitService, countLines, runGit } from './git/gitService';
 import { getGitApi } from './git/gitApi';
 import { vscodeGitUi } from './git/gitUi';
-import type { CompletionRequest } from '../agent/types';
+import type { AgentProvider, CompletionRequest } from '../agent/types';
 
 /** Что активация отдаёт интеграционным тестам (только при запуске из исходников). */
 export interface TestApi {
@@ -48,9 +49,10 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     lang: currentLanguage,
   });
   const usage = new UsageService(limits.fetch);
-  const { adapter, codexAdapter, engine, codexEngine } = createAdapter(
+  const { adapter, codexAdapter, antigravityAdapter, engine, codexEngine, antigravityEngine } = createAdapter(
     log,
     String(context.extension.packageJSON.version),
+    context.globalState,
   );
   engine.warm();
   const folder = vscode.workspace.workspaceFolders?.[0];
@@ -71,7 +73,9 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
   const sessions = new SessionsService({
     adapter,
     // треды Codex проекта (`thread/list`): процесс запускается, только если `codex` найден
-    codex: { adapter: codexAdapter, available: async () => (await codexEngine.ready()).ok },
+    codex: { adapter: codexAdapter, available: () => codexEngine.available() },
+    // беседы Antigravity: база и индекс бесед; без `agy` (или без `node:sqlite` — тогда индекс) строк нет, ошибок тоже
+    antigravity: { adapter: antigravityAdapter, available: () => antigravityEngine.available() },
     cwd,
     live,
     cache: transcripts,
@@ -105,10 +109,12 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
   const services: ChatServices = {
     adapter,
     codexAdapter,
+    antigravityAdapter,
     live,
     transcripts,
     usage,
     limits,
+    agyQuota: new AgyQuotaService(() => antigravityEngine.path()),
     diffs: new DiffDocuments(),
     previews: new PreviewPanels(),
     sessions,
@@ -116,6 +122,7 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     memory,
     engine,
     codexEngine,
+    antigravityEngine,
     git: new GitService({
       loadApi: getGitApi,
       ui: vscodeGitUi(),
@@ -141,11 +148,13 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     const picked = await vscode.window.showQuickPick(
       rows.map((r) => ({
         label: r.title,
-        // у Codex-треда ходов и стоимости нет: метка движка вместо них
+        // у треда Codex и беседы Antigravity ходов и стоимости нет: метка движка вместо них
         description:
           r.provider === 'codex'
             ? 'Codex'
-            : `${t.turns(r.turns)}${r.costUsd !== undefined ? ` · $${r.costUsd.toFixed(2)}` : ''}`,
+            : r.provider === 'antigravity'
+              ? 'Antigravity'
+              : `${t.turns(r.turns)}${r.costUsd !== undefined ? ` · $${r.costUsd.toFixed(2)}` : ''}`,
         detail: new Date(r.updatedAt).toLocaleString(t.locale),
         id: r.id,
         provider: r.provider ?? ('claude' as const),
@@ -285,7 +294,7 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     vscode.commands.registerCommand('agentura.openSession', (id: unknown, provider?: unknown) => {
       if (typeof id !== 'string') return;
       // нет поля provider (старые вызовы, строки списка Claude) — `claude`
-      const p = provider === 'codex' ? 'codex' : 'claude';
+      const p: AgentProvider = isProvider(provider) ? provider : 'claude';
       ChatPanel.resume(context, log, services, { provider: p, id });
     }),
     vscode.commands.registerCommand('agentura.showStatus', () =>

@@ -3,6 +3,7 @@
  * прототипу `hud.css`). Чистые функции: проверяются юнит-тестами, компоненты только выводят.
  */
 import type { LimitWindow } from '../agent/types';
+import type { QuotaRow } from '../protocol';
 import {
   DEFAULT_CONTEXT_MAX,
   cacheExpiresAt,
@@ -265,6 +266,30 @@ export function limitsView(windows: readonly LimitWindow[], now: number): Limits
     ...(week ? { week } : {}),
     title: parts.join('\n') || ui.compose.limitsUnknown,
   };
+}
+
+/** Квота Antigravity в HUD: недельное окно семейства, процент — израсходованный (как у лимитов Claude). */
+export interface QuotaItem {
+  label: string;
+  meter: LimitMeter;
+  title: string;
+}
+
+export function quotaView(rows: readonly QuotaRow[], now: number): QuotaItem[] {
+  // окно уже сбросилось, а свежего `/usage` ещё не было — старый процент врёт, строку не показываем
+  return rows.filter((r) => r.resetsAt === undefined || r.resetsAt > now).map((r) => {
+    const meter = limitMeter({
+      kind: 'weekly',
+      percent: 100 - r.remaining,
+      ...(r.resetsAt !== undefined ? { resetsAt: r.resetsAt } : {}),
+    }) as LimitMeter;
+    const left = Math.max(0, Math.min(100, Math.round(r.remaining)));
+    return {
+      label: r.label,
+      meter,
+      title: ui.compose.quotaTitle(r.label, left, r.resetsAt !== undefined ? resetLabel(r.resetsAt, now) : undefined),
+    };
+  });
 }
 
 // ——— цвета сегментов таймлайна (деталь агента) ———

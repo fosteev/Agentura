@@ -135,6 +135,20 @@ describe('SettingsController', () => {
     expect(posted[0]).toMatchObject({ type: 'settings.engine', engine: 'codex' });
   });
 
+  it('checkEngine: для Antigravity проверяет agy и помечает ответ', async () => {
+    const { c, posted, deps } = setup();
+    await c.handle({ type: 'settings.checkEngine', path: '/x/agy', engine: 'antigravity' });
+    expect(deps.checkEngine).toHaveBeenCalledWith('/x/agy', 'antigravity');
+    expect(posted[0]).toMatchObject({ type: 'settings.engine', engine: 'antigravity' });
+  });
+
+  it('checkEngine: исключение проверки — ответ с ошибкой, кнопка не остаётся в «проверяю»', async () => {
+    const { c, posted, deps } = setup();
+    vi.mocked(deps.checkEngine).mockRejectedValueOnce(new Error('boom'));
+    await c.handle({ type: 'settings.checkEngine', path: '/x/agy', engine: 'antigravity' });
+    expect(posted[0]).toMatchObject({ type: 'settings.engine', engine: 'antigravity', result: { ok: false } });
+  });
+
   it('checkEngine: ответ устаревшей проверки не перебивает последнюю', async () => {
     const slow = { ok: false, source: 'setting' as const, problem: 'старая' };
     const fast = { ok: true, source: 'system' as const, path: '/b/claude', version: '2.1.285' };

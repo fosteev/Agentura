@@ -22,10 +22,12 @@ import type {
   PickedFile,
   PickedImage,
   PlanChoice,
+  QuotaRow,
   SessionSummary,
   ToWebview,
 } from '../protocol';
 import { ENGINE_MISSING_CODE } from '../protocol';
+import { isAgySession } from '../agent/antigravity/adapter';
 import { providerFeatures } from '../agent/features';
 import type {
   FileKind,
@@ -103,6 +105,8 @@ export interface ChatDeps {
   };
   /** Лимиты подписки (этап 4): `refresh` ограничен кулдауном сервиса, ответ уходит в webview. */
   usage?: { refresh(): Promise<{ windows: LimitWindow[]; updatedAt: number; error?: string }> };
+  /** Квота Antigravity: сервис сам ограничивает частоту запусков `agy -p "/usage"`. */
+  agyQuota?: { refresh(): Promise<{ rows: QuotaRow[]; updatedAt: number }> };
   /** Окна из `rate_limit_event` движка — запас для `LimitsSource`. */
   observeLimits?(windows: LimitWindow[]): void;
   findFiles(query: string): Promise<FileHit[]>;
@@ -150,7 +154,7 @@ export interface ChatDeps {
   /** Клик по сессии в попапе или на экране empty: вкладку выбирает менеджер вкладок. */
   openSession?(id: string, provider: AgentProvider): void;
   /** Название сессии по id (строка списка) — заголовок вкладки и webview после `resume`. */
-  titleOf?(id: string): Promise<string | undefined>;
+  titleOf?(id: string, provider: AgentProvider): Promise<string | undefined>;
   /** Вкладка сменила сессию (`undefined` — пока нет): реестр открытых сессий и строка `cur` списка. */
   onSession?(id: string | undefined): void;
   /** Версия движка из `session.init` — секция «Аккаунт» боковой панели. */
@@ -346,6 +350,8 @@ export class ChatController {
     this.deps.rememberProvider?.(provider);
     this.engineProvider = provider;
     this.pushInfo();
+    // у движков разные приборы: квота agy или лимиты Claude — свежие сразу, а не после первого хода
+    void this.refreshLimits();
     // пустая сессия прежнего движка (процесс поднят при открытии вкладки) закрывается, поднимается новая
     this.newSession(true);
   }
@@ -377,6 +383,7 @@ export class ChatController {
     if (provider && provider !== this.engineProvider) {
       this.engineProvider = provider;
       this.pushInfo();
+      void this.refreshLimits();
     }
     const run = this.doResume(id, engine);
     this.loading = run;
@@ -422,7 +429,9 @@ export class ChatController {
         .catch(() => undefined);
       return;
     }
-    const title = await (deps.titleOf?.(id) ?? Promise.resolve(undefined)).catch(() => undefined);
+    const title = await (deps.titleOf?.(id, this.engineProvider) ?? Promise.resolve(undefined)).catch(
+      () => undefined,
+    );
     // пока читали, вкладку успели переключить (другой resume, /clear) — эта история уже не нужна
     if (token !== this.resumeToken) return;
     this.resumed = { history, ...(title ? { title } : {}) };
@@ -779,6 +788,23 @@ export class ChatController {
           await session.setMode(m.mode as PermissionMode);
           if (this.defaults) this.defaults = { ...this.defaults, mode: m.mode as PermissionMode };
           return;
+        case 'agy.retry': {
+          // карточка отказа Antigravity: процесс agy пересоздаётся в нужном режиме, агенту уходит служебный повтор
+          if (!isAgySession(session)) return;
+          if (m.mode === 'bypassPermissions' && !deps.settings().allowBypass) {
+            this.log.warn('agy.retry bypassPermissions: выключено настройкой agentura.allowBypassPermissions');
+            deps.post({ type: 'agy.retryRejected' });
+            return;
+          }
+          // режим в меню webview обновит `mode.changed` от адаптера
+          const ok = await session.retryWithMode(m.mode);
+          if (!ok) {
+            this.log.warn(`agy.retry ${m.mode}: адаптер повтор не принял`);
+            deps.post({ type: 'agy.retryRejected' });
+          }
+          if (ok && this.defaults) this.defaults = { ...this.defaults, mode: m.mode };
+          return;
+        }
         case 'model.set':
           await session.setModel(m.model);
           return;
@@ -1263,7 +1289,18 @@ export class ChatController {
 
   /** Лимиты подписки → webview (`limits.update`). Не чаще кулдауна `UsageService`. */
   private async refreshLimits(): Promise<void> {
-    const { usage, post } = this.deps;
+    const { usage, post, agyQuota } = this.deps;
+    if (this.engineProvider === 'antigravity') {
+      // квота Antigravity вместо лимитов Claude: у agy своих окон 5ч/неделя нет
+      if (!agyQuota) return;
+      try {
+        const snap = await agyQuota.refresh();
+        post({ type: 'quota.update', rows: snap.rows, updatedAt: snap.updatedAt });
+      } catch (e) {
+        this.log.warn(`квота agy: ${String(e)}`);
+      }
+      return;
+    }
     if (!usage) return;
     try {
       const snap = await usage.refresh();
@@ -1290,13 +1327,16 @@ export class ChatController {
       const resume = this.resumeId;
       const provider = this.engineProvider;
       const claude = provider === 'claude';
+      // режимы разрешений и «всё разрешено» есть у Claude и Antigravity (у agy — флаги процесса); Codex — своя политика
+      const agy = provider === 'antigravity';
+      const hasModes = claude || agy;
       // адаптер — на момент старта: `open()` зовётся после поиска движка, а движок вкладки к тому времени мог смениться
       const adapter = this.adapter;
       this.usedDrop = !!resume && !!this.retryDrop;
       const base = {
         cwd: deps.cwd,
         // режимов Claude у Codex нет: его политику задаёт конфиг, а не эти настройки
-        allowBypassPermissions: claude && s.allowBypass,
+        allowBypassPermissions: hasModes && s.allowBypass,
       };
       const open = (): Promise<AgentSession> =>
         resume
@@ -1304,7 +1344,7 @@ export class ChatController {
               const h = this.resumed?.history;
               // режим и модель — с конца сессии: движок при `resume` берёт их из опций, а не из записи
               const mode =
-                !claude || (h?.mode === 'bypassPermissions' && !s.allowBypass)
+                !hasModes || (h?.mode === 'bypassPermissions' && !s.allowBypass)
                   ? 'default'
                   : (h?.mode ?? 'default');
               // `agentura.defaultModel` — модель Claude: Codex она не подходит
@@ -1321,20 +1361,21 @@ export class ChatController {
                 ...(this.retryDrop ? { dropTurn: this.retryDrop } : {}),
               });
             })()
-          : !claude
+          : !hasModes
             ? // настройки режима, effort и модели — про Claude; Codex стартует со своими дефолтами (`model/list`)
               adapter.createSession({ ...base, permissionMode: 'default' })
             : (() => {
               // настройки «режим» и «effort по умолчанию» — только новым сессиям (resume берёт своё)
               const mode = resolveDefaultMode(s.defaultPermissionMode, s.allowBypass);
-              const effort = resolveDefaultEffort(s.defaultEffort);
+              // effort и `defaultModel` — про Claude: у agy нет thinking, модель — свой дефолт (`DEFAULT_AGY_MODEL`)
+              const effort = agy ? undefined : resolveDefaultEffort(s.defaultEffort);
               // меню под полем ввода — сразу, не дожидаясь `session.init` после первого хода
               this.defaults = { type: 'session.defaults', mode, ...(effort ? { effort } : {}) };
               deps.post(this.defaults);
               return adapter.createSession({
                 ...base,
                 permissionMode: mode,
-                ...(s.defaultModel ? { model: s.defaultModel } : {}),
+                ...(s.defaultModel && !agy ? { model: s.defaultModel } : {}),
                 ...(effort ? { effort } : {}),
               });
             })();
@@ -1446,6 +1487,10 @@ export class ChatController {
       case 'context.usage':
         if (e.source === 'engine' && !e.agentId) this.lastContext = e;
         break;
+      case 'mode.changed':
+        // пересев webview (`lastInit` уходит после истории) не должен вернуть меню к режиму начала сессии
+        if (!e.agentId && this.lastInit) this.lastInit = { ...this.lastInit, permissionMode: e.mode };
+        break;
       case 'turn.result':
         // отказ resume с отбрасыванием приходит итогом `error_during_execution` (и, бывает, ещё `error`)
         if (!e.agentId && !e.ok) this.dropRejected([...(e.errors ?? []), e.text ?? '']);
@@ -1502,11 +1547,11 @@ export class ChatController {
     this.kickRetry();
   }
 
-  /** Реестр живых сессий; Codex-сессии он помечает (список Codex-тредов перечитывается по ним). Вызов Claude — как был. */
+  /** Реестр живых сессий; сессии Codex и Antigravity он помечает (их списки перечитываются по ним). Вызов Claude — как был. */
   private liveSet(id: string, ...cost: [] | [number | undefined]): void {
     const live = this.deps.live;
     if (!live) return;
-    if (this.engineProvider === 'codex') live.set(id, this.liveState(), cost[0], 'codex');
+    if (this.engineProvider !== 'claude') live.set(id, this.liveState(), cost[0], this.engineProvider);
     else live.set(id, this.liveState(), ...cost);
   }
 

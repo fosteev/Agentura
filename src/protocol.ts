@@ -207,6 +207,8 @@ export type ToWebview =
    * первого сообщения показывало бы «спрашивать», а движок уже шёл бы в `acceptEdits`/`bypassPermissions`.
    */
   | { type: 'session.defaults'; mode: PermissionMode; effort?: EffortLevel }
+  /** Хост не принял `agy.retry` (режим уже такой, «всё разрешено» недоступно этой сессии): карточка отказа снова с кнопками. */
+  | { type: 'agy.retryRejected' }
   /** Этап 5: превью правки к `permission.request` с `diff` — приходит вдогонку, по `toolUseId`. */
   | { type: 'diff.preview'; sessionId: string; toolUseId: string; preview: EditPreview }
   /**
@@ -251,6 +253,8 @@ export type ToWebview =
       updatedAt: number;
       error?: string;
     }
+  /** Квота Antigravity (`agy -p "/usage"`): строки по семействам моделей; пусто — не показываем. */
+  | { type: 'quota.update'; rows: QuotaRow[]; updatedAt: number }
   /**
    * Вкладка «git» (roadmap 12): `git.state` — снимок на каждое изменение и на `ready`, `git.error` — отказ
    * действия, `git.commit.result` — итог коммита по каждому репозиторию, `git.message.result` — ✦ сообщение.
@@ -349,6 +353,8 @@ export type FromWebview =
    * `turn: false` («Возобновить сессию») — только возобновление.
    */
   | { type: 'turn.retry'; sessionId: string; turn: boolean }
+  /** Карточка отказа Antigravity: повторить в более свободном режиме (`AntigravityAdapter.retryWithMode`). */
+  | { type: 'agy.retry'; sessionId: string; mode: 'acceptEdits' | 'bypassPermissions' }
   /** Этап 7: «Открыть журнал расширения» — канал Output → Agentura. */
   | { type: 'log.show' }
   /** Этап 3 roadmap 0.2: ⚙ в боковой панели открывает вкладку настроек. */
@@ -416,6 +422,13 @@ export interface SessionSummary {
   contextTokens?: number;
 }
 
+/** Строка квоты Antigravity: осталось % (0…100) и сброс в мс; `label` — `Gemini`, `Claude/GPT`. */
+export interface QuotaRow {
+  label: string;
+  remaining: number;
+  resetsAt?: number;
+}
+
 /** Окно лимита: `kind`, проценты 0…100, сброс в мс. */
 export type LimitWindowSummary = LimitWindow;
 
@@ -452,6 +465,7 @@ const FROM_WEBVIEW_TYPES: Record<FromWebview['type'], true> = {
   'session.resume': true,
   'session.rename': true,
   'turn.retry': true,
+  'agy.retry': true,
   'log.show': true,
   'settings.open': true,
   'settings.set': true,
@@ -487,7 +501,8 @@ const gitFiles = (m: Record<string, unknown>): boolean => str(m.root) && strings
  * проверяет по полям обработчик.
  */
 const FIELD_CHECKS: Partial<Record<FromWebview['type'], (m: Record<string, unknown>) => boolean>> = {
-  'engine.set': (m) => m.provider === 'claude' || m.provider === 'codex',
+  'engine.set': (m) => m.provider === 'claude' || m.provider === 'codex' || m.provider === 'antigravity',
+  'agy.retry': (m) => m.mode === 'acceptEdits' || m.mode === 'bypassPermissions',
   'agents.openGraph': (m) => m.agentId === undefined || typeof m.agentId === 'string',
   'agents.snapshot': (m) => typeof m.sessionId === 'string' && isAgentGraphView(m.graph),
   'agent.stop': (m) => typeof m.sessionId === 'string' && typeof m.taskId === 'string',

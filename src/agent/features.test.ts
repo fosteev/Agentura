@@ -20,6 +20,20 @@ describe('providerFeatures', () => {
     });
   });
 
+  it('Antigravity: режимы есть; compact, приборов, субагентов, плана, вопросов, картинок и файлов нет', () => {
+    expect(providerFeatures('antigravity')).toEqual({
+      modes: true,
+      compact: false,
+      context: false,
+      cost: false,
+      subagents: false,
+      plan: false,
+      questions: false,
+      images: false,
+      files: false,
+    });
+  });
+
   it('копия: правка результата не портит константы', () => {
     providerFeatures('codex').modes = true;
     expect(CODEX_FEATURES.modes).toBe(false);

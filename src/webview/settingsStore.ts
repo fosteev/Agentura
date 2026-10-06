@@ -9,8 +9,13 @@ export const overridden = signal<SettingKey[]>([]);
 /** Текст ошибки у поля: ошибка проверки (до отправки) или отказ хоста. */
 export const errors = signal<Partial<Record<SettingKey, string>>>({});
 export const engineCheck = signal<{ pending: boolean; result?: EngineCheck }>({ pending: false });
-/** То же для пути к Codex: проверки двух движков не перебивают друг друга. */
+/** То же для пути к Codex и к agy: проверки движков не перебивают друг друга. */
 export const codexCheck = signal<{ pending: boolean; result?: EngineCheck }>({ pending: false });
+export const agyCheck = signal<{ pending: boolean; result?: EngineCheck }>({ pending: false });
+
+function checkSignal(engine: 'claude' | 'codex' | 'antigravity') {
+  return engine === 'codex' ? codexCheck : engine === 'antigravity' ? agyCheck : engineCheck;
+}
 
 export function handleSettingsMessage(m: ToWebview): void {
   switch (m.type) {
@@ -22,7 +27,7 @@ export function handleSettingsMessage(m: ToWebview): void {
       errors.value = { ...errors.value, [m.key]: m.message };
       break;
     case 'settings.engine':
-      (m.engine === 'codex' ? codexCheck : engineCheck).value = { pending: false, result: m.result };
+      checkSignal(m.engine ?? 'claude').value = { pending: false, result: m.result };
       break;
     default:
       break;
@@ -42,9 +47,9 @@ export function commit(key: SettingKey, value: unknown): void {
   send({ type: 'settings.set', key, value });
 }
 
-export function checkEngine(path: string, engine: 'claude' | 'codex' = 'claude'): void {
-  (engine === 'codex' ? codexCheck : engineCheck).value = { pending: true };
-  send(engine === 'codex' ? { type: 'settings.checkEngine', path, engine } : { type: 'settings.checkEngine', path });
+export function checkEngine(path: string, engine: 'claude' | 'codex' | 'antigravity' = 'claude'): void {
+  checkSignal(engine).value = { pending: true };
+  send(engine === 'claude' ? { type: 'settings.checkEngine', path } : { type: 'settings.checkEngine', path, engine });
 }
 
 /** «Добавить из Google Fonts…»: хост открывает QuickPick (`kind` — интерфейсные, моноширинные или все — для панелей). */

@@ -128,6 +128,28 @@ Not in this version (hidden in the interface, not faked):
 The app-server protocol is marked experimental by Codex. Agentura is checked against `codex-cli 0.160.0`; newer
 versions usually work, but see [docs/codex-protocol.md](docs/codex-protocol.md) before updating.
 
+## Antigravity engine (experimental)
+
+A chat tab can also run on Google's Antigravity CLI (`agy`): pick it in the engine menu of an empty tab, or set
+`agentura.defaultProvider` to `antigravity`. Models inside `agy` include Gemini, Claude and GPT.
+
+You need `agy` installed and signed in (run `agy` once in a terminal). Agentura finds it in `PATH`, `~/.local/bin` or
+Homebrew; `agentura.antigravityExecutable` points elsewhere (⚙ → "Engine" has a check button). The weekly quota
+(`agy -p "/usage"`, at most once per 10 minutes) shows by the input box instead of the Claude limits; if the output
+can't be parsed, nothing is shown.
+
+What differs from Claude:
+
+- `agy` cannot ask for approval per action. In the default mode it denies what needs permission and the feed shows an
+  "agy declined: …" card with "Allow edits and retry" / "Allow everything and retry". Stronger modes restart the
+  process; `bypassPermissions` only through an explicit choice and `agentura.allowBypassPermissions`.
+- Stop kills the `agy` process; the next message restarts it with the same conversation.
+- No plan review, agent questions, `/compact`, subagents, context window, cache or cost gauges; images and files are
+  not sent.
+- Conversation history is read from `agy`'s local storage (`~/.gemini/antigravity-cli`), an internal format that may
+  change; if it does, history degrades to what was seen live. Conversations of the open folder appear in the sidebar
+  and on the empty screen with an engine label (resume and rename work; without `agy` they are simply absent).
+
 ## Settings
 
 Everything is under `agentura.*`. You can change it in the Settings UI or on the settings tab. These settings are read from
@@ -137,7 +159,8 @@ user settings only, so a cloned repository can't change them through its `.vscod
 | --------------------------------- | -------- | ------------------------------------------------ |
 | `agentura.claudeExecutable`       | empty    | Path to `claude`; empty means auto-detect        |
 | `agentura.codexExecutable`        | empty    | Path to `codex`; empty means auto-detect         |
-| `agentura.defaultProvider`        | `claude` | Engine for new tabs: `claude` or `codex`         |
+| `agentura.antigravityExecutable`  | empty    | Path to `agy`; empty means auto-detect           |
+| `agentura.defaultProvider`        | `claude` | Engine for new tabs: `claude`, `codex` or `antigravity`        |
 | `agentura.allowBypassPermissions` | `false`  | Allow the `bypassPermissions` mode (Claude only) |
 
 If `agentura.defaultPermissionMode` is set to `bypassPermissions` while bypass is not allowed, new sessions start in

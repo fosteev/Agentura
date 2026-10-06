@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { AGY_NOT_FOUND, resolveAgyExecutable } from '../agent/antigravity/executable';
 import { resolveExecutable } from '../agent/claude/executable';
 import { CODEX_NOT_FOUND, resolveCodexExecutable } from '../agent/codex/executable';
 import { postToWebview } from '../protocol';
@@ -40,13 +41,17 @@ export class SettingsPanel {
       globalTarget: vscode.ConfigurationTarget.Global,
       post: (m) => postToWebview(webview, m),
       checkEngine: async (path, engine) => {
-        // Codex: «не найден» — на языке интерфейса, как в карточке чата; прочие проблемы резолвера английские
+        // «не найден» — на языке интерфейса, как в карточке чата; прочие проблемы резолвера английские
         const r =
-          engine === 'codex'
-            ? await resolveCodexExecutable(path.trim()).then((c) =>
-                c.problem === CODEX_NOT_FOUND ? { ...c, problem: hostStrings(currentLanguage()).codexNotFound } : c,
+          engine === 'antigravity'
+            ? await resolveAgyExecutable(path.trim()).then((c) =>
+                c.problem === AGY_NOT_FOUND ? { ...c, problem: hostStrings(currentLanguage()).antigravityNotFound } : c,
               )
-            : await resolveExecutable(path.trim(), { lang: currentLanguage() });
+            : engine === 'codex'
+              ? await resolveCodexExecutable(path.trim()).then((c) =>
+                  c.problem === CODEX_NOT_FOUND ? { ...c, problem: hostStrings(currentLanguage()).codexNotFound } : c,
+                )
+              : await resolveExecutable(path.trim(), { lang: currentLanguage() });
         return {
           ok: r.version !== undefined,
           source: r.source,

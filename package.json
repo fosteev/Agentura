@@ -227,16 +227,24 @@
           "default": "",
           "description": "%config.codexExecutable.description%"
         },
+        "agentura.antigravityExecutable": {
+          "type": "string",
+          "scope": "machine",
+          "default": "",
+          "description": "%config.antigravityExecutable.description%"
+        },
         "agentura.defaultProvider": {
           "type": "string",
           "scope": "application",
           "enum": [
             "claude",
-            "codex"
+            "codex",
+            "antigravity"
           ],
           "enumDescriptions": [
             "Claude Code",
-            "Codex"
+            "Codex",
+            "Antigravity"
           ],
           "default": "claude",
           "description": "%config.defaultProvider.description%"

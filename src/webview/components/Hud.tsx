@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { SessionSummary } from '../../protocol';
 import { menuKeys } from '../a11y';
-import { costLabel, mixedProviders, providerName, tokensLabel, whenLabel } from '../sessionsView';
+import { costLabel, foreignProvider, mixedProviders, providerName, tokensLabel, whenLabel } from '../sessionsView';
 import { ui } from '../strings';
 import { TabBar, type TabItem } from './TabBar';
 
@@ -131,10 +131,10 @@ export function Hud({
                   <small>
                     {[
                       whenLabel(s, now),
-                      mixed || s.provider === 'codex' ? providerName(s) : '',
+                      mixed || foreignProvider(s) ? providerName(s) : '',
                       // у Codex-треда ходов и стоимости нет
-                      s.provider === 'codex' ? '' : ui.empty.turns(s.turns),
-                      s.provider === 'codex' ? '' : costLabel(s),
+                      foreignProvider(s) ? '' : ui.empty.turns(s.turns),
+                      foreignProvider(s) ? '' : costLabel(s),
                       s.state === 'waiting' ? ui.sidebar.stateTag.waiting : '',
                     ]
                       .filter(Boolean)

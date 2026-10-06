@@ -34,7 +34,7 @@ export const BYPASS_NOT_ALLOWED = hostStrings('ru').bypassNotAllowed;
 /** Логика вкладки настроек без `vscode`: приём сообщений webview и выдача текущих значений. */
 export class SettingsController {
   /** Номер последней «проверить» — ответ приходит только на неё. */
-  private checkSeq: Record<AgentProvider, number> = { claude: 0, codex: 0 };
+  private checkSeq: Record<AgentProvider, number> = { claude: 0, codex: 0, antigravity: 0 };
 
   constructor(private readonly deps: SettingsDeps) {}
 
@@ -58,11 +58,14 @@ export class SettingsController {
         break;
       case 'settings.checkEngine': {
         // проверки асинхронные (до 5 с): ответ устаревшей не должен перебить ответ последней
-        const engine: AgentProvider = m.engine === 'codex' ? 'codex' : 'claude';
+        const engine: AgentProvider = m.engine === 'codex' || m.engine === 'antigravity' ? m.engine : 'claude';
         const seq = ++this.checkSeq[engine];
-        const result = await this.deps.checkEngine(typeof m.path === 'string' ? m.path : '', engine);
+        // исключение проверки не должно оставить кнопки «проверить» заблокированными
+        const result: EngineCheck = await this.deps
+          .checkEngine(typeof m.path === 'string' ? m.path : '', engine)
+          .catch((e: unknown) => ({ ok: false, source: 'none' as const, problem: String(e) }));
         if (seq === this.checkSeq[engine])
-          this.deps.post({ type: 'settings.engine', result, ...(engine === 'codex' ? { engine } : {}) });
+          this.deps.post({ type: 'settings.engine', result, ...(engine === 'claude' ? {} : { engine }) });
         break;
       }
       case 'settings.reveal':

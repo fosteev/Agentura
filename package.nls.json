@@ -25,6 +25,7 @@
   "config.defaultModel.description": "Default model for new sessions (empty means the engine default).",
   "config.claudeExecutable.description": "Path to the claude executable (empty: look for the system one: PATH, ~/.local/bin, Homebrew). The version is checked on the first engine start. User settings only: workspace settings are ignored.",
   "config.codexExecutable.description": "Path to the codex executable (empty: look for the system one: PATH, ~/.local/bin, Homebrew). User settings only: workspace settings are ignored.",
+  "config.antigravityExecutable.description": "Path to the agy executable (Antigravity CLI; empty: look for the system one: PATH, ~/.local/bin, Homebrew). User settings only: workspace settings are ignored.",
   "config.defaultProvider.description": "Engine for new sessions. Existing sessions keep the engine they were started with. User settings only: workspace settings are ignored.",
   "config.usagePollMinutes.description": "How often to poll subscription limits, in minutes.",
   "config.sessionList.view.description": "Session list view in the sidebar. Also switched with the button in the “Sessions” header.",

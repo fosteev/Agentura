@@ -52,7 +52,17 @@ class Session implements AgentSession {
 }
 
 /** Адаптер, помнящий, что у него просили (`created`/`resumed`) и какие сессии отдал. */
-function fakeAdapter(name: string) {
+class AgyTestSession extends Session {
+  retried: string[] = [];
+  /** Что ответит адаптер (`false` — режим уже такой / bypass не разрешён сессии). */
+  accept = true;
+  async retryWithMode(mode: string) {
+    this.retried.push(mode);
+    return this.accept;
+  }
+}
+
+function fakeAdapter(name: string, make: (id: string) => Session = (id) => new Session(id)) {
   const created: Record<string, unknown>[] = [];
   const resumed: [string, Record<string, unknown>][] = [];
   const sessions: Session[] = [];
@@ -61,13 +71,13 @@ function fakeAdapter(name: string) {
     id: name,
     createSession: async (o: Record<string, unknown>) => {
       created.push(o);
-      const s = new Session(`${name}-new`);
+      const s = make(`${name}-new`);
       sessions.push(s);
       return s;
     },
     resumeSession: async (id: string, o: Record<string, unknown>) => {
       resumed.push([id, o]);
-      const s = new Session(id);
+      const s = make(id);
       sessions.push(s);
       return s;
     },
@@ -84,13 +94,16 @@ const tick = () => new Promise((r) => setTimeout(r, 0));
 function setup(over: Partial<ChatDeps> = {}) {
   const claude = fakeAdapter('claude');
   const codex = fakeAdapter('codex');
+  const agy = fakeAdapter('agy', (id) => new AgyTestSession(id));
   const posted: ToWebview[] = [];
   const remembered: AgentProvider[] = [];
   const codexReady = vi.fn(async () => ({ ok: true as const }));
+  const agyReady = vi.fn(async () => ({ ok: true as const }));
   const deps: ChatDeps = {
     adapter: claude.adapter,
-    adapterFor: (p) => (p === 'codex' ? codex.adapter : claude.adapter),
-    engineFor: (p) => (p === 'codex' ? { ready: codexReady } : undefined),
+    adapterFor: (p) => (p === 'codex' ? codex.adapter : p === 'antigravity' ? agy.adapter : claude.adapter),
+    engineFor: (p) =>
+      p === 'codex' ? { ready: codexReady } : p === 'antigravity' ? { ready: agyReady } : undefined,
     rememberProvider: (p) => remembered.push(p),
     cwd: '/p',
     project: 'p',
@@ -111,7 +124,7 @@ function setup(over: Partial<ChatDeps> = {}) {
     ...over,
   };
   const controller = new ChatController(deps);
-  return { controller, claude, codex, posted, remembered, codexReady };
+  return { controller, claude, codex, agy, posted, remembered, codexReady, agyReady };
 }
 
 const infos = (posted: ToWebview[]) =>
@@ -225,6 +238,146 @@ describe('ChatController: маршрутизация по провайдеру',
     expect(infos(posted)[0]).toMatchObject({ provider: 'codex' });
     expect(codex.resumed.map(([id]) => id)).toEqual(['thr-2']);
     expect(claude.resumed).toHaveLength(0);
+  });
+});
+
+describe('ChatController: Antigravity', () => {
+  it('новая вкладка: сессия у адаптера agy, режим из настроек (bypass разрешён), модель и effort Claude не передаются', async () => {
+    const { controller, claude, agy, posted, agyReady } = setup({ provider: 'antigravity' });
+    controller.start();
+    await tick();
+    expect(claude.created).toHaveLength(0);
+    expect(agyReady).toHaveBeenCalled();
+    expect(agy.created).toEqual([{ cwd: '/p', allowBypassPermissions: true, permissionMode: 'acceptEdits' }]);
+    controller.pushInfo();
+    expect(infos(posted).at(-1)).toMatchObject({
+      provider: 'antigravity',
+      features: providerFeatures('antigravity'),
+    });
+    // режим — как у Claude (4 режима), effort не рассылается
+    expect(posted).toContainEqual({ type: 'session.defaults', mode: 'acceptEdits' });
+  });
+
+  it('resume: история и resumeSession — у адаптера agy, а не Claude', async () => {
+    const { controller, claude, agy } = setup({ provider: 'antigravity', resumeId: 'conv-1' });
+    controller.start();
+    await tick();
+    await tick();
+    expect(claude.loaded).toHaveLength(0);
+    expect(agy.loaded).toEqual(['conv-1']);
+    expect(agy.resumed.map(([id]) => id)).toEqual(['conv-1']);
+    expect(agy.resumed[0]![1]).toMatchObject({ permissionMode: 'default', baselineCostUsd: 0 });
+    expect(agy.resumed[0]![1]).not.toHaveProperty('model');
+  });
+
+  it('agy не найден: карточка engine_missing, процесс не стартует', async () => {
+    const { controller, agy, posted } = setup({
+      provider: 'antigravity',
+      engineFor: () => ({ ready: async () => ({ ok: false as const, problem: 'agy not found' }) }),
+    });
+    controller.start();
+    await tick();
+    await tick();
+    expect(agy.created).toHaveLength(0);
+    expect(posted.find((m) => m.type === 'agent.event' && m.event.type === 'error')).toMatchObject({
+      event: { message: 'agy not found', code: 'engine_missing', fatal: true },
+    });
+  });
+
+  it('engine.set antigravity в пустой вкладке: сессия agy, выбор запоминается', async () => {
+    const { controller, agy, remembered } = setup();
+    await controller.handle({ type: 'engine.set', provider: 'antigravity' });
+    controller.start();
+    await tick();
+    expect(controller.provider).toBe('antigravity');
+    expect(remembered).toEqual(['antigravity']);
+    expect(agy.created).toHaveLength(1);
+  });
+
+  it('смена движка в пустой вкладке сразу обновляет приборы: agy — квота, обратно на Claude — лимиты', async () => {
+    const agyQuota = { refresh: vi.fn(async () => ({ rows: [{ label: 'Gemini', remaining: 20 }], updatedAt: 1 })) };
+    const usage = { refresh: vi.fn(async () => ({ windows: [], updatedAt: 2 })) };
+    const { controller, posted } = setup({ agyQuota, usage });
+    await controller.handle({ type: 'engine.set', provider: 'antigravity' });
+    await tick();
+    expect(agyQuota.refresh).toHaveBeenCalledTimes(1);
+    expect(posted).toContainEqual({ type: 'quota.update', rows: [{ label: 'Gemini', remaining: 20 }], updatedAt: 1 });
+    expect(usage.refresh).not.toHaveBeenCalled();
+    await controller.handle({ type: 'engine.set', provider: 'claude' });
+    await tick();
+    expect(usage.refresh).toHaveBeenCalledTimes(1);
+    expect(agyQuota.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('agy.retry: повтор уходит сессии agy; bypass без разрешения в настройках — нет', async () => {
+    const { controller, agy } = setup({ provider: 'antigravity' });
+    controller.start();
+    await tick();
+    await controller.handle({ type: 'agy.retry', sessionId: 'agy-new', mode: 'acceptEdits' });
+    await controller.handle({ type: 'agy.retry', sessionId: 'agy-new', mode: 'bypassPermissions' });
+    expect((agy.sessions[0] as AgyTestSession).retried).toEqual(['acceptEdits', 'bypassPermissions']);
+    const off = setup({
+      provider: 'antigravity',
+      settings: () => ({ allowBypass: false }),
+    });
+    off.controller.start();
+    await tick();
+    await off.controller.handle({ type: 'agy.retry', sessionId: 'agy-new', mode: 'bypassPermissions' });
+    expect((off.agy.sessions[0] as AgyTestSession).retried).toEqual([]);
+  });
+
+  it('agy.retry: хост или адаптер повтор не принял — webview получает agy.retryRejected', async () => {
+    const off = setup({ provider: 'antigravity', settings: () => ({ allowBypass: false }) });
+    off.controller.start();
+    await tick();
+    await off.controller.handle({ type: 'agy.retry', sessionId: 'agy-new', mode: 'bypassPermissions' });
+    expect(off.posted).toContainEqual({ type: 'agy.retryRejected' });
+    const { controller, agy, posted } = setup({ provider: 'antigravity' });
+    controller.start();
+    await tick();
+    (agy.sessions[0] as AgyTestSession).accept = false;
+    await controller.handle({ type: 'agy.retry', sessionId: 'agy-new', mode: 'acceptEdits' });
+    expect((agy.sessions[0] as AgyTestSession).retried).toEqual(['acceptEdits']);
+    expect(posted).toContainEqual({ type: 'agy.retryRejected' });
+  });
+
+  it('agy.retry в Claude-вкладке игнорируется: ни режима, ни сообщения, ни ответа webview', async () => {
+    const { controller, claude, posted } = setup();
+    controller.start();
+    await tick();
+    const s = claude.sessions[0]!;
+    const setMode = vi.spyOn(s, 'setMode');
+    const before = posted.length;
+    await controller.handle({ type: 'agy.retry', sessionId: 'x', mode: 'acceptEdits' });
+    expect(setMode).not.toHaveBeenCalled();
+    expect(s.sent).toEqual([]);
+    expect(posted.slice(before)).toEqual([]);
+  });
+
+  it('defaultPermissionMode=bypassPermissions без allowBypassPermissions: agy стартует в default без bypass', async () => {
+    const { controller, agy } = setup({
+      provider: 'antigravity',
+      settings: () => ({ allowBypass: false, defaultPermissionMode: 'bypassPermissions' }),
+    });
+    controller.start();
+    await tick();
+    expect(agy.created).toEqual([{ cwd: '/p', allowBypassPermissions: false, permissionMode: 'default' }]);
+  });
+
+  it('resume: заголовок вкладки спрашивается с провайдером вкладки', async () => {
+    const titleOf = vi.fn(async () => 'Беседа agy');
+    const { controller } = setup({ provider: 'antigravity', resumeId: 'conv-1', titleOf });
+    controller.start();
+    await tick();
+    await tick();
+    expect(titleOf).toHaveBeenCalledWith('conv-1', 'antigravity');
+  });
+
+  it('протокол: agy.retry принимает только два режима; engine.set — antigravity', () => {
+    expect(isFromWebview({ type: 'agy.retry', sessionId: 's', mode: 'acceptEdits' })).toBe(true);
+    expect(isFromWebview({ type: 'agy.retry', sessionId: 's', mode: 'bypassPermissions' })).toBe(true);
+    expect(isFromWebview({ type: 'agy.retry', sessionId: 's', mode: 'plan' })).toBe(false);
+    expect(isFromWebview({ type: 'engine.set', provider: 'antigravity' })).toBe(true);
   });
 });
 

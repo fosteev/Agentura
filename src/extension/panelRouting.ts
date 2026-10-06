@@ -4,6 +4,7 @@
  * нужны); пустая нетронутая вкладка — занять её; иначе — новая вкладка.
  */
 import type { AgentProvider, SessionRef } from '../agent/types';
+import { isProvider } from '../settings';
 
 export interface PanelView {
   /** Сессия вкладки: живая или возобновляемая; нет — новая ещё не стартовала. */
@@ -71,7 +72,7 @@ export function restoredSessionId(
     // webview пишет `provider` рядом с id; состояние со старой версии (только id) — движок из памяти воркспейса, нет записи — Claude
     const stated = (state as { provider?: unknown }).provider;
     const provider: AgentProvider =
-      stated === 'claude' || stated === 'codex'
+      isProvider(stated)
         ? stated
         : (remembered.find((x) => x.id === own)?.provider ?? 'claude');
     const ref: SessionRef = { provider, id: own };

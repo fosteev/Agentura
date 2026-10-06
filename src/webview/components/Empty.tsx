@@ -1,14 +1,14 @@
 import type { SessionSummary } from '../../protocol';
 import { clock } from '../chatState';
-import { mixedProviders, providerName } from '../sessionsView';
+import { foreignProvider, mixedProviders, providerName } from '../sessionsView';
 import { ui } from '../strings';
 
 function recentMeta(s: SessionSummary, mixed: boolean): string {
   const when = clock(s.updatedAt);
   // у Codex-треда ходов нет — вместо них метка движка; у Claude она появляется, когда в списке есть и Codex
-  const tag = mixed || s.provider === 'codex' ? providerName(s) : '';
+  const tag = mixed || foreignProvider(s) ? providerName(s) : '';
   if (s.state === 'waiting') return [ui.empty.waiting, tag, when].filter(Boolean).join(' · ');
-  return [s.provider === 'codex' ? '' : ui.empty.turns(s.turns), tag, when].filter(Boolean).join(' · ');
+  return [foreignProvider(s) ? '' : ui.empty.turns(s.turns), tag, when].filter(Boolean).join(' · ');
 }
 
 /** Экран empty: новая сессия. Недавние сессии приходят с хоста (`sessions.update`). */
