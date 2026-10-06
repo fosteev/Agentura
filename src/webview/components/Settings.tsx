@@ -12,7 +12,6 @@ import {
   FEED_STYLES,
   AGENTS_VIEWS,
   GIT_LAYOUTS,
-  PROVIDERS,
   DEFAULT_FEED_FONT_SIZE,
   MAX_FEED_FONT_SIZE,
   MIN_FEED_FONT_SIZE,
@@ -24,6 +23,8 @@ import {
   addFont,
   checkEngine,
   commit,
+  agyCheck,
+  codexCheck,
   engineCheck,
   errors,
   overridden,
@@ -392,29 +393,29 @@ function ThresholdScale({ value }: { value: [number, number] }) {
   );
 }
 
-function EngineRow({
-  value,
-  engine = 'claude',
-}: {
-  value: string;
-  engine?: 'claude' | 'antigravity';
-}) {
+type EngineId = 'claude' | 'codex' | 'antigravity';
+const ENGINE_KEY = {
+  claude: 'claudeExecutable',
+  codex: 'codexExecutable',
+  antigravity: 'antigravityExecutable',
+} as const;
+
+function EngineRow({ value, engine = 'claude' }: { value: string; engine?: EngineId }) {
   const [draft, setDraft] = useDraft(value);
-  const c = engineCheck.value;
-  // результат «проверить» показывает строка того движка, чей путь проверяли
-  const r = (c.engine ?? 'claude') === engine ? c.result : undefined;
-  const key: SettingKey = engine === 'antigravity' ? 'antigravityExecutable' : 'claudeExecutable';
-  const text = engine === 'antigravity' ? T.exeAgy : T.exe;
+  const k = ENGINE_KEY[engine];
+  const text = engine === 'codex' ? T.exeCodex : engine === 'antigravity' ? T.exeAgy : T.exe;
+  const c = (engine === 'codex' ? codexCheck : engine === 'antigravity' ? agyCheck : engineCheck).value;
+  const r = c.result;
   const save = (text: string) => {
-    if (text.trim() !== value) commit(key, text);
-    else setError(key, undefined);
+    if (text.trim() !== value) commit(k, text);
+    else setError(k, undefined);
   };
   return (
-    <Row name={text.name} desc={text.desc} k={key} machine below={checkLine()}>
+    <Row name={text.name} desc={text.desc} k={k} machine below={checkLine()}>
       <input
         class="num wide"
         type="text"
-        aria-label={key}
+        aria-label={k}
         value={draft}
         placeholder={text.placeholder}
         spellcheck={false}
@@ -425,7 +426,7 @@ function EngineRow({
         }}
       />
       <button type="button" class="btn" disabled={c.pending} onClick={() => checkEngine(draft, engine)}>
-        {c.pending && (c.engine ?? 'claude') === engine ? T.exe.checking : T.exe.check}
+        {c.pending ? T.exe.checking : T.exe.check}
       </button>
     </Row>
   );
@@ -526,7 +527,11 @@ export function Settings() {
     context: v['sessionList.context'],
     time: v['sessionList.time'],
   };
-  const providerOptions = PROVIDERS.map((p): [string, string] => [p, T.provider.options[p] ?? p]);
+  const providers: [string, string][] = [
+    ['claude', T.provider.options.claude],
+    ['codex', T.provider.options.codex],
+    ['antigravity', T.provider.options.antigravity],
+  ];
   const languageModes = LANGUAGE_MODES.map((m): [string, string] => [
     m,
     T.language.options[m] ?? m,
@@ -871,11 +876,12 @@ export function Settings() {
           {page(
             'engine',
             <>
-              <EngineRow value={v.claudeExecutable} />
-              <EngineRow value={v.antigravityExecutable} engine="antigravity" />
-              <Row name={T.provider.name} desc={T.provider.desc} k="defaultProvider" machine>
-                <Select k="defaultProvider" value={v.defaultProvider} options={providerOptions} />
+              <Row name={T.provider.name} isNew desc={T.provider.desc} k="defaultProvider">
+                <Select k="defaultProvider" value={v.defaultProvider} options={providers} />
               </Row>
+              <EngineRow value={v.claudeExecutable} />
+              <EngineRow engine="codex" value={v.codexExecutable} />
+              <EngineRow engine="antigravity" value={v.antigravityExecutable} />
             </>,
           )}
         </div>

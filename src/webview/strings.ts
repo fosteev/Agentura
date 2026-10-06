@@ -500,6 +500,7 @@ const ru = {
     compact: 'сжать',
     ctxTitle: (thresholds: string[], fullAt: string, scale?: string) =>
       `Контекст: пороги ${thresholds.join(' ')}, автосжатие при ${fullAt}${scale ? ` · шкала до ${scale}` : ''}`,
+    ctxTitleOpen: (max: string) => `Окно контекста: ${max} (у этого движка нет порогов и автосжатия)`,
     thresholdPassed: (k: string) => `порог ${k} пройден`,
     cache: 'кэш',
     cacheExpired: 'истёк',
@@ -872,6 +873,16 @@ const ru = {
       name: 'Читать токен из Keychain macOS',
       desc: 'Нужен только для запроса лимитов. Без него проценты появятся после первого хода.',
     },
+    exeCodex: {
+      name: 'Путь к codex',
+      desc: 'Пусто — искать системный: PATH, ~/.local/bin, Homebrew. Нужен установленный и залогиненный Codex CLI (codex login).',
+      placeholder: 'пусто — искать системный',
+    },
+    provider: {
+      name: 'Движок по умолчанию',
+      desc: 'Движок новых вкладок. Меняется и меню «агент» в поле ввода (пустая вкладка); начатая сессия остаётся на своём движке.',
+      options: { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity' } as Record<string, string>,
+    },
     exe: {
       name: 'Путь к claude',
       desc: 'Пусто — искать системный: PATH, ~/.local/bin, Homebrew.',
@@ -886,11 +897,6 @@ const ru = {
       name: 'Путь к agy (Antigravity)',
       desc: 'Пусто — искать системный: PATH, ~/.local/bin, Homebrew. Нужен только для движка Antigravity; agy должен быть залогинен (запустите его один раз).',
       placeholder: 'пусто — искать системный',
-    },
-    provider: {
-      name: 'Движок новых чатов',
-      desc: 'На каком движке открывается новый чат; в пустой вкладке его можно сменить меню движка под полем ввода.',
-      options: { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity' } as Record<string, string>,
     },
   },
   sidebar: {

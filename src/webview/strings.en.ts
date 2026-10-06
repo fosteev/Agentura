@@ -493,6 +493,8 @@ export const en: Ui = {
     compact: 'compact',
     ctxTitle: (thresholds: string[], fullAt: string, scale?: string) =>
       `Context: thresholds ${thresholds.join(' ')}, auto-compact at ${fullAt}${scale ? ` · scale up to ${scale}` : ''}`,
+    ctxTitleOpen: (max: string) =>
+      `Context window: ${max} (no thresholds or auto-compact for this engine)`,
     thresholdPassed: (k: string) => `passed ${k}`,
     cache: 'cache',
     cacheExpired: 'expired',
@@ -854,6 +856,16 @@ export const en: Ui = {
       name: 'Read token from macOS Keychain',
       desc: 'Needed only to request limits. Without it, percentages appear after the first turn.',
     },
+    exeCodex: {
+      name: 'Path to codex',
+      desc: 'Empty — look for the system one: PATH, ~/.local/bin, Homebrew. Needs the Codex CLI installed and signed in (codex login).',
+      placeholder: 'empty — look for the system one',
+    },
+    provider: {
+      name: 'Default engine',
+      desc: 'Engine for new tabs. The “agent” menu in the input box (empty tab) changes it too; a started session keeps its engine.',
+      options: { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity' } as Record<string, string>,
+    },
     exe: {
       name: 'Path to claude',
       desc: 'Empty — look for the system one: PATH, ~/.local/bin, Homebrew.',
@@ -868,11 +880,6 @@ export const en: Ui = {
       name: 'Path to agy (Antigravity)',
       desc: 'Empty: look for the system one (PATH, ~/.local/bin, Homebrew). Only needed for the Antigravity engine; agy must be signed in (run it once).',
       placeholder: 'empty: look for the system one',
-    },
-    provider: {
-      name: 'Engine for new chats',
-      desc: 'Which engine a new chat opens with; in an empty tab the engine menu under the input switches it.',
-      options: { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity' } as Record<string, string>,
     },
   },
   sidebar: {

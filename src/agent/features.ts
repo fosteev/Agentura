@@ -9,8 +9,10 @@ export interface ProviderFeatures {
   modes: boolean;
   /** `/compact` и кнопки «сжать». */
   compact: boolean;
-  /** Приборы: контекст, кэш, лимиты подписки, стоимость. Нет достоверных чисел — не рисовать. */
-  metrics: boolean;
+  /** Заполнение контекстного окна (кольцо, полоса, счётчик): нужны настоящие `context.usage`. */
+  context: boolean;
+  /** Цена, кэш промпта, лимиты подписки (и блокировка отправки по лимиту): нет достоверных чисел — не рисовать. */
+  cost: boolean;
   /** Субагенты: вкладка «агенты», карта, транскрипты. */
   subagents: boolean;
   /** Карточка плана (`ExitPlanMode`). */
@@ -26,7 +28,8 @@ export interface ProviderFeatures {
 export const CLAUDE_FEATURES: Readonly<ProviderFeatures> = {
   modes: true,
   compact: true,
-  metrics: true,
+  context: true,
+  cost: true,
   subagents: true,
   plan: true,
   questions: true,
@@ -37,13 +40,15 @@ export const CLAUDE_FEATURES: Readonly<ProviderFeatures> = {
 /**
  * Codex (app-server 0.160): режимов, compact, субагентов и плана в нашем адаптере нет (no-op); вопросы агента
  * (`item/tool/requestUserInput`) приходят карточкой — `questions: true`;
- * приборов нет (`totalCostUsd: 0` = «неизвестно», лимитов подписки и cache TTL нет); `files` адаптер отбрасывает.
+ * контекст есть (настоящий `context.usage` из `thread/tokenUsage/updated`, без порогов и автосжатия), цены/кэша/лимитов нет
+ * (`totalCostUsd: 0` = «неизвестно», лимитов подписки и cache TTL нет); `files` адаптер отбрасывает.
  * Картинки уходят data-URL'ом (на живом не проверено).
  */
 export const CODEX_FEATURES: Readonly<ProviderFeatures> = {
   modes: false,
   compact: false,
-  metrics: false,
+  context: true,
+  cost: false,
   subagents: false,
   plan: false,
   questions: true,
@@ -59,7 +64,8 @@ export const CODEX_FEATURES: Readonly<ProviderFeatures> = {
 export const ANTIGRAVITY_FEATURES: Readonly<ProviderFeatures> = {
   modes: true,
   compact: false,
-  metrics: false,
+  context: false,
+  cost: false,
   subagents: false,
   plan: false,
   questions: false,

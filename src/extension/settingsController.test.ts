@@ -128,6 +128,13 @@ describe('SettingsController', () => {
     });
   });
 
+  it('checkEngine: Codex проверяется своим резолвером, ответ помечен движком, проверки движков независимы', async () => {
+    const { c, posted, deps } = setup();
+    await c.handle({ type: 'settings.checkEngine', path: '/x/codex', engine: 'codex' });
+    expect(deps.checkEngine).toHaveBeenCalledWith('/x/codex', 'codex');
+    expect(posted[0]).toMatchObject({ type: 'settings.engine', engine: 'codex' });
+  });
+
   it('checkEngine: для Antigravity проверяет agy и помечает ответ', async () => {
     const { c, posted, deps } = setup();
     await c.handle({ type: 'settings.checkEngine', path: '/x/agy', engine: 'antigravity' });

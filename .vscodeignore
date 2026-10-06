@@ -7,6 +7,7 @@ CLAUDE.md
 .serena/**
 .vscode/**
 .vscode-test/**
+.vitest/**
 .github/**
 docs/**
 prototype/**

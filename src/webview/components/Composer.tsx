@@ -18,6 +18,7 @@ import {
   autoSelection,
   capabilities,
   chat,
+  contextShown,
   compact,
   composerLayout,
   interrupt,
@@ -799,7 +800,7 @@ export function Composer() {
 
   return (
     <footer {...rootProps}>
-      <ContextBlocks blocks={hv.context.blocks} />
+      {contextShown.value && <ContextBlocks blocks={hv.context.blocks} />}
       <Drafts drafts={drafts} fileDrafts={fileDrafts} />
       <div class="ctx">
         <DraftHint drafts={drafts.length} files={fileDrafts.length} />
@@ -956,7 +957,7 @@ function ContextCount({
   fileEstimate: ReturnType<typeof filesTokens>;
   withFiles: boolean;
 }) {
-  if (!features.value.metrics) return null;
+  if (!contextShown.value) return null;
   return (
     <span class="cn" data-tip={hv.context.title}>
       {ui.compose.context} <b class={hv.context.numCls}>{hv.context.now}</b>{' '}
@@ -985,7 +986,7 @@ function ContextCount({
         </>
       )}
       {hv.context.note && <>{hv.context.note} · </>}
-      <button onClick={compact}>{ui.compose.compact}</button>
+      {features.value.compact && <button onClick={compact}>{ui.compose.compact}</button>}
     </span>
   );
 }
@@ -1459,7 +1460,7 @@ function EngineMenu({
 
 /** Кольцо заполнения контекста (`used / fullAt`) и процент; цвет — по зоне. */
 function ContextRing({ hv }: { hv: Hv }) {
-  if (!features.value.metrics) return null;
+  if (!contextShown.value) return null;
   const c = hv.context;
   return (
     <span class="cr" data-tip={c.title}>
@@ -1489,7 +1490,7 @@ function ContextBar({ hv }: { hv: Hv }) {
  * (`sh`: полоса и процент). Пока идёт сжатие — крутилка в обоих видах, кнопки «сжать» нет.
  */
 function ContextStatus({ hv, look }: { hv: Hv; look: 'sl' | 'sh' }) {
-  if (!features.value.metrics) return null;
+  if (!contextShown.value) return null;
   const c = hv.context;
   return (
     <span class="cr cs" data-tip={c.title}>
@@ -1502,7 +1503,7 @@ function ContextStatus({ hv, look }: { hv: Hv; look: 'sl' | 'sh' }) {
         </b>
       )}
       {c.compacting && <span class="spin" role="status" aria-label={ui.log.compacting} />}
-      {look === 'sl' && c.zone !== 'ok' && !c.compacting && (
+      {look === 'sl' && features.value.compact && c.zone !== 'ok' && !c.compacting && (
         <button onClick={compact}>{ui.compose.compact}</button>
       )}
     </span>
@@ -1511,7 +1512,7 @@ function ContextStatus({ hv, look }: { hv: Hv; look: 'sl' | 'sh' }) {
 
 /** «контекст [полоса] 131k/200k · сжать» — компактная замена `ContextCount`. */
 function ContextGauge({ hv }: { hv: Hv }) {
-  if (!features.value.metrics) return null;
+  if (!contextShown.value) return null;
   const c = hv.context;
   return (
     <span class="cn gauge" data-tip={c.title}>
@@ -1521,7 +1522,7 @@ function ContextGauge({ hv }: { hv: Hv }) {
           <span class="spin" aria-hidden="true" /> {ui.log.compacting}{' '}
         </>
       )}
-      <button onClick={compact}>{ui.compose.compact}</button>
+      {features.value.compact && <button onClick={compact}>{ui.compose.compact}</button>}
     </span>
   );
 }
@@ -1539,7 +1540,7 @@ function Meters({
 }) {
   // лимиты подписки, кэш и стоимость — Claude; у других движков достоверных чисел нет, виджет прячется целиком.
   // Исключение — квота Antigravity (`/usage`): недельные окна семейств моделей, пока она получена и разобрана.
-  if (!features.value.metrics) {
+  if (!features.value.cost) {
     const items = provider.value === 'antigravity' ? quotaView(quota.value.rows, Date.now()) : [];
     if (!items.length) return null;
     return (

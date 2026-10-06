@@ -231,12 +231,24 @@ export const tick = signal(Date.now());
 const limitDismissed = signal<number | undefined>(undefined);
 
 /**
+ * Рисовать ли контекст (кольцо, полоса, счётчик, блоки). У движка без порогов (Codex) окно известно только из
+ * `context.usage`/`turn.result`: до первого хода (и в восстановленной ленте) не показывать выдуманные 200k.
+ */
+export const contextShown = computed<boolean>(
+  () =>
+    features.value.context &&
+    (hudState.value.thresholds.length > 0 ||
+      hudState.value.context !== undefined ||
+      hudState.value.contextWindow !== undefined),
+);
+
+/**
  * Отправка заблокирована лимитом (этап 7): своя сессия упёрлась или окно подписки на 100 % со сбросом в
  * будущем — общий на аккаунт `limits.update` доходит до всех вкладок. Пересчитывается секундным тиком.
  */
 export const limitBlocked = computed<LimitBlock | undefined>(() =>
   // лимиты подписки Claude не касаются других движков: Codex-вкладку они не блокируют
-  !features.value.metrics
+  !features.value.cost
     ? undefined
     : limitBlock(
         {
@@ -316,6 +328,8 @@ export function handleHostMessage(m: ToWebview): void {
       if ((m.provider ?? 'claude') !== provider.value)
         capabilities.value = { models: [], commands: [] };
       provider.value = m.provider ?? 'claude';
+      if (chat.value.engine !== provider.value)
+        chat.value = { ...chat.value, engine: provider.value };
       features.value = m.features ?? providerFeatures(provider.value);
       // файл прикрепили до смены движка: новый файлов не принимает — плашка, а не молча потерянное вложение
       if (!features.value.files && draftFiles.value.some((d) => d.file))
@@ -327,7 +341,10 @@ export function handleHostMessage(m: ToWebview): void {
       composerLayout.value = m.composerLayout ?? 'classic';
       agentsView.value = m.agentsView ?? 'list';
       gitLayout.value = m.gitLayout ?? 'stack';
-      if (m.contextThresholds?.length) {
+      // нет compact (Codex) — нет и порогов автосжатия: шкала без зон и засечек, «полный» — только само окно
+      if (!features.value.compact) {
+        hudState.value = { ...hudState.value, thresholds: [] };
+      } else if (m.contextThresholds?.length) {
         hudState.value = { ...hudState.value, thresholds: [...m.contextThresholds] };
       }
       break;

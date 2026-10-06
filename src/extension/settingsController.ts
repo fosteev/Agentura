@@ -1,3 +1,4 @@
+import type { AgentProvider } from '../agent/types';
 import type { FromWebview, ToWebview } from '../protocol';
 import { hostStrings, type Lang } from '../shared/l10n';
 import {
@@ -18,7 +19,7 @@ export interface SettingsDeps {
   globalTarget: unknown;
   post(m: ToWebview): void;
   /** Тот же поиск, что при старте движка (`resolveExecutable`). */
-  checkEngine(path: string, engine?: 'claude' | 'antigravity'): Promise<EngineCheck>;
+  checkEngine(path: string, engine: AgentProvider): Promise<EngineCheck>;
   reveal(target: 'ui' | 'json'): void;
   warn(message: string): void;
   /** Скачать шрифт из Google Fonts (`kind` — назначение карточки) / удалить скачанный. */
@@ -33,7 +34,7 @@ export const BYPASS_NOT_ALLOWED = hostStrings('ru').bypassNotAllowed;
 /** Логика вкладки настроек без `vscode`: приём сообщений webview и выдача текущих значений. */
 export class SettingsController {
   /** Номер последней «проверить» — ответ приходит только на неё. */
-  private checkSeq = 0;
+  private checkSeq: Record<AgentProvider, number> = { claude: 0, codex: 0, antigravity: 0 };
 
   constructor(private readonly deps: SettingsDeps) {}
 
@@ -57,13 +58,14 @@ export class SettingsController {
         break;
       case 'settings.checkEngine': {
         // проверки асинхронные (до 5 с): ответ устаревшей не должен перебить ответ последней
-        const seq = ++this.checkSeq;
-        const engine = m.engine === 'antigravity' ? 'antigravity' : 'claude';
-        // исключение проверки не должно оставить кнопки «проверить» заблокированными (pending общий на обе строки)
+        const engine: AgentProvider = m.engine === 'codex' || m.engine === 'antigravity' ? m.engine : 'claude';
+        const seq = ++this.checkSeq[engine];
+        // исключение проверки не должно оставить кнопки «проверить» заблокированными
         const result: EngineCheck = await this.deps
           .checkEngine(typeof m.path === 'string' ? m.path : '', engine)
           .catch((e: unknown) => ({ ok: false, source: 'none' as const, problem: String(e) }));
-        if (seq === this.checkSeq) this.deps.post({ type: 'settings.engine', result, ...(engine === 'antigravity' ? { engine } : {}) });
+        if (seq === this.checkSeq[engine])
+          this.deps.post({ type: 'settings.engine', result, ...(engine === 'claude' ? {} : { engine }) });
         break;
       }
       case 'settings.reveal':

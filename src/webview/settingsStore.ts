@@ -8,10 +8,14 @@ export const settingsValues = signal<SettingsValues | undefined>(undefined);
 export const overridden = signal<SettingKey[]>([]);
 /** Текст ошибки у поля: ошибка проверки (до отправки) или отказ хоста. */
 export const errors = signal<Partial<Record<SettingKey, string>>>({});
-/** Итог «проверить»: `engine` — чей путь проверяли (claude по умолчанию), строка показывает только свой результат. */
-export const engineCheck = signal<{ pending: boolean; result?: EngineCheck; engine?: 'claude' | 'antigravity' }>({
-  pending: false,
-});
+export const engineCheck = signal<{ pending: boolean; result?: EngineCheck }>({ pending: false });
+/** То же для пути к Codex и к agy: проверки движков не перебивают друг друга. */
+export const codexCheck = signal<{ pending: boolean; result?: EngineCheck }>({ pending: false });
+export const agyCheck = signal<{ pending: boolean; result?: EngineCheck }>({ pending: false });
+
+function checkSignal(engine: 'claude' | 'codex' | 'antigravity') {
+  return engine === 'codex' ? codexCheck : engine === 'antigravity' ? agyCheck : engineCheck;
+}
 
 export function handleSettingsMessage(m: ToWebview): void {
   switch (m.type) {
@@ -23,7 +27,7 @@ export function handleSettingsMessage(m: ToWebview): void {
       errors.value = { ...errors.value, [m.key]: m.message };
       break;
     case 'settings.engine':
-      engineCheck.value = { pending: false, result: m.result, engine: m.engine ?? 'claude' };
+      checkSignal(m.engine ?? 'claude').value = { pending: false, result: m.result };
       break;
     default:
       break;
@@ -43,9 +47,9 @@ export function commit(key: SettingKey, value: unknown): void {
   send({ type: 'settings.set', key, value });
 }
 
-export function checkEngine(path: string, engine: 'claude' | 'antigravity' = 'claude'): void {
-  engineCheck.value = { pending: true, engine };
-  send({ type: 'settings.checkEngine', path, ...(engine === 'claude' ? {} : { engine }) });
+export function checkEngine(path: string, engine: 'claude' | 'codex' | 'antigravity' = 'claude'): void {
+  checkSignal(engine).value = { pending: true };
+  send(engine === 'claude' ? { type: 'settings.checkEngine', path } : { type: 'settings.checkEngine', path, engine });
 }
 
 /** «Добавить из Google Fonts…»: хост открывает QuickPick (`kind` — интерфейсные, моноширинные или все — для панелей). */

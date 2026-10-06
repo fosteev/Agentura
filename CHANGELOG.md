@@ -4,6 +4,25 @@
 
 ### Added
 
+- **Codex as a second engine.** Pick it in the "agent" menu under the input box of an empty tab, or set
+  `agentura.defaultProvider` (the menu writes it, so new tabs open on the last picked engine; ⚙ → "Engine" shows the
+  same value). A tab keeps its engine for the session. Codex runs through your installed `codex`
+  (`codex app-server`, one process per tab); set `agentura.codexExecutable` if it is not found (⚙ → "Engine" has a
+  "check" button for it, like for `claude`). Needs Codex CLI installed and logged in (`codex login`).
+  - Streaming replies, Stop, model and effort pickers, images in a message, tool rows under the usual names, and the
+    context size by the input box once Codex reports its window (after the first turn; no thresholds or auto-compact
+    marks: Codex has none).
+  - Approval cards for commands, file changes and extra permissions, and agent questions. Approval policy and sandbox
+    come from `~/.codex/config.toml`. "Always" on a command writes a permanent rule to `~/.codex/rules` and the
+    card says so. Command output can be empty (the server does not always send it). The `changes` tab shows a Codex
+    edit as the changed fragment, not a whole-file before/after.
+  - History: the sidebar, the empty screen and the "sessions" popup list the recent Codex threads of the project
+    folder, up to 500 (including ones started in the Codex CLI) with a `Codex` label (`Claude` on the other rows once a Codex thread
+    is in the list); open, resume and rename them. With `codex` installed the sidebar starts a short `codex app-server`
+    to read the list, at most every 30 seconds.
+  - Hidden for Codex instead of faked: permission modes, plan review, `/compact`, the agents tab, file attachments,
+    cost, cache and subscription limits. The turn summary line shows only what Codex reports (no `cache w`, no
+    zeros).
 - **Antigravity engine (experimental).** A chat tab can run on Google's Antigravity CLI (`agy`): chat, streaming,
   tool rows and edit diffs, conversation history and resume, rename, model and permission-mode menus. `agy` has no
   per-action approvals, so what it denies shows as an "agy declined" card with retry buttons that restart the
@@ -12,7 +31,14 @@
   conversations next to Claude and Codex, with an engine label; resume and rename work.
 - **Antigravity quota.** The weekly limit per model family (from `agy -p "/usage"`, at most once per 10 minutes) is
   shown by the input box on Antigravity tabs; if the output can't be parsed, nothing is shown.
-- **Settings.** ⚙ → "Engine": `agentura.antigravityExecutable` with a check button and `agentura.defaultProvider`.
+- **Settings.** ⚙ → "Engine" also has `agentura.antigravityExecutable` with a "check" button, and "Engine for new
+  chats" (`agentura.defaultProvider`) offers Antigravity next to Claude and Codex.
+
+### Changed
+
+- **Format of saved state.** `agentura.openSessions` (workspace state) now stores `{provider, id}` entries instead of
+  plain ids, and a chat tab's saved webview state carries its `provider`. Old values are read as Claude. Rolling back
+  to 0.4.0 after this can lose the restored tabs once (0.4.0 drops entries it does not recognise).
 
 ## 0.4.0 — 2026-10-05
 
