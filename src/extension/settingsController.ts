@@ -1,3 +1,4 @@
+import type { AgentProvider } from '../agent/types';
 import type { FromWebview, ToWebview } from '../protocol';
 import { hostStrings, type Lang } from '../shared/l10n';
 import {
@@ -18,7 +19,7 @@ export interface SettingsDeps {
   globalTarget: unknown;
   post(m: ToWebview): void;
   /** Тот же поиск, что при старте движка (`resolveExecutable`). */
-  checkEngine(path: string): Promise<EngineCheck>;
+  checkEngine(path: string, engine: AgentProvider): Promise<EngineCheck>;
   reveal(target: 'ui' | 'json'): void;
   warn(message: string): void;
   /** Скачать шрифт из Google Fonts (`kind` — назначение карточки) / удалить скачанный. */
@@ -33,7 +34,7 @@ export const BYPASS_NOT_ALLOWED = hostStrings('ru').bypassNotAllowed;
 /** Логика вкладки настроек без `vscode`: приём сообщений webview и выдача текущих значений. */
 export class SettingsController {
   /** Номер последней «проверить» — ответ приходит только на неё. */
-  private checkSeq = 0;
+  private checkSeq: Record<AgentProvider, number> = { claude: 0, codex: 0 };
 
   constructor(private readonly deps: SettingsDeps) {}
 
@@ -57,9 +58,11 @@ export class SettingsController {
         break;
       case 'settings.checkEngine': {
         // проверки асинхронные (до 5 с): ответ устаревшей не должен перебить ответ последней
-        const seq = ++this.checkSeq;
-        const result = await this.deps.checkEngine(typeof m.path === 'string' ? m.path : '');
-        if (seq === this.checkSeq) this.deps.post({ type: 'settings.engine', result });
+        const engine: AgentProvider = m.engine === 'codex' ? 'codex' : 'claude';
+        const seq = ++this.checkSeq[engine];
+        const result = await this.deps.checkEngine(typeof m.path === 'string' ? m.path : '', engine);
+        if (seq === this.checkSeq[engine])
+          this.deps.post({ type: 'settings.engine', result, ...(engine === 'codex' ? { engine } : {}) });
         break;
       }
       case 'settings.reveal':

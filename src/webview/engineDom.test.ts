@@ -102,7 +102,8 @@ describe('chat.info: движок и флаги', () => {
     expect(features.value).toMatchObject({
       modes: false,
       compact: false,
-      metrics: false,
+      context: true,
+      cost: false,
       subagents: false,
       files: false,
       images: true,
@@ -155,6 +156,9 @@ describe('chat.info: движок и флаги', () => {
 
 const MODE_SEL = '.mode, .dollar, .blk, .mdt';
 const GAUGE_SEL = '.meters, .cr, .cn, .cs, .ring, .bar';
+// у Codex контекст есть (roadmap 15, этап 6), а кэш и лимиты — нет
+const CTX_SEL = '.cr, .cn, .cs, .ring, .bar';
+const METER_SEL = '.meters';
 
 describe.each<ComposerLayout>(['classic', 'card', 'gauges', 'statusline', 'minimal', 'shell'])(
   'раскладка %s: Codex',
@@ -163,12 +167,12 @@ describe.each<ComposerLayout>(['classic', 'card', 'gauges', 'statusline', 'minim
       composerLayout.value = layout;
     });
 
-    it('нет режимов и приборов (контекст, кэш, лимиты), движок назван codex', async () => {
+    it('нет режимов, кэша и лимитов; контекст есть без «сжать»; движок назван codex', async () => {
       info('codex');
       handleHostMessage({
         type: 'agent.event',
         sessionId: 's',
-        event: { type: 'context.usage', usedTokens: 190_000, maxTokens: 200_000, source: 'engine' },
+        event: { type: 'context.usage', usedTokens: 200_000, maxTokens: 200_000, source: 'usage' },
       } as never);
       limits.value = {
         windows: [{ kind: 'five-hour', percent: 95, resetsAt: Date.now() + 3_600_000 }],
@@ -177,7 +181,9 @@ describe.each<ComposerLayout>(['classic', 'card', 'gauges', 'statusline', 'minim
       const host = mount();
       await flush();
       expect(host.querySelector(MODE_SEL)).toBeNull();
-      expect(host.querySelector(GAUGE_SEL)).toBeNull();
+      expect(host.querySelector(METER_SEL)).toBeNull();
+      expect(host.querySelector(CTX_SEL), layout).not.toBeNull();
+      expect(host.querySelector('.cn button, .cs button')).toBeNull();
       // в `minimal` имя агента на кнопке не показывается (только «модель · effort»)
       if (layout !== 'minimal') {
         expect(host.textContent).not.toContain('claude');
@@ -195,6 +201,38 @@ describe.each<ComposerLayout>(['classic', 'card', 'gauges', 'statusline', 'minim
     });
   },
 );
+
+describe('Composer: контекст Codex без порогов', () => {
+  it('до первого `context.usage` контекста нет (окно неизвестно — не 200k по умолчанию); у Claude есть сразу', async () => {
+    info('codex');
+    let host = mount();
+    await flush();
+    expect(host.querySelector(CTX_SEL)).toBeNull();
+    document.body.innerHTML = '';
+    info('claude', { contextThresholds: [120_000, 150_000] });
+    host = mount();
+    await flush();
+    expect(host.querySelector(CTX_SEL)).not.toBeNull();
+  });
+
+  it('нет засечек порогов, зона ok до самого окна, заголовок без «автосжатия»', async () => {
+    info('codex');
+    handleHostMessage({
+      type: 'agent.event',
+      sessionId: 's',
+      event: { type: 'context.usage', usedTokens: 180_000, maxTokens: 258_000, source: 'usage' },
+    } as never);
+    expect(hudState.value.thresholds).toEqual([]);
+    const host = mount();
+    await flush();
+    const cn = host.querySelector('.cn')!;
+    expect(cn.textContent).toContain('180');
+    expect(cn.getAttribute('data-tip')).not.toMatch(/пороги \d|thresholds \d/);
+    expect(host.querySelector('.blocks i.w, .blocks i.h, .blocks i.f')).toBeNull();
+    info('claude', { contextThresholds: [120_000, 150_000] });
+    expect(hudState.value.thresholds.length).toBeGreaterThan(0);
+  });
+});
 
 describe('Composer: Codex', () => {
   it('меню «/»: только /clear и /status, без /plan и /compact', async () => {

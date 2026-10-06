@@ -148,7 +148,7 @@ export type ToWebview =
   /** Отказ записи настройки (проверка не прошла или запись не удалась) — текст у поля. */
   | { type: 'settings.error'; key: SettingKey; message: string }
   /** Ответ на «проверить» у пути к claude. */
-  | { type: 'settings.engine'; result: EngineCheck }
+  | { type: 'settings.engine'; result: EngineCheck; /** Чей путь проверен; нет — claude. */ engine?: AgentProvider }
   | { type: 'agent.event'; sessionId: string; event: AgentEvent }
   /**
    * Граф агентов (roadmap 11, этап 2). Чату: открыта ли (и видна ли) его вкладка графа — пока да, чат шлёт
@@ -356,7 +356,7 @@ export type FromWebview =
   /** Вкладка настроек: записать настройку (в пользовательские настройки VS Code). */
   | { type: 'settings.set'; key: SettingKey; value: unknown }
   /** «проверить»: найти claude по этому пути (пусто — системный) и показать версию и источник. */
-  | { type: 'settings.checkEngine'; path: string }
+  | { type: 'settings.checkEngine'; path: string; /** Чей путь проверять; нет — claude. */ engine?: AgentProvider }
   /** «в настройках VS Code» / «settings.json». */
   | { type: 'settings.reveal'; target: 'ui' | 'json' }
   /** «Добавить из Google Fonts…» под карточками: выбор семейства для интерфейса, кода или панелей (все семейства). */

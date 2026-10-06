@@ -707,6 +707,33 @@ describe('ошибки и лимит (этап 7)', () => {
     expect(s.rows.at(-1)).toMatchObject({ kind: 'sys', tone: 'bad', text: ['API Error'] });
     expect(s.closed).toBeUndefined();
   });
+
+  it('итог хода Codex: без `cache w` и нулей; у Claude как было (roadmap 15, этап 6)', () => {
+    const result = (usage: { input: number; output: number; cacheRead: number; cacheWrite: number }) =>
+      ev({
+        type: 'turn.result',
+        ok: true,
+        subtype: 'success',
+        interrupted: false,
+        durationMs: 1000,
+        apiDurationMs: 0,
+        numTurns: 1,
+        usage,
+        totalCostUsd: 0,
+        permissionDenials: [],
+      });
+    const sum = (s: ChatState) => s.rows.filter((r) => r.kind === 'sum').at(-1) as { parts: string[] };
+    const codex = { ...initialState(), engine: 'codex' as const };
+    expect(sum(applyEvent(turn(codex), result({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }), 2)).parts).toEqual([]);
+    expect(sum(applyEvent(turn(codex), result({ input: 5, output: 7, cacheRead: 3, cacheWrite: 0 }), 2)).parts).toEqual([
+      'in 5',
+      'out 7',
+      'cache r3',
+    ]);
+    expect(
+      sum(applyEvent(turn(initialState()), result({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }), 2)).parts,
+    ).toEqual(['in 0', 'out 0', 'cache r0 w0']);
+  });
 });
 
 describe('повторная доставка запросов на пересеве (этап 6 roadmap 0.2)', () => {

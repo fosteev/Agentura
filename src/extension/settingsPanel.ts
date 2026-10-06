@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { resolveExecutable } from '../agent/claude/executable';
+import { CODEX_NOT_FOUND, resolveCodexExecutable } from '../agent/codex/executable';
 import { postToWebview } from '../protocol';
 import { hostStrings } from '../shared/l10n';
 import type { Logger } from './logger';
@@ -38,8 +39,14 @@ export class SettingsPanel {
       config: () => vscode.workspace.getConfiguration('agentura'),
       globalTarget: vscode.ConfigurationTarget.Global,
       post: (m) => postToWebview(webview, m),
-      checkEngine: async (path) => {
-        const r = await resolveExecutable(path.trim(), { lang: currentLanguage() });
+      checkEngine: async (path, engine) => {
+        // Codex: «не найден» — на языке интерфейса, как в карточке чата; прочие проблемы резолвера английские
+        const r =
+          engine === 'codex'
+            ? await resolveCodexExecutable(path.trim()).then((c) =>
+                c.problem === CODEX_NOT_FOUND ? { ...c, problem: hostStrings(currentLanguage()).codexNotFound } : c,
+              )
+            : await resolveExecutable(path.trim(), { lang: currentLanguage() });
         return {
           ok: r.version !== undefined,
           source: r.source,

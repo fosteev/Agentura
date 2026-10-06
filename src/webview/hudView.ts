@@ -41,6 +41,7 @@ export function contextFullAt(autoCompact: number | undefined, max: number): num
  */
 export function contextScale(max: number, thresholds: readonly number[]): number {
   const top = Math.max(0, ...thresholds);
+  if (top === 0) return max; // нет порогов (Codex) — шкала на всё окно
   return Math.min(max, Math.max(DEFAULT_CONTEXT_MAX, Math.ceil(top / 0.75)));
 }
 
@@ -154,11 +155,10 @@ export function contextView(s: HudState): ContextView {
       ? { note: ui.compose.thresholdPassed(kilo(passed)) }
       : {}),
     compacting: !!s.compacting,
-    title: ui.compose.ctxTitle(
-      sorted.map(kilo),
-      kilo(fullAt),
-      scale < max ? kilo(scale) : undefined,
-    ),
+    title:
+      sorted.length === 0
+        ? ui.compose.ctxTitleOpen(kilo(max))
+        : ui.compose.ctxTitle(sorted.map(kilo), kilo(fullAt), scale < max ? kilo(scale) : undefined),
   };
 }
 
