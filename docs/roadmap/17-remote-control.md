@@ -1,7 +1,7 @@
 # 17 — Remote Control (/rc): сессия Claude с телефона и claude.ai
 
-> **Статус:** спайк пройден 2026-10-06; этап 1 (хост) и этап 2 (webview) приняты 2026-10-06;
-> релиз 0.6.0 — после приёмки 2. Ветка `feature/remote-control` от main. Прототип — `prototype/screens/remote.html`
+> **Статус:** спайк пройден 2026-10-06; этапы 1–2 приняты 2026-10-06; релиз 0.6.0 собран
+> в ветке (README, CHANGELOG, vsix) — мерж в main и тег `v0.6.0` после живой проверки владельцем (pending). Ветка `feature/remote-control` от main. Прототип — `prototype/screens/remote.html`
 > (`#slash|#on|#menu`), `settings.html#session`; галерея — раздел «Remote Control · /rc».
 > Ручные проверки и решения — `17-remote-control.pending.md`.
 

@@ -23,6 +23,8 @@ Personal project, not on the Marketplace. Install it from a `.vsix` (see [Instal
   rate, 5-hour and 7-day limits.
 - **Permissions.** Tool approval, agent questions and plan review (`ExitPlanMode`) are cards in the feed. Edits open
   in the native diff.
+- **Remote Control.** Keep driving a Claude session from claude.ai/code or the Claude mobile app: `rc` under the
+  input box or `/rc`. See [Remote Control](#remote-control).
 - **Sidebar.** The project's sessions: search, resume, rename. Account and limits are shown above the list.
 - **Right panel.**
   - `changes` lists files the session touched.
@@ -89,7 +91,7 @@ The extension does not ship the engine binary (200+ MB). It finds the system `cl
 `~/.claude/local` or Homebrew (on Windows it looks for `claude.exe`). To point it somewhere else, set `agentura.claudeExecutable`.
 
 ```
-code --install-extension agentura-0.5.0.vsix
+code --install-extension agentura-0.6.0.vsix
 ```
 
 To build from source:
@@ -97,7 +99,7 @@ To build from source:
 ```
 npm ci
 npm run check      # types, lint, unit tests, build
-npm run package    # agentura-0.5.0.vsix
+npm run package    # agentura-0.6.0.vsix
 ```
 
 ## Codex
@@ -150,6 +152,24 @@ What differs from Claude:
   change; if it does, history degrades to what was seen live. Conversations of the open folder appear in the sidebar
   and on the empty screen with an engine label (resume and rename work; without `agy` they are simply absent).
 
+## Remote Control
+
+A Claude tab can be mirrored to claude.ai: the session shows up in claude.ai/code and in the Claude mobile app, and you
+can continue it from there. Turn it on with `rc` under the input box (or `/rc`, `/remote-control`); the `rc` menu has a
+QR code for the phone, the link and a copy button. `agentura.remoteControl` turns it on for every Claude tab, and the
+`rc` choice in a tab overrides it for that tab (it survives `/clear`).
+
+- Turns still run on this machine: files, commands and approvals happen here. From claude.ai you can send messages,
+  answer approval cards, agent questions and plans (whoever answers first wins), stop a turn, and change the model or
+  permission mode (`bypassPermissions` only with `agentura.allowBypassPermissions`).
+- Messages typed there are marked "from phone" / "from claude.ai" in the feed.
+- It uses the Claude Code login (`~/.claude/.credentials.json` or the macOS Keychain), read when you turn it on,
+  regardless of `agentura.limits.readKeychain`.
+- Closing the tab disconnects; the session stays in the claude.ai list. Each time you turn it on, a new claude.ai
+  session is created and earlier turns of the tab are not copied there.
+- The engine's own `--remote-control` does not work in the headless mode Agentura uses, so the bridge is built on the
+  Agent SDK's alpha `bridge` API. It may break on an SDK update.
+
 ## Settings
 
 Everything is under `agentura.*`. You can change it in the Settings UI or on the settings tab. These settings are read from
@@ -162,6 +182,8 @@ user settings only, so a cloned repository can't change them through its `.vscod
 | `agentura.antigravityExecutable`  | empty    | Path to `agy`; empty means auto-detect           |
 | `agentura.defaultProvider`        | `claude` | Engine for new tabs: `claude`, `codex` or `antigravity`        |
 | `agentura.allowBypassPermissions` | `false`  | Allow the `bypassPermissions` mode (Claude only) |
+| `agentura.remoteControl`          | `false`  | Remote Control for every Claude tab              |
+| `agentura.remoteControlNamePrefix`| empty    | Session name prefix on claude.ai; empty means the machine name |
 
 If `agentura.defaultPermissionMode` is set to `bypassPermissions` while bypass is not allowed, new sessions start in
 `manual` mode.
@@ -176,6 +198,8 @@ If `agentura.defaultPermissionMode` is set to `bypassPermissions` while bypass i
   drift after a CLI update.
 - **Codex** support is new and was tried on macOS arm64 only. The model list comes from your Codex account
   (`model/list` when the session starts).
+- **Remote Control** uses the Agent SDK's alpha `bridge` API and was tried against SDK 0.3.285 only. Approval
+  requests opened before it was turned on are not sent to claude.ai.
 - **Cost** is an estimate. Your subscription bill is the source of truth.
 - **Each chat tab runs its own `claude` (or `codex app-server`) process.**
 - **Subagents** have no separate cost or token counts because the engine does not report them. Prompt and summary sizes are

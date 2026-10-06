@@ -20,6 +20,8 @@
 - **Чат во вкладках редактора.** Одна вкладка — одна сессия. `Cmd/Ctrl+Alt+A` открывает чат, `Cmd/Ctrl+Shift+N`
   начинает новую сессию.
 - **Два движка.** Claude (по умолчанию) или Codex — выбор на вкладку, в меню «агент» под полем ввода.
+- **Remote Control.** Сессию Claude можно продолжать с claude.ai/code и из мобильного приложения Claude: «rc» под
+  полем ввода или `/rc`. См. [Remote Control](#remote-control).
 - **Приборы у поля ввода.** Контекст с жёлтым и оранжевым порогом, стоимость и токены хода, TTL кэша и доля
   попаданий, лимиты за 5 часов и за 7 дней.
 - **Разрешения.** Разрешение инструмента, вопросы агента и согласование плана (`ExitPlanMode`) приходят карточками в
@@ -91,7 +93,7 @@
 `~/.claude/local` и Homebrew (на Windows — `claude.exe`). Другой путь задаётся в `agentura.claudeExecutable`.
 
 ```
-code --install-extension agentura-0.5.0.vsix
+code --install-extension agentura-0.6.0.vsix
 ```
 
 Сборка из исходников:
@@ -99,7 +101,7 @@ code --install-extension agentura-0.5.0.vsix
 ```
 npm ci
 npm run check      # типы, линтер, юнит-тесты, сборка
-npm run package    # agentura-0.5.0.vsix
+npm run package    # agentura-0.6.0.vsix
 ```
 
 ## Codex
@@ -153,6 +155,24 @@ sandbox берутся из вашего `~/.codex/config.toml`, Agentura их �
   поменяться; тогда история сводится к тому, что видели вживую. Беседы открытой папки показываются в боковой панели
   и на пустом экране с меткой движка (возобновление и переименование работают; без `agy` их в списке нет).
 
+## Remote Control
+
+Вкладку Claude можно зеркалить на claude.ai: сессия появляется в claude.ai/code и в мобильном приложении Claude, и
+оттуда её можно продолжать. Включается кнопкой «rc» под полем ввода (или `/rc`, `/remote-control`); в меню «rc» — QR
+для телефона, ссылка и кнопка «скопировать». `agentura.remoteControl` включает его для каждой вкладки Claude, а выбор
+«rc» во вкладке перекрывает настройку для неё (и переживает `/clear`).
+
+- Ходы по-прежнему идут на этой машине: файлы, команды и разрешения — здесь. С claude.ai можно писать, отвечать на
+  карточки разрешений, вопросы агента и план (кто ответил первым — тот и решил), остановить ход, сменить модель и режим
+  (`bypassPermissions` — только при `agentura.allowBypassPermissions`).
+- Реплики оттуда в ленте помечены «с телефона» / «с claude.ai».
+- Используется вход Claude Code (`~/.claude/.credentials.json` или Keychain macOS); токен читается при включении,
+  независимо от `agentura.limits.readKeychain`.
+- Закрыли вкладку — связь рвётся, сессия остаётся в списке claude.ai. Каждое включение создаёт новую сессию на
+  claude.ai, прошлые ходы вкладки туда не копируются.
+- Собственный `--remote-control` движка в headless-режиме, которым пользуется Agentura, не работает, поэтому мост
+  сделан на alpha-API `bridge` из Agent SDK. Может сломаться при обновлении SDK.
+
 ## Настройки
 
 Все настройки лежат под `agentura.*`. Менять их можно в Settings UI или на вкладке настроек. Эти читаются только
@@ -165,6 +185,8 @@ sandbox берутся из вашего `~/.codex/config.toml`, Agentura их �
 | `agentura.antigravityExecutable`  | пусто        | Путь к `agy`; пусто — искать автоматически          |
 | `agentura.defaultProvider`        | `claude`     | Движок новых вкладок: `claude`, `codex` или `antigravity` |
 | `agentura.allowBypassPermissions` | `false`      | Разрешить режим `bypassPermissions` (только Claude) |
+| `agentura.remoteControl`          | `false`      | Remote Control для каждой вкладки Claude            |
+| `agentura.remoteControlNamePrefix`| пусто        | Префикс имени сессии на claude.ai; пусто — имя машины |
 
 Если `agentura.defaultPermissionMode` равен `bypassPermissions`, а режим не разрешён, новые сессии стартуют в режиме
 `manual`.
@@ -180,6 +202,8 @@ sandbox берутся из вашего `~/.codex/config.toml`, Agentura их �
   разойтись после обновления CLI.
 - **Codex** поддержан недавно и пробовался только на macOS arm64. Список моделей берётся из аккаунта Codex
   (`model/list` при старте сессии).
+- **Remote Control** сделан на alpha-API `bridge` из Agent SDK и пробовался только с SDK 0.3.285. Запросы
+  разрешений, открытые до включения, на claude.ai не уходят.
 - **Стоимость** — оценка. Верный счёт — в подписке.
 - **Каждая вкладка чата держит свой процесс `claude` (или `codex app-server`).**
 - **У субагентов** нет отдельной стоимости и токенов: движок их не сообщает. Размеры промпта и итога оцениваются по

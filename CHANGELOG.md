@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.6.0 — 2026-10-06
+
+### Added
+
+- **Remote Control for Claude tabs.** Mirror a session to claude.ai/code and the Claude mobile app and keep driving it
+  from there: `rc` under the input box (all six layouts), `/rc` or `/remote-control`. The `rc` menu has a switch, a QR
+  code for the phone, the session link and a copy button; a "● remote" badge sits in the tab header while it is on.
+  - From claude.ai you can send messages (marked "from phone" / "from claude.ai" in the feed), answer approvals,
+    agent questions and plans (whoever answers first wins, the other side's card closes), stop a turn, and change the
+    model or permission mode (`bypassPermissions` only with `agentura.allowBypassPermissions`).
+  - `agentura.remoteControl` turns it on for every Claude tab; `agentura.remoteControlNamePrefix` sets the session name
+    prefix on claude.ai (empty means the machine name). Both are on the "New session" settings page.
+  - Built on the Agent SDK's alpha `bridge` API (the CLI's `--remote-control` does not work headless). Uses the Claude
+    Code login; the bridge credentials refresh themselves and reconnect once if they expire.
+
 ## 0.5.0 — 2026-10-06
 
 ### Added
