@@ -81,7 +81,14 @@ export interface PermissionAlways {
   /** Правила в форме настроек: `Bash(npm test:*)`, `Edit`. */
   rules: string[];
   /** Куда движок запишет правила: `localSettings` → `.claude/settings.local.json`. */
-  destination?: 'localSettings' | 'projectSettings' | 'userSettings' | 'session' | 'cliArg';
+  destination?:
+    | 'localSettings'
+    | 'projectSettings'
+    | 'userSettings'
+    | 'session'
+    | 'cliArg'
+    /** Правила Codex (`~/.codex/rules`): постоянное «всегда» у Codex. */
+    | 'codexRules';
   /** Все места, если у правил разные `destination` (первое — `destination`); иначе поля нет. */
   destinations?: NonNullable<PermissionAlways['destination']>[];
   /** Подсказка-режим на сессию (`setMode`) — у Edit/Write это `acceptEdits`. */

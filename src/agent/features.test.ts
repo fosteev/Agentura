@@ -6,14 +6,14 @@ describe('providerFeatures', () => {
     expect(Object.values(providerFeatures('claude')).every(Boolean)).toBe(true);
   });
 
-  it('Codex: ни режимов, ни compact, ни приборов, ни субагентов, плана, вопросов и файлов; картинки есть', () => {
+  it('Codex: ни режимов, ни compact, ни приборов, ни субагентов, плана и файлов; вопросы и картинки есть', () => {
     expect(providerFeatures('codex')).toEqual({
       modes: false,
       compact: false,
       metrics: false,
       subagents: false,
       plan: false,
-      questions: false,
+      questions: true,
       images: true,
       files: false,
     });

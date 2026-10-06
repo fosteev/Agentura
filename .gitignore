@@ -6,3 +6,4 @@ out/
 .vscode-test/
 .claude/worktrees/
 test/integration/out/
+.vitest/
