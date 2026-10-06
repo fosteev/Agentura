@@ -479,6 +479,8 @@ export const en: Ui = {
     compact: 'compact',
     ctxTitle: (thresholds: string[], fullAt: string, scale?: string) =>
       `Context: thresholds ${thresholds.join(' ')}, auto-compact at ${fullAt}${scale ? ` · scale up to ${scale}` : ''}`,
+    ctxTitleOpen: (max: string) =>
+      `Context window: ${max} (no thresholds or auto-compact for this engine)`,
     thresholdPassed: (k: string) => `passed ${k}`,
     cache: 'cache',
     cacheExpired: 'expired',
@@ -837,6 +839,16 @@ export const en: Ui = {
     keychain: {
       name: 'Read token from macOS Keychain',
       desc: 'Needed only to request limits. Without it, percentages appear after the first turn.',
+    },
+    exeCodex: {
+      name: 'Path to codex',
+      desc: 'Empty — look for the system one: PATH, ~/.local/bin, Homebrew. Needs the Codex CLI installed and signed in (codex login).',
+      placeholder: 'empty — look for the system one',
+    },
+    provider: {
+      name: 'Default engine',
+      desc: 'Engine for new tabs. The “agent” menu in the input box (empty tab) changes it too; a started session keeps its engine.',
+      options: { claude: 'Claude', codex: 'Codex' },
     },
     exe: {
       name: 'Path to claude',

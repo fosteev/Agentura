@@ -121,11 +121,18 @@ describe('SettingsController', () => {
   it('checkEngine: тот же поиск, что при старте, результат в webview', async () => {
     const { c, posted, deps } = setup();
     await c.handle({ type: 'settings.checkEngine', path: '' });
-    expect(deps.checkEngine).toHaveBeenCalledWith('');
+    expect(deps.checkEngine).toHaveBeenCalledWith('', 'claude');
     expect(posted[0]).toMatchObject({
       type: 'settings.engine',
       result: { ok: true, version: '2.1.285' },
     });
+  });
+
+  it('checkEngine: Codex проверяется своим резолвером, ответ помечен движком, проверки движков независимы', async () => {
+    const { c, posted, deps } = setup();
+    await c.handle({ type: 'settings.checkEngine', path: '/x/codex', engine: 'codex' });
+    expect(deps.checkEngine).toHaveBeenCalledWith('/x/codex', 'codex');
+    expect(posted[0]).toMatchObject({ type: 'settings.engine', engine: 'codex' });
   });
 
   it('checkEngine: ответ устаревшей проверки не перебивает последнюю', async () => {

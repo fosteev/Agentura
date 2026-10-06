@@ -23,6 +23,7 @@ import {
   addFont,
   checkEngine,
   commit,
+  codexCheck,
   engineCheck,
   errors,
   overridden,
@@ -391,22 +392,24 @@ function ThresholdScale({ value }: { value: [number, number] }) {
   );
 }
 
-function EngineRow({ value }: { value: string }) {
+function EngineRow({ value, engine = 'claude' }: { value: string; engine?: 'claude' | 'codex' }) {
   const [draft, setDraft] = useDraft(value);
-  const c = engineCheck.value;
+  const k = engine === 'codex' ? 'codexExecutable' : 'claudeExecutable';
+  const text = engine === 'codex' ? T.exeCodex : T.exe;
+  const c = (engine === 'codex' ? codexCheck : engineCheck).value;
   const r = c.result;
   const save = (text: string) => {
-    if (text.trim() !== value) commit('claudeExecutable', text);
-    else setError('claudeExecutable', undefined);
+    if (text.trim() !== value) commit(k, text);
+    else setError(k, undefined);
   };
   return (
-    <Row name={T.exe.name} desc={T.exe.desc} k="claudeExecutable" machine below={checkLine()}>
+    <Row name={text.name} desc={text.desc} k={k} machine below={checkLine()}>
       <input
         class="num wide"
         type="text"
-        aria-label="claudeExecutable"
+        aria-label={k}
         value={draft}
-        placeholder={T.exe.placeholder}
+        placeholder={text.placeholder}
         spellcheck={false}
         onInput={(e) => setDraft((e.currentTarget as HTMLInputElement).value)}
         onChange={(e) => save((e.currentTarget as HTMLInputElement).value)}
@@ -414,7 +417,7 @@ function EngineRow({ value }: { value: string }) {
           if (e.key === 'Enter') save((e.currentTarget as HTMLInputElement).value);
         }}
       />
-      <button type="button" class="btn" disabled={c.pending} onClick={() => checkEngine(draft)}>
+      <button type="button" class="btn" disabled={c.pending} onClick={() => checkEngine(draft, engine)}>
         {c.pending ? T.exe.checking : T.exe.check}
       </button>
     </Row>
@@ -516,6 +519,10 @@ export function Settings() {
     context: v['sessionList.context'],
     time: v['sessionList.time'],
   };
+  const providers: [string, string][] = [
+    ['claude', T.provider.options.claude],
+    ['codex', T.provider.options.codex],
+  ];
   const languageModes = LANGUAGE_MODES.map((m): [string, string] => [
     m,
     T.language.options[m] ?? m,
@@ -857,7 +864,16 @@ export function Settings() {
             </>,
           )}
 
-          {page('engine', <EngineRow value={v.claudeExecutable} />)}
+          {page(
+            'engine',
+            <>
+              <Row name={T.provider.name} isNew desc={T.provider.desc} k="defaultProvider">
+                <Select k="defaultProvider" value={v.defaultProvider} options={providers} />
+              </Row>
+              <EngineRow value={v.claudeExecutable} />
+              <EngineRow engine="codex" value={v.codexExecutable} />
+            </>,
+          )}
         </div>
       </div>
     </div>

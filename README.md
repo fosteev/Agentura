@@ -4,7 +4,8 @@
 
 Claude chat for VS Code that shows what Claude Code keeps out of sight: context in tokens, cost per turn, cache,
 subscription limits, which subagents are running and what they edited. It runs on the Claude Agent SDK, the same
-engine as Claude Code, through your installed `claude` and its login.
+engine as Claude Code, through your installed `claude` and its login. Codex CLI is available as a second engine
+(see [Codex](#codex)).
 
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="docs/images/hero-light.png">
@@ -15,6 +16,7 @@ Personal project, not on the Marketplace. Install it from a `.vsix` (see [Instal
 
 ## Features
 
+- **Two engines.** Claude (default) or Codex, picked per tab in the "agent" menu under the input box.
 - **Chat in editor tabs.** One session per tab. `Cmd/Ctrl+Alt+A` opens a chat, `Cmd/Ctrl+Shift+N` starts a new
   session.
 - **Gauges by the input box.** Context with yellow and orange thresholds, cost and tokens per turn, cache TTL and hit
@@ -81,6 +83,7 @@ You need:
 
 - VS Code 1.100 or newer.
 - Claude Code 2.1.285 or newer, installed and logged in (`claude`, then `/login`).
+- Optional, for the Codex engine: Codex CLI, installed and logged in (`codex login`).
 
 The extension does not ship the engine binary (200+ MB). It finds the system `claude` in `PATH`, `~/.local/bin`,
 `~/.claude/local` or Homebrew (on Windows it looks for `claude.exe`). To point it somewhere else, set `agentura.claudeExecutable`.
@@ -97,15 +100,45 @@ npm run check      # types, lint, unit tests, build
 npm run package    # agentura-0.4.0.vsix
 ```
 
+## Codex
+
+Pick Codex in the "agent" menu of an empty tab, or set `agentura.defaultProvider` (the menu writes it, so the next new
+tab opens on the same engine). A tab keeps its engine for the whole session. Agentura starts `codex app-server` per
+tab and talks to it over stdio, the same way it runs `claude`. Approval policy and sandbox come from your
+`~/.codex/config.toml`; Agentura does not override them.
+
+Supported: streaming replies, Stop, the model and effort pickers, command, file-change and permission approvals,
+agent questions, images in a message, tool rows and the `changes` tab, the context size next to the input box (after the
+first turn: until Codex reports its window, there is no gauge), and session history: the sidebar lists the recent
+Codex threads of the project folder, up to 500 (including ones started in the Codex CLI),
+and you can resume and rename them. When `codex` is installed, the sidebar starts a short `codex app-server` to read
+that list (at most every 30 seconds); a thread started in the CLI shows up on the next refresh.
+
+Not in this version (hidden in the interface, not faked):
+
+- Permission modes, plan review, `/compact` and the agents tab. Codex has no equivalents in the app-server protocol
+  Agentura uses.
+- Cost, cache and subscription limits: Codex does not report them. The context gauge has no thresholds or
+  auto-compact marks for the same reason.
+- File attachments (text and PDF). Images are sent.
+- Restored Codex history has no per-turn token counts, and a thread row in the sidebar shows no turns or cost.
+- "Always" on a command approval writes a permanent rule to `~/.codex/rules`; the card says so.
+- An edit shows in the `changes` tab and the diff as the changed fragment, not as a whole-file before/after.
+
+The app-server protocol is marked experimental by Codex. Agentura is checked against `codex-cli 0.160.0`; newer
+versions usually work, but see [docs/codex-protocol.md](docs/codex-protocol.md) before updating.
+
 ## Settings
 
-Everything is under `agentura.*`. You can change it in the Settings UI or on the settings tab. These two settings are read from
+Everything is under `agentura.*`. You can change it in the Settings UI or on the settings tab. These settings are read from
 user settings only, so a cloned repository can't change them through its `.vscode/settings.json`:
 
-| Setting                           | Default | Meaning                                   |
-| --------------------------------- | ------- | ----------------------------------------- |
-| `agentura.claudeExecutable`       | empty   | Path to `claude`; empty means auto-detect |
-| `agentura.allowBypassPermissions` | `false` | Allow the `bypassPermissions` mode        |
+| Setting                           | Default  | Meaning                                          |
+| --------------------------------- | -------- | ------------------------------------------------ |
+| `agentura.claudeExecutable`       | empty    | Path to `claude`; empty means auto-detect        |
+| `agentura.codexExecutable`        | empty    | Path to `codex`; empty means auto-detect         |
+| `agentura.defaultProvider`        | `claude` | Engine for new tabs: `claude` or `codex`         |
+| `agentura.allowBypassPermissions` | `false`  | Allow the `bypassPermissions` mode (Claude only) |
 
 If `agentura.defaultPermissionMode` is set to `bypassPermissions` while bypass is not allowed, new sessions start in
 `manual` mode.
@@ -118,8 +151,10 @@ If `agentura.defaultPermissionMode` is set to `bypassPermissions` while bypass i
   back to the engine's `rate_limit_event`, which doesn't say which window the limit belongs to.
 - **Transcripts** (`~/.claude/projects/*.jsonl`) use an internal format. Session totals are parsed from them and can
   drift after a CLI update.
+- **Codex** support is new and was tried on macOS arm64 only. The model list comes from your Codex account
+  (`model/list` when the session starts).
 - **Cost** is an estimate. Your subscription bill is the source of truth.
-- **Each chat tab runs its own `claude` process.**
+- **Each chat tab runs its own `claude` (or `codex app-server`) process.**
 - **Subagents** have no separate cost or token counts because the engine does not report them. Prompt and summary sizes are
   estimated from text length.
 - **Tested only on macOS arm64.** CI runs on macOS and Ubuntu, but nobody has used it by hand on Windows or Linux.

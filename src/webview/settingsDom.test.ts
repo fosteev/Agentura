@@ -128,7 +128,9 @@ describe('вкладка настроек', () => {
       'agentura.font.panels',
       'agentura.font.code',
       'agentura.language',
+      'agentura.defaultProvider',
       'agentura.claudeExecutable · только эта машина',
+      'agentura.codexExecutable · только эта машина',
     ]);
   });
 
@@ -414,6 +416,29 @@ describe('вкладка настроек', () => {
     });
     await flush();
     expect(host.querySelector('.set .ok.bad')?.textContent).toContain('Не найден Claude Code');
+  });
+
+  it('Codex: строка пути с «проверить» (свой результат) и выбор движка по умолчанию', async () => {
+    const host = mount(Settings);
+    state({ codexExecutable: '/x/codex', defaultProvider: 'codex' });
+    await flush();
+    host.querySelector<HTMLButtonElement>('.set[data-key$="codexExecutable"] .btn')!.click();
+    expect(posted).toContainEqual({ type: 'settings.checkEngine', path: '/x/codex', engine: 'codex' });
+    handleSettingsMessage({
+      type: 'settings.engine',
+      engine: 'codex',
+      result: { ok: true, source: 'setting', path: '/x/codex', version: '0.160.0' },
+    });
+    await flush();
+    const row = host.querySelector('.set[data-key$="codexExecutable"]')!;
+    expect(row.querySelector('.ok[role="status"]')!.textContent).toContain('0.160.0');
+    // результат Codex не попадает в строку Claude
+    expect(host.querySelector('.set[data-key$="claudeExecutable"] .ok')).toBeNull();
+    const sel = host.querySelector<HTMLSelectElement>('select[aria-label="defaultProvider"]')!;
+    expect(sel.value).toBe('codex');
+    sel.value = 'claude';
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(posted).toContainEqual({ type: 'settings.set', key: 'defaultProvider', value: 'claude' });
   });
 
   it('ссылки «в настройках VS Code» и settings.json', async () => {

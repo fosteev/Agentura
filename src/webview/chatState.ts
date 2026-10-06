@@ -13,6 +13,7 @@ import type {
   PermissionMode,
   Question,
 } from '../agent/types';
+import type { AgentProvider } from '../agent/types';
 import { nextStatus, updateInTurn, updatePending, type ChatStatus } from '../agent/status';
 import type { EditPreview, PlanChoice } from '../protocol';
 import { splitPrompt } from '../shared/prompt';
@@ -164,6 +165,8 @@ export interface ChatState {
   closed?: { reason: 'exit' | 'error' | 'disposed'; message?: string };
   /** Запросы, ждущие ответа (`updatePending`): пока есть — состояние `waiting`. */
   pending: string[];
+  /** Движок вкладки (из `chat.info`): у Codex строка итога хода без величин, которых он не сообщает. */
+  engine?: AgentProvider;
   /** Идёт ход основного агента (`updateInTurn`) — куда вернуться после ответа на запрос. */
   inTurn?: boolean;
 }
@@ -186,7 +189,13 @@ export function initialState(): ChatState {
 
 /** Новая сессия: лента и сессионные поля сбрасываются, сведения о воркспейсе остаются. */
 export function resetSession(s: ChatState): ChatState {
-  return { ...initialState(), project: s.project, cwd: s.cwd, allowBypass: s.allowBypass };
+  return {
+    ...initialState(),
+    project: s.project,
+    cwd: s.cwd,
+    allowBypass: s.allowBypass,
+    ...(s.engine ? { engine: s.engine } : {}),
+  };
 }
 
 export function clock(ms: number): string {
@@ -554,13 +563,22 @@ function reduce(s: ChatState, e: AgentEvent, now: number): ChatState {
       void _t;
       out = rest;
       const u = e.usage;
-      const parts = [
-        `in ${formatInt(u.input)}`,
-        `out ${formatInt(u.output)}`,
-        // движок не отделяет токены картинок от input — оценка ш×в/750, с «≈»
-        ...(imageTokens ? [ui.log.imagesTokens(compactTokens(imageTokens))] : []),
-        `cache r${formatInt(u.cacheRead)} w${formatInt(u.cacheWrite)}`,
-      ];
+      // Codex не сообщает запись в кэш, а токены хода в восстановленной ленте не отдаёт совсем: нули там — «нет
+      // данных», не «0 токенов» (roadmap 15, этап 6) — только ненулевое и без `w`
+      const codex = s.engine === 'codex';
+      const parts = codex
+        ? [
+            ...(u.input > 0 || u.output > 0 ? [`in ${formatInt(u.input)}`, `out ${formatInt(u.output)}`] : []),
+            ...(imageTokens ? [ui.log.imagesTokens(compactTokens(imageTokens))] : []),
+            ...(u.cacheRead > 0 ? [`cache r${formatInt(u.cacheRead)}`] : []),
+          ]
+        : [
+            `in ${formatInt(u.input)}`,
+            `out ${formatInt(u.output)}`,
+            // движок не отделяет токены картинок от input — оценка ш×в/750, с «≈»
+            ...(imageTokens ? [ui.log.imagesTokens(compactTokens(imageTokens))] : []),
+            `cache r${formatInt(u.cacheRead)} w${formatInt(u.cacheWrite)}`,
+          ];
       const sum: DistributiveOmit<FeedRow, 'id'> = {
         kind: 'sum',
         parts,
