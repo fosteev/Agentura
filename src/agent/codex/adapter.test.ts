@@ -508,7 +508,7 @@ describe('CodexAdapter: resume, процесс, возможности', () => {
     expect(spawn).not.toHaveBeenCalled();
   });
 
-  it('Claude-специфика — no-op; история и список пока пусты', async () => {
+  it('Claude-специфика — no-op', async () => {
     const s = server();
     const { adapter } = open(s);
     const session = await adapter.createSession({ cwd: '/work' });
@@ -516,8 +516,6 @@ describe('CodexAdapter: resume, процесс, возможности', () => {
     expect(session.respondPermission('x', 'allow')).toBe(false);
     await expect(session.setMode('plan')).resolves.toBeUndefined();
     await expect(session.contextUsage()).resolves.toBeUndefined();
-    await expect(adapter.listSessions()).resolves.toEqual([]);
-    await expect(adapter.loadHistory()).resolves.toMatchObject({ events: [], turns: 0 });
     session.dispose();
   });
 });
@@ -817,5 +815,176 @@ describe('CodexAdapter: по живой записи подтверждений'
       result: { structuredPatch: [{ lines: [' line1', '-line2', '+line two', ' line3'] }] },
     });
     session.dispose();
+  });
+});
+
+describe('CodexAdapter: история (этап 5)', () => {
+  const history = JSON.parse(
+    readFileSync(new URL('../../../test/fixtures/codex/history.json', import.meta.url), 'utf8'),
+  ) as { threadRead: { thread: Record<string, unknown> }; threadList: { data: Record<string, unknown>[] } };
+  const row = (id: string, extra: Record<string, unknown> = {}) => ({
+    ...history.threadList.data[0],
+    id,
+    ...extra,
+  });
+
+  /** Каждый запрос — новый процесс: `spawn` отдаёт свежий сервер, `servers` — их журнал. */
+  function queries(setup: (s: FakeAppServer) => void): { adapter: CodexAdapter; servers: FakeAppServer[] } {
+    const servers: FakeAppServer[] = [];
+    const adapter = new CodexAdapter({
+      executablePath: '/bin/codex',
+      graceMs: 20,
+      spawn: () => {
+        const s = new FakeAppServer();
+        s.handle('initialize', () => ({}));
+        setup(s);
+        servers.push(s);
+        return s;
+      },
+    });
+    return { adapter, servers };
+  }
+
+  it('listSessions: thread/list по cwd, имя или начало первого сообщения, секунды → мс, без субагентов', async () => {
+    const { adapter, servers } = queries((s) =>
+      s.handle('thread/list', () => ({
+        data: [
+          row('t1', { name: '  Моё  имя ', preview: 'первое сообщение', updatedAt: 200, createdAt: 100 }),
+          row('t2', { name: null, preview: 'Run\n  this   now' }),
+          row('t3', { parentThreadId: 't1' }),
+          row('t4', { ephemeral: true }),
+          row('t5', { name: null, preview: '' }),
+        ],
+        nextCursor: null,
+        backwardsCursor: null,
+      })),
+    );
+    const list = await adapter.listSessions('/work');
+    expect(list.map((i) => i.id)).toEqual(['t1', 't2', 't5']);
+    expect(list[0]).toMatchObject({
+      title: 'Моё имя',
+      firstPrompt: 'первое сообщение',
+      cwd: '/work',
+      createdAt: 100_000,
+      updatedAt: 200_000,
+      provider: 'codex',
+    });
+    expect(list[1]!.title).toBe('Run this now');
+    expect(list[2]!.title).toBe('Codex t5');
+    expect(servers[0]!.paramsOf('thread/list')).toMatchObject({ cwd: '/work', sortKey: 'updated_at' });
+    // короткоживущий сервер: stdin закрыт, процесс вышел
+    await until(() => servers[0]!.exited, 'server exit');
+  });
+
+  it('listSessions: листает страницы по nextCursor', async () => {
+    const { adapter, servers } = queries((s) =>
+      s.handle('thread/list', (p) =>
+        p.cursor
+          ? { data: [row('b')], nextCursor: null, backwardsCursor: null }
+          : { data: [row('a')], nextCursor: 'c1', backwardsCursor: null },
+      ),
+    );
+    expect((await adapter.listSessions('/work')).map((i) => i.id)).toEqual(['a', 'b']);
+    expect(servers[0]!.paramsOf('thread/list', 1)).toMatchObject({ cursor: 'c1' });
+  });
+
+  it('listSessions: ошибка сервера — отказ (процесс всё равно закрыт); нет codex — отказ без запуска', async () => {
+    const { adapter, servers } = queries((s) =>
+      s.handle('thread/list', () => {
+        throw new Error('boom');
+      }),
+    );
+    await expect(adapter.listSessions('/work')).rejects.toThrow(/boom/);
+    await until(() => servers[0]!.exited, 'server exit');
+    const spawn = vi.fn();
+    await expect(new CodexAdapter({ executablePath: () => undefined, spawn }).listSessions('/w')).rejects.toThrow(/Codex CLI/);
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
+  it('loadHistory: thread/read с ходами → события ленты (по живой записи)', async () => {
+    const { adapter, servers } = queries((s) => s.handle('thread/read', () => history.threadRead));
+    const h = await adapter.loadHistory('019f0000-0000-7000-8000-000000000001', '/work');
+    expect(servers[0]!.paramsOf('thread/read')).toEqual({
+      threadId: '019f0000-0000-7000-8000-000000000001',
+      includeTurns: true,
+    });
+    expect(h).toMatchObject({ turns: 1, skippedTurns: 0, model: 'gpt-6-luna' });
+    expect(types(h.events)).toEqual([
+      'turn.start',
+      'tool.start',
+      'tool.result',
+      'tool.start',
+      'tool.result',
+      'text.delta',
+      'turn.result',
+    ]);
+    const bash = h.events.filter((e) => e.type === 'tool.start');
+    expect(bash[0]).toMatchObject({ name: 'Bash', input: { command: 'echo hello' } });
+    // `aggregatedOutput: null` у второй команды — вывода нет, но результат есть
+    const results = h.events.filter((e) => e.type === 'tool.result');
+    expect(results[0]).toMatchObject({ isError: false, content: 'hello\n' });
+    expect(results[1]).toMatchObject({ isError: false });
+    await until(() => servers[0]!.exited, 'server exit');
+  });
+
+  it('loadHistory: тред не найден — отказ (контроллер начнёт новую сессию)', async () => {
+    const { adapter } = queries((s) =>
+      s.handle('thread/read', () => {
+        throw new Error('thread not found');
+      }),
+    );
+    await expect(adapter.loadHistory('nope', '/work')).rejects.toThrow(/not found/);
+  });
+
+  it('renameSession: thread/name/set с id треда и именем', async () => {
+    const { adapter, servers } = queries((s) => s.handle('thread/name/set', () => ({})));
+    await adapter.renameSession('t1', 'Новое имя', '/work');
+    expect(servers[0]!.paramsOf('thread/name/set')).toEqual({ threadId: 't1', name: 'Новое имя' });
+  });
+
+  describe('resume: «already has an active writer»', () => {
+    function resuming(failures: number, message = 'thread 01 already has an active writer'): {
+      s: FakeAppServer;
+      logs: string[];
+      adapter: CodexAdapter;
+      calls: () => number;
+    } {
+      const s = server();
+      let calls = 0;
+      s.handle('thread/resume', (p) => {
+        if (++calls <= failures) throw new Error(message);
+        return { ...fixture.threadStart, thread: { ...fixture.threadStart.thread, id: p.threadId } };
+      });
+      const { adapter, logs } = open(s, { resumeRetryMs: 5 });
+      return { s, logs, adapter, calls: () => calls };
+    }
+
+    it('повторяет с паузой и поднимает сессию', async () => {
+      const { adapter, calls, logs } = resuming(2);
+      const session = await adapter.resumeSession(THREAD, { cwd: '/work' });
+      const events = collect(session);
+      await until(() => types(events).includes('session.init'), 'session.init');
+      expect(calls()).toBe(3);
+      expect(logs.some((l) => /writer busy/.test(l))).toBe(true);
+      expect(types(events)).not.toContain('error');
+      session.dispose();
+    });
+
+    it('писатель не отпустил за все повторы — ошибка в ленте, сессия закрыта', async () => {
+      const { adapter, calls } = resuming(99);
+      const session = await adapter.resumeSession(THREAD, { cwd: '/work' });
+      const events = collect(session);
+      await until(() => types(events).includes('session.closed'), 'session.closed');
+      expect(calls()).toBe(4);
+      expect(events.find((e) => e.type === 'error')).toMatchObject({ fatal: true, message: expect.stringMatching(/active writer/) });
+    });
+
+    it('другая ошибка не повторяется', async () => {
+      const { adapter, calls } = resuming(99, 'thread not found');
+      const session = await adapter.resumeSession(THREAD, { cwd: '/work' });
+      const events = collect(session);
+      await until(() => types(events).includes('session.closed'), 'session.closed');
+      expect(calls()).toBe(1);
+    });
   });
 });

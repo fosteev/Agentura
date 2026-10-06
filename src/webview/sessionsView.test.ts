@@ -6,6 +6,8 @@ import {
   filterSessions,
   groupByDay,
   limitRows,
+  mixedProviders,
+  providerName,
   resetWhen,
   rowClass,
   subLabel,
@@ -80,6 +82,18 @@ describe('подпись строки', () => {
     );
     expect(subLabel(row({ costUsd: 1, state: 'error' }))).toContain('ошибка движка');
     expect(subLabel(row({ costUsd: 1, state: 'limit' }))).toContain('лимит исчерпан');
+  });
+
+  it('Codex: метка движка вместо ходов и стоимости; у Claude метка — только когда в списке есть и Codex', () => {
+    const codex = row({ provider: 'codex', turns: 0 });
+    expect(subLabel(codex)).toBe('Codex');
+    expect(subLabel(row({ provider: 'codex', state: 'waiting' }), true, true)).toBe('Codex · ждёт ответа');
+    expect(subLabel(row({ turns: 2, costUsd: 1 }), true, true)).toBe('Claude · 2 хода · $1.00');
+    // список одного Claude — как раньше, без метки
+    expect(subLabel(row({ turns: 2, costUsd: 1 }), true, mixedProviders([row()]))).toBe('2 хода · $1.00');
+    expect(mixedProviders([row(), codex])).toBe(true);
+    expect(providerName(row())).toBe('Claude');
+    expect(providerName(codex)).toBe('Codex');
   });
 
   it('классы строки: cur, live, wait, err', () => {

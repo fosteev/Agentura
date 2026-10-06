@@ -200,3 +200,30 @@ describe('listSessionRows', () => {
     expect(toSummary(again[1]!)).not.toHaveProperty('costUsd');
   });
 });
+
+describe('Codex в списке', () => {
+  it('toSummary: provider только у Codex, у Claude поля нет', () => {
+    const base = { id: 'x', title: 't', updatedAt: 1, state: 'idle' as const, turns: 0, tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
+    expect(toSummary({ ...base, provider: 'codex' })).toMatchObject({ provider: 'codex' });
+    expect(toSummary(base)).not.toHaveProperty('provider');
+    expect(toSummary({ ...base, provider: 'claude' })).not.toHaveProperty('provider');
+  });
+
+  it('LiveSessions.codexEpoch растёт от новой Codex-сессии, конца её хода и закрытия — не от статуса и цены', () => {
+    const live = new LiveSessions();
+    live.set('c', 'live');
+    expect(live.codexEpoch).toBe(0);
+    live.set('x', 'live', undefined, 'codex');
+    expect(live.codexEpoch).toBe(1);
+    live.set('x', 'live', undefined, 'codex');
+    live.set('x', 'waiting', undefined, 'codex');
+    live.set('x', 'live', 0.5, 'codex');
+    expect(live.codexEpoch).toBe(1);
+    live.set('x', 'idle');
+    expect(live.codexEpoch).toBe(2);
+    live.delete('x');
+    expect(live.codexEpoch).toBe(3);
+    live.delete('c');
+    expect(live.codexEpoch).toBe(3);
+  });
+});
