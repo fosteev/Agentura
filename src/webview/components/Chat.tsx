@@ -59,6 +59,12 @@ const PANEL_STEP = 16;
 /** Широкая ли вёрстка сейчас (панель справа вместо вкладок шапки). */
 const wide = signal(typeof window !== 'undefined' && window.innerWidth >= WIDE_PX);
 
+/** Клик по сессии в попапе или на экране empty: движок — из строки списка (нет поля — Claude). */
+function resumeSession(id: string): void {
+  const provider = recent.value.find((r) => r.id === id)?.provider;
+  send({ type: 'session.resume', sessionId: id, ...(provider ? { provider } : {}) });
+}
+
 /** Ширина панели в пределах: от минимума до «ширина тела − резерв ленты» (тело не измерено — без верхнего предела). */
 function clampPanel(w: number, bodyW: number): number {
   const max = bodyW > 0 ? Math.max(PANEL_MIN, bodyW - PANEL_RESERVE) : Infinity;
@@ -376,7 +382,7 @@ export function Chat() {
         }
         sessions={recent.value}
         currentId={currentSession.value ?? (s.sessionId || undefined)}
-        onResume={(id) => send({ type: 'session.resume', sessionId: id })}
+        onResume={resumeSession}
         onAllSessions={() => send({ type: 'sessions.show' })}
         onNew={newSession}
       />
@@ -422,7 +428,7 @@ export function Chat() {
             <Empty
               project={s.project}
               recent={recent.value}
-              onResume={(id) => send({ type: 'session.resume', sessionId: id })}
+              onResume={resumeSession}
             />
           ) : (
             <Log

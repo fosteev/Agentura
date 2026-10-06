@@ -2,7 +2,7 @@ import { existsSync, readdirSync, realpathSync } from 'node:fs';
 import { readdir, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, dirname, extname, join } from 'node:path';
-import type { AgentAdapter, SessionInfo, TokenUsage } from '../agent/types';
+import type { AgentAdapter, AgentProvider, SessionInfo, TokenUsage } from '../agent/types';
 import type { SessionSummary } from '../protocol';
 import { readJsonlLines } from './agentmeter/sources/jsonl.ts';
 import { parseSessionFile, parseSubagents } from './agentmeter/sources/claude/parse.ts';
@@ -53,16 +53,29 @@ interface LiveEntry {
 export class LiveSessions {
   private readonly entries = new Map<string, LiveEntry>();
   private readonly listeners = new Set<() => void>();
+  private readonly codexIds = new Set<string>();
+  /** Растёт на каждое изменение живой Codex-сессии: список Codex-тредов дорог (процесс), без этого его не перечитать. */
+  codexEpoch = 0;
 
-  set(id: string, state: SessionState, totalCostUsd?: number): void {
+  set(id: string, state: SessionState, totalCostUsd?: number, provider?: AgentProvider): void {
     const prev = this.entries.get(id);
     this.entries.set(id, { state, totalCostUsd: totalCostUsd ?? prev?.totalCostUsd });
+    const fresh = provider === 'codex' && !this.codexIds.has(id);
+    if (provider === 'codex') this.codexIds.add(id);
     // статус строки списка (идёт ход, ждёт ответа) сменился — список пересобрать
-    if (prev?.state !== state || totalCostUsd !== undefined) this.notify();
+    if (prev?.state !== state || totalCostUsd !== undefined) {
+      // Codex-список перечитывать (процесс) — только когда в нём могло поменяться содержимое: новая сессия или ход
+      // закончился (новый тред, время, превью); статус поверх строк накладывается и без перечитывания
+      if (fresh || (this.codexIds.has(id) && state === 'idle' && prev?.state !== 'idle')) this.codexEpoch++;
+      this.notify();
+    }
   }
 
   delete(id: string): void {
-    if (this.entries.delete(id)) this.notify();
+    if (this.entries.delete(id)) {
+      if (this.codexIds.has(id)) this.codexEpoch++;
+      this.notify();
+    }
   }
 
   /** Подписка на изменения реестра (список сессий в боковой панели). */
@@ -411,6 +424,8 @@ export function toSummary(row: SessionRow): SessionSummary {
   return {
     id: row.id,
     title: row.title,
+    // нет поля — Claude (как в `session.resume`)
+    ...(row.provider === 'codex' ? { provider: 'codex' as const } : {}),
     turns: row.turns,
     ...(row.costUsd !== undefined ? { costUsd: row.costUsd } : {}),
     ...(row.costPartial ? { costPartial: true } : {}),

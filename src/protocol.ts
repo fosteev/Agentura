@@ -403,6 +403,8 @@ export interface AccountSummary {
 export interface SessionSummary {
   id: string;
   title: string;
+  /** Движок треда; нет — Claude. У Codex ходов/стоимости/контекста нет (`turns` — 0, не показываются). */
+  provider?: AgentProvider;
   turns: number;
   /** Нет — стоимость неизвестна (модель без цены), показывать «—», не $0. */
   costUsd?: number;

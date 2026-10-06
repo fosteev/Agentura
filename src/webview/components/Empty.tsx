@@ -1,11 +1,14 @@
 import type { SessionSummary } from '../../protocol';
 import { clock } from '../chatState';
+import { mixedProviders, providerName } from '../sessionsView';
 import { ui } from '../strings';
 
-function recentMeta(s: SessionSummary): string {
+function recentMeta(s: SessionSummary, mixed: boolean): string {
   const when = clock(s.updatedAt);
-  if (s.state === 'waiting') return `${ui.empty.waiting} · ${when}`;
-  return `${ui.empty.turns(s.turns)} · ${when}`;
+  // у Codex-треда ходов нет — вместо них метка движка; у Claude она появляется, когда в списке есть и Codex
+  const tag = mixed || s.provider === 'codex' ? providerName(s) : '';
+  if (s.state === 'waiting') return [ui.empty.waiting, tag, when].filter(Boolean).join(' · ');
+  return [s.provider === 'codex' ? '' : ui.empty.turns(s.turns), tag, when].filter(Boolean).join(' · ');
 }
 
 /** Экран empty: новая сессия. Недавние сессии приходят с хоста (`sessions.update`). */
@@ -47,7 +50,7 @@ export function Empty({
                 }}
               >
                 {s.title}
-                <span>{recentMeta(s)}</span>
+                <span>{recentMeta(s, mixedProviders(recent.slice(0, 3)))}</span>
               </a>
             ))}
           </div>

@@ -1462,7 +1462,7 @@ export class ChatController {
           `ход завершён: ${e.ok ? 'ok' : 'ошибка'}, $${(e.costUsd ?? 0).toFixed(4)}, ${e.durationMs} мс`,
         );
         if (session.id) {
-          this.deps.live?.set(session.id, this.liveState(), e.totalCostUsd);
+          this.liveSet(session.id, e.totalCostUsd);
         }
         void this.refreshLimits();
         break;
@@ -1488,7 +1488,7 @@ export class ChatController {
         // строкой `err`/`limit` — до «Повторить ход», возобновления или закрытия вкладки
         const id = session.id || this.registeredId;
         if (id && (this.status === 'error' || this.status === 'limited')) {
-          this.deps.live?.set(id, this.liveState());
+          this.liveSet(id);
           this.stickyLive = id;
         }
         this.registeredId = undefined;
@@ -1498,8 +1498,16 @@ export class ChatController {
       default:
         break;
     }
-    if (this.status !== prev && session.id) this.deps.live?.set(session.id, this.liveState());
+    if (this.status !== prev && session.id) this.liveSet(session.id);
     this.kickRetry();
+  }
+
+  /** Реестр живых сессий; Codex-сессии он помечает (список Codex-тредов перечитывается по ним). Вызов Claude — как был. */
+  private liveSet(id: string, ...cost: [] | [number | undefined]): void {
+    const live = this.deps.live;
+    if (!live) return;
+    if (this.engineProvider === 'codex') live.set(id, this.liveState(), cost[0], 'codex');
+    else live.set(id, this.liveState(), ...cost);
   }
 
   private liveState(): 'idle' | 'live' | 'waiting' | 'error' | 'limit' {
@@ -1520,7 +1528,7 @@ export class ChatController {
   private register(id: string): void {
     if (!id || this.registeredId === id) return;
     this.registeredId = id;
-    this.deps.live?.set(id, this.liveState());
+    this.liveSet(id);
     this.deps.onSession?.(id);
   }
 
