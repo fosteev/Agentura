@@ -18,6 +18,7 @@ import {
   openFile,
   respondPermission,
   selectedAgent,
+  features,
   feedStyle,
   gitSnapshot,
   agentsView,
@@ -247,7 +248,9 @@ export function Chat() {
 
   const empty = s.rows.length === 0;
   // в пустой сессии вкладки «изменения»/«агенты» отключены — после «new» возвращаемся в чат
-  const t = empty ? 'chat' : tab.value;
+  // вкладка «агенты» есть не у каждого движка (`features.subagents`): сохранённая или открытая — уступает «изменениям»
+  const subagents = features.value.subagents;
+  const t = empty ? 'chat' : !subagents && tab.value === 'agents' ? 'changes' : tab.value;
   const now = tick.value;
   const last = s.rows[s.rows.length - 1];
   const live = working
@@ -317,8 +320,12 @@ export function Chat() {
     else tab.value = 'agents';
   };
   // вкладки панели: в пустой сессии недоступны, активна «изменения»
-  const panelTab = empty ? 'changes' : (panel.tab ?? 'changes');
-  const panelItems: readonly TabItem<'changes' | 'git' | 'agents'>[] = [
+  const panelTab = empty
+    ? 'changes'
+    : !subagents && panel.tab === 'agents'
+      ? 'changes'
+      : (panel.tab ?? 'changes');
+  const panelAll: readonly TabItem<'changes' | 'git' | 'agents'>[] = [
     {
       key: 'changes',
       label: ui.tabs.changes,
@@ -338,6 +345,7 @@ export function Chat() {
       ...(agentsBdg ? { badge: agentsBdg } : {}),
     },
   ];
+  const panelItems = subagents ? panelAll : panelAll.filter((i) => i.key !== 'agents');
 
   // вкладка «git» видна: широкая — активна и панель не свёрнута, узкая — открыта вкладка шапки
   const gitShown = wide.value ? panelTab === 'git' && !panelOff : t === 'git';
@@ -356,6 +364,7 @@ export function Chat() {
         tab={t}
         onTab={(k) => (tab.value = k)}
         sidePanesEnabled={!empty}
+        agentsTab={subagents}
         badges={
           empty
             ? {}
@@ -607,17 +616,19 @@ export function Chat() {
             {ICON_GIT}
             {gitBdg && <span class="b">{gitBdg.count}</span>}
           </button>
-          <button
-            data-tip={ui.tabs.agents}
-            aria-label={ui.panel.openTab(ui.tabs.agents)}
-            disabled={empty}
-            onClick={() => updatePanel({ tab: 'agents', off: false })}
-          >
-            {ICON_AGENTS}
-            {agentsBdg && (
-              <span class={agentsBdg.live ? 'b live' : 'b'}>{agentsBdg.text.split(' / ')[0]}</span>
-            )}
-          </button>
+          {subagents && (
+            <button
+              data-tip={ui.tabs.agents}
+              aria-label={ui.panel.openTab(ui.tabs.agents)}
+              disabled={empty}
+              onClick={() => updatePanel({ tab: 'agents', off: false })}
+            >
+              {ICON_AGENTS}
+              {agentsBdg && (
+                <span class={agentsBdg.live ? 'b live' : 'b'}>{agentsBdg.text.split(' / ')[0]}</span>
+              )}
+            </button>
+          )}
           <button
             class="show"
             data-tip={ui.panel.show}

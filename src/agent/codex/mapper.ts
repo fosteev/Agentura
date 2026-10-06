@@ -5,8 +5,10 @@ import type {
   PromptImage,
   TokenUsage,
 } from '../types';
+import { CodexToolMapper } from './tools';
 import type {
   CodexNotifications,
+  FileUpdateChange,
   ThreadItem,
   ThreadSession,
   TokenUsageBreakdown,
@@ -85,7 +87,7 @@ function errorCode(info: TurnError['codexErrorInfo']): string | undefined {
  * Notifications app-server → `AgentEvent`. Работает на один тред: `session.init` строится из ответа
  * `thread/start|resume`, `turn.start` — из `turn/started` и промпта, который адаптер объявил через
  * `notePrompt`. Всё, чего нет в таблице («Поправки к ТЗ» roadmap 15), игнорируется. Команды, правки
- * файлов и approval — этап 4.
+ * файлов, MCP и поиск — `tools.ts`, approval — `approvals.ts`.
  */
 export class CodexEventMapper {
   threadId: string | undefined;
@@ -106,8 +108,16 @@ export class CodexEventMapper {
   private turnUsage: TokenUsageBreakdown = ZERO;
   private lastCall: TokenUsageBreakdown | undefined;
   private contextWindow: number | null = null;
+  private readonly tools: CodexToolMapper;
 
-  constructor(private readonly now: () => number = Date.now) {}
+  constructor(private readonly now: () => number = Date.now) {
+    this.tools = new CodexToolMapper(now);
+  }
+
+  /** Правки `fileChange`-элемента (`item/started`): превью в карточке подтверждения. */
+  changesOf(itemId: string): FileUpdateChange[] | undefined {
+    return this.tools.changesOf(itemId);
+  }
 
   /** Идёт ли ход, по мнению маппера (между `turn/started` и `turn/completed`). */
   get activeTurnId(): string | undefined {
@@ -226,8 +236,23 @@ export class CodexEventMapper {
         const m = params as CodexNotifications['item/reasoning/textDelta'];
         return this.reasoningDelta(m.itemId, m.delta, undefined);
       }
-      case 'item/completed':
-        return this.itemCompleted((params as CodexNotifications['item/completed']).item);
+      case 'item/started': {
+        const m = params as CodexNotifications['item/started'];
+        return this.tools.started(m.item, m.startedAtMs);
+      }
+      case 'item/completed': {
+        const m = params as CodexNotifications['item/completed'];
+        const own = this.itemCompleted(m.item);
+        return own.length ? own : this.tools.completed(m.item, m.completedAtMs);
+      }
+      case 'item/commandExecution/outputDelta': {
+        const m = params as CodexNotifications['item/commandExecution/outputDelta'];
+        return this.tools.output(m.itemId, m.delta);
+      }
+      case 'item/fileChange/patchUpdated': {
+        const m = params as CodexNotifications['item/fileChange/patchUpdated'];
+        return this.tools.patchUpdated(m.itemId, m.changes);
+      }
       case 'thread/tokenUsage/updated': {
         const m = params as CodexNotifications['thread/tokenUsage/updated'];
         const total = m.tokenUsage.total;

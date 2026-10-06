@@ -14,6 +14,7 @@ import type {
   PromptFile,
   PromptImage,
 } from './agent/types';
+import type { ProviderFeatures } from './agent/features';
 import type { Attachment, FileHit } from './shared/prompt';
 import type { ImageProblem } from './shared/images';
 import type { FileProblem } from './shared/files';
@@ -174,6 +175,10 @@ export type ToWebview =
       agentsView?: AgentsView;
       /** Раскладка вкладки «git» при нескольких репо (`agentura.git.layout`); нет — `stack`. */
       gitLayout?: GitLayout;
+      /** Движок вкладки (roadmap 15, этап 3); нет — `claude` (старое сообщение). */
+      provider?: AgentProvider;
+      /** Что движок умеет: UI прячет остальное. Нет — Claude, все `true`. */
+      features?: ProviderFeatures;
     }
   | { type: 'capabilities'; sessionId: string; models: ModelOption[]; commands: CommandOption[] }
   | ({ type: 'editor.context' } & EditorContext)
@@ -332,6 +337,8 @@ export type FromWebview =
   /** Чат: снимок карты агентов для его вкладки графа — только пока граф открыт (`agents.graph`). */
   | { type: 'agents.snapshot'; sessionId: string; graph: AgentGraphView }
   | { type: 'session.new' }
+  /** Выбор движка в пустой вкладке (до первого сообщения); хост запоминает его как дефолт новых чатов. */
+  | { type: 'engine.set'; provider: AgentProvider }
   | { type: 'limits.refresh' }
   | { type: 'session.resume'; sessionId: string; provider?: AgentProvider }
   /** Этап 6: переименование по двойному клику в списке (B9). */
@@ -438,6 +445,7 @@ const FROM_WEBVIEW_TYPES: Record<FromWebview['type'], true> = {
   'agents.openGraph': true,
   'agents.snapshot': true,
   'session.new': true,
+  'engine.set': true,
   'limits.refresh': true,
   'session.resume': true,
   'session.rename': true,
@@ -477,6 +485,7 @@ const gitFiles = (m: Record<string, unknown>): boolean => str(m.root) && strings
  * проверяет по полям обработчик.
  */
 const FIELD_CHECKS: Partial<Record<FromWebview['type'], (m: Record<string, unknown>) => boolean>> = {
+  'engine.set': (m) => m.provider === 'claude' || m.provider === 'codex',
   'agents.openGraph': (m) => m.agentId === undefined || typeof m.agentId === 'string',
   'agents.snapshot': (m) => typeof m.sessionId === 'string' && isAgentGraphView(m.graph),
   'agent.stop': (m) => typeof m.sessionId === 'string' && typeof m.taskId === 'string',

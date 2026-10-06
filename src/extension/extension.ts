@@ -48,7 +48,10 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     lang: currentLanguage,
   });
   const usage = new UsageService(limits.fetch);
-  const { adapter, engine, codexEngine } = createAdapter(log);
+  const { adapter, codexAdapter, engine, codexEngine } = createAdapter(
+    log,
+    String(context.extension.packageJSON.version),
+  );
   engine.warm();
   const folder = vscode.workspace.workspaceFolders?.[0];
   const cwd = folder?.uri.fsPath ?? '';
@@ -99,6 +102,7 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
 
   const services: ChatServices = {
     adapter,
+    codexAdapter,
     live,
     transcripts,
     usage,

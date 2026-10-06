@@ -3,6 +3,9 @@ import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { delimiter, isAbsolute, join } from 'node:path';
 
+/** `problem` резолвера, когда `codex` не найден вообще (хост подменяет его локализованным текстом). */
+export const CODEX_NOT_FOUND = 'Codex CLI (codex) was not found.';
+
 /** Результат поиска локального Codex CLI. Минимальную версию намеренно не фиксируем: app-server experimental. */
 export interface ResolvedCodexExecutable {
   path?: string;
@@ -126,5 +129,5 @@ export async function resolveCodexExecutable(
   if (found) return found;
   const wrapper = windowsWrappers(deps, exists)[0];
   if (wrapper) return { source: 'none', problem: wrapperProblem(wrapper) };
-  return { source: 'none', problem: 'Codex CLI (codex) was not found.' };
+  return { source: 'none', problem: CODEX_NOT_FOUND };
 }

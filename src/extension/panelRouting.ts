@@ -69,7 +69,7 @@ export function restoredSessionId(
   if (state !== undefined && state !== null) {
     const own = (state as { sessionId?: unknown }).sessionId;
     if (typeof own !== 'string' || !own) return undefined;
-    // состояние webview хранит только id: движок берём из памяти воркспейса, нет записи — Claude
+    // webview пишет `provider` рядом с id; состояние со старой версии (только id) — движок из памяти воркспейса, нет записи — Claude
     const stated = (state as { provider?: unknown }).provider;
     const provider: AgentProvider =
       isProvider(stated)

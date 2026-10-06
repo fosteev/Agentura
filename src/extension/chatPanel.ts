@@ -4,7 +4,8 @@ import { samePath } from './pathKey';
 import * as vscode from 'vscode';
 import { EngineLocator } from './engineLocator';
 import { ClaudeAdapter } from '../agent/claude/adapter';
-import { resolveCodexExecutable } from '../agent/codex/executable';
+import { CodexAdapter } from '../agent/codex/adapter';
+import { CODEX_NOT_FOUND, resolveCodexExecutable } from '../agent/codex/executable';
 import type { AgentAdapter, AgentProvider, SessionRef } from '../agent/types';
 import type { LimitsSource } from '../data/limits';
 import type { LiveSessions, TranscriptCache } from '../data/sessions';
@@ -69,6 +70,8 @@ const CHAT_SESSIONS = 8;
 /** Общее для всех вкладок окна: адаптер агента, реестр живых сессий, список, аккаунт, память. */
 export interface ChatServices {
   adapter: AgentAdapter;
+  /** Адаптер Codex (лениво); `adapter` — Claude. */
+  codexAdapter: () => AgentAdapter;
   live: LiveSessions;
   transcripts: TranscriptCache;
   usage: UsageService;
@@ -89,8 +92,13 @@ export interface ChatServices {
   git: GitService;
 }
 
-export function createAdapter(log: Logger): {
+export function createAdapter(
+  log: Logger,
+  clientVersion?: string,
+): {
   adapter: AgentAdapter;
+  /** Codex-адаптер создаётся при первом обращении: пока никто не выбрал Codex, его нет вовсе. */
+  codexAdapter: () => AgentAdapter;
   engine: EngineLocator;
   codexEngine: EngineLocator;
 } {
@@ -107,9 +115,12 @@ export function createAdapter(log: Logger): {
   // отдельный локатор: ошибки и кэш «claude» и «codex» не смешиваются
   const codexEngine = new EngineLocator({
     setting: () => cfg().get<string>('codexExecutable') ?? '',
-    resolve: (s) => resolveCodexExecutable(s),
+    // «не найден» — текст на языке интерфейса (карточка в ленте); прочие проблемы резолвера остаются английскими
+    resolve: async (s) => {
+      const r = await resolveCodexExecutable(s);
+      return r.problem === CODEX_NOT_FOUND ? { ...r, problem: hostStrings(currentLanguage()).codexNotFound } : r;
+    },
     name: 'codex',
-    notFound: 'Codex CLI (codex) was not found.',
     info: (m) => log.info(m),
     warn: (m) => log.warn(m),
     lang: currentLanguage,
@@ -120,7 +131,20 @@ export function createAdapter(log: Logger): {
     log: (level, message) => log[level](message),
     lang: currentLanguage,
   });
-  return { adapter, engine, codexEngine };
+  let codex: AgentAdapter | undefined;
+  const codexAdapter = (): AgentAdapter =>
+    (codex ??= new CodexAdapter({
+      executablePath: () => codexEngine.path(),
+      log: (level, message) => log[level](message),
+      ...(clientVersion ? { clientVersion } : {}),
+    }));
+  return { adapter, codexAdapter, engine, codexEngine };
+}
+
+/** `agentura.defaultProvider` (application-scope: из настроек рабочей папки не читается); кривое значение — `claude`. */
+function defaultProvider(): AgentProvider {
+  const v = vscode.workspace.getConfiguration('agentura').get<unknown>('defaultProvider');
+  return v === 'codex' ? 'codex' : 'claude';
 }
 
 interface OpenOptions {
@@ -152,8 +176,10 @@ export class ChatPanel {
 
   private readonly disposables: vscode.Disposable[] = [];
   private readonly controller: ChatController;
-  /** Движок сессии вкладки (пока всегда `claude`: Codex подключается этапом 3). */
-  private provider: AgentProvider = 'claude';
+  /** Движок сессии вкладки: живёт в контроллере (меняется выбором в пустой вкладке). */
+  private get provider(): AgentProvider {
+    return this.controller.provider;
+  }
   private started = false;
   private lazy = false;
   /** Вкладка графа агентов этой вкладки чата (roadmap 11, этап 2): одна на чат. */
@@ -206,8 +232,7 @@ export class ChatPanel {
     const target = ChatPanel.panels[route.index]!;
     target.panel.reveal();
     if (route.kind === 'reuse' && open.resumeId) {
-      target.provider = open.provider ?? 'claude';
-      void target.controller.resume(open.resumeId);
+      void target.controller.resume(open.resumeId, true, open.provider ?? 'claude');
     }
     return target;
   }
@@ -236,11 +261,6 @@ export class ChatPanel {
   ): void {
     // без провайдера — `claude` (старые вызовы: боковая панель, команда, память воркспейса)
     const ref: SessionRef = typeof session === 'string' ? { provider: 'claude', id: session } : session;
-    // Codex-вкладки появятся с этапом 3: до того чужой id нельзя отдавать Claude-движку
-    if (ref.provider !== 'claude') {
-      log.warn(`Сессия ${ref.provider}:${ref.id} не открыта: движок ${ref.provider} ещё не подключён`);
-      return;
-    }
     const fromIndex = from ? ChatPanel.panels.indexOf(from) : undefined;
     const route = routeResume(ChatPanel.views(), ref, fromIndex);
     ChatPanel.apply(route, context, log, services, { resumeId: ref.id, provider: ref.provider });
@@ -266,12 +286,10 @@ export class ChatPanel {
           ),
           services.memory.openSessions(),
         );
-        // Codex-сессию до этапа 3 не поднимаем: пустая вкладка лучше, чем чужой id в Claude
-        const id = ref?.provider === 'claude' ? ref.id : undefined;
         const visible = panel.visible;
         ChatPanel.apply({ kind: 'new' }, context, log, services, {
           panel,
-          ...(id ? { resumeId: id, provider: 'claude' as const } : {}),
+          ...(ref ? { resumeId: ref.id, provider: ref.provider } : {}),
           lazy: !visible,
         });
       },
@@ -291,7 +309,6 @@ export class ChatPanel {
     folder: vscode.WorkspaceFolder,
     open: OpenOptions,
   ) {
-    this.provider = open.provider ?? 'claude';
     const version = String(context.extension.packageJSON.version);
     const files = new WorkspaceFiles(folder.uri);
     const editorColumn = (): vscode.ViewColumn =>
@@ -304,6 +321,20 @@ export class ChatPanel {
     this.controller = new ChatController({
       lang: currentLanguage(),
       adapter: services.adapter,
+      // возобновляемая сессия — своего движка; новая вкладка — `agentura.defaultProvider`
+      provider: open.provider ?? defaultProvider(),
+      adapterFor: (p) => (p === 'codex' ? services.codexAdapter() : services.adapter),
+      engineFor: (p) => (p === 'codex' ? services.codexEngine : undefined),
+      // только User (`Global`): настройка application-scope; отказ (политика, битый settings.json) — в журнал.
+      // `claude` — значение по умолчанию: ключ убираем, а не пишем его явно
+      rememberProvider: (p) =>
+        void Promise.resolve()
+          .then(() =>
+            vscode.workspace
+              .getConfiguration('agentura')
+              .update('defaultProvider', p === 'claude' ? undefined : p, vscode.ConfigurationTarget.Global),
+          )
+          .catch((e: unknown) => log.warn(`agentura.defaultProvider не записан: ${String(e)}`)),
       cwd: folder.uri.fsPath,
       project: folder.name,
       post: (m) => postToWebview(panel.webview, m),

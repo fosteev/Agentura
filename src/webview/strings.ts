@@ -83,8 +83,9 @@ const ru = {
         : reason === 'exit'
           ? 'движок завершился, сессия закрыта'
           : 'сессия закрыта',
-    status: (model: string, mode: string, cwd: string) =>
-      `/status · модель ${model} · режим ${mode} · ${cwd}`,
+    status: (model: string, mode: string | undefined, cwd: string) =>
+      `/status · модель ${model}${mode ? ` · режим ${mode}` : ''} · ${cwd}`,
+    commandUnavailable: (name: string) => `/${name} недоступна для этого агента`,
     planOn: 'режим plan включён',
     contextPassed: (used: string, threshold: string, fullAt: string) =>
       `контекст ${used}: порог ${threshold} пройден, автосжатие при ${fullAt}`,
@@ -128,6 +129,9 @@ const ru = {
     missingHint:
       'Установите Claude Code (https://claude.com/claude-code), выполните вход (claude → /login) или укажите путь к claude в настройках ⚙ (agentura.claudeExecutable).',
     missingSettings: 'Открыть настройки',
+    missingTitleCodex: 'Codex не найден',
+    missingHintCodex:
+      'Установите Codex CLI (https://developers.openai.com/codex/cli), выполните вход (codex login) или укажите путь к codex в настройках ⚙ (agentura.codexExecutable).',
     missingRecheck: 'Проверить снова',
     missingChecking: 'проверяю…',
     openLog: 'Открыть журнал расширения',
@@ -162,7 +166,9 @@ const ru = {
           ? 'Разрешить правку файла?'
           : tool === 'Write'
             ? 'Разрешить запись файла?'
-            : `Разрешить ${tool}?`,
+            : tool === 'Permissions'
+              ? 'Разрешить дополнительные права?'
+              : `Разрешить ${tool}?`,
     modeTag: (mode: string) => `режим ${mode}`,
     subagent: 'субагент',
     allow: 'Разрешить',
@@ -181,7 +187,9 @@ const ru = {
           ? '.claude/settings.json'
           : d === 'userSettings'
             ? '~/.claude/settings.json'
-            : 'эта сессия',
+            : d === 'codexRules'
+              ? '~/.codex/rules'
+              : 'эта сессия',
     alwaysHint: (where: string) => `«всегда» пишется в ${where}`,
     sessionHint: '«всегда» — до конца сессии',
     plusDirs: (dir: string, more: number) =>
@@ -473,7 +481,7 @@ const ru = {
     model: 'модель',
     effort: 'effort',
     agent: 'агент',
-    agentTitle: 'Агент: Claude · Codex, Gemini — скоро',
+    agentTitle: 'Агент: Claude, Codex · Gemini — скоро',
     context: 'контекст',
     compact: 'сжать',
     ctxTitle: (thresholds: string[], fullAt: string, scale?: string) =>
@@ -510,6 +518,8 @@ const ru = {
     agentReady: 'готов',
     claudeVia: (version?: string) =>
       `через Claude Agent SDK${version ? ` · claude ${version}` : ''}`,
+    codexVia: 'через codex app-server',
+    agentLocked: 'выбирается в новом чате',
     acpAdapter: 'адаптер по форме ACP',
     agentSoon: 'скоро',
     imagesHint: '⌘V — вставить картинку · перетащить с ⇧',
@@ -554,6 +564,7 @@ const ru = {
       count: 'не больше 10 файлов',
       total: 'сообщение больше 20 МБ',
       foreign: 'не картинка — через «+»',
+      engine: 'агент не принимает файлы',
       pdf: 'pdf не читается',
       sessionPages: 'сессия: pdf больше 100 страниц — начните новую',
       session: 'сессия: вложений больше 24 МБ — начните новую',
@@ -570,6 +581,7 @@ const ru = {
       total: 'картинки и файлы одного сообщения — до 20 МБ вместе (лимит запроса к API — 32 МБ)',
       foreign:
         'Не из VS Code перетаскиваются только картинки: текст и pdf добавьте через «+» или перетащите из проводника VS Code',
+      engine: 'Этот агент (Codex) принимает в сообщении только текст и картинки: файл не отправится, укажите его через @',
       pdf: 'pdf зашифрован, повреждён или в нём не найти страниц — API такой не примет, а отказ остался бы в сессии',
       sessionPages:
         'Лимит API — 100 страниц pdf на запрос, а в каждый запрос уходит вся история сессии: с этим pdf их стало бы больше. «Сжать» убирает старые вложения из запросов, новая сессия начинает с нуля',
@@ -594,6 +606,8 @@ const ru = {
     selection: 'Выделение в редакторе',
     autoOn: 'добавляется автоматически',
     autoOff: 'не добавляется',
+    imageOnly: 'Изображение…',
+    imageOnlySmall: 'png, jpeg, gif, webp · ⌘V — скриншот, перетащить с ⇧',
     image: 'Изображение или файл…',
     imageSmall: 'текст, pdf, картинка · ⌘V — скриншот, перетащить с ⇧',
     imageHint: '⌘V',

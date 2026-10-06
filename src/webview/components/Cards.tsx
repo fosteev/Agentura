@@ -9,6 +9,7 @@ import {
   chooseOption,
   decidePlan,
   declineQuestion,
+  provider,
   replyTarget,
   replyToQuestion,
   respondPermission,
@@ -72,6 +73,8 @@ export function PermissionCard({
   onDiff: (toolUseId: string) => void;
 }) {
   const edit = EDIT_TOOLS.has(c.toolName) && !!c.diff;
+  // «принимать правки» у Codex — решение `acceptForSession`, а не режим acceptEdits: подсказка про режим была бы неправдой
+  const codex = provider.value === 'codex';
   const sent = !!c.sent;
   const always = edit ? undefined : alwaysButton(c.always);
   const cmd = typeof c.input['command'] === 'string' ? (c.input['command'] as string) : undefined;
@@ -155,7 +158,13 @@ export function PermissionCard({
               {ui.cards.deny}
               {active && <kbd>{ui.cards.esc}</kbd>}
             </button>
-            <span class="hint">{edit ? ui.cards.editsHint : always?.hint}</span>
+            <span class="hint">
+              {edit || (always && !always.code && always.label === ui.cards.acceptEditsSession)
+                ? codex
+                  ? ui.cards.sessionHint
+                  : ui.cards.editsHint
+                : always?.hint}
+            </span>
           </>
         )}
       </div>
@@ -211,15 +220,16 @@ export function FailCardView({ c }: { c: FailCard }) {
 /** Карточка «Claude Code не найден»: движок не запускался; инструкция, настройки ⚙, «Проверить снова». */
 function EngineMissingCard({ c }: { c: FailCard }) {
   const retrying = c.state === 'retrying';
+  const codex = provider.value === 'codex';
   return (
     <div class="ask danger" role="alert">
       <div class="h">
-        {ui.fail.missingTitle}
+        {codex ? ui.fail.missingTitleCodex : ui.fail.missingTitle}
         <span class="tag">{ui.fail.tag(c.at)}</span>
       </div>
       <div class="bd">
         <p>{c.message}</p>
-        <p class="dim">{ui.fail.missingHint}</p>
+        <p class="dim">{codex ? ui.fail.missingHintCodex : ui.fail.missingHint}</p>
       </div>
       <div class="acts">
         {retrying ? (
