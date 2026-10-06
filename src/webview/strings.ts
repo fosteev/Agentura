@@ -881,7 +881,7 @@ const ru = {
     provider: {
       name: 'Движок по умолчанию',
       desc: 'Движок новых вкладок. Меняется и меню «агент» в поле ввода (пустая вкладка); начатая сессия остаётся на своём движке.',
-      options: { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity' } as Record<string, string>,
+      options: { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity' },
     },
     exe: {
       name: 'Путь к claude',

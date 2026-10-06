@@ -864,7 +864,7 @@ export const en: Ui = {
     provider: {
       name: 'Default engine',
       desc: 'Engine for new tabs. The “agent” menu in the input box (empty tab) changes it too; a started session keeps its engine.',
-      options: { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity' } as Record<string, string>,
+      options: { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity' },
     },
     exe: {
       name: 'Path to claude',
