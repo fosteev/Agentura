@@ -508,9 +508,12 @@ export class ChatPanel {
       openExternal: (u) => void vscode.env.openExternal(vscode.Uri.parse(u)),
       ...(open.resumeId ? { resumeId: open.resumeId } : {}),
       openSession: (id, provider) => ChatPanel.resume(context, log, services, { provider, id }, this),
-      // список сайдбара — только Claude (agy в нём с этапа 5): заголовок беседы agy — из списка её адаптера
+      // общий список сайдбара (Claude, Codex, Antigravity); беседа agy, которой в нём ещё нет, — из списка её адаптера
       titleOf: async (id, p) => {
-        if (p !== 'antigravity') return (await services.sessions.list()).find((r) => r.id === id)?.title;
+        const listed = (await services.sessions.list()).find((r) => r.id === id)?.title;
+        if (p !== 'antigravity') return listed;
+        // у беседы agy без заголовка и превью адаптер подставляет id — такой заголовок не показываем
+        if (listed) return listed !== id ? listed : undefined;
         const row = (await services.antigravityAdapter().listSessions(folder.uri.fsPath)).find((r) => r.id === id);
         return row && row.title !== id ? row.title : undefined;
       },

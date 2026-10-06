@@ -17,6 +17,7 @@ import {
   limitRows,
   rowClass,
   subLabel,
+  mixedProviders,
   whenLabel,
 } from '../sessionsView';
 import { onHostMessage, readFold, saveFold, send, type SidebarFold } from '../vscode';
@@ -106,11 +107,13 @@ function SessionRow({
   isCurrent,
   now: n,
   ctxCol,
+  mixed,
 }: {
   s: SessionSummary;
   isCurrent: boolean;
   now: number;
   ctxCol: boolean;
+  mixed: boolean;
 }) {
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const input = useRef<HTMLInputElement>(null);
@@ -156,11 +159,16 @@ function SessionRow({
   return (
     <button
       class={cls}
-      data-tip={`${s.title}\n${subLabel(s)}\n${ui.sidebar.renameTitle}`}
+      data-tip={`${s.title}\n${subLabel(s, true, mixed)}\n${ui.sidebar.renameTitle}`}
       onClick={() => {
         clearTimeout(timer.current);
         timer.current = setTimeout(
-          () => send({ type: 'session.resume', sessionId: s.id }),
+          () =>
+            send({
+              type: 'session.resume',
+              sessionId: s.id,
+              ...(s.provider ? { provider: s.provider } : {}),
+            }),
           CLICK_DELAY_MS,
         );
       }}
@@ -172,7 +180,7 @@ function SessionRow({
       <span class="dot" />
       <span class="t">
         {s.title}
-        <small>{subLabel(s, !ctxCol)}</small>
+        <small>{subLabel(s, !ctxCol, mixed)}</small>
       </span>
       <span class="ctx">{ctxLabel(s)}</span>
       <span class="when">{whenLabel(s, n)}</span>
@@ -310,6 +318,7 @@ export function SidebarView({ look, data }: { look: SidebarLook; data: SidebarDa
   const q = query.value;
   const shown = filterSessions(data.sessions, q);
   const groups = groupByDay(shown, n);
+  const mixed = mixedProviders(data.sessions);
   const f = fold.value;
   const limits = limitRows(data.windows, n);
   const top = look.top;
@@ -483,6 +492,7 @@ export function SidebarView({ look, data }: { look: SidebarLook; data: SidebarDa
                 isCurrent={data.current === s.id}
                 now={n}
                 ctxCol={look.context}
+                mixed={mixed}
               />
             ))}
           </>

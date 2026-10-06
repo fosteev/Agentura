@@ -219,3 +219,277 @@ describe('SessionsService', () => {
     svc.dispose(); // без падений и утечек таймера
   });
 });
+
+describe('SessionsService: треды Codex (этап 5)', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  const codexInfo = (id: string, updatedAt: number, title = id): SessionInfo => ({
+    id,
+    title,
+    updatedAt,
+    cwd: '/nonexistent/project',
+    provider: 'codex',
+  });
+
+  function both(claude: SessionInfo[], codex: SessionInfo[], available = true) {
+    let codexList = codex;
+    const claudeAdapter = {
+      listSessions: vi.fn(async () => claude),
+      renameSession: vi.fn(async () => undefined),
+    } as unknown as AgentAdapter;
+    const codexAdapter = {
+      listSessions: vi.fn(async () => codexList),
+      renameSession: vi.fn(async (id: string, title: string) => {
+        codexList = codexList.map((s) => (s.id === id ? { ...s, title } : s));
+      }),
+    } as unknown as AgentAdapter;
+    const live = new LiveSessions();
+    const warn = vi.fn();
+    const state = { available };
+    const svc = new SessionsService({
+      adapter: claudeAdapter,
+      codex: { adapter: () => codexAdapter, available: async () => state.available },
+      cwd: '/nonexistent/project',
+      live,
+      cache: new TranscriptCache(),
+      log: { debug: vi.fn(), warn },
+      dir: '/tmp',
+      watch: () => ({ close: () => undefined }),
+    });
+    return { svc, live, claudeAdapter, codexAdapter, warn, state, setCodex: (l: SessionInfo[]) => (codexList = l) };
+  }
+
+  const listed = (m: ReturnType<typeof both>) =>
+    (m.codexAdapter.listSessions as unknown as ReturnType<typeof vi.fn>).mock.calls.length;
+
+  it('строки обоих движков в одном списке по времени; у Codex provider, у Claude поля нет', async () => {
+    const m = both([info('c1', 1), info('c2', 5)], [codexInfo('x1', 3), codexInfo('x2', 9)]);
+    const rows = await m.svc.summaries();
+    expect(rows.map((r) => [r.id, r.provider])).toEqual([
+      ['x2', 'codex'],
+      ['c2', undefined],
+      ['x1', 'codex'],
+      ['c1', undefined],
+    ]);
+    expect(rows[0]).toMatchObject({ turns: 0, state: 'idle' });
+    expect(rows[1]).not.toHaveProperty('provider');
+    expect(m.codexAdapter.listSessions).toHaveBeenCalledWith('/nonexistent/project');
+  });
+
+  it('без источника Codex список как раньше', async () => {
+    const { svc } = setup([info('a', 1)]);
+    expect((await svc.summaries()).map((r) => r.id)).toEqual(['a']);
+  });
+
+  it('Codex недоступен (не найден) — только Claude, процесс не запускается, повтор не чаще минуты', async () => {
+    const m = both([info('c1', 1)], [codexInfo('x1', 3)], false);
+    expect((await m.svc.summaries()).map((r) => r.id)).toEqual(['c1']);
+    m.state.available = true;
+    await m.svc.refresh();
+    expect(listed(m)).toBe(0);
+    await vi.advanceTimersByTimeAsync(61_000);
+    expect((await m.svc.refresh()).map((r) => r.id)).toEqual(['x1', 'c1']);
+  });
+
+  it('сбой thread/list не роняет Claude-список; одно предупреждение, прошлые строки остаются', async () => {
+    const m = both([info('c1', 1)], [codexInfo('x1', 3)]);
+    await m.svc.refresh();
+    (m.codexAdapter.listSessions as unknown as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('boom'));
+    await vi.advanceTimersByTimeAsync(31_000);
+    const rows = await m.svc.refresh();
+    expect(rows.map((r) => r.id)).toEqual(['x1', 'c1']);
+    await vi.advanceTimersByTimeAsync(61_000);
+    await m.svc.refresh();
+    expect(m.warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('список Codex перечитывается не на каждый тик: срок, смена живой Codex-сессии, переименование', async () => {
+    const m = both([info('c1', 1)], [codexInfo('x1', 3)]);
+    await m.svc.refresh();
+    await m.svc.refresh();
+    expect(listed(m)).toBe(1);
+    // статус Claude-сессии Codex-список не трогает
+    m.live.set('c1', 'live');
+    await m.svc.refresh();
+    expect(listed(m)).toBe(1);
+    // живая Codex-сессия сменила статус — перечитать, и строка показывает статус сразу
+    m.live.set('x1', 'live', undefined, 'codex');
+    const rows = await m.svc.refresh();
+    expect(listed(m)).toBe(2);
+    expect(rows.find((r) => r.id === 'x1')?.state).toBe('live');
+    await vi.advanceTimersByTimeAsync(31_000);
+    await m.svc.refresh();
+    expect(listed(m)).toBe(3);
+  });
+
+  it('медленный thread/list не держит Claude-список: кэш сразу, процесс один, новые строки — следующим проходом', async () => {
+    const m = both([info('c1', 1)], [codexInfo('x1', 3)]);
+    await m.svc.refresh();
+    let release: (() => void) | undefined;
+    const fn = m.codexAdapter.listSessions as unknown as ReturnType<typeof vi.fn>;
+    fn.mockImplementation(
+      () => new Promise<SessionInfo[]>((resolve) => (release = () => resolve([codexInfo('x1', 3), codexInfo('x2', 9)]))),
+    );
+    const seen: string[][] = [];
+    m.svc.onChange((rows) => seen.push(rows.map((r) => r.id)));
+    await vi.advanceTimersByTimeAsync(31_000);
+    // срок вышел, сервер «висит» — список отдаётся из кэша, не ждёт
+    expect((await m.svc.refresh()).map((r) => r.id)).toEqual(['x1', 'c1']);
+    // повторные проходы во время чтения второй процесс не запускают
+    await m.svc.refresh();
+    expect(listed(m)).toBe(2);
+    release!();
+    // пересборка после фонового чтения — через дебаунс и настоящий fs Claude-списка
+    await vi.waitFor(() => expect(seen.at(-1)).toEqual(['x2', 'x1', 'c1']));
+    expect(listed(m)).toBe(2);
+  });
+
+  it('первый показ: Codex молчит дольше 3 с — Claude-строки без него, Codex-строки приходят потом', async () => {
+    const m = both([info('c1', 1)], []);
+    let release: (() => void) | undefined;
+    (m.codexAdapter.listSessions as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      () => new Promise<SessionInfo[]>((resolve) => (release = () => resolve([codexInfo('x1', 3)]))),
+    );
+    const seen: string[][] = [];
+    m.svc.onChange((rows) => seen.push(rows.map((r) => r.id)));
+    const first = m.svc.refresh();
+    await vi.advanceTimersByTimeAsync(3100);
+    expect((await first).map((r) => r.id)).toEqual(['c1']);
+    release!();
+    await vi.waitFor(() => expect(seen.at(-1)).toEqual(['x1', 'c1']));
+  });
+
+  it('rename Codex-id, чьей строки уже нет (Codex пропал из списка), — всё равно Codex-адаптеру', async () => {
+    const m = both([info('c1', 1)], [codexInfo('x1', 3)]);
+    await m.svc.refresh();
+    m.state.available = false;
+    m.live.set('x1', 'idle', undefined, 'codex');
+    await m.svc.refresh();
+    // фоновое перечитывание сбросило Codex-строки
+    await vi.waitFor(async () => expect((await m.svc.list()).map((r) => r.id)).toEqual(['c1']));
+    await m.svc.rename('x1', 'Имя');
+    expect(m.claudeAdapter.renameSession).not.toHaveBeenCalled();
+    expect(m.codexAdapter.renameSession).toHaveBeenCalledWith('x1', 'Имя', '/nonexistent/project');
+  });
+
+  it('rename Codex-треда: renameSession Codex-адаптера (не Claude), список перечитан, закрепления нет', async () => {
+    const m = both([info('c1', 1)], [codexInfo('x1', 3, 'старое')]);
+    await m.svc.refresh();
+    await m.svc.rename('x1', 'Новое');
+    expect(m.codexAdapter.renameSession).toHaveBeenCalledWith('x1', 'Новое', '/nonexistent/project');
+    expect(m.claudeAdapter.renameSession).not.toHaveBeenCalled();
+    expect((await m.svc.summaries()).find((r) => r.id === 'x1')?.title).toBe('Новое');
+    // Claude-тред — по-прежнему Claude-адаптер
+    await m.svc.rename('c1', 'Другое');
+    expect(m.claudeAdapter.renameSession).toHaveBeenCalledWith('c1', 'Другое', '/nonexistent/project');
+  });
+});
+
+describe('SessionsService: беседы Antigravity (этап 6)', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  const agyInfo = (id: string, updatedAt: number, title = id): SessionInfo => ({
+    id,
+    title,
+    updatedAt,
+    cwd: '/nonexistent/project',
+  });
+
+  function trio(claude: SessionInfo[], codex: SessionInfo[], agy: SessionInfo[], available = true) {
+    let agyList = agy;
+    const claudeAdapter = {
+      listSessions: vi.fn(async () => claude),
+      renameSession: vi.fn(async () => undefined),
+    } as unknown as AgentAdapter;
+    const codexAdapter = {
+      listSessions: vi.fn(async () => codex),
+      renameSession: vi.fn(async () => undefined),
+    } as unknown as AgentAdapter;
+    const agyAdapter = {
+      listSessions: vi.fn(async () => agyList),
+      renameSession: vi.fn(async (id: string, title: string) => {
+        agyList = agyList.map((s) => (s.id === id ? { ...s, title } : s));
+      }),
+    } as unknown as AgentAdapter;
+    const live = new LiveSessions();
+    const state = { available };
+    const svc = new SessionsService({
+      adapter: claudeAdapter,
+      codex: { adapter: () => codexAdapter, available: async () => true },
+      antigravity: { adapter: () => agyAdapter, available: async () => state.available },
+      cwd: '/nonexistent/project',
+      live,
+      cache: new TranscriptCache(),
+      log: { debug: vi.fn(), warn: vi.fn() },
+      dir: '/tmp',
+      watch: () => ({ close: () => undefined }),
+    });
+    return { svc, live, claudeAdapter, codexAdapter, agyAdapter, state, setAgy: (l: SessionInfo[]) => (agyList = l) };
+  }
+  type Trio = ReturnType<typeof trio>;
+  const agyCalls = (m: Trio) => (m.agyAdapter.listSessions as unknown as ReturnType<typeof vi.fn>).mock.calls.length;
+
+  it('беседы agy в общем списке рядом с Claude и Codex, с provider', async () => {
+    const m = trio([info('c1', 1)], [{ ...info('x1', 5), provider: 'codex' }], [agyInfo('a1', 9), agyInfo('a2', 3)]);
+    const rows = await m.svc.summaries();
+    expect(rows.map((r) => [r.id, r.provider])).toEqual([
+      ['a1', 'antigravity'],
+      ['x1', 'codex'],
+      ['a2', 'antigravity'],
+      ['c1', undefined],
+    ]);
+    expect(m.agyAdapter.listSessions).toHaveBeenCalledWith('/nonexistent/project');
+    expect(m.svc.providerOf('a1')).toBe('antigravity');
+    expect(m.svc.providerOf('x1')).toBe('codex');
+    expect(m.svc.providerOf('c1')).toBe('claude');
+  });
+
+  it('agy не найден — список без бесед agy и без ошибок, adapter.listSessions не зовётся', async () => {
+    const m = trio([info('c1', 1)], [], [agyInfo('a1', 9)], false);
+    expect((await m.svc.summaries()).map((r) => r.id)).toEqual(['c1']);
+    expect(agyCalls(m)).toBe(0);
+  });
+
+  it('сбой listSessions agy не роняет список', async () => {
+    const m = trio([info('c1', 1)], [], [agyInfo('a1', 9)]);
+    (m.agyAdapter.listSessions as unknown as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('boom'));
+    expect((await m.svc.summaries()).map((r) => r.id)).toEqual(['c1']);
+  });
+
+  it('конец хода agy-сессии перечитывает список, статус Claude-сессии и Codex — нет', async () => {
+    const m = trio([info('c1', 1)], [], [agyInfo('a1', 9)]);
+    await m.svc.refresh();
+    expect(agyCalls(m)).toBe(1);
+    m.live.set('c1', 'live');
+    m.live.set('x9', 'live', undefined, 'codex');
+    await m.svc.refresh();
+    expect(agyCalls(m)).toBe(1);
+    // новая беседа agy (ещё не в списке): первая живая запись — перечитать
+    m.setAgy([agyInfo('a1', 9), agyInfo('a2', 20)]);
+    m.live.set('a2', 'live', undefined, 'antigravity');
+    await m.svc.refresh();
+    expect(agyCalls(m)).toBe(2);
+    // кэш отдаётся сразу, новые строки приходят пересборкой после фонового чтения
+    await vi.advanceTimersByTimeAsync(1000);
+    let rows = await m.svc.list();
+    expect(rows.find((r) => r.id === 'a2')?.state).toBe('live');
+    // turn.result: live → idle
+    m.live.set('a2', 'idle', undefined, 'antigravity');
+    await m.svc.refresh();
+    await vi.advanceTimersByTimeAsync(1000);
+    rows = await m.svc.list();
+    expect(agyCalls(m)).toBe(3);
+    expect(rows.find((r) => r.id === 'a2')?.state).toBe('idle');
+  });
+
+  it('rename беседы agy идёт в адаптер agy и сразу виден в списке', async () => {
+    const m = trio([info('c1', 1)], [], [agyInfo('a1', 9, 'старое')]);
+    await m.svc.refresh();
+    await m.svc.rename('a1', 'новое');
+    expect(m.agyAdapter.renameSession).toHaveBeenCalledWith('a1', 'новое', '/nonexistent/project');
+    expect(m.claudeAdapter.renameSession).not.toHaveBeenCalled();
+    expect((await m.svc.list()).find((r) => r.id === 'a1')?.title).toBe('новое');
+  });
+});

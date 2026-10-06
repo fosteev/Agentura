@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { SessionSummary } from '../../protocol';
 import { menuKeys } from '../a11y';
-import { costLabel, tokensLabel, whenLabel } from '../sessionsView';
+import { costLabel, foreignProvider, mixedProviders, providerName, tokensLabel, whenLabel } from '../sessionsView';
 import { ui } from '../strings';
 import { TabBar, type TabItem } from './TabBar';
 
@@ -64,6 +64,7 @@ export function Hud({
     };
   }, [open]);
   const now = Date.now();
+  const mixed = mixedProviders(sessions);
   const allTabs: readonly TabItem<Tab>[] = [
     { key: 'chat', label: ui.tabs.chat },
     {
@@ -130,8 +131,10 @@ export function Hud({
                   <small>
                     {[
                       whenLabel(s, now),
-                      ui.empty.turns(s.turns),
-                      costLabel(s),
+                      mixed || foreignProvider(s) ? providerName(s) : '',
+                      // у Codex-треда ходов и стоимости нет
+                      foreignProvider(s) ? '' : ui.empty.turns(s.turns),
+                      foreignProvider(s) ? '' : costLabel(s),
                       s.state === 'waiting' ? ui.sidebar.stateTag.waiting : '',
                     ]
                       .filter(Boolean)

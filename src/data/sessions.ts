@@ -2,7 +2,7 @@ import { existsSync, readdirSync, realpathSync } from 'node:fs';
 import { readdir, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, dirname, extname, join } from 'node:path';
-import type { AgentAdapter, SessionInfo, TokenUsage } from '../agent/types';
+import type { AgentAdapter, AgentProvider, SessionInfo, TokenUsage } from '../agent/types';
 import type { SessionSummary } from '../protocol';
 import { readJsonlLines } from './agentmeter/sources/jsonl.ts';
 import { parseSessionFile, parseSubagents } from './agentmeter/sources/claude/parse.ts';
@@ -53,16 +53,48 @@ interface LiveEntry {
 export class LiveSessions {
   private readonly entries = new Map<string, LiveEntry>();
   private readonly listeners = new Set<() => void>();
+  /** Сессии не-Claude движков: id → движок (их списки читаются отдельно и дороже). */
+  private readonly foreignIds = new Map<string, AgentProvider>();
+  private readonly epochs: Record<string, number> = {};
 
-  set(id: string, state: SessionState, totalCostUsd?: number): void {
+  /**
+   * Растёт на каждое изменение живой сессии движка: список Codex-тредов дорог (процесс), без этого его не
+   * перечитать; список бесед Antigravity (база/индекс) — тем же способом.
+   */
+  epochOf(provider: AgentProvider): number {
+    return this.epochs[provider] ?? 0;
+  }
+
+  get codexEpoch(): number {
+    return this.epochOf('codex');
+  }
+
+  set(id: string, state: SessionState, totalCostUsd?: number, provider?: AgentProvider): void {
     const prev = this.entries.get(id);
     this.entries.set(id, { state, totalCostUsd: totalCostUsd ?? prev?.totalCostUsd });
+    const foreign = provider && provider !== 'claude' ? provider : undefined;
+    const fresh = foreign !== undefined && !this.foreignIds.has(id);
+    if (foreign) this.foreignIds.set(id, foreign);
     // статус строки списка (идёт ход, ждёт ответа) сменился — список пересобрать
-    if (prev?.state !== state || totalCostUsd !== undefined) this.notify();
+    if (prev?.state !== state || totalCostUsd !== undefined) {
+      // список чужого движка перечитывать — только когда в нём могло поменяться содержимое: новая сессия или ход
+      // закончился (новый тред, время, превью); статус поверх строк накладывается и без перечитывания
+      const own = this.foreignIds.get(id);
+      if (own && (fresh || (state === 'idle' && prev?.state !== 'idle'))) this.bump(own);
+      this.notify();
+    }
   }
 
   delete(id: string): void {
-    if (this.entries.delete(id)) this.notify();
+    if (this.entries.delete(id)) {
+      const own = this.foreignIds.get(id);
+      if (own) this.bump(own);
+      this.notify();
+    }
+  }
+
+  private bump(provider: AgentProvider): void {
+    this.epochs[provider] = (this.epochs[provider] ?? 0) + 1;
   }
 
   /** Подписка на изменения реестра (список сессий в боковой панели). */
@@ -411,6 +443,8 @@ export function toSummary(row: SessionRow): SessionSummary {
   return {
     id: row.id,
     title: row.title,
+    // нет поля — Claude (как в `session.resume`)
+    ...(row.provider && row.provider !== 'claude' ? { provider: row.provider } : {}),
     turns: row.turns,
     ...(row.costUsd !== undefined ? { costUsd: row.costUsd } : {}),
     ...(row.costPartial ? { costPartial: true } : {}),

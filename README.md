@@ -116,8 +116,8 @@ What differs from Claude:
 - No plan review, agent questions, `/compact`, subagents, context window, cache or cost gauges; images and files are
   not sent.
 - Conversation history is read from `agy`'s local storage (`~/.gemini/antigravity-cli`), an internal format that may
-  change; if it does, history degrades to what was seen live. Antigravity conversations are not yet listed in the
-  sidebar.
+  change; if it does, history degrades to what was seen live. Conversations of the open folder appear in the sidebar
+  and on the empty screen with an engine label (resume and rename work; without `agy` they are simply absent).
 
 ## Settings
 

@@ -77,6 +77,21 @@ export function tokensLabel(n: number): string {
   return String(Math.round(n));
 }
 
+/** Не Claude (Codex, Antigravity): ходов и стоимости у такой строки нет. */
+export function foreignProvider(s: Pick<SessionSummary, 'provider'>): boolean {
+  return s.provider !== undefined && s.provider !== 'claude';
+}
+
+/** В списке есть сессии не Claude: тогда у каждой строки показывается метка движка. */
+export function mixedProviders(rows: readonly Pick<SessionSummary, 'provider'>[]): boolean {
+  return rows.some(foreignProvider);
+}
+
+/** `Claude` / `Codex`: нет поля — Claude. */
+export function providerName(s: Pick<SessionSummary, 'provider'>): string {
+  return ui.sidebar.providerNames[s.provider ?? 'claude'];
+}
+
 /** Колонка контекста в строке списка: `173k ctx`; неизвестен — пусто (ячейка остаётся для разметки). */
 export function ctxLabel(s: Pick<SessionSummary, 'contextTokens'>): string {
   return s.contextTokens ? `${tokensLabel(s.contextTokens)} ${ui.sidebar.ctx}` : '';
@@ -93,8 +108,11 @@ export function costLabel(s: Pick<SessionSummary, 'costUsd' | 'costPartial'>): s
  * Подпись под названием и подсказка строки: `14 ходов · $1.84 · 131k` и тег состояния (ждёт ответа, ошибка,
  * лимит). `withCtx: false` — контекст уже показан колонкой справа, во второй строке его нет.
  */
-export function subLabel(s: SessionSummary, withCtx = true): string {
-  const parts = [ui.empty.turns(s.turns), costLabel(s)];
+export function subLabel(s: SessionSummary, withCtx = true, mixed = false): string {
+  // метка движка — только когда в списке есть и Codex (список одного Claude остаётся как был)
+  const parts: string[] = mixed || foreignProvider(s) ? [providerName(s)] : [];
+  // у Codex-треда и беседы Antigravity ходов и стоимости нет (списки их не отдают) — не показываем «0 ходов · —»
+  if (!foreignProvider(s)) parts.push(ui.empty.turns(s.turns), costLabel(s));
   if (withCtx && s.contextTokens !== undefined && s.contextTokens > 0)
     parts.push(tokensLabel(s.contextTokens));
   if (s.state === 'waiting') parts.push(ui.sidebar.stateTag.waiting);

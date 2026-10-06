@@ -72,6 +72,10 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
 
   const sessions = new SessionsService({
     adapter,
+    // треды Codex проекта (`thread/list`): процесс запускается, только если `codex` найден
+    codex: { adapter: codexAdapter, available: () => codexEngine.available() },
+    // беседы Antigravity: база и индекс бесед; без `agy` (или без `node:sqlite` — тогда индекс) строк нет, ошибок тоже
+    antigravity: { adapter: antigravityAdapter, available: () => antigravityEngine.available() },
     cwd,
     live,
     cache: transcripts,
@@ -144,15 +148,20 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     const picked = await vscode.window.showQuickPick(
       rows.map((r) => ({
         label: r.title,
-        description: `${t.turns(r.turns)}${
-          r.costUsd !== undefined ? ` · $${r.costUsd.toFixed(2)}` : ''
-        }`,
+        // у треда Codex и беседы Antigravity ходов и стоимости нет: метка движка вместо них
+        description:
+          r.provider === 'codex'
+            ? 'Codex'
+            : r.provider === 'antigravity'
+              ? 'Antigravity'
+              : `${t.turns(r.turns)}${r.costUsd !== undefined ? ` · $${r.costUsd.toFixed(2)}` : ''}`,
         detail: new Date(r.updatedAt).toLocaleString(t.locale),
         id: r.id,
+        provider: r.provider ?? ('claude' as const),
       })),
       { placeHolder: t.pickSessionPlaceholder, matchOnDetail: true },
     );
-    if (picked) ChatPanel.resume(context, log, services, picked.id);
+    if (picked) ChatPanel.resume(context, log, services, { provider: picked.provider, id: picked.id });
   };
 
   // настройка задана в воркспейсе — запись в Global её не перебьёт: пишем туда, где она задана
@@ -277,7 +286,7 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     ),
     vscode.commands.registerCommand('agentura.openLast', async () => {
       const last = (await sessions.summaries())[0];
-      if (last) ChatPanel.resume(context, log, services, last.id);
+      if (last) ChatPanel.resume(context, log, services, { provider: last.provider ?? 'claude', id: last.id });
       else ChatPanel.startNew(context, log, services);
     }),
     vscode.commands.registerCommand('agentura.resumeSession', () => pickSession()),

@@ -25,7 +25,8 @@ export interface EngineLocatorDeps {
  */
 export class EngineLocator {
   private cached: { setting: string; result: ResolvedExecutable } | undefined;
-  private inflight: { setting: string; promise: Promise<ResolvedExecutable> } | undefined;
+  /** `loud` — кто-то из ждущих не тихий: тогда «не найден» пишется в журнал, даже если поиск начала тихая проба. */
+  private inflight: { setting: string; promise: Promise<ResolvedExecutable>; loud: boolean } | undefined;
   private warnedFor: string | undefined;
 
   constructor(private readonly deps: EngineLocatorDeps) {}
@@ -35,16 +36,26 @@ export class EngineLocator {
     void this.locate().catch(() => undefined);
   }
 
-  locate(): Promise<ResolvedExecutable> {
+  /**
+   * `quiet` — фоновая проба (списки сессий сайдбара): «не найден» не пишется в журнал, иначе каждый пользователь без
+   * движка получал бы предупреждение, а журнал — строку на каждое перечитывание списка. Найденный путь и «старая
+   * версия» пишутся как обычно (они кэшируются, второго шанса сказать о них не будет).
+   */
+  locate(quiet = false): Promise<ResolvedExecutable> {
     const setting = this.deps.setting();
     if (this.cached?.setting === setting) return Promise.resolve(this.cached.result);
-    if (this.inflight?.setting === setting) return this.inflight.promise;
+    if (this.inflight?.setting === setting) {
+      if (!quiet) this.inflight.loud = true;
+      return this.inflight.promise;
+    }
     const run = this.deps.resolve ?? ((s: string) => resolveExecutable(s, { lang: this.deps.lang?.() ?? 'ru' }));
     const name = this.deps.name ?? 'claude';
+    const job = { setting, loud: !quiet } as { setting: string; promise: Promise<ResolvedExecutable>; loud: boolean };
     const promise = run(setting).then((r) => {
-      if (this.inflight?.promise === promise) this.inflight = undefined;
+      if (this.inflight === job) this.inflight = undefined;
       // настройку сменили, пока шёл поиск: результат старого значения не кэшируем и не предупреждаем о нём
       if (setting !== this.deps.setting()) return r;
+      if (!job.loud && !usable(r)) return r;
       if (usable(r)) {
         this.deps.info(`${name}: ${r.path} ${r.version} (${r.source})`);
         this.cached = { setting, result: r };
@@ -66,9 +77,10 @@ export class EngineLocator {
       return r;
     });
     promise.catch(() => {
-      if (this.inflight?.promise === promise) this.inflight = undefined;
+      if (this.inflight === job) this.inflight = undefined;
     });
-    this.inflight = { setting, promise };
+    job.promise = promise;
+    this.inflight = job;
     return promise;
   }
 
@@ -76,6 +88,11 @@ export class EngineLocator {
   async path(): Promise<string | undefined> {
     const r = await this.locate();
     return usable(r) ? r.path : undefined;
+  }
+
+  /** Движок установлен и запускается — тихая проба для фоновых списков (см. `locate`). */
+  async available(): Promise<boolean> {
+    return usable(await this.locate(true));
   }
 
   /** Можно ли запускать движок; иначе — что показать в карточке. */

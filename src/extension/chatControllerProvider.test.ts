@@ -204,6 +204,30 @@ describe('ChatController: маршрутизация по провайдеру',
     expect(codex.resumed[0]![1]).not.toHaveProperty('model');
   });
 
+  it('resume Codex-вкладки (Reload Window): лента из истории треда, название из списка, модель треда уходит в resume', async () => {
+    const { controller, codex, posted } = setup({
+      provider: 'codex',
+      resumeId: 'thr-1',
+      titleOf: async (id) => (id === 'thr-1' ? 'Мой тред' : undefined),
+    });
+    codex.adapter.loadHistory = async (): Promise<SessionHistory> => ({
+      events: [
+        { type: 'turn.start', prompt: 'привет', at: 1 },
+        { type: 'text.delta', messageId: 'm', text: 'здравствуйте' },
+      ] as SessionHistory['events'],
+      turns: 1,
+      skippedTurns: 0,
+      model: 'gpt-x',
+    });
+    controller.start();
+    controller.onReady();
+    await tick();
+    await tick();
+    const history = posted.find((m) => m.type === 'session.history');
+    expect(history).toMatchObject({ sessionId: 'thr-1', title: 'Мой тред', model: 'gpt-x' });
+    expect(codex.resumed[0]![1]).toMatchObject({ model: 'gpt-x' });
+  });
+
   it('resume с другим провайдером: вкладка берёт движок сессии и шлёт свежий chat.info', async () => {
     const { controller, claude, codex, posted } = setup();
     controller.start();
