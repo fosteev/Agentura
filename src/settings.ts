@@ -83,10 +83,10 @@ export const DEFAULT_FEED_FONT_SIZE = 13;
 export const MIN_FEED_FONT_SIZE = 10;
 export const MAX_FEED_FONT_SIZE = 20;
 
-export const PROVIDERS: readonly AgentProvider[] = ['claude', 'codex'];
+export const PROVIDERS: readonly AgentProvider[] = ['claude', 'codex', 'antigravity'];
 export const DEFAULT_PROVIDER: AgentProvider = 'claude';
 export function isProvider(v: unknown): v is AgentProvider {
-  return v === 'claude' || v === 'codex';
+  return v === 'claude' || v === 'codex' || v === 'antigravity';
 }
 
 /** Ключи без префикса `agentura.` — те же, что в `getConfiguration('agentura')`. */
@@ -100,6 +100,7 @@ export type SettingKey =
   | 'limits.readKeychain'
   | 'claudeExecutable'
   | 'codexExecutable'
+  | 'antigravityExecutable'
   | 'defaultProvider'
   | 'sessionList.view'
   | 'sessionList.context'
@@ -126,6 +127,7 @@ export const SETTING_KEYS: readonly SettingKey[] = [
   'limits.readKeychain',
   'claudeExecutable',
   'codexExecutable',
+  'antigravityExecutable',
   'defaultProvider',
   'sessionList.view',
   'sessionList.context',
@@ -153,6 +155,7 @@ export const MACHINE_KEYS: readonly SettingKey[] = [
   'allowBypassPermissions',
   'claudeExecutable',
   'codexExecutable',
+  'antigravityExecutable',
   'defaultProvider',
 ];
 
@@ -167,6 +170,7 @@ export interface SettingsValues {
   'limits.readKeychain': boolean;
   claudeExecutable: string;
   codexExecutable: string;
+  antigravityExecutable: string;
   defaultProvider: AgentProvider;
   'sessionList.view': SessionListMode;
   'sessionList.context': boolean;
@@ -360,6 +364,7 @@ export function validateSetting(key: SettingKey, value: unknown, lang: ErrLang =
     case 'defaultModel':
     case 'claudeExecutable':
     case 'codexExecutable':
+    case 'antigravityExecutable':
       return typeof value === 'string' ? { ok: true, value: value.trim() } : bad(t.string);
     case 'font.interface':
     case 'font.panels':
@@ -442,6 +447,7 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
     'limits.readKeychain': cfg.get<unknown>('limits.readKeychain') !== false,
     claudeExecutable: str('claudeExecutable'),
     codexExecutable: str('codexExecutable'),
+    antigravityExecutable: str('antigravityExecutable'),
     defaultProvider: isProvider(provider) ? provider : DEFAULT_PROVIDER,
     'sessionList.view': isSessionListMode(list) ? list : DEFAULT_SESSION_LIST,
     'sessionList.context': cfg.get<unknown>('sessionList.context') !== false,
