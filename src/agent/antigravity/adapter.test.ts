@@ -100,7 +100,7 @@ describe('AntigravityAdapter: ход', () => {
     session.send('write');
     await vi.waitFor(() => expect(results(events)).toHaveLength(1));
     expect(of(events, 'tool.result')[0]).toMatchObject({ toolUseId: 'agy-2', isError: true });
-    expect(results(events)[0]?.permissionDenials).toEqual([{ toolName: 'WriteToFile', toolUseId: 'agy-2' }]);
+    expect(results(events)[0]?.permissionDenials).toEqual([{ toolName: 'Write', toolUseId: 'agy-2' }]);
     session.dispose();
   });
 

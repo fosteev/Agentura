@@ -7,11 +7,14 @@ import type {
   TokenUsage,
 } from '../types';
 import type { AgyEvent, AgyInit, AgyResult, AgyStep, AgyUsage } from './protocol';
+import { mapAgyTool } from './tools';
 
 /** Промпт, который сессия записала в stdin: сам agy текст не возвращает (эхо `user_input` без `text_delta`). */
 export interface NotedPrompt {
   text: string;
   images?: readonly PromptImage[];
+  /** Служебный текст (повтор после отказа): уходит агенту, но ход начинается без `prompt`, пузыря пользователя нет. */
+  silent?: boolean;
 }
 
 const ZERO: TokenUsage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
@@ -55,7 +58,12 @@ function imageRef(image: PromptImage): ImageRef {
 
 interface ToolState {
   id: string;
+  /** Имя карточки (`Bash`, `Edit`…), для отказов — `denied.toolName`. */
   name: string;
+  agyName: string;
+  stepIndex: number;
+  /** Правка файла: дифф подтягивает адаптер из транскрипта (`editLookup`). */
+  edit?: { targetFile: string | undefined };
   done: boolean;
 }
 
@@ -70,6 +78,8 @@ interface Turn {
   lastTextStep: number | undefined;
   /** Шаги tool, отклонённые по разрешениям (`permission check failed`), по порядку. */
   deniedToolIds: string[];
+  /** Имена карточек этих шагов (параллельно `deniedToolIds`). */
+  deniedToolNames: string[];
   errors: string[];
 }
 
@@ -155,8 +165,11 @@ export class AgyEventMapper {
 
   /** Ход, которого agy не начал (процесс не поднялся, Stop до отправки): `turn.start` → [`error`] → `turn.result`. */
   syntheticTurn(prompt: NotedPrompt, outcome: { interrupted: true } | { message: string }): AgentEvent[] {
-    const start: AgentEventOf<'turn.start'> = { type: 'turn.start', prompt: prompt.text, at: this.now() };
-    if (prompt.images?.length) start.images = prompt.images.map(imageRef);
+    const start: AgentEventOf<'turn.start'> = { type: 'turn.start', at: this.now() };
+    if (!prompt.silent) {
+      start.prompt = prompt.text;
+      if (prompt.images?.length) start.images = prompt.images.map(imageRef);
+    }
     const interrupted = 'interrupted' in outcome;
     const events: AgentEvent[] = [start];
     if ('message' in outcome) events.push({ type: 'error', message: outcome.message, fatal: false });
@@ -184,7 +197,7 @@ export class AgyEventMapper {
     const prompt = this.pending;
     this.pending = undefined;
     const start: AgentEventOf<'turn.start'> = { type: 'turn.start', at };
-    if (prompt) {
+    if (prompt && !prompt.silent) {
       start.prompt = prompt.text;
       if (prompt.images?.length) start.images = prompt.images.map(imageRef);
     }
@@ -198,6 +211,7 @@ export class AgyEventMapper {
       texts: new Map(),
       lastTextStep: undefined,
       deniedToolIds: [],
+      deniedToolNames: [],
       errors: [],
     };
     return this.turn;
@@ -251,24 +265,23 @@ export class AgyEventMapper {
   }
 
   private toolStep(events: AgentEvent[], turn: Turn, step: AgyStep): void {
-    const name = step.tool_name ?? step.tool_info?.name ?? 'tool';
+    const agyName = step.tool_name ?? step.tool_info?.name ?? 'tool';
     let tool = turn.tools.get(step.step_index);
     if (!tool) {
-      tool = { id: `agy-${step.step_index}`, name, done: false };
+      const mapped = mapAgyTool(agyName, step.tool_info?.parameters);
+      tool = { id: `agy-${step.step_index}`, name: mapped.name, agyName, stepIndex: step.step_index, done: false };
+      if (mapped.edit) tool.edit = mapped.edit;
       turn.tools.set(step.step_index, tool);
-      events.push({
-        type: 'tool.start',
-        toolUseId: tool.id,
-        name,
-        input: step.tool_info?.parameters ?? {},
-        at: this.now(),
-      });
+      events.push({ type: 'tool.start', toolUseId: tool.id, name: mapped.name, input: mapped.input, at: this.now() });
     }
     if (tool.done || step.state === 'ACTIVE') return;
     tool.done = true;
     const isError = step.state === 'ERROR';
     const message = step.tool_info?.error?.message;
-    if (isError && message && /permission check failed/i.test(message)) turn.deniedToolIds.push(tool.id);
+    if (isError && message && /permission check failed/i.test(message)) {
+      turn.deniedToolIds.push(tool.id);
+      turn.deniedToolNames.push(tool.name);
+    }
     const result: AgentEventOf<'tool.result'> = {
       type: 'tool.result',
       toolUseId: tool.id,
@@ -280,6 +293,18 @@ export class AgyEventMapper {
     events.push(result);
   }
 
+  /**
+   * Правка, чей результат только что вышел (`tool.result` без ошибки): что искать в транскрипте. Вызывать
+   * сразу после `map()` того же шага, до следующего события.
+   */
+  editLookup(toolUseId: string): { stepIndex: number; agyName: string; cardName: string; targetFile: string | undefined } | undefined {
+    for (const tool of this.turn?.tools.values() ?? []) {
+      if (tool.id === toolUseId && tool.edit)
+        return { stepIndex: tool.stepIndex, agyName: tool.agyName, cardName: tool.name, targetFile: tool.edit.targetFile };
+    }
+    return undefined;
+  }
+
   private result(result: AgyResult['result']): AgentEvent[] {
     const events: AgentEvent[] = [];
     const turn = this.open(events);
@@ -287,10 +312,12 @@ export class AgyEventMapper {
     const interrupted = !ok && /interrupted/i.test(result.error ?? '');
     if (!ok && !interrupted) turn.errors.push(result.error?.trim() || 'agy returned an error');
     const response = result.response?.trimEnd();
+    const matched = turn.deniedToolIds.length === (result.denied_actions ?? []).length;
     const denied = (result.denied_actions ?? []).map((a, i) => ({
-      toolName: a.display_name || a.action || 'tool',
+      // имя карточки шага (`Bash`/`Write`/`Edit`), его проще связать с видом отказа; нет сопоставления — имя agy
+      toolName: (matched ? turn.deniedToolNames[i] : undefined) ?? (a.display_name || a.action || 'tool'),
       // действие отказа (`write_file`) не совпадает с именем шага (`write_to_file`): сопоставляем по порядку
-      toolUseId: turn.deniedToolIds.length === (result.denied_actions ?? []).length ? (turn.deniedToolIds[i] ?? '') : '',
+      toolUseId: matched ? (turn.deniedToolIds[i] ?? '') : '',
     }));
     this.finish(events, turn, { ok, interrupted, text: response || this.lastText(turn), denied });
     return events;

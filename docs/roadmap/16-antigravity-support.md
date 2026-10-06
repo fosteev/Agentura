@@ -1,6 +1,6 @@
 # 16 — Antigravity (Gemini) как третий движок
 
-> **Статус:** этап 1 принят 2026-10-06 — следующий: 2. Автопилот `/roadmap-run` в worktree
+> **Статус:** этап 2 принят 2026-10-06 — следующий: 3. Автопилот `/roadmap-run` в worktree
 > `/Users/fost/Projects/Agentura-gemini`, ветки `stage-<N>-agy-<slug>` от `feature/gemini-support`,
 > мерж в `feature/gemini-support`; в main — после этапа 4. Ручные проверки и решения —
 > `16-antigravity-support.pending.md`.
@@ -198,23 +198,90 @@ ERROR выходит, и сообщение из очереди уходило �
 
 **Сессия:** sonnet.
 
-- [ ] Имена инструментов agy → привычные карточки ленты: `run_command` → Bash (команда из
+- [x] Имена инструментов agy → привычные карточки ленты: `run_command` → Bash (команда из
       `CommandLine`, вывод), `write_to_file`/`replace_file_content` → Write/Edit, чтение/поиск —
       как Read/Grep/Glob, остальное — общая карточка. Таблица соответствия — в `mapper.ts`, по
       `tools` из `init` (60 имён) и логам.
-- [ ] Диффы правок: после DONE шага правки читать `transcript_full.jsonl` этой беседы
+- [x] Диффы правок: после DONE шага правки читать `transcript_full.jsonl` этой беседы
       (`storage.ts`, единственное место, знающее пути `~/.gemini/antigravity-cli`), брать
       аргументы и unified diff → `tool.result` с данными для DiffPreview/вкладки «изменения»
       (`editFiles`/`fileSpans`), если это ложится на существующие поля. Нет файла / не разобрали —
       карточка без диффа, без ошибки.
-- [ ] Отказы: шаг tool ERROR с `user denied permission` + `result.denied_actions` → событие для
+- [x] Отказы: шаг tool ERROR с `user denied permission` + `result.denied_actions` → событие для
       карточки отказа (если нужен новый вариант `AgentEvent` — минимальный, записать в
       «Решения»). Метод сессии «повторить с режимом X»: пересоздать процесс в режиме и отправить
       служебный повтор. UI карточки — этап 4.
-- [ ] Режимы (см. «Решения оркестратора») на spawn; `mode.changed` при смене. (Флаги `modeArgs`, пересоздание
+- [x] Режимы (см. «Решения оркестратора») на spawn; `mode.changed` при смене. (Флаги `modeArgs`, пересоздание
       процесса и `mode.changed` уже сделаны на этапе 1; здесь — только повтор после отказа и тесты.)
-- [ ] Тесты по фейку: правка с диффом, правка без транскрипта, отказ → повтор в accept-edits,
+- [x] Тесты по фейку: правка с диффом, правка без транскрипта, отказ → повтор в accept-edits,
       bypass не включается сам. `npm run check` зелёный.
+
+**Решения (2026-10-06, по итогам сессии 2):**
+
+- **Раскладка.** `tools.ts` (таблица agy → карточка, чистая), `patch.ts` (unified diff → ханки `structuredPatch`),
+  `storage.ts` (единственное чтение `~/.gemini/antigravity-cli`: путь корня — параметр, версия agy 1.2.17 в шапке,
+  `transcript_full.jsonl`, мягкая деградация, лимит 32 МБ, id беседы валидируется до подстановки в путь),
+  `edits.ts` (транскрипт → `tool.result.result`), правки `mapper.ts`/`adapter.ts`. Фикстуры:
+  `test/fixtures/antigravity/transcript_full.jsonl` (запись правки/создания/команды, спайк perm3) и
+  `transcript_full_multiline.jsonl` (многострочная правка, снята в этой сессии), пути и id очищены.
+- **Таблица инструментов.** `run_command`→`Bash` {command, description←toolSummary, cwd}; `write_to_file`→`Write`;
+  `replace_file_content`→`Edit`; `multi_replace_file_content`→`MultiEdit`; `view_file`→`Read` {file_path←AbsolutePath};
+  `grep_search`→`Grep`; `find_by_name`→`Glob`; `read_url_content`→`WebFetch`; `search_web`→`WebSearch`;
+  `notebook_edit`→`NotebookEdit`; остальное (`list_dir`, `sed_file`, `send_command_input`, browser_*…) — имя agy и
+  сырые параметры (общая карточка). Форма входа — как у Claude, её понимают `toolView`/`editDiff`. **Живьём
+  сверены** параметры `run_command`, `write_to_file`, `replace_file_content`, `view_file`; ключи
+  `grep_search`/`find_by_name`/`read_url_content`/`search_web`/`notebook_edit` — по именам agy, модель в живом
+  прогоне эти инструменты не выбрала (шла в `run_command`), поэтому — несколько кандидатов ключа, нет совпадения →
+  общая карточка, не падение. Параметры в стриме короткие (у правок только `TargetFile`): `tool.start` не содержит
+  old/new текста, они приходят в `tool.result`.
+- **Диффы.** Шаг tool из стрима с индексом N = GENERIC-результат N в `transcript_full.jsonl`; вызов (полные
+  аргументы) — в ближайшем выше PLANNER_RESPONSE с тем же именем и `TargetFile`. После DONE (не ERROR) шага
+  `Write`/`Edit`/`MultiEdit` адаптер читает транскрипт и кладёт в `tool.result.result` форму `tool_use_result`
+  Claude: `{filePath, oldString, newString, replaceAll?, structuredPatch}`, у `Write` — `{filePath, content,
+  type: create|update}` (`update` — если в результате есть diff-блок). `originalFile` нет (agy отдаёт только ханки),
+  поэтому `editStats` (`+N −M`) работает, а нативный дифф `appliedSides` — только для правок с одним
+  фрагментом (old/new из аргументов); для `multi_replace` с несколькими кусками — только ханки/счётчики. Формат
+  `ReplacementChunks` у multi_replace **не снят** (в живом прогоне модель вместо него вызвала
+  `replace_file_content`): разбор — по догадке, при несовпадении остаются одни ханки.
+  Транскрипт пишется не мгновенно — 3 повтора по 120 мс (`transcriptRetries`/
+  `transcriptDelayMs`); не нашли — карточка без диффа, `tool.result` без `result`, без ошибки и без warn.
+- **Порядок событий.** Подгрузка диффа асинхронна, поэтому у сессии появился «гейт» (`gated`/`inflight`/`tail`):
+  пока читается транскрипт, следующие события agy и выход процесса ждут в хвосте. Без правок всё синхронно, как
+  было. `interrupt` ждёт хвост до обнуления `proc` (иначе `result`, ждущий диффа, терялся бы).
+- **Отказы: нового `AgentEvent` нет.** Карточке (этап 4) достаточно существующего: `tool.result` isError с текстом
+  `permission check failed…` и `turn.result.permissionDenials` `{toolName, toolUseId}`. Изменение: `toolName` теперь
+  имя карточки шага (`Bash`/`Write`/`Edit`), если отказы сопоставились с шагами по порядку, иначе `display_name`
+  agy. Для кнопок: `Write`/`Edit`/`MultiEdit` → «разрешить правки» (acceptEdits) и «всё»; `Bash` и прочее → только
+  «всё» (accept-edits `run_command` не разрешает; живьём: действие отказа `command`, display_name `RunCommand`).
+- **Повтор.** `AgySession.retryWithMode('acceptEdits' | 'bypassPermissions')`: `setMode` (процесс пересоздаётся с
+  `--conversation`, `mode.changed`) + служебное сообщение `AGY_RETRY_PROMPT` (англ.). Метод не в общем
+  `AgentSession` (types.ts не трогал): тип `AgyRetrySession` и охранник `isAgySession(session)` экспортируются из
+  `adapter.ts`, этап 4 зовёт его из кнопок. `bypassPermissions` без `allowBypassPermissions` → `false` (и warn), режим
+  не меняется; отказ сам режим никогда не повышает (тесты).
+- **`[скоуп]` Повтор без пузыря пользователя.** Служебное сообщение шлётся с `silent`: `turn.start` без `prompt`
+  (как «ход начал движок»), в ленте нет реплики «Retry the denied actions». Обратимо: убрать `silent` в
+  `retryWithMode`. Режим после «Разрешить правки и повторить» остаётся повышенным до смены пользователем (иначе
+  следующая правка снова получила бы отказ) — поведение для пользователя, записано в pending.
+- **Не проверено.** Живой прогон адаптера целиком (правка через `AntigravityAdapter` без фейка) не делался:
+  транскрипт читается из реальной записи, но момент его дозаписи относительно DONE шага снят не был (отсюда
+  повторы); `view_file` в стриме даёт `output` вида «4 lines, 24 bytes» (содержимого нет — карточка Read без
+  текста); Write поверх существующего файла (есть ли diff-блок) не снимали; Windows. Живые прогоны сессии: 2 коротких
+  хода `gemini-3.8-flash-low` во временной папке (разведка параметров и снятие многострочной правки), процессы за
+  собой убраны.
+- **Проверки:** `TZ=UTC npm run check` зелёный, 1210 тестов у исполнителя, 1217 после приёмки (+29 к этапу 1: patch, tools, storage/edits, адаптер).
+- **Доводка на приёмке (2026-10-06, два прохода ревью):** подгрузка диффа ограничена общим таймаутом
+  (`editTimeoutMs`, 2 с) — зависшее чтение (сетевой home, FIFO) не держит гейт и Stop; закрытие сессии обрывает
+  повторы (`AbortSignal`); транскрипт — только обычный файл. Правка читает **хвост** транскрипта (окно 1 МБ, ×4 до
+  32 МБ, если шага с вызовом в окне нет) — не весь файл на каждую правку. `findEditDetail` ищет вызов только в
+  ближайшем PLANNER_RESPONSE (номер вызова = число GENERIC между ними), дальше назад не идёт; результат шага N без
+  имени целевого файла — не наш (рассинхрон) → без диффа. `Write`: `type: create` только при «Created file…»,
+  иначе `update` (перезапись не выдаётся за новый файл). `syntheticTurn` уважает `silent`. `retryWithMode` проверяет
+  режим в рантайме и отказывает (false), если он не повышает текущий. `onAgyError`/переполнение строки идут через
+  гейт. Тесты 1217.
+- **Промты следующих этапов:** этап 3 — `loadHistory` пропускает tool_calls транскрипта через `mapAgyTool`
+  (`tools.ts`), чтобы лента истории совпала с живой; результаты правок в истории — из GENERIC-шагов через
+  `parseDiffBlocks`. Этап 4 — кнопки карточки отказа зовут `isAgySession(session) && session.retryWithMode(...)`;
+  какие кнопки показывать — по `toolName` отказа (см. выше).
 
 ### 3. История: список, лента, resume, rename
 
@@ -316,12 +383,18 @@ interrupt и dispose. В UI адаптер не подключать. Новые
 
 Этап 3 «История». Источник списка выбери по проверке в extension host (см. этап), решение и
 причину — в «Решения». Фикстуры транскрипта/summaries — очищенные от путей и текста владельца.
+После этапа 2: чтение хранилища — в `storage.ts` (там уже `readTranscriptFull`, `defaultAgyRoot`, мягкая
+деградация), имена инструментов — `mapAgyTool` (`tools.ts`), ханки диффа — `parseDiffBlocks` (`patch.ts`);
+в `loadHistory` использовать их, а не заводить вторую таблицу. Связь результата правки с вызовом — `findEditDetail` (ближайший planner-шаг, номер вызова = число GENERIC между ними); для истории читать файл целиком `readTranscriptFull` (лимит 32 МБ).
 
 ### Промт 4
 
 Этап 4 «Подключение к чату». Блокер: этап 3 Codex в main. Начни с `git merge main`, изучи,
 как Codex подключён (фабрика, `chat.info`, EngineMenu, скрытие Claude-only UI), и встройся
-так же; свою параллельную инфраструктуру не заводить.
+так же; свою параллельную инфраструктуру не заводить. Карточка отказа: данные уже есть
+(`turn.result.permissionDenials` с `toolName` = `Bash`/`Write`/`Edit`, `tool.result` isError), повтор —
+`isAgySession(session) && session.retryWithMode('acceptEdits' | 'bypassPermissions')` из `adapter.ts`
+(для `Bash` — только «всё»); общий `AgentSession` не расширять.
 
 ### Промт 5
 
