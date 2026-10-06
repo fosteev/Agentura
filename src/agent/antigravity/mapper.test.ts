@@ -80,19 +80,19 @@ describe('AgyEventMapper: живые фикстуры', () => {
   it('отказ по разрешениям: tool ERROR → isError, denied_actions → permissionDenials с id шага', () => {
     const events = run(fixture('denied'), ['Create a file hello.txt']);
     const start = of(events, 'tool.start')[0];
-    expect(start).toMatchObject({ name: 'write_to_file', toolUseId: 'agy-2' });
-    expect(start?.input).toEqual({ TargetFile: '/tmp/agentura-agy/hello.txt' });
+    expect(start).toMatchObject({ name: 'Write', toolUseId: 'agy-2' });
+    expect(start?.input).toEqual({ file_path: '/tmp/agentura-agy/hello.txt' });
     const res = of(events, 'tool.result')[0];
     expect(res?.isError).toBe(true);
     expect(res?.content).toMatch(/permission check failed/);
     const result = of(events, 'turn.result')[0];
     expect(result?.ok).toBe(true);
-    expect(result?.permissionDenials).toEqual([{ toolName: 'WriteToFile', toolUseId: 'agy-2' }]);
+    expect(result?.permissionDenials).toEqual([{ toolName: 'Write', toolUseId: 'agy-2' }]);
   });
 
   it('SIGINT: незакрытый tool закрывается ошибкой, turn.result interrupted', () => {
     const events = run(fixture('interrupted'), ['Run sleep 90']);
-    expect(of(events, 'tool.start')[0]?.name).toBe('run_command');
+    expect(of(events, 'tool.start')[0]?.name).toBe('Bash');
     expect(of(events, 'tool.result')[0]).toMatchObject({ isError: true, content: 'interrupted' });
     const result = of(events, 'turn.result')[0];
     expect(result).toMatchObject({ ok: false, interrupted: true, subtype: 'interrupted' });

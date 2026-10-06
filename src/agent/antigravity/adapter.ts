@@ -17,6 +17,7 @@ import type {
 } from '../types';
 import { EventHub } from '../stream';
 import type { LogFn } from '../claude/adapter';
+import { editResultOf } from './edits';
 import { AGY_NOT_FOUND } from './executable';
 import { AgyEventMapper, type NotedPrompt } from './mapper';
 import { DEFAULT_AGY_MODEL, listAgyModels } from './models';
@@ -29,6 +30,7 @@ import {
   type AgySpawn,
 } from './process';
 import { userInputLine, type AgyEvent } from './protocol';
+import { defaultAgyRoot } from './storage';
 
 export interface AntigravityAdapterConfig {
   /** Путь к `agy` (`antigravityEngine.path()`); нет пути — `createSession` бросает «не найден». */
@@ -49,6 +51,13 @@ export interface AntigravityAdapterConfig {
   killPid?: AgyProcessOptions['killPid'];
   /** Подмена `agy models` в тестах. */
   listModels?: (path: string) => Promise<ModelOption[]>;
+  /** Корень хранилища agy (диффы правок из `transcript_full.jsonl`); по умолчанию `~/.gemini/antigravity-cli`. Только чтение. */
+  agyRoot?: string;
+  /** Повторы чтения транскрипта правки (agy может дописать его позже DONE шага) и пауза между ними, мс. */
+  transcriptRetries?: number;
+  transcriptDelayMs?: number;
+  /** Общий предел подгрузки диффа одной правки, мс (по умолчанию 2000): не успели — карточка без диффа, лента не стоит. */
+  editTimeoutMs?: number;
   /** Сырые события agy (smoke, запись фикстур). */
   trace?: (event: AgyEvent) => void;
 }
@@ -65,6 +74,26 @@ export function modeArgs(mode: PermissionMode): string[] {
     default:
       return [];
   }
+}
+
+/** Служебный текст повтора после отказа: уходит агенту без пузыря пользователя в ленте. */
+export const AGY_RETRY_PROMPT =
+  'The permission you were missing is now granted. Retry the action(s) that were just denied, then continue the task.';
+
+/** Режимы, в которых можно повторить отказ: правки или всё (`bypassPermissions` — только если разрешён настройкой). */
+export type AgyRetryMode = Extract<PermissionMode, 'acceptEdits' | 'bypassPermissions'>;
+
+/**
+ * Что сверх `AgentSession` умеет сессия agy (карточка отказа, этап 4): повторить с другим режимом. Не часть
+ * общего интерфейса — проверять `isAgySession`.
+ */
+export interface AgyRetrySession extends AgentSession {
+  /** `setMode(mode)` (процесс пересоздастся с `--conversation`) и служебное сообщение-повтор; `false` — режим не разрешён или сессия закрыта. */
+  retryWithMode(mode: AgyRetryMode): Promise<boolean>;
+}
+
+export function isAgySession(session: AgentSession): session is AgyRetrySession {
+  return typeof (session as Partial<AgyRetrySession>).retryWithMode === 'function';
 }
 
 export class AntigravityAdapter implements AgentAdapter {
@@ -155,7 +184,7 @@ function errorText(error: unknown): string {
  * `--conversation <id>` лениво, к следующему `send`: у agy нет управляющих сообщений, прервать ход можно
  * только SIGINT, и он завершает процесс.
  */
-class AgySession implements AgentSession {
+class AgySession implements AgyRetrySession {
   readonly events: EventHub<AgentEvent>;
   private readonly mapper = new AgyEventMapper();
   private readonly log: LogFn;
@@ -163,6 +192,11 @@ class AgySession implements AgentSession {
   private readonly resumedId: string | undefined;
   private readonly allowBypass: boolean;
   private readonly queue: { prompt: NotedPrompt }[] = [];
+  /** События agy, ждущие асинхронной подгрузки диффа: порядок ленты не нарушаем (`inflight` > 0 — всё идёт через `tail`). */
+  private inflight = 0;
+  private tail: Promise<void> = Promise.resolve();
+  /** Закрытие сессии обрывает повторы чтения транскрипта. */
+  private readonly aborter = new AbortController();
   private model: string;
   private mode: PermissionMode;
   private effort: EffortLevel | undefined;
@@ -213,7 +247,23 @@ class AgySession implements AgentSession {
     // image-блоки у agy в бинарнике есть, но не проверены; document-блоков нет: не отправляем и не показываем
     if (images?.length) this.log('warn', `agy: ${images.length} image(s) are not supported yet and were dropped`);
     if (files?.length) this.log('warn', `agy: ${files.length} file attachment(s) are not supported and were dropped`);
-    this.queue.push({ prompt: { text } });
+    return this.enqueue({ text });
+  }
+
+  async retryWithMode(mode: AgyRetryMode): Promise<boolean> {
+    if (this.closed) return false;
+    // режим приходит из webview: только два «повышающих», и не ниже/не равен текущему (повтор без новых прав бессмыслен)
+    if (mode !== 'acceptEdits' && mode !== 'bypassPermissions') return false;
+    if (this.mode === mode || this.mode === 'bypassPermissions') return false;
+    // `bypassPermissions` без разрешения в настройках молча понижается до default — это не «разрешили», повтор бессмыслен
+    if (this.effective(mode) !== mode) return false;
+    await this.setMode(mode);
+    return this.enqueue({ text: AGY_RETRY_PROMPT, silent: true });
+  }
+
+  private enqueue(prompt: NotedPrompt): boolean {
+    if (this.closed) return false;
+    this.queue.push({ prompt });
     this.drain().catch((error) => this.log('error', `agy queue failed: ${String(error)}`));
     return true;
   }
@@ -268,6 +318,7 @@ class AgySession implements AgentSession {
     this.halting = halting;
     await halting;
     if (this.halting === halting) this.halting = undefined;
+    await this.tail; // `result`, ждущий подгрузки диффа, закроет ход сам
     if (this.proc === proc) this.proc = undefined;
     // `result` не пришёл (убили по таймауту) — закрываем ход сами, иначе очередь и лента зависнут
     if (!turn.done.settled) {
@@ -330,13 +381,16 @@ class AgySession implements AgentSession {
       {
         onEvent: (event) => this.onEvent(proc, event),
         onStderr: (line) => this.log('debug', `agy: ${line}`),
-        onAgyError: (error) => {
-          if (proc === this.proc && !this.closed)
-            this.emit({ type: 'error', message: error.message, fatal: false, ...(error.code ? { code: error.code } : {}) });
-        },
-        onOverflow: () => {
-          if (proc === this.proc) this.fatal(new Error('agy: stdout line is too long'));
-        },
+        // через гейт: ошибка не обгоняет `tool.result`, ждущий диффа, а авария — `turn.result` из очереди
+        onAgyError: (error) =>
+          this.gated(() => {
+            if (proc === this.proc && !this.closed)
+              this.emit({ type: 'error', message: error.message, fatal: false, ...(error.code ? { code: error.code } : {}) });
+          }),
+        onOverflow: () =>
+          this.gated(() => {
+            if (proc === this.proc) this.fatal(new Error('agy: stdout line is too long'));
+          }),
         onExit: (exit) => this.onExit(proc, exit),
       },
       {
@@ -409,25 +463,59 @@ class AgySession implements AgentSession {
   }
 
   private onEvent(proc: AgyProcess, event: AgyEvent): void {
-    if (proc !== this.proc || this.closed) return;
-    try {
-      this.config.trace?.(event);
-      if (event.event === 'init') {
-        const wasInit = this.initEmitted;
-        const init = this.mapper.init(event, {
-          permissionMode: this.mode,
-          engineVersion: this.config.engineVersion ?? '',
-          cwd: this.cwd,
-          ...(this.effort ? { effort: this.effort } : {}),
-        });
-        // повторные `init` (процесс пересоздан) ленте не нужны: id и модель те же, что мы сами передали
-        if (!wasInit) {
-          this.initEmitted = true;
-          this.emit(init);
-        }
-        return;
+    this.gated(() => this.handleEvent(proc, event));
+  }
+
+  /**
+   * Пока подгружается дифф правки (чтение транскрипта), следующие события agy и выход процесса ждут в хвосте:
+   * порядок ленты сохраняется. Без правок — всё синхронно, как раньше.
+   */
+  private gated(work: () => void | Promise<void>): void {
+    const run = (): void | Promise<void> => {
+      try {
+        return work();
+      } catch (error) {
+        this.log('error', `agy event failed: ${String(error)}`);
       }
-      const events = this.mapper.map(event);
+    };
+    const track = (p: Promise<void>): void => {
+      this.inflight++;
+      this.tail = p
+        .catch((error) => this.log('error', `agy event failed: ${String(error)}`))
+        .finally(() => {
+          this.inflight--;
+        });
+    };
+    if (this.inflight > 0) {
+      track(this.tail.then(run));
+      return;
+    }
+    const r = run();
+    if (r) track(r);
+  }
+
+  private handleEvent(proc: AgyProcess, event: AgyEvent): void | Promise<void> {
+    if (proc !== this.proc || this.closed) return;
+    this.config.trace?.(event);
+    if (event.event === 'init') {
+      const wasInit = this.initEmitted;
+      const init = this.mapper.init(event, {
+        permissionMode: this.mode,
+        engineVersion: this.config.engineVersion ?? '',
+        cwd: this.cwd,
+        ...(this.effort ? { effort: this.effort } : {}),
+      });
+      // повторные `init` (процесс пересоздан) ленте не нужны: id и модель те же, что мы сами передали
+      if (!wasInit) {
+        this.initEmitted = true;
+        this.emit(init);
+      }
+      return;
+    }
+    const events = this.mapper.map(event);
+    const pending = this.editResults(events);
+    const finish = (): void => {
+      if (this.closed) return;
       this.emitAll(events);
       if (event.event === 'result') {
         // после ERROR agy часто выходит (неизвестная модель, ошибка разбора ввода): следующий ход — в новом процессе,
@@ -435,12 +523,58 @@ class AgySession implements AgentSession {
         if (event.result.status !== 'SUCCESS') this.stale = true;
         if (events.some((e) => e.type === 'turn.result')) this.turn?.done.resolve();
       }
-    } catch (error) {
-      this.log('error', `agy event ${event.event} failed: ${String(error)}`);
+    };
+    if (pending.length === 0) return finish();
+    return Promise.all(pending).then(finish);
+  }
+
+  /** Правки без ошибки: дифф и аргументы из `transcript_full.jsonl` в `tool.result.result` (нет данных — карточка без диффа). */
+  private editResults(events: AgentEvent[]): Promise<void>[] {
+    const conversationId = this.mapper.conversationId;
+    const pending: Promise<void>[] = [];
+    if (!conversationId) return pending;
+    const timeoutMs = this.config.editTimeoutMs ?? 2000;
+    for (const e of events) {
+      if (e.type !== 'tool.result' || e.isError) continue;
+      const lookup = this.mapper.editLookup(e.toolUseId);
+      if (!lookup) continue;
+      const load = editResultOf(
+        { root: this.config.agyRoot ?? defaultAgyRoot(), conversationId, ...lookup },
+        {
+          ...(this.config.transcriptRetries !== undefined ? { retries: this.config.transcriptRetries } : {}),
+          ...(this.config.transcriptDelayMs !== undefined ? { delayMs: this.config.transcriptDelayMs } : {}),
+          log: (level, message) => this.log(level, message),
+          signal: this.aborter.signal,
+        },
+      );
+      // чтение может зависнуть (сетевой home, FUSE): гейт и Stop не должны ждать его вечно
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const timeout = new Promise<undefined>((resolve) => {
+        timer = setTimeout(() => {
+          this.log('warn', `agy edit diff timed out after ${timeoutMs} ms`);
+          resolve(undefined);
+        }, timeoutMs);
+      });
+      pending.push(
+        Promise.race([load, timeout])
+          .then(
+            (result) => {
+              if (result) e.result = result;
+            },
+            (error) => this.log('warn', `agy edit diff failed: ${errorText(error)}`),
+          )
+          .finally(() => clearTimeout(timer)),
+      );
     }
+    return pending;
   }
 
   private onExit(proc: AgyProcess, exit: AgyExit): void {
+    // выход после `result` с дожидающимся диффом разбираем после него, а не поперёк
+    this.gated(() => this.handleExit(proc, exit));
+  }
+
+  private handleExit(proc: AgyProcess, exit: AgyExit): void {
     if (proc !== this.proc) return;
     this.proc = undefined;
     if (this.closed || this.stopping.has(proc)) return;
@@ -479,6 +613,7 @@ class AgySession implements AgentSession {
   private close(reason: 'exit' | 'error' | 'disposed', message?: string): void {
     if (this.closed) return;
     this.closed = true;
+    this.aborter.abort();
     this.queue.length = 0;
     this.turn?.done.resolve();
     this.events.emit({ type: 'session.closed', reason, ...(message ? { message } : {}) });
