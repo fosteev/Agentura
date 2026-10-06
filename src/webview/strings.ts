@@ -919,7 +919,7 @@ const ru = {
     fold: (name: string, folded: boolean) => `${folded ? 'Развернуть' : 'Свернуть'}: ${name}`,
     accountLabels: { account: 'Аккаунт', plan: 'План', login: 'Вход', agent: 'Агент' },
     agentName: 'Claude',
-    providerNames: { claude: 'Claude', codex: 'Codex' },
+    providerNames: { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity' },
     unknown: '—',
     loadError: 'не удалось получить',
     limitFive: 'Окно 5 часов',

@@ -77,9 +77,14 @@ export function tokensLabel(n: number): string {
   return String(Math.round(n));
 }
 
-/** В списке есть треды Codex: тогда у каждой строки показывается метка движка. */
+/** Не Claude (Codex, Antigravity): ходов и стоимости у такой строки нет. */
+export function foreignProvider(s: Pick<SessionSummary, 'provider'>): boolean {
+  return s.provider !== undefined && s.provider !== 'claude';
+}
+
+/** В списке есть сессии не Claude: тогда у каждой строки показывается метка движка. */
 export function mixedProviders(rows: readonly Pick<SessionSummary, 'provider'>[]): boolean {
-  return rows.some((r) => r.provider === 'codex');
+  return rows.some(foreignProvider);
 }
 
 /** `Claude` / `Codex`: нет поля — Claude. */
@@ -105,9 +110,9 @@ export function costLabel(s: Pick<SessionSummary, 'costUsd' | 'costPartial'>): s
  */
 export function subLabel(s: SessionSummary, withCtx = true, mixed = false): string {
   // метка движка — только когда в списке есть и Codex (список одного Claude остаётся как был)
-  const parts: string[] = mixed || s.provider === 'codex' ? [providerName(s)] : [];
-  // у Codex-треда ходов и стоимости нет (`thread/list` их не отдаёт) — не показываем «0 ходов · —»
-  if (s.provider !== 'codex') parts.push(ui.empty.turns(s.turns), costLabel(s));
+  const parts: string[] = mixed || foreignProvider(s) ? [providerName(s)] : [];
+  // у Codex-треда и беседы Antigravity ходов и стоимости нет (списки их не отдают) — не показываем «0 ходов · —»
+  if (!foreignProvider(s)) parts.push(ui.empty.turns(s.turns), costLabel(s));
   if (withCtx && s.contextTokens !== undefined && s.contextTokens > 0)
     parts.push(tokensLabel(s.contextTokens));
   if (s.state === 'waiting') parts.push(ui.sidebar.stateTag.waiting);

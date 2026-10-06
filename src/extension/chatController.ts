@@ -1547,11 +1547,11 @@ export class ChatController {
     this.kickRetry();
   }
 
-  /** Реестр живых сессий; Codex-сессии он помечает (список Codex-тредов перечитывается по ним). Вызов Claude — как был. */
+  /** Реестр живых сессий; сессии Codex и Antigravity он помечает (их списки перечитываются по ним). Вызов Claude — как был. */
   private liveSet(id: string, ...cost: [] | [number | undefined]): void {
     const live = this.deps.live;
     if (!live) return;
-    if (this.engineProvider === 'codex') live.set(id, this.liveState(), cost[0], 'codex');
+    if (this.engineProvider !== 'claude') live.set(id, this.liveState(), cost[0], this.engineProvider);
     else live.set(id, this.liveState(), ...cost);
   }
 

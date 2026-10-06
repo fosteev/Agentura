@@ -73,7 +73,9 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
   const sessions = new SessionsService({
     adapter,
     // треды Codex проекта (`thread/list`): процесс запускается, только если `codex` найден
-    codex: { adapter: codexAdapter, available: async () => (await codexEngine.ready()).ok },
+    codex: { adapter: codexAdapter, available: () => codexEngine.available() },
+    // беседы Antigravity: база и индекс бесед; без `agy` (или без `node:sqlite` — тогда индекс) строк нет, ошибок тоже
+    antigravity: { adapter: antigravityAdapter, available: () => antigravityEngine.available() },
     cwd,
     live,
     cache: transcripts,
@@ -146,11 +148,13 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     const picked = await vscode.window.showQuickPick(
       rows.map((r) => ({
         label: r.title,
-        // у Codex-треда ходов и стоимости нет: метка движка вместо них
+        // у треда Codex и беседы Antigravity ходов и стоимости нет: метка движка вместо них
         description:
           r.provider === 'codex'
             ? 'Codex'
-            : `${t.turns(r.turns)}${r.costUsd !== undefined ? ` · $${r.costUsd.toFixed(2)}` : ''}`,
+            : r.provider === 'antigravity'
+              ? 'Antigravity'
+              : `${t.turns(r.turns)}${r.costUsd !== undefined ? ` · $${r.costUsd.toFixed(2)}` : ''}`,
         detail: new Date(r.updatedAt).toLocaleString(t.locale),
         id: r.id,
         provider: r.provider ?? ('claude' as const),

@@ -10,18 +10,26 @@ import {
   type TranscriptCache,
 } from '../data/sessions';
 
-/** Второй источник сессий — Codex: `thread/list` по папке проекта (свой индекс не ведём). */
-export interface CodexSessionsSource {
-  /** Адаптер Codex; создаётся лениво, пока Codex не нужен — не вызывается. */
+/**
+ * Дополнительный источник сессий — Codex (`thread/list` по папке проекта) или Antigravity (`listSessions`: база и
+ * индекс бесед); свой индекс не ведём.
+ */
+export interface ExtraSessionsSource {
+  /** Адаптер движка; создаётся лениво, пока движок не нужен — не вызывается. */
   adapter(): AgentAdapter;
-  /** Codex установлен и запускается; нет — его строк в списке нет и процесс не запускается. */
+  /** Движок установлен и запускается; нет — его строк в списке нет и процесс не запускается. */
   available(): Promise<boolean>;
 }
+export type CodexSessionsSource = ExtraSessionsSource;
+
+type ExtraProvider = 'codex' | 'antigravity';
 
 export interface SessionsServiceDeps {
   adapter: AgentAdapter;
   /** Нет — только Claude (тесты, окно без Codex). */
-  codex?: CodexSessionsSource;
+  codex?: ExtraSessionsSource;
+  /** Нет — без бесед Antigravity. Без `agy` или без `node:sqlite` список просто короче, без ошибок. */
+  antigravity?: ExtraSessionsSource;
   cwd: string;
   live: LiveSessions;
   cache: TranscriptCache;
@@ -53,6 +61,37 @@ const CODEX_BACKOFF_MS = 60_000;
 const CODEX_FIRST_WAIT_MS = 3000;
 /** Сколько раз подряд возвращать своё название сессии, которое перебивает движок. */
 const MAX_TITLE_REAPPLY = 5;
+
+/** Состояние чтения списка одного дополнительного движка. */
+interface ExtraState {
+  /** Последние строки и на какой момент они сняты (срок, эпоха живых сессий движка). */
+  cache: { rows: SessionRow[]; at: number; epoch: number; rev: number } | undefined;
+  /** Растёт, когда строки точно устарели (переименование): кэш, снятый до этого, не годится. */
+  rev: number;
+  failed: { at: number; rev: number; epoch: number } | undefined;
+  warned: boolean;
+  /** Идущее чтение списка (процесс) и просьба повторить его после. */
+  job: Promise<void> | undefined;
+  again: boolean;
+  loading: { rev: number; epoch: number } | undefined;
+  /** Все id, когда-либо пришедшие от движка: маршрут rename, даже если строки в списке сейчас нет. */
+  known: Set<string>;
+}
+
+function newExtra(): ExtraState {
+  return {
+    cache: undefined,
+    rev: 0,
+    failed: undefined,
+    warned: false,
+    job: undefined,
+    again: false,
+    loading: undefined,
+    known: new Set(),
+  };
+}
+
+const EXTRA_NAMES: Record<ExtraProvider, string> = { codex: 'Codex', antigravity: 'Antigravity' };
 
 function defaultWatch(dir: string, onChange: () => void, onError: () => void): { close(): void } {
   const w: FSWatcher = fsWatch(dir, { persistent: false }, () => onChange());
@@ -97,18 +136,8 @@ export class SessionsService {
    */
   private readonly pinned = new Map<string, { title: string; attempts: number }>();
   private readonly reapplying = new Set<string>();
-  /** Последние строки Codex и на какой момент они сняты (срок, эпоха живых Codex-сессий). */
-  private codexCache: { rows: SessionRow[]; at: number; epoch: number; rev: number } | undefined;
-  /** Растёт, когда строки точно устарели (переименование): кэш, снятый до этого, не годится. */
-  private codexRev = 0;
-  private codexFailed: { at: number; rev: number; epoch: number } | undefined;
-  private codexWarned = false;
-  /** Идущее чтение списка Codex (процесс) и просьба повторить его после. */
-  private codexJob: Promise<void> | undefined;
-  private codexAgain = false;
-  private codexLoading: { rev: number; epoch: number } | undefined;
-  /** Все id, когда-либо пришедшие из `thread/list`: маршрут rename, даже если строки в списке сейчас нет. */
-  private readonly codexKnown = new Set<string>();
+  /** Строки дополнительных движков (Codex, Antigravity): кэш, срок, повтор, сбой. */
+  private readonly extras: Record<ExtraProvider, ExtraState> = { codex: newExtra(), antigravity: newExtra() };
 
   constructor(private readonly deps: SessionsServiceDeps) {}
 
@@ -174,11 +203,12 @@ export class SessionsService {
         cache: this.deps.cache,
         onError: (id, e) => this.deps.log.debug(`транскрипт ${id}: ${String(e)}`),
       }),
-      this.codexRows(),
+      this.extraRows('codex'),
+      this.extraRows('antigravity'),
     ])
-      .then(([claude, codex]) => {
-        // Claude-строки как были; Codex — рядом, общий порядок по времени
-        const rows = codex.length ? [...claude, ...codex] : claude;
+      .then(([claude, codex, agy]) => {
+        // Claude-строки как были; Codex и Antigravity — рядом, общий порядок по времени
+        const rows = codex.length || agy.length ? [...claude, ...codex, ...agy] : claude;
         this.applyPins(claude);
         rows.sort((a, b) => b.updatedAt - a.updatedAt);
         this.rows = rows;
@@ -200,25 +230,31 @@ export class SessionsService {
     return run;
   }
 
+  private source(p: ExtraProvider): ExtraSessionsSource | undefined {
+    return p === 'codex' ? this.deps.codex : this.deps.antigravity;
+  }
+
   /**
-   * Строки Codex: `thread/list` по папке проекта. Claude-список Codex не ждёт: есть кэш — он отдаётся сразу, а
-   * перечитывание идёт в фоне и по готовности пересобирает список (`schedule`); кэша нет (первый показ) — ждём не
-   * дольше `CODEX_FIRST_WAIT_MS`. Процесс один на раз (`runCodex`). Сбой или отсутствие Codex список не ломают —
-   * остаются прошлые строки (или пусто), в журнал одно предупреждение; повтор не чаще раза в `CODEX_BACKOFF_MS`.
+   * Строки Codex / Antigravity: `thread/list` или `listSessions` по папке проекта. Claude-список их не ждёт: есть
+   * кэш — он отдаётся сразу, а перечитывание идёт в фоне и по готовности пересобирает список (`schedule`); кэша нет
+   * (первый показ) — ждём не дольше `CODEX_FIRST_WAIT_MS`. Чтение одно на раз (`runExtra`). Сбой или отсутствие
+   * движка список не ломают — остаются прошлые строки (или пусто), в журнал одно предупреждение; повтор не чаще
+   * раза в `CODEX_BACKOFF_MS`.
    */
-  private async codexRows(): Promise<SessionRow[]> {
-    if (!this.deps.codex) return [];
+  private async extraRows(p: ExtraProvider): Promise<SessionRow[]> {
+    if (!this.source(p)) return [];
+    const st = this.extras[p];
     const now = Date.now();
-    const cache = this.codexCache;
-    const epoch = this.deps.live.codexEpoch;
-    const rev = this.codexRev;
+    const cache = st.cache;
+    const epoch = this.deps.live.epochOf(p);
+    const rev = st.rev;
     const fresh = cache && cache.rev === rev && cache.epoch === epoch && now - cache.at < CODEX_TTL_MS;
     if (fresh) return this.withLive(cache.rows);
-    const failed = this.codexFailed;
+    const failed = st.failed;
     if (failed && failed.rev === rev && failed.epoch === epoch && now - failed.at < CODEX_BACKOFF_MS) {
       return this.withLive(cache?.rows ?? []);
     }
-    const job = this.runCodex();
+    const job = this.runExtra(p);
     let done = false;
     if (!cache) {
       let timer: ReturnType<typeof setTimeout> | undefined;
@@ -229,64 +265,67 @@ export class SessionsService {
       clearTimeout(timer);
     }
     if (!done) void job.then(() => this.schedule());
-    return this.withLive(this.codexCache?.rows ?? []);
+    return this.withLive(st.cache?.rows ?? []);
   }
 
   /**
-   * Перечитать список Codex: не больше одного процесса за раз; просьба во время чтения — ещё один проход после
+   * Перечитать список движка: не больше одного чтения за раз; просьба во время чтения — ещё один проход после
    * него (ключ кэша — эпоха живых сессий и переименования — мог смениться). Не бросает.
    */
-  private runCodex(): Promise<void> {
-    if (this.codexJob) {
+  private runExtra(p: ExtraProvider): Promise<void> {
+    const st = this.extras[p];
+    if (st.job) {
       // идущее чтение снято по старому ключу — после него ещё одно; по тому же — просто дождаться его
-      const key = this.codexLoading;
-      if (key && (key.rev !== this.codexRev || key.epoch !== this.deps.live.codexEpoch)) this.codexAgain = true;
-      return this.codexJob;
+      const key = st.loading;
+      if (key && (key.rev !== st.rev || key.epoch !== this.deps.live.epochOf(p))) st.again = true;
+      return st.job;
     }
     const job = (async () => {
       do {
-        this.codexAgain = false;
-        await this.loadCodex();
-      } while (this.codexAgain && !this.disposed);
+        st.again = false;
+        await this.loadExtra(p);
+      } while (st.again && !this.disposed);
     })().finally(() => {
-      this.codexJob = undefined;
+      st.job = undefined;
     });
-    this.codexJob = job;
+    st.job = job;
     return job;
   }
 
-  private async loadCodex(): Promise<void> {
-    const source = this.deps.codex;
+  private async loadExtra(p: ExtraProvider): Promise<void> {
+    const source = this.source(p);
+    const st = this.extras[p];
     if (!source || this.disposed) return;
-    const epoch = this.deps.live.codexEpoch;
-    const rev = this.codexRev;
-    this.codexLoading = { rev, epoch };
+    const epoch = this.deps.live.epochOf(p);
+    const rev = st.rev;
+    st.loading = { rev, epoch };
     try {
       if (!(await source.available())) {
-        this.codexFailed = { at: Date.now(), rev, epoch };
-        this.codexCache = undefined;
+        st.failed = { at: Date.now(), rev, epoch };
+        st.cache = undefined;
         return;
       }
       const infos = await source.adapter().listSessions(this.deps.cwd);
       const rows = infos.map(
         (i): SessionRow => ({
           ...i,
-          provider: 'codex',
+          provider: p,
           state: 'idle',
           turns: 0,
           tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
         }),
       );
-      for (const r of rows) this.codexKnown.add(r.id);
-      this.codexCache = { rows, at: Date.now(), epoch, rev };
-      this.codexFailed = undefined;
-      this.codexWarned = false;
+      for (const r of rows) st.known.add(r.id);
+      st.cache = { rows, at: Date.now(), epoch, rev };
+      st.failed = undefined;
+      st.warned = false;
     } catch (e) {
-      this.codexFailed = { at: Date.now(), rev, epoch };
-      if (!this.codexWarned) {
-        this.codexWarned = true;
-        this.deps.log.warn(`список тредов Codex: ${String(e)}`);
-      } else this.deps.log.debug(`список тредов Codex: ${String(e)}`);
+      st.failed = { at: Date.now(), rev, epoch };
+      const msg = `список сессий ${EXTRA_NAMES[p]}: ${String(e)}`;
+      if (!st.warned) {
+        st.warned = true;
+        this.deps.log.warn(msg);
+      } else this.deps.log.debug(msg);
     }
   }
 
@@ -322,12 +361,13 @@ export class SessionsService {
 
   async rename(sessionId: string, title: string): Promise<void> {
     const provider = this.providerOf(sessionId);
-    if (provider === 'codex') {
-      // имя хранит сам Codex (`thread/name/set`): закрепление поверх перебивающего движка — только у Claude
-      await this.deps.codex!.adapter().renameSession(sessionId, title, this.cwdOf(sessionId));
-      this.codexRev++;
+    if (provider !== 'claude') {
+      // имя хранит сам движок (Codex `thread/name/set`, Antigravity — индекс Agentura): закрепление поверх
+      // перебивающего движка — только у Claude
+      await this.source(provider)!.adapter().renameSession(sessionId, title, this.cwdOf(sessionId));
+      this.extras[provider].rev++;
       // новое имя — до пересборки списка (иначе строка мигнёт старым, пока фон перечитывает)
-      await this.runCodex();
+      await this.runExtra(provider);
       await this.refresh();
       return;
     }
@@ -369,11 +409,14 @@ export class SessionsService {
   }
 
   providerOf(sessionId: string): AgentProvider {
-    if (!this.deps.codex) return 'claude';
     const row = this.rows.find((r) => r.id === sessionId);
-    // строки уже нет (Codex-список сбросили между кликом и переименованием) — id, однажды пришедший от Codex,
-    // всё равно не уходит Claude-адаптеру
-    return row?.provider === 'codex' || (!row && this.codexKnown.has(sessionId)) ? 'codex' : 'claude';
+    for (const p of ['codex', 'antigravity'] as const) {
+      if (!this.source(p)) continue;
+      // строки уже нет (список сбросили между кликом и переименованием) — id, однажды пришедший от движка,
+      // всё равно не уходит Claude-адаптеру
+      if (row?.provider === p || (!row && this.extras[p].known.has(sessionId))) return p;
+    }
+    return 'claude';
   }
 
   /** `cwd` сессии (у сессий worktree он свой), иначе папка проекта. */

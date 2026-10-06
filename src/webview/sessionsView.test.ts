@@ -96,6 +96,13 @@ describe('подпись строки', () => {
     expect(providerName(codex)).toBe('Codex');
   });
 
+  it('Antigravity: как Codex — метка движка вместо ходов и стоимости', () => {
+    const agy = row({ provider: 'antigravity', turns: 0 });
+    expect(subLabel(agy)).toBe('Antigravity');
+    expect(mixedProviders([row(), agy])).toBe(true);
+    expect(providerName(agy)).toBe('Antigravity');
+  });
+
   it('классы строки: cur, live, wait, err', () => {
     expect(rowClass(row({ state: 'live' }), true)).toBe('s cur live');
     expect(rowClass(row({ state: 'waiting' }), false)).toBe('s wait');

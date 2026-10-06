@@ -385,3 +385,111 @@ describe('SessionsService: треды Codex (этап 5)', () => {
     expect(m.claudeAdapter.renameSession).toHaveBeenCalledWith('c1', 'Другое', '/nonexistent/project');
   });
 });
+
+describe('SessionsService: беседы Antigravity (этап 6)', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  const agyInfo = (id: string, updatedAt: number, title = id): SessionInfo => ({
+    id,
+    title,
+    updatedAt,
+    cwd: '/nonexistent/project',
+  });
+
+  function trio(claude: SessionInfo[], codex: SessionInfo[], agy: SessionInfo[], available = true) {
+    let agyList = agy;
+    const claudeAdapter = {
+      listSessions: vi.fn(async () => claude),
+      renameSession: vi.fn(async () => undefined),
+    } as unknown as AgentAdapter;
+    const codexAdapter = {
+      listSessions: vi.fn(async () => codex),
+      renameSession: vi.fn(async () => undefined),
+    } as unknown as AgentAdapter;
+    const agyAdapter = {
+      listSessions: vi.fn(async () => agyList),
+      renameSession: vi.fn(async (id: string, title: string) => {
+        agyList = agyList.map((s) => (s.id === id ? { ...s, title } : s));
+      }),
+    } as unknown as AgentAdapter;
+    const live = new LiveSessions();
+    const state = { available };
+    const svc = new SessionsService({
+      adapter: claudeAdapter,
+      codex: { adapter: () => codexAdapter, available: async () => true },
+      antigravity: { adapter: () => agyAdapter, available: async () => state.available },
+      cwd: '/nonexistent/project',
+      live,
+      cache: new TranscriptCache(),
+      log: { debug: vi.fn(), warn: vi.fn() },
+      dir: '/tmp',
+      watch: () => ({ close: () => undefined }),
+    });
+    return { svc, live, claudeAdapter, codexAdapter, agyAdapter, state, setAgy: (l: SessionInfo[]) => (agyList = l) };
+  }
+  type Trio = ReturnType<typeof trio>;
+  const agyCalls = (m: Trio) => (m.agyAdapter.listSessions as unknown as ReturnType<typeof vi.fn>).mock.calls.length;
+
+  it('беседы agy в общем списке рядом с Claude и Codex, с provider', async () => {
+    const m = trio([info('c1', 1)], [{ ...info('x1', 5), provider: 'codex' }], [agyInfo('a1', 9), agyInfo('a2', 3)]);
+    const rows = await m.svc.summaries();
+    expect(rows.map((r) => [r.id, r.provider])).toEqual([
+      ['a1', 'antigravity'],
+      ['x1', 'codex'],
+      ['a2', 'antigravity'],
+      ['c1', undefined],
+    ]);
+    expect(m.agyAdapter.listSessions).toHaveBeenCalledWith('/nonexistent/project');
+    expect(m.svc.providerOf('a1')).toBe('antigravity');
+    expect(m.svc.providerOf('x1')).toBe('codex');
+    expect(m.svc.providerOf('c1')).toBe('claude');
+  });
+
+  it('agy не найден — список без бесед agy и без ошибок, adapter.listSessions не зовётся', async () => {
+    const m = trio([info('c1', 1)], [], [agyInfo('a1', 9)], false);
+    expect((await m.svc.summaries()).map((r) => r.id)).toEqual(['c1']);
+    expect(agyCalls(m)).toBe(0);
+  });
+
+  it('сбой listSessions agy не роняет список', async () => {
+    const m = trio([info('c1', 1)], [], [agyInfo('a1', 9)]);
+    (m.agyAdapter.listSessions as unknown as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('boom'));
+    expect((await m.svc.summaries()).map((r) => r.id)).toEqual(['c1']);
+  });
+
+  it('конец хода agy-сессии перечитывает список, статус Claude-сессии и Codex — нет', async () => {
+    const m = trio([info('c1', 1)], [], [agyInfo('a1', 9)]);
+    await m.svc.refresh();
+    expect(agyCalls(m)).toBe(1);
+    m.live.set('c1', 'live');
+    m.live.set('x9', 'live', undefined, 'codex');
+    await m.svc.refresh();
+    expect(agyCalls(m)).toBe(1);
+    // новая беседа agy (ещё не в списке): первая живая запись — перечитать
+    m.setAgy([agyInfo('a1', 9), agyInfo('a2', 20)]);
+    m.live.set('a2', 'live', undefined, 'antigravity');
+    await m.svc.refresh();
+    expect(agyCalls(m)).toBe(2);
+    // кэш отдаётся сразу, новые строки приходят пересборкой после фонового чтения
+    await vi.advanceTimersByTimeAsync(1000);
+    let rows = await m.svc.list();
+    expect(rows.find((r) => r.id === 'a2')?.state).toBe('live');
+    // turn.result: live → idle
+    m.live.set('a2', 'idle', undefined, 'antigravity');
+    await m.svc.refresh();
+    await vi.advanceTimersByTimeAsync(1000);
+    rows = await m.svc.list();
+    expect(agyCalls(m)).toBe(3);
+    expect(rows.find((r) => r.id === 'a2')?.state).toBe('idle');
+  });
+
+  it('rename беседы agy идёт в адаптер agy и сразу виден в списке', async () => {
+    const m = trio([info('c1', 1)], [], [agyInfo('a1', 9, 'старое')]);
+    await m.svc.refresh();
+    await m.svc.rename('a1', 'новое');
+    expect(m.agyAdapter.renameSession).toHaveBeenCalledWith('a1', 'новое', '/nonexistent/project');
+    expect(m.claudeAdapter.renameSession).not.toHaveBeenCalled();
+    expect((await m.svc.list()).find((r) => r.id === 'a1')?.title).toBe('новое');
+  });
+});

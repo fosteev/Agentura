@@ -226,4 +226,18 @@ describe('Codex в списке', () => {
     live.delete('c');
     expect(live.codexEpoch).toBe(3);
   });
+
+  it('LiveSessions.epochOf: эпохи движков раздельные, Claude не двигает ни одну', () => {
+    const live = new LiveSessions();
+    live.set('c', 'live');
+    live.set('c', 'idle');
+    live.set('a', 'live', undefined, 'antigravity');
+    expect([live.epochOf('antigravity'), live.epochOf('codex')]).toEqual([1, 0]);
+    live.set('a', 'idle', undefined, 'antigravity');
+    expect([live.epochOf('antigravity'), live.epochOf('codex')]).toEqual([2, 0]);
+    live.set('x', 'live', undefined, 'codex');
+    live.delete('a');
+    expect([live.epochOf('antigravity'), live.epochOf('codex')]).toEqual([3, 1]);
+    expect(live.epochOf('claude')).toBe(0);
+  });
 });
