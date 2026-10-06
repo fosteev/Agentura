@@ -875,6 +875,7 @@ export const en: Ui = {
     fold: (name: string, folded: boolean) => `${folded ? 'Expand' : 'Collapse'}: ${name}`,
     accountLabels: { account: 'Account', plan: 'Plan', login: 'Login', agent: 'Agent' },
     agentName: 'Claude',
+    providerNames: { claude: 'Claude', codex: 'Codex' },
     unknown: '—',
     loadError: 'could not load',
     limitFive: '5-hour window',

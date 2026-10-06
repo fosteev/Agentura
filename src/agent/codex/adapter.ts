@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { realpathSync } from 'node:fs';
 import type {
   AccountInfo,
   AgentAdapter,
@@ -21,12 +22,15 @@ import type { LogFn } from '../claude/adapter';
 import { CodexRpcClient, type RpcId, type RpcProcess } from './client';
 import { CodexEventMapper, type NotedPrompt } from './mapper';
 import { CodexApprovals } from './approvals';
+import { buildCodexHistory } from './history';
 import type {
   AskForApproval,
   CodexRequestMethod,
   CodexRequests,
   Model,
   SandboxMode,
+  Thread,
+  ThreadListResponse,
   UserInput,
 } from './protocol';
 
@@ -64,6 +68,8 @@ export interface CodexAdapterConfig {
   timeoutMs?: number;
   /** Таймаут `thread/start|resume` и `turn/start` (ждут MCP/хуки пользователя), мс; истёк — сессия закрывается. */
   startTimeoutMs?: number;
+  /** Пауза между повторами `thread/resume` при «already has an active writer», мс (по умолчанию 3000). */
+  resumeRetryMs?: number;
   /** Сколько ждать выхода процесса после закрытия stdin, прежде чем убить; мс. */
   graceMs?: number;
   /** Подмена запуска процесса в тестах. */
@@ -76,6 +82,14 @@ const START_TIMEOUT_MS = 60_000;
 /** `thread/read` длинного треда и вывод команды больше мегабайта — лимит клиента по умолчанию мал. */
 const MAX_LINE_BYTES = 64 * 1024 * 1024;
 const DEFAULT_GRACE_MS = 2000;
+/** Список тредов: страница и потолок страниц (500 тредов проекта — дальше не листаем). */
+const LIST_PAGE = 100;
+const LIST_MAX_PAGES = 5;
+/** Один запрос короткого сервера (`thread/read` длинного треда читает rollout целиком). */
+const QUERY_TIMEOUT_MS = 30_000;
+/** `thread/resume` сразу после выхода процесса того же треда: писатель ещё не освобождён — ждём и повторяем. */
+const RESUME_RETRY_MS = 3000;
+const RESUME_RETRIES = 3;
 /** Сколько `interrupt()` ждёт `turn/completed`, прежде чем вернуть управление. */
 const INTERRUPT_WAIT_MS = 10_000;
 const EFFORTS: readonly string[] = ['low', 'medium', 'high', 'xhigh', 'max'];
@@ -104,19 +118,112 @@ export class CodexAdapter implements AgentAdapter {
     return new CodexSession(this.config, await this.executable(), options, sessionId);
   }
 
-  // История и список — этап 5: без `thread/list`/`thread/read` отдаём пустое, а не выдумываем.
-  async listSessions(): Promise<SessionInfo[]> {
-    return [];
+  /**
+   * Треды проекта: `thread/list` с фильтром `cwd` (и реальным путём, если папка — симлинк). Это и треды, начатые
+   * в Codex CLI: так же, как у Claude видны все сессии проекта. Субагентские и эфемерные не берём; архивные сервер
+   * не отдаёт сам. Сервер — короткоживущий процесс на запрос (запуск ~0,3 с, общий процесс держал бы writer-блокировки).
+   */
+  async listSessions(dir: string): Promise<SessionInfo[]> {
+    const cwds = [dir];
+    try {
+      const real = realpathSync(dir);
+      if (real !== dir) cwds.push(real);
+    } catch {
+      // папки нет — фильтр по заданному пути
+    }
+    const threads = await this.query(dir, async (rpc) => {
+      const out: Thread[] = [];
+      let cursor: string | null = null;
+      for (let page = 0; page < LIST_MAX_PAGES; page++) {
+        const res: ThreadListResponse = await rpc('thread/list', {
+          cwd: cwds.length === 1 ? dir : cwds,
+          limit: LIST_PAGE,
+          sortKey: 'updated_at',
+          sortDirection: 'desc',
+          ...(cursor ? { cursor } : {}),
+        });
+        out.push(...res.data);
+        cursor = res.nextCursor;
+        if (!cursor) break;
+      }
+      return out;
+    });
+    return threads.filter((t) => !t.parentThreadId && !t.ephemeral).map(sessionInfo);
   }
 
-  async loadHistory(): Promise<SessionHistory> {
-    return { events: [], turns: 0, skippedTurns: 0 };
+  /** `thread/read` с ходами → события ленты (`buildCodexHistory`). */
+  async loadHistory(
+    sessionId: string,
+    cwd: string,
+    options?: { live?: boolean; tasksAlive?: boolean; maxTurns?: number; stopBefore?: string },
+  ): Promise<SessionHistory> {
+    const res = await this.query(cwd, (rpc) => rpc('thread/read', { threadId: sessionId, includeTurns: true }));
+    return buildCodexHistory(res.thread, {
+      ...(options?.live ? { live: true } : {}),
+      ...(options?.maxTurns !== undefined ? { maxTurns: options.maxTurns } : {}),
+    });
   }
 
-  async renameSession(): Promise<void> {}
+  /** `thread/name/set`: имя хранит сам Codex (его видят и CLI, и список); файлы `~/.codex` не трогаем. */
+  async renameSession(sessionId: string, title: string, cwd: string): Promise<void> {
+    await this.query(cwd, (rpc) => rpc('thread/name/set', { threadId: sessionId, name: title }));
+  }
 
   async accountInfo(): Promise<AccountInfo> {
     return {};
+  }
+
+  /**
+   * Один короткий app-server: handshake → `fn` → закрытие stdin (штатный выход), через `graceMs` — убить.
+   * Для запросов вне сессии (список, история, имя); notifications и запросы сервера тут не нужны — на
+   * запросы сервера клиент сам отвечает отказом.
+   */
+  private async query<T>(
+    cwd: string,
+    fn: (rpc: <M extends CodexRequestMethod>(method: M, params: CodexRequests[M][0]) => Promise<CodexRequests[M][1]>) => Promise<T>,
+  ): Promise<T> {
+    const executable = await this.executable();
+    const proc = (this.config.spawn ?? defaultSpawn)(executable, ['app-server', '--listen', 'stdio://'], {
+      cwd,
+      env: this.config.env ?? process.env,
+    });
+    let exited = false;
+    proc.on('exit', () => (exited = true));
+    const log = this.config.log ?? (() => {});
+    const client = new CodexRpcClient(proc, {
+      timeoutMs: this.config.timeoutMs ?? 15_000,
+      maxLineBytes: MAX_LINE_BYTES,
+      onStderr: (line) => log('debug', `codex: ${line}`),
+    });
+    const rpc = <M extends CodexRequestMethod>(method: M, params: CodexRequests[M][0]): Promise<CodexRequests[M][1]> => {
+      this.config.trace?.('request', method, params);
+      return client.request<CodexRequests[M][1]>(method, params, QUERY_TIMEOUT_MS).then((result) => {
+        this.config.trace?.('response', method, result);
+        return result;
+      });
+    };
+    try {
+      await client.request('initialize', {
+        clientInfo: { name: 'agentura', title: 'Agentura', version: this.config.clientVersion ?? '0.0.0' },
+        capabilities: null,
+      });
+      client.notify('initialized');
+      return await fn(rpc);
+    } finally {
+      client.dispose();
+      try {
+        proc.stdin.end();
+      } catch {
+        // процесс уже мёртв
+      }
+      if (!exited) {
+        const timer = setTimeout(() => {
+          if (!exited) proc.kill();
+        }, this.config.graceMs ?? DEFAULT_GRACE_MS);
+        timer.unref?.();
+        proc.on('exit', () => clearTimeout(timer));
+      }
+    }
   }
 
   private async executable(): Promise<string> {
@@ -353,10 +460,36 @@ class CodexSession implements AgentSession {
       ...(this.config.thread?.sandbox ? { sandbox: this.config.thread.sandbox } : {}),
     };
     const session = this.resumedId
-      ? await this.rpc('thread/resume', { threadId: this.resumedId, excludeTurns: true, ...settings }, this.config.startTimeoutMs ?? START_TIMEOUT_MS)
+      ? await this.resumeThread(this.resumedId, settings)
       : await this.rpc('thread/start', settings, this.config.startTimeoutMs ?? START_TIMEOUT_MS);
     this.threadReady = true;
     this.emit(this.mapper.init(session, this.effort));
+  }
+
+  /**
+   * `thread/resume` с повтором: сразу после выхода предыдущего процесса того же треда сервер отвечает «already has
+   * an active writer» (блокировка отпускается с задержкой — живой прогон). Другая ошибка или исчерпанные
+   * повторы — как есть (тред ведёт, например, открытый Codex CLI — тогда карточка ошибки честная).
+   */
+  private async resumeThread(
+    threadId: string,
+    settings: Record<string, unknown>,
+  ): Promise<CodexRequests['thread/resume'][1]> {
+    const pause = this.config.resumeRetryMs ?? RESUME_RETRY_MS;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await this.rpc(
+          'thread/resume',
+          { threadId, excludeTurns: true, ...settings },
+          this.config.startTimeoutMs ?? START_TIMEOUT_MS,
+        );
+      } catch (error) {
+        if (!isWriterBusy(error) || attempt >= RESUME_RETRIES || this.closed) throw error;
+        this.log('info', `codex thread/resume: writer busy, retry ${attempt + 1} in ${pause} ms`);
+        await new Promise<void>((resolve) => setTimeout(resolve, pause));
+        if (this.closed) throw error;
+      }
+    }
   }
 
   /** Очередь сообщений: следующий `turn/start` — только после `turn/completed` предыдущего. */
@@ -544,6 +677,26 @@ class CodexSession implements AgentSession {
   private emitAll(events: AgentEvent[]): void {
     for (const event of events) this.emit(event);
   }
+}
+
+/** Строка списка: имя от пользователя, иначе начало первого сообщения; секунды Unix → мс. */
+function sessionInfo(t: Thread): SessionInfo {
+  const preview = t.preview.replace(/\s+/g, ' ').trim();
+  const title = t.name?.replace(/\s+/g, ' ').trim() || preview.slice(0, 120) || `Codex ${t.id.slice(0, 8)}`;
+  return {
+    id: t.id,
+    title,
+    ...(preview ? { firstPrompt: preview } : {}),
+    cwd: t.cwd,
+    createdAt: t.createdAt * 1000,
+    updatedAt: t.updatedAt * 1000,
+    provider: 'codex',
+  };
+}
+
+/** `thread/resume`: писатель треда — процесс, который ещё не вышел (наш прошлый или CLI). */
+function isWriterBusy(error: unknown): boolean {
+  return error instanceof Error && /already has an active writer/i.test(error.message);
 }
 
 function errorText(error: unknown): string {

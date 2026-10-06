@@ -1,5 +1,5 @@
 import { watch as fsWatch, existsSync, realpathSync, type FSWatcher } from 'node:fs';
-import type { AgentAdapter } from '../agent/types';
+import type { AgentAdapter, AgentProvider } from '../agent/types';
 import type { SessionSummary } from '../protocol';
 import {
   listSessionRows,
@@ -10,8 +10,18 @@ import {
   type TranscriptCache,
 } from '../data/sessions';
 
+/** Второй источник сессий — Codex: `thread/list` по папке проекта (свой индекс не ведём). */
+export interface CodexSessionsSource {
+  /** Адаптер Codex; создаётся лениво, пока Codex не нужен — не вызывается. */
+  adapter(): AgentAdapter;
+  /** Codex установлен и запускается; нет — его строк в списке нет и процесс не запускается. */
+  available(): Promise<boolean>;
+}
+
 export interface SessionsServiceDeps {
   adapter: AgentAdapter;
+  /** Нет — только Claude (тесты, окно без Codex). */
+  codex?: CodexSessionsSource;
   cwd: string;
   live: LiveSessions;
   cache: TranscriptCache;
@@ -30,6 +40,17 @@ export interface SessionsServiceDeps {
 
 export const DEFAULT_DEBOUNCE_MS = 800;
 export const DEFAULT_MAX_WAIT_MS = 4000;
+/**
+ * Список Codex-тредов — короткоживущий процесс на каждое чтение, поэтому его не перечитывают на каждый
+ * тик Claude-списка: только когда сменилась живая Codex-сессия, переименовали или истёк срок. Своего таймера
+ * нет: тред, начатый в Codex CLI, появится при следующей пересборке списка (событие Claude-транскриптов,
+ * живая сессия, открытие боковой панели) не раньше чем через срок.
+ */
+export const CODEX_TTL_MS = 30_000;
+/** Codex не найден или список не ответил: до следующей попытки столько мс. */
+const CODEX_BACKOFF_MS = 60_000;
+/** Первый показ: сколько Claude-список ждёт строк Codex, прежде чем выйти без них (они придут следующим проходом). */
+const CODEX_FIRST_WAIT_MS = 3000;
 /** Сколько раз подряд возвращать своё название сессии, которое перебивает движок. */
 const MAX_TITLE_REAPPLY = 5;
 
@@ -76,6 +97,18 @@ export class SessionsService {
    */
   private readonly pinned = new Map<string, { title: string; attempts: number }>();
   private readonly reapplying = new Set<string>();
+  /** Последние строки Codex и на какой момент они сняты (срок, эпоха живых Codex-сессий). */
+  private codexCache: { rows: SessionRow[]; at: number; epoch: number; rev: number } | undefined;
+  /** Растёт, когда строки точно устарели (переименование): кэш, снятый до этого, не годится. */
+  private codexRev = 0;
+  private codexFailed: { at: number; rev: number; epoch: number } | undefined;
+  private codexWarned = false;
+  /** Идущее чтение списка Codex (процесс) и просьба повторить его после. */
+  private codexJob: Promise<void> | undefined;
+  private codexAgain = false;
+  private codexLoading: { rev: number; epoch: number } | undefined;
+  /** Все id, когда-либо пришедшие из `thread/list`: маршрут rename, даже если строки в списке сейчас нет. */
+  private readonly codexKnown = new Set<string>();
 
   constructor(private readonly deps: SessionsServiceDeps) {}
 
@@ -134,14 +167,19 @@ export class SessionsService {
         });
       return this.rerun;
     }
-    const run = listSessionRows(this.deps.adapter, {
-      cwd: this.deps.cwd,
-      live: this.deps.live,
-      cache: this.deps.cache,
-      onError: (id, e) => this.deps.log.debug(`транскрипт ${id}: ${String(e)}`),
-    })
-      .then((rows) => {
-        this.applyPins(rows);
+    const run = Promise.all([
+      listSessionRows(this.deps.adapter, {
+        cwd: this.deps.cwd,
+        live: this.deps.live,
+        cache: this.deps.cache,
+        onError: (id, e) => this.deps.log.debug(`транскрипт ${id}: ${String(e)}`),
+      }),
+      this.codexRows(),
+    ])
+      .then(([claude, codex]) => {
+        // Claude-строки как были; Codex — рядом, общий порядок по времени
+        const rows = codex.length ? [...claude, ...codex] : claude;
+        this.applyPins(claude);
         rows.sort((a, b) => b.updatedAt - a.updatedAt);
         this.rows = rows;
         this.loaded = true;
@@ -160,6 +198,101 @@ export class SessionsService {
       });
     this.inflight = run;
     return run;
+  }
+
+  /**
+   * Строки Codex: `thread/list` по папке проекта. Claude-список Codex не ждёт: есть кэш — он отдаётся сразу, а
+   * перечитывание идёт в фоне и по готовности пересобирает список (`schedule`); кэша нет (первый показ) — ждём не
+   * дольше `CODEX_FIRST_WAIT_MS`. Процесс один на раз (`runCodex`). Сбой или отсутствие Codex список не ломают —
+   * остаются прошлые строки (или пусто), в журнал одно предупреждение; повтор не чаще раза в `CODEX_BACKOFF_MS`.
+   */
+  private async codexRows(): Promise<SessionRow[]> {
+    if (!this.deps.codex) return [];
+    const now = Date.now();
+    const cache = this.codexCache;
+    const epoch = this.deps.live.codexEpoch;
+    const rev = this.codexRev;
+    const fresh = cache && cache.rev === rev && cache.epoch === epoch && now - cache.at < CODEX_TTL_MS;
+    if (fresh) return this.withLive(cache.rows);
+    const failed = this.codexFailed;
+    if (failed && failed.rev === rev && failed.epoch === epoch && now - failed.at < CODEX_BACKOFF_MS) {
+      return this.withLive(cache?.rows ?? []);
+    }
+    const job = this.runCodex();
+    let done = false;
+    if (!cache) {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      done = await Promise.race([
+        job.then(() => true),
+        new Promise<boolean>((resolve) => (timer = setTimeout(() => resolve(false), CODEX_FIRST_WAIT_MS))),
+      ]);
+      clearTimeout(timer);
+    }
+    if (!done) void job.then(() => this.schedule());
+    return this.withLive(this.codexCache?.rows ?? []);
+  }
+
+  /**
+   * Перечитать список Codex: не больше одного процесса за раз; просьба во время чтения — ещё один проход после
+   * него (ключ кэша — эпоха живых сессий и переименования — мог смениться). Не бросает.
+   */
+  private runCodex(): Promise<void> {
+    if (this.codexJob) {
+      // идущее чтение снято по старому ключу — после него ещё одно; по тому же — просто дождаться его
+      const key = this.codexLoading;
+      if (key && (key.rev !== this.codexRev || key.epoch !== this.deps.live.codexEpoch)) this.codexAgain = true;
+      return this.codexJob;
+    }
+    const job = (async () => {
+      do {
+        this.codexAgain = false;
+        await this.loadCodex();
+      } while (this.codexAgain && !this.disposed);
+    })().finally(() => {
+      this.codexJob = undefined;
+    });
+    this.codexJob = job;
+    return job;
+  }
+
+  private async loadCodex(): Promise<void> {
+    const source = this.deps.codex;
+    if (!source || this.disposed) return;
+    const epoch = this.deps.live.codexEpoch;
+    const rev = this.codexRev;
+    this.codexLoading = { rev, epoch };
+    try {
+      if (!(await source.available())) {
+        this.codexFailed = { at: Date.now(), rev, epoch };
+        this.codexCache = undefined;
+        return;
+      }
+      const infos = await source.adapter().listSessions(this.deps.cwd);
+      const rows = infos.map(
+        (i): SessionRow => ({
+          ...i,
+          provider: 'codex',
+          state: 'idle',
+          turns: 0,
+          tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        }),
+      );
+      for (const r of rows) this.codexKnown.add(r.id);
+      this.codexCache = { rows, at: Date.now(), epoch, rev };
+      this.codexFailed = undefined;
+      this.codexWarned = false;
+    } catch (e) {
+      this.codexFailed = { at: Date.now(), rev, epoch };
+      if (!this.codexWarned) {
+        this.codexWarned = true;
+        this.deps.log.warn(`список тредов Codex: ${String(e)}`);
+      } else this.deps.log.debug(`список тредов Codex: ${String(e)}`);
+    }
+  }
+
+  /** Состояние живых сессий — поверх закэшированных строк (оно меняется чаще, чем список). */
+  private withLive(rows: readonly SessionRow[]): SessionRow[] {
+    return rows.map((r) => ({ ...r, state: this.deps.live.get(r.id)?.state ?? 'idle' }));
   }
 
   /** Последний известный список (или свежий, если ещё не читали). */
@@ -188,6 +321,16 @@ export class SessionsService {
   }
 
   async rename(sessionId: string, title: string): Promise<void> {
+    const provider = this.providerOf(sessionId);
+    if (provider === 'codex') {
+      // имя хранит сам Codex (`thread/name/set`): закрепление поверх перебивающего движка — только у Claude
+      await this.deps.codex!.adapter().renameSession(sessionId, title, this.cwdOf(sessionId));
+      this.codexRev++;
+      // новое имя — до пересборки списка (иначе строка мигнёт старым, пока фон перечитывает)
+      await this.runCodex();
+      await this.refresh();
+      return;
+    }
     await this.deps.adapter.renameSession(sessionId, title, this.cwdOf(sessionId));
     if (this.deps.live.get(sessionId)) this.pinned.set(sessionId, { title, attempts: 0 });
     else this.pinned.delete(sessionId);
@@ -223,6 +366,14 @@ export class SessionsService {
           this.schedule();
         });
     }
+  }
+
+  providerOf(sessionId: string): AgentProvider {
+    if (!this.deps.codex) return 'claude';
+    const row = this.rows.find((r) => r.id === sessionId);
+    // строки уже нет (Codex-список сбросили между кликом и переименованием) — id, однажды пришедший от Codex,
+    // всё равно не уходит Claude-адаптеру
+    return row?.provider === 'codex' || (!row && this.codexKnown.has(sessionId)) ? 'codex' : 'claude';
   }
 
   /** `cwd` сессии (у сессий worktree он свой), иначе папка проекта. */

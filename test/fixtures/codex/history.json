@@ -1,0 +1,155 @@
+{
+ "threadRead": {
+  "thread": {
+   "id": "019f0000-0000-7000-8000-000000000001",
+   "environments": null,
+   "extra": null,
+   "sessionId": "019f0000-0000-7000-8000-000000000001",
+   "forkedFromId": null,
+   "parentThreadId": null,
+   "preview": "Run the shell command `echo hello` and then create a file note.txt containing the word hi. Then reply with one short sentence.",
+   "ephemeral": false,
+   "section": null,
+   "sectionEnteredAt": null,
+   "projectId": null,
+   "historyMode": "paginated",
+   "modelProvider": "openai",
+   "model": "gpt-6-luna",
+   "reasoningEffort": "medium",
+   "createdAt": 1791275542,
+   "updatedAt": 1791275586,
+   "recencyAt": 1791275542,
+   "status": {
+    "type": "notLoaded"
+   },
+   "path": "/home/user/.codex/sessions/2026/10/06/rollout-2026-10-06T11-32-22-019f0000-0000-7000-8000-000000000001.jsonl",
+   "cwd": "/work",
+   "cliVersion": "0.160.0",
+   "originator": "agentura",
+   "source": "vscode",
+   "canAcceptDirectInput": null,
+   "threadSource": null,
+   "agentNickname": null,
+   "agentRole": null,
+   "gitInfo": null,
+   "name": null,
+   "daybreakEnabled": null,
+   "turns": [
+    {
+     "id": "019f0000-0000-7000-8000-0000000000a1",
+     "items": [
+      {
+       "type": "userMessage",
+       "id": "019f0000-0000-7000-8000-0000000000b1",
+       "clientId": null,
+       "content": [
+        {
+         "type": "text",
+         "text": "Run the shell command `echo hello` and then create a file note.txt containing the word hi. Then reply with one short sentence.",
+         "text_elements": []
+        }
+       ]
+      },
+      {
+       "type": "commandExecution",
+       "id": "exec-3c03a7af-f177-4900-8b5f-929b802029aa",
+       "pluginId": null,
+       "scriptPath": null,
+       "command": "/bin/zsh -lc 'echo hello'",
+       "cwd": "/work",
+       "processId": "1000",
+       "source": "unifiedExecStartup",
+       "status": "completed",
+       "commandActions": [
+        {
+         "type": "unknown",
+         "command": "echo hello"
+        }
+       ],
+       "aggregatedOutput": "hello\n",
+       "exitCode": 0,
+       "durationMs": 0
+      },
+      {
+       "type": "commandExecution",
+       "id": "exec-fdd70e5d-7a30-4756-8754-d3c9d7373192",
+       "pluginId": null,
+       "scriptPath": null,
+       "command": "/bin/zsh -lc \"printf 'hi' > note.txt\"",
+       "cwd": "/work",
+       "processId": "1000",
+       "source": "unifiedExecStartup",
+       "status": "completed",
+       "commandActions": [
+        {
+         "type": "unknown",
+         "command": "printf 'hi' > note.txt"
+        }
+       ],
+       "aggregatedOutput": null,
+       "exitCode": 0,
+       "durationMs": 0
+      },
+      {
+       "type": "agentMessage",
+       "id": "msg_fake0001",
+       "text": "Ran `echo hello` and created `note.txt` containing `hi`.",
+       "phase": "final_answer",
+       "memoryCitation": null,
+       "delivery": null,
+       "questions": null
+      }
+     ],
+     "itemsView": "full",
+     "status": "completed",
+     "error": null,
+     "startedAt": 1791275542,
+     "completedAt": 1791275586,
+     "durationMs": 44225
+    }
+   ]
+  }
+ },
+ "threadList": {
+  "data": [
+   {
+    "id": "019f0000-0000-7000-8000-000000000001",
+    "environments": null,
+    "extra": null,
+    "sessionId": "019f0000-0000-7000-8000-000000000001",
+    "forkedFromId": null,
+    "parentThreadId": null,
+    "preview": "Run the shell command `echo hello` and then create a file note.txt containing the word hi. Then reply with one short sentence.",
+    "ephemeral": false,
+    "section": null,
+    "sectionEnteredAt": null,
+    "projectId": null,
+    "historyMode": "paginated",
+    "modelProvider": "openai",
+    "model": "gpt-6-luna",
+    "reasoningEffort": "medium",
+    "createdAt": 1791275542,
+    "updatedAt": 1791275586,
+    "recencyAt": 1791275542,
+    "status": {
+     "type": "notLoaded"
+    },
+    "path": "/home/user/.codex/sessions/2026/10/06/rollout-2026-10-06T11-32-22-019f0000-0000-7000-8000-000000000001.jsonl",
+    "cwd": "/work",
+    "cliVersion": "0.160.0",
+    "originator": "agentura",
+    "source": "vscode",
+    "canAcceptDirectInput": null,
+    "threadSource": null,
+    "agentNickname": null,
+    "agentRole": null,
+    "gitInfo": null,
+    "name": null,
+    "daybreakEnabled": null,
+    "turns": []
+   }
+  ],
+  "nextCursor": null,
+  "backwardsCursor": null
+ }
+}

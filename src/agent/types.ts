@@ -467,6 +467,8 @@ export interface SessionInfo {
   createdAt?: number;
   updatedAt: number;
   fileSize?: number;
+  /** Чей это тред; нет — Claude (так отдаёт `ClaudeAdapter`). */
+  provider?: AgentProvider;
 }
 
 export interface AccountInfo {
