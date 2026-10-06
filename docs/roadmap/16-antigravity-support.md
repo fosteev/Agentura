@@ -1,6 +1,6 @@
 # 16 — Antigravity (Gemini) как третий движок
 
-> **Статус:** этап 2 принят 2026-10-06 — следующий: 3. Автопилот `/roadmap-run` в worktree
+> **Статус:** этап 3 принят 2026-10-06 — следующий: 4 (заблокирован до мержа этапа 3 Codex в main). Автопилот `/roadmap-run` в worktree
 > `/Users/fost/Projects/Agentura-gemini`, ветки `stage-<N>-agy-<slug>` от `feature/gemini-support`,
 > мерж в `feature/gemini-support`; в main — после этапа 4. Ручные проверки и решения —
 > `16-antigravity-support.pending.md`.
@@ -287,18 +287,88 @@ ERROR выходит, и сообщение из очереди уходило �
 
 **Сессия:** sonnet.
 
-- [ ] `listSessions(cwd)` — беседы этого воркспейса. Источник выбрать по факту (записать в
+- [x] `listSessions(cwd)` — беседы этого воркспейса. Источник выбрать по факту (записать в
       «Решения»): `conversation_summaries.db` через `node:sqlite`, если он доступен в extension
       host VS Code (проверить, не только в тестовом Node); иначе — перебор
       `brain/*/.system_generated/logs/transcript.jsonl` с воркспейсом из метаданных; иначе —
       собственный индекс бесед, начатых в Agentura (`globalState`). Заголовок: `title` или
       `preview` (без обёртки `<USER_REQUEST>`).
-- [ ] `loadHistory` — `transcript.jsonl` → события ленты через тот же маппер (USER_INPUT →
+- [x] `loadHistory` — `transcript.jsonl` → события ленты через тот же маппер (USER_INPUT →
       сообщение пользователя без `<USER_REQUEST>`/`<ADDITIONAL_METADATA>`, PLANNER_RESPONSE →
       текст и tool-вызовы, GENERIC → результаты).
-- [ ] `renameSession` — у agy нет API: своё имя в хранилище Agentura поверх `title`/`preview`.
+- [x] `renameSession` — у agy нет API: своё имя в хранилище Agentura поверх `title`/`preview`.
       Файлы `~/.gemini` только читать, никогда не писать.
-- [ ] Тесты на фикстурах транскрипта и summaries (очищенных). `npm run check` зелёный.
+- [x] Тесты на фикстурах транскрипта и summaries (очищенных). `npm run check` зелёный.
+- [ ] Пользователь: в живом VS Code открыть окно с папкой, где есть беседы agy, и убедиться, что (после этапа 4)
+      список не пуст, лента открытой беседы читаема, `resume` продолжает диалог, имя после rename переживает перезапуск.
+
+**Решения (2026-10-06, по итогам сессии 3):**
+
+- **Источник списка: `conversation_summaries.db` через динамический `import('node:sqlite')` + запасной индекс.**
+  Проверка: в VS Code 1.140 на этой машине Electron собран с Node 24.21 (строки в Electron Framework), `node:sqlite`
+  там есть; но `engines.vscode` расширения — `^1.100.0` (Electron 34, Node 20.x, `node:sqlite` нет), плюс форки (Cursor и др.).
+  Поэтому SQLite — предпочтительный путь, а не единственный: нет модуля/файла/схема другая → `undefined` и `debug`-строка,
+  список берётся из **индекса Agentura** (`sessionIndex.ts`, `globalState`: id, папка, время, первое сообщение — только бесед,
+  начатых или продолженных из Agentura). Перебор `brain/*/transcript.jsonl` отвергнут: воркспейс в транскрипте не записан
+  (он только в `init` стрима и в базе). **Не проверено внутри живого extension host** (там `node:sqlite` печатает
+  ExperimentalWarning в stderr и может быть выключен политикой сборки) — отсюда запасной путь, покрытый тестами.
+  esbuild оставляет `await import("node:sqlite")` как есть (проверено на пробной сборке адаптера).
+- **Чтение базы — по копии.** `conversation_summaries.db` (+`-wal`, `-shm`) копируется в `mkdtemp`, открывается там
+  (оригинал agy держит с WAL и не трогаем), копия удаляется. Файл > 64 МБ не копируем. Все запросы — `SELECT`; логика
+  путей — в `storage.ts` (единственный, кто знает схему; версия agy 1.2.17 в шапке). Выбираются только беседы
+  с `parent_conversation_id = ''` и `step_count > 0` (подбеседы и пустые не нужны). Сверено на копии базы владельца
+  (24 строки → 16 после фильтра, 11 воркспейсов, список по папке строится; содержимое в фикстуры/отчёт не попало).
+- **Привязка к папке** — точное совпадение пути воркспейса беседы (`workspace_uris`, JSON-массив `file://`, у беседы их
+  может быть несколько) с `cwd` чата: без слеша на конце, на Windows без регистра, плюс `realpath(cwd)` (macOS `/tmp`).
+  Беседы из подпапок/родителей не показываем.
+- **Заголовок**: свой (rename) → `title` agy → `preview` (без `<USER_REQUEST>`, одна строка, ≤200 символов) → id.
+  У headless `title` пуст, поэтому обычно это `preview`. `SessionInfo.cwd` = папка запроса, `updatedAt` = `last_modified_time`
+  (микросекунды отрезаны), `createdAt` — только если беседа есть в индексе.
+- **`renameSession`** — только запись в хранилище Agentura (`AgySessionIndex.rename`, пустое имя снимает своё).
+  Хранилище — подмножество `vscode.Memento` (`AgyStateStore`), конфиг адаптера `state`; **этап 4 передаёт
+  `context.globalState`**, пока не передан — в памяти процесса (имена не переживают перезапуск). `~/.gemini` не пишется
+  нигде (проверка: единственные операции — `copyFile` из него и `readFile`/`open 'r'`).
+- **Индекс Agentura**: сессия адаптера пишет `{id, cwd, createdAt, updatedAt, firstPrompt}` при первом `send` новой беседы
+  (или на `init`, если `send` был раньше) и на `init` продолженной (`firstPrompt` ≤300 символов, пишется один раз, у resume
+  не пишется); открытая пустая вкладка в индекс не попадает. Лимит 500 записей (вытесняются старые); имена — отдельным
+  ключом `agentura.antigravity.names` (≤200 символов), записи из `globalState` проверяются по типам. `[скоуп]` Текст первого сообщения хранится в `globalState` расширения — локально, как и сам agy у себя;
+  обратимо: убрать `firstPrompt` из `note` (тогда заголовок запасного списка — id).
+- **`loadHistory`** (`history.ts`, чистая `buildAgyHistory(steps)`, чтение — `readTranscriptHistory`: целиком до 32 МБ,
+  больше — последние 32 МБ с первого целого хода, ранние ходы считаются по маркеру `"type":"USER_INPUT"` потоком и идут в
+  `skippedTurns` → «N ранних ходов скрыто»): используется
+  `transcript_full.jsonl` (типизированные аргументы), а не `transcript.jsonl`. Соответствие: USER_INPUT → `turn.start`
+  (текст из `<USER_REQUEST>`, `<ADDITIONAL_METADATA>`/`<USER_SETTINGS_CHANGE>` отброшены); PLANNER_RESPONSE →
+  `usage.message` (по токенам шага, `tokenUsageOf`), `text.delta` (`agy-<индекс>`), `tool.start` на каждый вызов через
+  `mapAgyTool`; GENERIC (n-й после planner = n-й вызов) → `tool.result` с id `agy-<индекс GENERIC>` — **тот же id, что у
+  живого шага tool**; текст результата без шапки `Created At/Completed At`; ERROR → `isError` с `error`, отказ
+  (`permission check failed`) → `permissionDenials` `{toolName: карточка, toolUseId}`; результаты правок — тот же разбор,
+  что в живой ленте (`editResultFrom`, вынесен из `editResultOf`: ханки diff-блока, old/new, `type: create|update`).
+  RUNNING (фоновая команда) — результат «запущено», не ошибка. SYSTEM_MESSAGE пропускается. Ход завершён, если
+  последний шаг — PLANNER_RESPONSE без вызовов (если он `ERROR` — `ok:false, subtype:'error'`, текст в `errors`); иначе `turn.result` `ok:false, interrupted:true`, незакрытые инструменты —
+  `interrupted` (как у живой ленты при Stop); при `live: true` последний незавершённый ход остаётся открытым, а вызов без
+  результата получает id `agy-<planner+1+n>` — номер будущего шага tool, чтобы живое продолжение склеилось с карточкой.
+  Длительность хода — по `created_at`; `apiDurationMs` 0, стоимость 0. Служебное сообщение повтора после отказа
+  (`AGY_RETRY_PROMPT`) показывается ходом без пузыря (как в живой ленте, `silent`). `maxTurns` по умолчанию 200.
+- **Что в истории не восстанавливается.** `thinking` (есть в `transcript_full`, но живой стрим его не отдаёт — лента
+  должна совпадать с живой); режим разрешений и модель — в транскрипте их нет (только человекочитаемое «Gemini 3.8 Flash
+  (Low)» в служебной вставке), `SessionHistory.mode/model` не заданы: при resume эти значения берутся из опций
+  (`session.init` agy при `--conversation` модель всё равно передаём мы). `retryPoint`/`agentTranscript` для agy нет.
+- **Resume** на уровне адаптера уже работает с этапа 1 (`resumeSession` → `--conversation <id>`, нумерация шагов
+  сквозная); `loadHistory` + `resumeSession` дают то, что нужно этапу 4. Живого resume с реальной историей в этой сессии
+  не гоняли (квота), только на фейке и на реальных транскриптах владельца (разбор 17 бесед без падений: 87 вызовов
+  в самой длинной = 87 результатов, незавершённые ходы помечены interrupted).
+- **Проверки:** `TZ=UTC npm run check` зелёный, 1234 теста у исполнителя, 1242 после приёмки.
+- **Доводка на приёмке (2026-10-06, два прохода):** список из базы кэшируется по корню (размер+mtime базы и `-wal`; не
+  менялась — без копирования, сайдбар обновляется часто), сбой чтения копии (checkpoint agy посреди копирования) отдаёт
+  прошлый список, а не скачок к индексу; большой транскрипт — хвост с подсчётом скрытых ходов вместо пустой истории
+  (`readTranscriptFull` заменён на `readTranscriptHistory`); пустая вкладка не засоряет индекс; имена отдельным ключом
+  (запись индекса из другого окна их не затирает); битые значения `globalState` не роняют список; planner `ERROR` —
+  ошибка хода; ход-призрак из одних служебных шагов не строится. Проверено: бандл esbuild с адаптером под Node 20 —
+  `import('node:sqlite')` отклоняется, `listSessions` уходит в индекс без исключения.
+- **Промты следующих этапов:** этап 4 — передать в конфиг `AntigravityAdapter` `state: context.globalState` и
+  `agyRoot` не трогать; объединение бесед провайдеров в сайдбаре берёт `adapter.listSessions(cwd)` (возвращает
+  `SessionInfo` без `gitBranch`/`fileSize`); `loadHistory(id, cwd, {live, maxTurns})` — `cwd` игнорируется (id глобален в
+  `~/.gemini`).
 
 ### 4. Подключение к чату
 
@@ -383,9 +453,9 @@ interrupt и dispose. В UI адаптер не подключать. Новые
 
 Этап 3 «История». Источник списка выбери по проверке в extension host (см. этап), решение и
 причину — в «Решения». Фикстуры транскрипта/summaries — очищенные от путей и текста владельца.
-После этапа 2: чтение хранилища — в `storage.ts` (там уже `readTranscriptFull`, `defaultAgyRoot`, мягкая
+После этапа 2: чтение хранилища — в `storage.ts` (там уже `readTranscriptTail`, `defaultAgyRoot`, мягкая
 деградация), имена инструментов — `mapAgyTool` (`tools.ts`), ханки диффа — `parseDiffBlocks` (`patch.ts`);
-в `loadHistory` использовать их, а не заводить вторую таблицу. Связь результата правки с вызовом — `findEditDetail` (ближайший planner-шаг, номер вызова = число GENERIC между ними); для истории читать файл целиком `readTranscriptFull` (лимит 32 МБ).
+в `loadHistory` использовать их, а не заводить вторую таблицу. Связь результата правки с вызовом — `findEditDetail` (ближайший planner-шаг, номер вызова = число GENERIC между ними); для истории читать файл целиком (лимит 32 МБ).
 
 ### Промт 4
 
@@ -394,7 +464,17 @@ interrupt и dispose. В UI адаптер не подключать. Новые
 так же; свою параллельную инфраструктуру не заводить. Карточка отказа: данные уже есть
 (`turn.result.permissionDenials` с `toolName` = `Bash`/`Write`/`Edit`, `tool.result` isError), повтор —
 `isAgySession(session) && session.retryWithMode('acceptEdits' | 'bypassPermissions')` из `adapter.ts`
-(для `Bash` — только «всё»); общий `AgentSession` не расширять.
+(для `Bash` — только «всё»); общий `AgentSession` не расширять. Этап 3 дал адаптеру `listSessions`/`loadHistory`/
+`renameSession` (см. «Решения … сессии 3»): в конфиг `AntigravityAdapter` передать `state: context.globalState` (имена
+бесед и запасной индекс; без этого они живут только в памяти), в сайдбаре объединять `listSessions(cwd)` провайдеров.
+
+**По реальному коду (после приёмки этапа 3):** `listSessions(cwd)` дешёв при повторе (кэш по размеру/mtime базы agy), но
+сам сайдбар (`sessionsService.ts`) обновляется по `fs.watch` каталога Claude и статусам живых сессий — изменений в
+`~/.gemini` он не видит: дергать `refresh`/`schedule` на `turn.result` agy-сессий (и после `renameSession`), каталог
+`~/.gemini` не вотчить. `loadHistory(id, cwd, {live: true})` при пересеве открытой вкладки оставляет последний ход открытым
+с id будущих шагов tool — живые события склеиваются через обычный `mergeReplay`. `renameSession` пишет в `globalState`
+(ключи `agentura.antigravity.sessions`/`.names`). `node:sqlite` в extension host печатает ExperimentalWarning в лог хоста
+(не ошибка); нет модуля — молча запасной индекс.
 
 ### Промт 5
 

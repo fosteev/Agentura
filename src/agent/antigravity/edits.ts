@@ -1,5 +1,5 @@
 import { parseDiffBlocks } from './patch';
-import { readEditDetail, type StorageLog } from './storage';
+import { readEditDetail, type EditDetail, type StorageLog } from './storage';
 
 export interface EditLookup {
   root: string;
@@ -27,9 +27,18 @@ export async function editResultOf(
   options: { retries?: number; delayMs?: number; log?: StorageLog; signal?: AbortSignal } = {},
 ): Promise<Record<string, unknown> | undefined> {
   const detail = await readEditDetail(lookup.root, lookup.conversationId, lookup.stepIndex, lookup.agyName, lookup.targetFile, options);
-  if (!detail) return undefined;
+  return detail ? editResultFrom(detail, lookup.cardName, lookup.targetFile) : undefined;
+}
+
+/** То же из уже прочитанных вызова и результата (живая правка и история — один разбор). */
+export function editResultFrom(
+  detail: EditDetail,
+  cardName: string,
+  targetFile: string | undefined,
+): Record<string, unknown> | undefined {
   const hunks = parseDiffBlocks(detail.resultText);
   const args = detail.args;
+  const lookup = { cardName, targetFile };
   const result: Record<string, unknown> = {};
   if (lookup.targetFile) result['filePath'] = lookup.targetFile;
   if (lookup.cardName === 'Write') {
