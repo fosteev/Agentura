@@ -76,12 +76,29 @@ app-server даёт то же официально.
 
 ### 2. Webview: пять вариантов, настройки — **sonnet, high**, после 1
 
-- [ ] `EngineLimits` в `Sidebar.tsx`: stack / switch / table / active / header (+ всплывашка), один движок — как было
-- [ ] CSS из прототипа в `media/hud.css`; строки ru/en
-- [ ] строка «Лимиты движков» на странице «Боковая панель» настроек + та же строка в `prototype/screens/settings.html`
-- [ ] DOM-тесты вариантов; `npm run check` зелёный
+- [x] `EngineLimits` в `Sidebar.tsx`: stack / switch / table / active / header (+ всплывашка), один движок — как было
+- [x] CSS из прототипа в `media/hud.css`; строки ru/en
+- [x] строка «Лимиты движков» на странице «Боковая панель» настроек + та же строка в `prototype/screens/settings.html`
+- [x] DOM-тесты вариантов; `npm run check` зелёный
+
+### Решения по итогам этапа 2 (2026-10-07)
+
+- Модель — `src/webview/engineLimitsView.ts` (`buildEngines`, `worstWindow`, `pickEngine`), отрисовка —
+  `src/webview/components/EngineLimits.tsx`; CSS в конце `media/hud.css`, селекторы под `.sidebar` (общие имена
+  `.grid`, `.one`, `.pop` уже заняты).
+- Строка настройки — выпадающий список (как «Движок по умолчанию»), без карточек с превью.
+- В E мини-шкалы — кнопка `.mm` (клавиатура и клик открывают всплывашку).
+- «Горячий» уровень (≤ 70 %) в вариантах A–E — оранжевый, как в прототипе; в однодвижковой секции Claude полоса
+  по-прежнему серая — не трогали.
+- Claude в мультидвижковых вариантах всегда `ok` (его окна приходят отдельно и своё «нет данных» показывают как раньше).
+- Приёмка: «войти» запускает найденный исполняемый файл (путь из настройки тоже) прямо в терминале
+  (`shellPath`/`shellArgs`), а не `sendText` голого имени.
 
 ### 3. Галерея «настоящий webview», CHANGELOG, документация — **сам (Opus), после приёмки 2**
+
+- [x] кадры `limits-real-*` (рендер `dist/webview/sidebar.js` + чат, 1324×760) — галерея, раздел `#limits-real`
+- [x] CHANGELOG (Unreleased)
+- [ ] ручная проверка в VS Code — `18-engine-limits.pending.md`
 
 ## Промты
 

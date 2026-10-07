@@ -69,6 +69,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         case 'limits.refresh':
           void this.refreshUsage();
           break;
+        case 'engine.login':
+          void this.openLogin(m.engine);
+          break;
         case 'ready':
           // Опрос лимитов идёт с активации; открытой позже панели отдаём снимок (в кулдауне — из кэша).
           void this.refreshUsage();
@@ -174,6 +177,17 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       this.log.warn(`переименование ${sessionId}: ${String(e)}`);
       void vscode.window.showWarningMessage(hostStrings(currentLanguage()).renameFailed(String(e)));
     }
+  }
+
+  /**
+   * «войти» у движка без входа: терминал, в котором сразу запущен найденный исполняемый файл (путь из настройки
+   * тоже), без shell и кавычек — `codex login` / `agy`. Не нашли — команда по имени из PATH.
+   */
+  private async openLogin(engine: 'codex' | 'antigravity'): Promise<void> {
+    const loc = engine === 'codex' ? this.engines.codexEngine : this.engines.antigravityEngine;
+    const exe = (await loc.locate(true).catch(() => undefined))?.path ?? (engine === 'codex' ? 'codex' : 'agy');
+    const args = engine === 'codex' ? ['login'] : [];
+    vscode.window.createTerminal({ name: [engine === 'codex' ? 'codex' : 'agy', ...args].join(' '), shellPath: exe, shellArgs: args }).show();
   }
 
   /** Сводка Codex и Antigravity → `engines.limits`; не установленный движок приходит как `missing`. */

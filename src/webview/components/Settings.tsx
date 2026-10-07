@@ -7,6 +7,7 @@ import {
   MAX_POLL_MINUTES,
   MIN_POLL_MINUTES,
   SESSION_LIST_MODES,
+  SIDEBAR_LIMITS_MODES,
   SIDEBAR_TOP_MODES,
   COMPOSER_LAYOUTS,
   FEED_STYLES,
@@ -34,7 +35,14 @@ import {
   settingsValues,
 } from '../settingsStore';
 import { ui, uiLang } from '../strings';
-import { AgentsPreview, ChoiceCards, ComposerPreview, FeedPreview, GitPreview, SidebarPreview } from './SettingsPreview';
+import {
+  AgentsPreview,
+  ChoiceCards,
+  ComposerPreview,
+  FeedPreview,
+  GitPreview,
+  SidebarPreview,
+} from './SettingsPreview';
 import { fontStack } from '../appearance';
 import { codeFonts, installedFonts, uiFonts, userFonts } from '../fonts';
 import {
@@ -404,7 +412,8 @@ function EngineRow({ value, engine = 'claude' }: { value: string; engine?: Engin
   const [draft, setDraft] = useDraft(value);
   const k = ENGINE_KEY[engine];
   const text = engine === 'codex' ? T.exeCodex : engine === 'antigravity' ? T.exeAgy : T.exe;
-  const c = (engine === 'codex' ? codexCheck : engine === 'antigravity' ? agyCheck : engineCheck).value;
+  const c = (engine === 'codex' ? codexCheck : engine === 'antigravity' ? agyCheck : engineCheck)
+    .value;
   const r = c.result;
   const save = (text: string) => {
     if (text.trim() !== value) commit(k, text);
@@ -425,7 +434,12 @@ function EngineRow({ value, engine = 'claude' }: { value: string; engine?: Engin
           if (e.key === 'Enter') save((e.currentTarget as HTMLInputElement).value);
         }}
       />
-      <button type="button" class="btn" disabled={c.pending} onClick={() => checkEngine(draft, engine)}>
+      <button
+        type="button"
+        class="btn"
+        disabled={c.pending}
+        onClick={() => checkEngine(draft, engine)}
+      >
         {c.pending ? T.exe.checking : T.exe.check}
       </button>
     </Row>
@@ -702,6 +716,16 @@ export function Settings() {
                 }
               >
                 {null}
+              </Row>
+              <Row name={T.sidebarLimits.name} isNew desc={T.sidebarLimits.desc} k="sidebar.limits">
+                <Select
+                  k="sidebar.limits"
+                  value={v['sidebar.limits']}
+                  options={SIDEBAR_LIMITS_MODES.map((m): [string, string] => [
+                    m,
+                    T.sidebarLimits.options[m] ?? m,
+                  ])}
+                />
               </Row>
               <Row
                 name={T.listView.name}

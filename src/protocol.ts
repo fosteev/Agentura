@@ -363,6 +363,8 @@ export type FromWebview =
   /** Выбор движка в пустой вкладке (до первого сообщения); хост запоминает его как дефолт новых чатов. */
   | { type: 'engine.set'; provider: AgentProvider }
   | { type: 'limits.refresh' }
+  /** «войти» у движка без входа (боковая панель, лимиты движков): хост открывает терминал с командой входа. */
+  | { type: 'engine.login'; engine: 'codex' | 'antigravity' }
   | { type: 'session.resume'; sessionId: string; provider?: AgentProvider }
   /** Этап 6: переименование по двойному клику в списке (B9). */
   | { type: 'session.rename'; sessionId: string; title: string }
@@ -502,6 +504,7 @@ const FROM_WEBVIEW_TYPES: Record<FromWebview['type'], true> = {
   'session.new': true,
   'engine.set': true,
   'limits.refresh': true,
+  'engine.login': true,
   'session.resume': true,
   'session.rename': true,
   'turn.retry': true,
@@ -542,6 +545,7 @@ const gitFiles = (m: Record<string, unknown>): boolean => str(m.root) && strings
  */
 const FIELD_CHECKS: Partial<Record<FromWebview['type'], (m: Record<string, unknown>) => boolean>> = {
   'engine.set': (m) => m.provider === 'claude' || m.provider === 'codex' || m.provider === 'antigravity',
+  'engine.login': (m) => m.engine === 'codex' || m.engine === 'antigravity',
   'agy.retry': (m) => m.mode === 'acceptEdits' || m.mode === 'bypassPermissions',
   'agents.openGraph': (m) => m.agentId === undefined || typeof m.agentId === 'string',
   'agents.snapshot': (m) => typeof m.sessionId === 'string' && isAgentGraphView(m.graph),

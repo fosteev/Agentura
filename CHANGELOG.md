@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Limits of every engine in the sidebar.** "Accounts & limits" now shows Claude, Codex and Antigravity side by
+  side once more than one engine is installed (only Claude installed — the section looks as before).
+  `agentura.sidebar.limits` picks the layout: `active` (default — the engine of the current chat tab expanded, the
+  others one line with their worst limit), `stack`, `switch`, `table` or `header` (mini bars in the panel title with
+  a popup). Also on the "Sidebar" settings page and in "Agentura: Limits View…". With `agentura.sidebar.top` set to
+  `dense` the limits always go to the header.
+  - Codex limits come from `codex app-server` (`account/rateLimits/read`, `account/read`): 5-hour and weekly windows,
+    plan and email. Antigravity quota comes from `agy /usage` as before, shown as used instead of remaining.
+  - ↻ and the background poll refresh all engines; an engine you are not signed in to shows "sign in", which opens a
+    terminal with `codex login` / `agy`.
+
 ## 0.6.0 — 2026-10-06
 
 ### Added

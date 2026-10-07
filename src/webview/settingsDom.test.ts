@@ -125,6 +125,7 @@ describe('вкладка настроек', () => {
       'agentura.usagePollMinutes · не меньше 5',
       'agentura.limits.readKeychain',
       'agentura.sidebar.top',
+      'agentura.sidebar.limits',
       'agentura.sessionList.view',
       'agentura.sessionList.context',
       'agentura.sessionList.time',

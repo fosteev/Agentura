@@ -1,13 +1,22 @@
 import { signal } from '@preact/signals';
 import { useEffect, useRef } from 'preact/hooks';
-import type { AccountSummary, LimitWindowSummary, SessionSummary } from '../../protocol';
+import type { AgentProvider } from '../../agent/types';
+import type {
+  AccountSummary,
+  EngineLimitsSummary,
+  LimitWindowSummary,
+  SessionSummary,
+} from '../../protocol';
 import {
   DEFAULT_SESSION_LIST,
+  DEFAULT_SIDEBAR_LIMITS,
   DEFAULT_SIDEBAR_TOP,
   nextSessionListMode,
   type SessionListMode,
+  type SidebarLimitsMode,
   type SidebarTopMode,
 } from '../../settings';
+import { buildEngines } from '../engineLimitsView';
 import { limitLevel } from '../hudView';
 import { ui, uiLang } from '../strings';
 import {
@@ -21,10 +30,22 @@ import {
   whenLabel,
 } from '../sessionsView';
 import { onHostMessage, readFold, saveFold, send, type SidebarFold } from '../vscode';
+import {
+  EngineHeaderLimits,
+  EngineLimitsBody,
+  EnginePopup,
+  engineLimitsTitle,
+} from './EngineLimits';
 
 const windows = signal<LimitWindowSummary[]>([]);
 const usage = signal<{ pending: boolean; updatedAt?: number; error?: string }>({ pending: false });
 const account = signal<AccountSummary | undefined>(undefined);
+/** Лимиты Codex и Antigravity (`engines.limits`); нет — хост ещё не прислал, показывается только Claude. */
+const engineLimits = signal<EngineLimitsSummary[] | undefined>(undefined);
+/** Движок активной вкладки чата (`sessions.update.currentProvider`). */
+const provider = signal<AgentProvider | undefined>(undefined);
+/** Вид лимитов при ≥ 2 движках (`agentura.sidebar.limits`). */
+const limitsMode = signal<SidebarLimitsMode>(DEFAULT_SIDEBAR_LIMITS);
 const sessions = signal<SessionSummary[]>([]);
 const current = signal<string | undefined>(undefined);
 const project = signal('');
@@ -249,14 +270,19 @@ export function Sidebar() {
         case 'account.info':
           account.value = m;
           break;
+        case 'engines.limits':
+          engineLimits.value = m.engines;
+          break;
         case 'sidebar.view':
           listMode.value = m.view;
           topMode.value = m.top ?? DEFAULT_SIDEBAR_TOP;
+          limitsMode.value = m.limits ?? DEFAULT_SIDEBAR_LIMITS;
           listCols.value = { context: m.context, time: m.time };
           break;
         case 'sessions.update':
           sessions.value = m.sessions;
           current.value = m.current;
+          provider.value = m.currentProvider;
           if (m.project) project.value = m.project;
           now.value = Date.now();
           break;
@@ -277,6 +303,7 @@ export function Sidebar() {
         list: listMode.value,
         context: listCols.value.context,
         time: listCols.value.time,
+        limits: limitsMode.value,
       }}
       data={{
         windows: windows.value,
@@ -285,6 +312,8 @@ export function Sidebar() {
         current: current.value,
         project: project.value,
         now: now.value,
+        engines: engineLimits.value,
+        provider: provider.value,
       }}
     />
   );
@@ -296,6 +325,8 @@ export interface SidebarLook {
   list: SessionListMode;
   context: boolean;
   time: boolean;
+  /** Вид лимитов при ≥ 2 движках; нет — по умолчанию. */
+  limits?: SidebarLimitsMode;
 }
 
 /** Данные панели: живые — из сообщений хоста, в превью настроек — фикстура. */
@@ -306,6 +337,10 @@ export interface SidebarData {
   current: string | undefined;
   project: string;
   now: number;
+  /** Лимиты Codex и Antigravity; нет — одни Claude (прежняя разметка). */
+  engines?: EngineLimitsSummary[] | undefined;
+  /** Движок активной вкладки. */
+  provider?: AgentProvider | undefined;
 }
 
 /**
@@ -322,6 +357,13 @@ export function SidebarView({ look, data }: { look: SidebarLook; data: SidebarDa
   const f = fold.value;
   const limits = limitRows(data.windows, n);
   const top = look.top;
+  // установленных движков ≥ 2 → вариант из настройки (`dense` — всегда в заголовке); иначе прежняя разметка
+  const engines = buildEngines(data.windows, data.account, data.engines, n);
+  const multi = engines.length >= 2;
+  const variant: SidebarLimitsMode =
+    top === 'dense' ? 'header' : (look.limits ?? DEFAULT_SIDEBAR_LIMITS);
+  const inHeader = multi && variant === 'header';
+  const refresh = { pending: u.pending, title: refreshTitle(), onClick: refreshUsage };
   return (
     <div
       class="sidebar"
@@ -334,7 +376,7 @@ export function SidebarView({ look, data }: { look: SidebarLook; data: SidebarDa
       <div
         class="head"
         data-tip={
-          top === 'dense'
+          top === 'dense' && !multi
             ? accountRows(data.account)
                 .map(([k, v]) => `${k}: ${v}`)
                 .join('\n')
@@ -342,7 +384,8 @@ export function SidebarView({ look, data }: { look: SidebarLook; data: SidebarDa
         }
       >
         <span>{ui.sidebar.head}</span>
-        {top === 'dense' && (
+        {inHeader && <EngineHeaderLimits engines={engines} refresh={refresh} />}
+        {top === 'dense' && !multi && (
           <span class="hl">
             {limits
               .filter((l) => l.mini)
@@ -382,44 +425,66 @@ export function SidebarView({ look, data }: { look: SidebarLook; data: SidebarDa
           {ui.sidebar.gear}
         </button>
       </div>
-      <section class={f.account ? 'sec acc folded' : 'sec acc'}>
-        <h3 {...foldProps('account', ui.sidebar.account)}>
-          <span class="tri" />
-          {ui.sidebar.account}
-          <button
-            class={u.pending ? 'refresh busy' : 'refresh'}
-            data-tip={refreshTitle()}
-            aria-label={ui.sidebar.refreshTitle}
-            aria-busy={u.pending}
-            disabled={u.pending}
-            onClick={refreshUsage}
-          >
-            {ui.sidebar.refresh}
-          </button>
-        </h3>
-        <div class="kv">
-          {accountRows(data.account).map(([k, v]) => (
+      {inHeader && <EnginePopup engines={engines} />}
+      {!inHeader && (
+        <section
+          class={`sec acc${multi ? ' multi' : ''}${f.account ? ' folded' : ''}`}
+          data-limits={multi ? variant : undefined}
+        >
+          <h3 {...foldProps('account', multi ? engineLimitsTitle(variant) : ui.sidebar.account)}>
+            <span class="tri" />
+            {multi ? engineLimitsTitle(variant) : ui.sidebar.account}
+            <button
+              class={u.pending ? 'refresh busy' : 'refresh'}
+              data-tip={refreshTitle()}
+              aria-label={ui.sidebar.refreshTitle}
+              aria-busy={u.pending}
+              disabled={u.pending}
+              onClick={refreshUsage}
+            >
+              {ui.sidebar.refresh}
+            </button>
+          </h3>
+          {multi ? (
+            <EngineLimitsBody
+              variant={variant as Exclude<SidebarLimitsMode, 'header'>}
+              engines={engines}
+              current={data.provider}
+            />
+          ) : (
             <>
-              <span>{k}</span>
-              <b data-tip={v}>{v}</b>
+              <div class="kv">
+                {accountRows(data.account).map(([k, v]) => (
+                  <>
+                    <span>{k}</span>
+                    <b data-tip={v}>{v}</b>
+                  </>
+                ))}
+              </div>
+              {top === 'compact' && <AccountLine a={data.account} />}
+              <div class="lim">
+                {limits.map((l) => (
+                  <div
+                    class="row"
+                    key={l.key}
+                    data-tip={[l.label, l.note].filter(Boolean).join(' · ')}
+                  >
+                    <span>{l.label}</span>
+                    <span class={l.full ? 'n full' : 'n'}>{l.percent} %</span>
+                    <span class="bar">
+                      <i class={l.full ? 'full' : ''} style={{ width: `${l.percent}%` }} />
+                    </span>
+                    {l.note && <small>{l.note}</small>}
+                    {top === 'compact' && l.reset && (
+                      <em class="rs">{ui.sidebar.resetShort(l.reset)}</em>
+                    )}
+                  </div>
+                ))}
+              </div>
             </>
-          ))}
-        </div>
-        {top === 'compact' && <AccountLine a={data.account} />}
-        <div class="lim">
-          {limits.map((l) => (
-            <div class="row" key={l.key} data-tip={[l.label, l.note].filter(Boolean).join(' · ')}>
-              <span>{l.label}</span>
-              <span class={l.full ? 'n full' : 'n'}>{l.percent} %</span>
-              <span class="bar">
-                <i class={l.full ? 'full' : ''} style={{ width: `${l.percent}%` }} />
-              </span>
-              {l.note && <small>{l.note}</small>}
-              {top === 'compact' && l.reset && <em class="rs">{ui.sidebar.resetShort(l.reset)}</em>}
-            </div>
-          ))}
-        </div>
-      </section>
+          )}
+        </section>
+      )}
       <section class={f.sessions ? 'sec folded' : 'sec'}>
         <h3 {...foldProps('sessions', ui.sidebar.sessions)}>
           <span class="tri" />
