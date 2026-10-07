@@ -28,6 +28,7 @@ import type {
   ComposerLayout,
   SessionListMode,
   SettingKey,
+  SidebarLimitsMode,
   SidebarTopMode,
   SettingsValues,
 } from './settings';
@@ -217,7 +218,14 @@ export type ToWebview =
    * Список сессий проекта (этап 6). Боковая панель получает все, вкладка чата — короткий хвост для
    * попапа и экрана empty; `current` — сессия активной вкладки (строка `cur` в списке), `project` — имя папки.
    */
-  | { type: 'sessions.update'; sessions: SessionSummary[]; current?: string; project?: string }
+  | {
+      type: 'sessions.update';
+      sessions: SessionSummary[];
+      current?: string;
+      project?: string;
+      /** Движок активной вкладки чата (`current` лимитов движков); нет вкладок — не задан. */
+      currentProvider?: AgentProvider;
+    }
   /**
    * Этап 6: история возобновлённой (или пересеянной после пересоздания webview) сессии. Webview
    * сбрасывает ленту и приборы, снимает фильтр брошенной сессии и прогоняет `events` тем же
@@ -243,6 +251,8 @@ export type ToWebview =
       time: boolean;
       /** Вид верха панели (`agentura.sidebar.top`). */
       top: SidebarTopMode;
+      /** Вид лимитов всех движков при ≥ 2 установленных (`agentura.sidebar.limits`). */
+      limits: SidebarLimitsMode;
     }
   /** Этап 6: аккаунт для боковой панели. */
   | ({ type: 'account.info' } & AccountSummary)
@@ -255,6 +265,11 @@ export type ToWebview =
       updatedAt: number;
       error?: string;
     }
+  /**
+   * Лимиты Codex и Antigravity для боковой панели (roadmap 18). Claude едет прежними `limits.update` и
+   * `account.info`. Движок без исполняемого файла приходит с `state: 'missing'` (не показывается).
+   */
+  | { type: 'engines.limits'; engines: EngineLimitsSummary[] }
   /** Квота Antigravity (`agy -p "/usage"`): строки по семействам моделей; пусто — не показываем. */
   | { type: 'quota.update'; rows: QuotaRow[]; updatedAt: number }
   /**
@@ -408,6 +423,26 @@ export interface AccountSummary {
   error?: string;
   /** `claude 2.1.285` — из `session.init.claude_code_version`; нет, пока ни одна сессия не стартовала. */
   engine?: string;
+}
+
+export type EngineLimitsState = 'ok' | 'signedOut' | 'missing' | 'error' | 'loading';
+export interface EngineWindowSummary {
+  kind: 'fiveHour' | 'weekly' | 'model';
+  /** У `model` — имя от источника (`Gemini`, `Claude/GPT`, имя доп. лимита Codex); у остальных — нет. */
+  name?: string;
+  /** Израсходовано, 0…100 (у agy — 100 − остаток). */
+  percent: number;
+  resetsAt?: number; // мс
+}
+export interface EngineLimitsSummary {
+  engine: 'codex' | 'antigravity';
+  state: EngineLimitsState;
+  email?: string;
+  plan?: string; // `Plus`, `Pro` — planType с заглавной
+  version?: string; // `codex 0.160.0` / `agy 1.4` — если уже известна локатору, иначе нет
+  windows: EngineWindowSummary[];
+  updatedAt: number;
+  error?: string;
 }
 
 export interface SessionSummary {

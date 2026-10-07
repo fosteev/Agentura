@@ -227,6 +227,7 @@ describe('боковая панель (sessions.html)', () => {
       context: true,
       time: false,
       top: 'detailed',
+      limits: 'active',
     });
     sidebarMessages({
       type: 'sessions.update',
@@ -258,6 +259,7 @@ describe('боковая панель (sessions.html)', () => {
       context: true,
       time: true,
       top: 'compact',
+      limits: 'active',
     });
     sidebarMessages({
       type: 'account.info',
@@ -290,6 +292,7 @@ describe('боковая панель (sessions.html)', () => {
       context: true,
       time: true,
       top: 'dense',
+      limits: 'active',
     });
     await flush();
     expect(bar.dataset.top).toBe('dense');

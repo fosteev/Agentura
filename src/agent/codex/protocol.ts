@@ -307,6 +307,29 @@ export interface ModelListResponse {
   nextCursor: string | null;
 }
 
+/** Окно лимита `account/rateLimits/read`: `usedPercent` 0…100, `resetsAt` — epoch в секундах. */
+export interface CodexRateLimitWindow {
+  usedPercent: number;
+  windowDurationMins?: number | null;
+  resetsAt?: number | null;
+}
+export interface CodexRateLimitSnapshot {
+  limitId?: string | null;
+  limitName?: string | null;
+  primary?: CodexRateLimitWindow | null;
+  secondary?: CodexRateLimitWindow | null;
+  planType?: string | null;
+  credits?: unknown;
+}
+export interface CodexRateLimitsResponse {
+  rateLimits: CodexRateLimitSnapshot;
+  rateLimitsByLimitId?: Record<string, CodexRateLimitSnapshot> | null;
+}
+export interface CodexAccountResponse {
+  account: { type: string; email?: string | null; planType?: string | null } | null;
+  requiresOpenaiAuth?: boolean;
+}
+
 /** Метод → [params, result] для `CodexRpcClient.request`. */
 export interface CodexRequests {
   initialize: [InitializeParams, InitializeResponse];
@@ -320,6 +343,8 @@ export interface CodexRequests {
   'turn/interrupt': [TurnInterruptParams, Record<string, never>];
   'turn/steer': [TurnSteerParams, { turnId: string }];
   'model/list': [ModelListParams, ModelListResponse];
+  'account/rateLimits/read': [Record<string, never> | undefined, CodexRateLimitsResponse];
+  'account/read': [{ refreshToken: boolean }, CodexAccountResponse];
 }
 export type CodexRequestMethod = keyof CodexRequests;
 

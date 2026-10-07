@@ -48,6 +48,7 @@ const values: SettingsValues = {
   'sessionList.context': true,
   'sessionList.time': true,
   'sidebar.top': 'detailed',
+  'sidebar.limits': 'active',
   'feed.style': 'journal',
   'composer.layout': 'classic',
   'agents.view': 'list',

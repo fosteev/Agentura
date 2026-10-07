@@ -6,7 +6,9 @@ import {
   COMPOSER_LAYOUTS,
   DEFAULT_AGENTS_VIEW,
   DEFAULT_COMPOSER_LAYOUT, DEFAULT_GIT_LAYOUT,
+  DEFAULT_SIDEBAR_LIMITS,
   GIT_LAYOUTS,
+  SIDEBAR_LIMITS_MODES,
 } from './settings';
 
 const root = join(__dirname, '..');
@@ -101,5 +103,25 @@ describe('agentura.composer.layout', () => {
 
   it('команда выбора раскладки объявлена', () => {
     expect(pkg.contributes.commands.map((c) => c.command)).toContain('agentura.composerLayout');
+  });
+});
+
+describe('agentura.sidebar.limits', () => {
+  const pkg = read('package.json') as {
+    contributes: {
+      configuration: { properties: Record<string, { enum?: string[]; enumDescriptions?: string[]; default?: string }> };
+      commands: { command: string }[];
+    };
+  };
+  const prop = pkg.contributes.configuration.properties['agentura.sidebar.limits']!;
+
+  it('enum и значение по умолчанию совпадают с настройкой в коде, у каждого значения есть описание', () => {
+    expect(prop.enum).toEqual([...SIDEBAR_LIMITS_MODES]);
+    expect(prop.default).toBe(DEFAULT_SIDEBAR_LIMITS);
+    expect(prop.enumDescriptions).toHaveLength(SIDEBAR_LIMITS_MODES.length);
+  });
+
+  it('команда выбора вида объявлена', () => {
+    expect(pkg.contributes.commands.map((c) => c.command)).toContain('agentura.sidebarLimits');
   });
 });

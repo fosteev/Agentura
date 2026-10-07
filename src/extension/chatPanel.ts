@@ -236,6 +236,12 @@ export class ChatPanel {
     );
   }
 
+  /** Движок активной (или последней активной) вкладки — «текущий» для лимитов боковой панели. */
+  static currentProvider(): AgentProvider | undefined {
+    const p = ChatPanel.panels.find((x) => x.panel.active) ?? ChatPanel.lastActive;
+    return p?.provider;
+  }
+
   private static views(): PanelView[] {
     return ChatPanel.panels.map((p) => ({
       sessionId: p.controller.sessionId,
@@ -372,14 +378,17 @@ export class ChatPanel {
         p === 'codex' ? services.codexEngine : p === 'antigravity' ? services.antigravityEngine : undefined,
       // только User (`Global`): настройка application-scope; отказ (политика, битый settings.json) — в журнал.
       // `claude` — значение по умолчанию: ключ убираем, а не пишем его явно
-      rememberProvider: (p) =>
+      rememberProvider: (p) => {
         void Promise.resolve()
           .then(() =>
             vscode.workspace
               .getConfiguration('agentura')
               .update('defaultProvider', p === 'claude' ? undefined : p, vscode.ConfigurationTarget.Global),
           )
-          .catch((e: unknown) => log.warn(`agentura.defaultProvider не записан: ${String(e)}`)),
+          .catch((e: unknown) => log.warn(`agentura.defaultProvider не записан: ${String(e)}`));
+        // движок вкладки сменился (контроллер ставит его сразу после): боковая панель перечитывает `currentProvider`
+        queueMicrotask(() => ChatPanel.changed.fire());
+      },
       cwd: folder.uri.fsPath,
       project: folder.name,
       post: (m) => postToWebview(panel.webview, m),

@@ -33,6 +33,13 @@ export const SIDEBAR_TOP_MODES = ['detailed', 'compact', 'dense'] as const;
 export type SidebarTopMode = (typeof SIDEBAR_TOP_MODES)[number];
 export const DEFAULT_SIDEBAR_TOP: SidebarTopMode = 'detailed';
 /**
+ * Вид лимитов всех движков (`sidebar.limits`, roadmap 18), когда установлено ≥ 2 движков: `stack` — стопка карточек,
+ * `switch` — переключатель движков, `table` — таблица, `active` — активный движок подробно, `header` — в заголовке.
+ */
+export const SIDEBAR_LIMITS_MODES = ['stack', 'switch', 'table', 'active', 'header'] as const;
+export type SidebarLimitsMode = (typeof SIDEBAR_LIMITS_MODES)[number];
+export const DEFAULT_SIDEBAR_LIMITS: SidebarLimitsMode = 'active';
+/**
  * Вид ленты чата (`feed.style`): `journal` — плоский журнал, как раньше; `folded` — завершённые ходы со свёрнутыми
  * действиями; `replies` — реплики с чипами действий; `cards` — ход карточкой. DOM один, вид — `data-feed` + CSS.
  */
@@ -108,6 +115,7 @@ export type SettingKey =
   | 'sessionList.context'
   | 'sessionList.time'
   | 'sidebar.top'
+  | 'sidebar.limits'
   | 'feed.style'
   | 'composer.layout'
   | 'agents.view'
@@ -137,6 +145,7 @@ export const SETTING_KEYS: readonly SettingKey[] = [
   'sessionList.context',
   'sessionList.time',
   'sidebar.top',
+  'sidebar.limits',
   'feed.style',
   'composer.layout',
   'agents.view',
@@ -184,6 +193,7 @@ export interface SettingsValues {
   'sessionList.context': boolean;
   'sessionList.time': boolean;
   'sidebar.top': SidebarTopMode;
+  'sidebar.limits': SidebarLimitsMode;
   'feed.style': FeedStyle;
   'composer.layout': ComposerLayout;
   'agents.view': AgentsView;
@@ -222,6 +232,10 @@ export function isDefaultMode(v: unknown): v is DefaultMode {
 
 export function isSessionListMode(v: unknown): v is SessionListMode {
   return typeof v === 'string' && (SESSION_LIST_MODES as readonly string[]).includes(v);
+}
+
+export function isSidebarLimitsMode(v: unknown): v is SidebarLimitsMode {
+  return typeof v === 'string' && (SIDEBAR_LIMITS_MODES as readonly string[]).includes(v);
 }
 
 export function isSidebarTopMode(v: unknown): v is SidebarTopMode {
@@ -402,6 +416,10 @@ export function validateSetting(key: SettingKey, value: unknown, lang: ErrLang =
       return isSidebarTopMode(value)
         ? { ok: true, value }
         : bad(t.allowed(SIDEBAR_TOP_MODES.join(', ')));
+    case 'sidebar.limits':
+      return isSidebarLimitsMode(value)
+        ? { ok: true, value }
+        : bad(t.allowed(SIDEBAR_LIMITS_MODES.join(', ')));
     case 'feed.style':
       return isFeedStyle(value) ? { ok: true, value } : bad(t.allowed(FEED_STYLES.join(', ')));
     case 'composer.layout':
@@ -431,6 +449,7 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
   const poll = cfg.get<unknown>('usagePollMinutes');
   const list = cfg.get<unknown>('sessionList.view');
   const top = cfg.get<unknown>('sidebar.top');
+  const limits = cfg.get<unknown>('sidebar.limits');
   const feed = cfg.get<unknown>('feed.style');
   const cl = cfg.get<unknown>('composer.layout');
   const agv = cfg.get<unknown>('agents.view');
@@ -465,6 +484,7 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
     'sessionList.context': cfg.get<unknown>('sessionList.context') !== false,
     'sessionList.time': cfg.get<unknown>('sessionList.time') !== false,
     'sidebar.top': isSidebarTopMode(top) ? top : DEFAULT_SIDEBAR_TOP,
+    'sidebar.limits': isSidebarLimitsMode(limits) ? limits : DEFAULT_SIDEBAR_LIMITS,
     'feed.style': isFeedStyle(feed) ? feed : DEFAULT_FEED_STYLE,
     'composer.layout': isComposerLayout(cl) ? cl : DEFAULT_COMPOSER_LAYOUT,
     'agents.view': isAgentsView(agv) ? agv : DEFAULT_AGENTS_VIEW,

@@ -25,6 +25,7 @@ const ru = {
   pickSessionPlaceholder: 'Какую сессию возобновить?',
   feedStylePlaceholder: 'Вид ленты чата',
   composerLayoutPlaceholder: 'Раскладка поля ввода',
+  sidebarLimitsPlaceholder: 'Вид лимитов всех движков в боковой панели',
   agentsViewPlaceholder: 'Вид карты агентов',
   gitLayoutPlaceholder: 'Раскладка вкладки git при нескольких репозиториях',
   feedStyleCurrent: 'сейчас',
@@ -42,6 +43,13 @@ const ru = {
     folded: ['Свёрнуто', 'завершённые ходы прячут действия в одну строку'],
     replies: ['Реплики', 'ваше сообщение пузырём, действия чипами'],
     cards: ['Карточки', 'каждый ход — карточка с лентой действий'],
+  } as Record<string, [string, string]>,
+  sidebarLimitsViews: {
+    stack: ['Стопка', 'карточка на движок, движок текущей вкладки помечен'],
+    switch: ['Переключатель', 'вкладки движков, один движок за раз'],
+    table: ['Таблица', 'все движки и их окна в одной таблице'],
+    active: ['Активный подробно', 'движок текущей вкладки целиком, остальные — по строке'],
+    header: ['В заголовке', 'худший лимит каждого движка мини-шкалой, подробности во всплывашке'],
   } as Record<string, [string, string]>,
   composerLayouts: {
     classic: ['Классика', 'как раньше: полоса блоков, поле, ряд настроек и приборы'],
@@ -174,6 +182,7 @@ const en: HostUi = {
   pickSessionPlaceholder: 'Which session to resume?',
   feedStylePlaceholder: 'Chat feed style',
   composerLayoutPlaceholder: 'Composer layout',
+  sidebarLimitsPlaceholder: 'Limits view for all engines in the sidebar',
   agentsViewPlaceholder: 'Agents map view',
   gitLayoutPlaceholder: 'Git tab layout for several repositories',
   feedStyleCurrent: 'current',
@@ -191,6 +200,13 @@ const en: HostUi = {
     folded: ['Folded', 'finished turns collapse their actions into one line'],
     replies: ['Replies', 'your message as a bubble, actions as chips'],
     cards: ['Cards', 'each turn is a card with a timeline of actions'],
+  } as Record<string, [string, string]>,
+  sidebarLimitsViews: {
+    stack: ['Stack', "a card per engine, the current tab's engine marked"],
+    switch: ['Switch', 'engine tabs, one engine at a time'],
+    table: ['Table', 'all engines and their windows in one table'],
+    active: ['Active in detail', "the current tab's engine in full, the others as one line each"],
+    header: ['In the header', 'the worst limit of each engine as a mini-gauge, details in a popup'],
   } as Record<string, [string, string]>,
   composerLayouts: {
     classic: ['Classic', 'as before: block strip, field, settings row and gauges'],

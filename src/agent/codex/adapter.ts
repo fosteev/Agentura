@@ -180,50 +180,9 @@ export class CodexAdapter implements AgentAdapter {
    */
   private async query<T>(
     cwd: string,
-    fn: (rpc: <M extends CodexRequestMethod>(method: M, params: CodexRequests[M][0]) => Promise<CodexRequests[M][1]>) => Promise<T>,
+    fn: (rpc: AppServerRpc) => Promise<T>,
   ): Promise<T> {
-    const executable = await this.executable();
-    const proc = (this.config.spawn ?? defaultSpawn)(executable, ['app-server', '--listen', 'stdio://'], {
-      cwd,
-      env: this.config.env ?? process.env,
-    });
-    let exited = false;
-    proc.on('exit', () => (exited = true));
-    const log = this.config.log ?? (() => {});
-    const client = new CodexRpcClient(proc, {
-      timeoutMs: this.config.timeoutMs ?? 15_000,
-      maxLineBytes: MAX_LINE_BYTES,
-      onStderr: (line) => log('debug', `codex: ${line}`),
-    });
-    const rpc = <M extends CodexRequestMethod>(method: M, params: CodexRequests[M][0]): Promise<CodexRequests[M][1]> => {
-      this.config.trace?.('request', method, params);
-      return client.request<CodexRequests[M][1]>(method, params, QUERY_TIMEOUT_MS).then((result) => {
-        this.config.trace?.('response', method, result);
-        return result;
-      });
-    };
-    try {
-      await client.request('initialize', {
-        clientInfo: { name: 'agentura', title: 'Agentura', version: this.config.clientVersion ?? '0.0.0' },
-        capabilities: null,
-      });
-      client.notify('initialized');
-      return await fn(rpc);
-    } finally {
-      client.dispose();
-      try {
-        proc.stdin.end();
-      } catch {
-        // процесс уже мёртв
-      }
-      if (!exited) {
-        const timer = setTimeout(() => {
-          if (!exited) proc.kill();
-        }, this.config.graceMs ?? DEFAULT_GRACE_MS);
-        timer.unref?.();
-        proc.on('exit', () => clearTimeout(timer));
-      }
-    }
+    return queryAppServer(await this.executable(), cwd, this.config, fn);
   }
 
   private async executable(): Promise<string> {
@@ -231,6 +190,63 @@ export class CodexAdapter implements AgentAdapter {
     const path = typeof setting === 'function' ? await setting() : setting;
     if (!path) throw new Error('Codex CLI (codex) was not found.');
     return path;
+  }
+}
+
+/** `rpc` короткого app-server: типизированный запрос с таймаутом одного запроса. */
+export type AppServerRpc = <M extends CodexRequestMethod>(method: M, params: CodexRequests[M][0]) => Promise<CodexRequests[M][1]>;
+
+/**
+ * Один короткий app-server: handshake → `fn` → закрытие stdin (штатный выход), через `graceMs` — убить.
+ * Для запросов вне сессии (список, история, имя, лимиты); notifications и запросы сервера тут не нужны — на
+ * запросы сервера клиент сам отвечает отказом.
+ */
+export async function queryAppServer<T>(
+  executable: string,
+  cwd: string,
+  config: Pick<CodexAdapterConfig, 'spawn' | 'env' | 'log' | 'trace' | 'timeoutMs' | 'graceMs' | 'clientVersion'>,
+  fn: (rpc: AppServerRpc) => Promise<T>,
+): Promise<T> {
+  const proc = (config.spawn ?? defaultSpawn)(executable, ['app-server', '--listen', 'stdio://'], {
+    cwd,
+    env: config.env ?? process.env,
+  });
+  let exited = false;
+  proc.on('exit', () => (exited = true));
+  const log = config.log ?? (() => {});
+  const client = new CodexRpcClient(proc, {
+    timeoutMs: config.timeoutMs ?? 15_000,
+    maxLineBytes: MAX_LINE_BYTES,
+    onStderr: (line) => log('debug', `codex: ${line}`),
+  });
+  const rpc = <M extends CodexRequestMethod>(method: M, params: CodexRequests[M][0]): Promise<CodexRequests[M][1]> => {
+    config.trace?.('request', method, params);
+    return client.request<CodexRequests[M][1]>(method, params, QUERY_TIMEOUT_MS).then((result) => {
+      config.trace?.('response', method, result);
+      return result;
+    });
+  };
+  try {
+    await client.request('initialize', {
+      clientInfo: { name: 'agentura', title: 'Agentura', version: config.clientVersion ?? '0.0.0' },
+      capabilities: null,
+    });
+    client.notify('initialized');
+    return await fn(rpc);
+  } finally {
+    client.dispose();
+    try {
+      proc.stdin.end();
+    } catch {
+      // процесс уже мёртв
+    }
+    if (!exited) {
+      const timer = setTimeout(() => {
+        if (!exited) proc.kill();
+      }, config.graceMs ?? DEFAULT_GRACE_MS);
+      timer.unref?.();
+      proc.on('exit', () => clearTimeout(timer));
+    }
   }
 }
 

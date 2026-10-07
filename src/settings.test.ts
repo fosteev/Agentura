@@ -89,6 +89,8 @@ describe('sessionList', () => {
   it('вид верха боковой панели — detailed, compact, dense', () => {
     expect(validateSetting('sidebar.top', 'dense')).toEqual({ ok: true, value: 'dense' });
     expect(validateSetting('sidebar.top', 'mini').ok).toBe(false);
+    expect(validateSetting('sidebar.limits', 'table')).toEqual({ ok: true, value: 'table' });
+    expect(validateSetting('sidebar.limits', 'grid').ok).toBe(false);
     expect(validateSetting('feed.style', 'cards')).toEqual({ ok: true, value: 'cards' });
     expect(validateSetting('feed.style', 'grid').ok).toBe(false);
     for (const v of ['list', 'tree', 'lanes', 'cards', 'graph']) {
@@ -201,6 +203,7 @@ describe('readSettings', () => {
         'sessionList.view': 'tree',
         'sessionList.context': 'x',
         'sidebar.top': 'mini',
+        'sidebar.limits': 'grid',
         'feed.style': 'grid',
         'agents.view': 'map',
         'git.layout': 'rows',
@@ -211,6 +214,7 @@ describe('readSettings', () => {
       'sessionList.context': true,
       'sessionList.time': true,
       'sidebar.top': 'detailed',
+      'sidebar.limits': 'active',
       'feed.style': 'journal',
       'agents.view': 'list',
       'git.layout': 'stack',

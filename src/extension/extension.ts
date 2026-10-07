@@ -6,6 +6,7 @@ import { LimitsSource, startLimitsPolling } from '../data/limits';
 import { LiveSessions, TranscriptCache } from '../data/sessions';
 import { UsageService } from './usage';
 import { AgyQuotaService } from './agyQuota';
+import { CodexLimitsService } from './codexLimits';
 import { DiffDocuments } from './diffDocuments';
 import { PreviewPanels } from './previewPanels';
 import { AccountService } from './account';
@@ -14,7 +15,7 @@ import { SessionsService } from './sessionsService';
 import { showDebugState } from './debugPanel';
 import { SettingsPanel } from './settingsPanel';
 import { AGENTS_GRAPH_VIEW_TYPE } from './agentsGraphPanel';
-import { AGENTS_VIEWS, COMPOSER_LAYOUTS, FEED_STYLES, GIT_LAYOUTS, isProvider, readSettings, writeSetting, type SettingKey } from '../settings';
+import { AGENTS_VIEWS, COMPOSER_LAYOUTS, FEED_STYLES, GIT_LAYOUTS, SIDEBAR_LIMITS_MODES, isProvider, readSettings, writeSetting, type SettingKey } from '../settings';
 import { hostStrings } from '../shared/l10n';
 import { currentLanguage, setUserFonts, userFontsDir } from './webviewHost';
 import { UserFonts } from './googleFonts';
@@ -101,7 +102,14 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     );
   }
 
-  const sidebar = new SidebarProvider(context, log, usage, sessions, account);
+  const agyQuota = new AgyQuotaService(() => antigravityEngine.path());
+  const codexLimits = new CodexLimitsService(async () => ((await codexEngine.available()) ? codexEngine.path() : undefined));
+  const sidebar = new SidebarProvider(context, log, usage, sessions, account, {
+    codexLimits,
+    agyQuota,
+    codexEngine,
+    antigravityEngine,
+  });
   const pollMinutes = () =>
     vscode.workspace.getConfiguration('agentura').get<number>('usagePollMinutes', 15);
   context.subscriptions.push(startLimitsPolling(() => sidebar.refreshUsage(), pollMinutes));
@@ -114,7 +122,7 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     transcripts,
     usage,
     limits,
-    agyQuota: new AgyQuotaService(() => antigravityEngine.path()),
+    agyQuota,
     diffs: new DiffDocuments(),
     previews: new PreviewPanels(),
     sessions,
@@ -243,6 +251,28 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     }
   };
 
+  const pickSidebarLimits = async (): Promise<void> => {
+    const t = hostStrings(currentLanguage());
+    const cfg = vscode.workspace.getConfiguration('agentura');
+    const current = readSettings(cfg)['sidebar.limits'];
+    const picked = await vscode.window.showQuickPick(
+      SIDEBAR_LIMITS_MODES.map((id) => ({
+        label: `${id === current ? '$(check) ' : ''}${t.sidebarLimitsViews[id]?.[0] ?? id}`,
+        description: id === current ? t.feedStyleCurrent : '',
+        detail: t.sidebarLimitsViews[id]?.[1] ?? '',
+        id,
+      })),
+      { placeHolder: t.sidebarLimitsPlaceholder },
+    );
+    if (!picked) return;
+    try {
+      await writeWhereSet('sidebar.limits', picked.id);
+    } catch (e) {
+      log.warn('agentura.sidebarLimits: не записать sidebar.limits', e);
+      void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e));
+    }
+  };
+
   const pickFeedStyle = async (): Promise<void> => {
     const t = hostStrings(currentLanguage());
     const cfg = vscode.workspace.getConfiguration('agentura');
@@ -318,6 +348,7 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     }),
     vscode.commands.registerCommand('agentura.feedStyle', () => pickFeedStyle()),
     vscode.commands.registerCommand('agentura.composerLayout', () => pickComposerLayout()),
+    vscode.commands.registerCommand('agentura.sidebarLimits', () => pickSidebarLimits()),
     vscode.commands.registerCommand('agentura.agentsView', () => pickAgentsView()),
     vscode.commands.registerCommand('agentura.gitLayout', () => pickGitLayout()),
     // второй аргумент — назначение из вкладки настроек (`fonts.add`); из палитры приходит пустым
