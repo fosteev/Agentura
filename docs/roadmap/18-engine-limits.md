@@ -97,7 +97,7 @@ app-server даёт то же официально.
 ### 3. Галерея «настоящий webview», CHANGELOG, документация — **сам (Opus), после приёмки 2**
 
 - [x] кадры `limits-real-*` (рендер `dist/webview/sidebar.js` + чат, 1324×760) — галерея, раздел `#limits-real`
-- [x] CHANGELOG (Unreleased)
+- [x] CHANGELOG, README, релиз 0.7.0
 - [ ] ручная проверка в VS Code — `18-engine-limits.pending.md`
 
 ## Промты

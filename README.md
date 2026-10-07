@@ -25,7 +25,8 @@ Personal project, not on the Marketplace. Install it from a `.vsix` (see [Instal
   in the native diff.
 - **Remote Control.** Keep driving a Claude session from claude.ai/code or the Claude mobile app: `rc` under the
   input box or `/rc`. See [Remote Control](#remote-control).
-- **Sidebar.** The project's sessions: search, resume, rename. Account and limits are shown above the list.
+- **Sidebar.** The project's sessions: search, resume, rename. Account and limits are shown above the list — for every
+  installed engine (Claude, Codex, Antigravity), in one of five layouts.
 - **Right panel.**
   - `changes` lists files the session touched.
   - `git` is a working tree view where you stage, commit and push. Files the agent edited are marked.
@@ -72,7 +73,9 @@ The ✦ button asks Sonnet to write the commit message from the staged diff.
 
 ### Sidebar and settings
 
-`agentura.sessionList.view`: `detailed`, `compact`, `dense`. All settings are also on a settings tab (⚙ in the sidebar),
+`agentura.sessionList.view`: `detailed`, `compact`, `dense`. With more than one engine installed,
+`agentura.sidebar.limits` lays out their limits: `active` (default — the current tab's engine expanded), `stack`,
+`switch`, `table`, `header`. All settings are also on a settings tab (⚙ in the sidebar),
 with live previews.
 
 ![Session list views](docs/images/session-list.png)
@@ -120,8 +123,8 @@ Not in this version (hidden in the interface, not faked):
 
 - Permission modes, plan review, `/compact` and the agents tab. Codex has no equivalents in the app-server protocol
   Agentura uses.
-- Cost, cache and subscription limits: Codex does not report them. The context gauge has no thresholds or
-  auto-compact marks for the same reason.
+- Cost and cache: Codex does not report them. The context gauge has no thresholds or auto-compact marks for the
+  same reason. Subscription limits (5-hour and weekly, from `account/rateLimits/read`) are shown in the sidebar.
 - File attachments (text and PDF). Images are sent.
 - Restored Codex history has no per-turn token counts, and a thread row in the sidebar shows no turns or cost.
 - "Always" on a command approval writes a permanent rule to `~/.codex/rules`; the card says so.
@@ -137,8 +140,8 @@ A chat tab can also run on Google's Antigravity CLI (`agy`): pick it in the engi
 
 You need `agy` installed and signed in (run `agy` once in a terminal). Agentura finds it in `PATH`, `~/.local/bin` or
 Homebrew; `agentura.antigravityExecutable` points elsewhere (⚙ → "Engine" has a check button). The weekly quota
-(`agy -p "/usage"`, at most once per 10 minutes) shows by the input box instead of the Claude limits; if the output
-can't be parsed, nothing is shown.
+(`agy -p "/usage"`, at most once per 10 minutes) shows by the input box instead of the Claude limits and in the sidebar;
+if the output can't be parsed, nothing is shown.
 
 What differs from Claude:
 
