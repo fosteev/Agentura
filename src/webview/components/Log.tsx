@@ -21,6 +21,7 @@ import { agentGroupView, feedItems, type FeedItem } from '../agentsView';
 import { feedTurns, foldSummary, stepRows, type FoldSummary, type Turn } from '../turnView';
 import { initialHud, type HudState } from '../hudState';
 import { AgentGroup } from './AgentGroup';
+import { provider } from '../store';
 
 type Row<K extends FeedRow['kind']> = Extract<FeedRow, { kind: K }>;
 
@@ -489,7 +490,7 @@ export function Log({
                 tm={b.sum ? [b.sum.cost, b.sum.time] : live ? [ui.log.turnLive(turnStartedAt ? formatDuration(now - turnStartedAt) : '').trim()] : []}
               />
             )}
-            <div class="who">{ui.log.who}</div>
+            <div class="who">{provider.value}</div>
             {b.parts.map((p) => {
               if (p.kind === 'item') return renderItem(p.item);
               const its = visible(p.items);

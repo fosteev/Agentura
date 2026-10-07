@@ -48,7 +48,6 @@ export const en: Ui = {
     foldLive: 'running',
     foldToggle: 'Show or hide the turn actions',
     turnLive: (t: string) => `running ${t}`,
-    who: 'claude',
     waitingAgents: (n: number) => `waiting for ${n} ${pl(n, 'agent', 'agents')}`,
     stopAll: 'stop all · esc',
     stopAllTitle: 'Stop all running subagents of the session (Esc interrupts the whole turn)',

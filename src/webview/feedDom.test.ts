@@ -9,7 +9,7 @@ import type { AgentEvent } from '../agent/types';
 import { initialState } from './chatState';
 import { Chat } from './components/Chat';
 import { initialHud } from './hudState';
-import { chat, dispatchEvent, feedStyle, handleHostMessage, hudState } from './store';
+import { chat, dispatchEvent, feedStyle, handleHostMessage, hudState, provider } from './store';
 import * as vscode from './vscode';
 
 const T0 = 1_700_000_000_000;
@@ -112,6 +112,10 @@ describe('вид ленты', () => {
     expect(turns[0]!.querySelectorAll(':scope > .steps > .e')).toHaveLength(2);
     expect(turns[0]!.querySelector(':scope > .sum')).not.toBeNull();
     expect(turns[0]!.querySelector(':scope > .who')?.textContent).toBe('claude');
+    provider.value = 'codex';
+    await flush();
+    expect(host.querySelector('.log > .turn > .who')?.textContent).toBe('codex');
+    provider.value = 'claude';
   });
 
   it('folded: .fold со сводкой, клик раскрывает и сворачивает, идущий ход — всегда раскрыт', async () => {

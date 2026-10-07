@@ -51,7 +51,6 @@ const ru = {
     foldLive: 'идёт',
     foldToggle: 'Показать или скрыть действия хода',
     turnLive: (t: string) => `идёт ${t}`,
-    who: 'claude',
     waitingAgents: (n: number) => `ждёт ${n} ${plural(n, 'агента', 'агентов', 'агентов')}`,
     stopAll: 'stop all · esc',
     stopAllTitle: 'Остановить всех идущих субагентов сессии (Esc — прервать ход целиком)',
