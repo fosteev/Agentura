@@ -500,6 +500,10 @@ html[data-width='380'] .num.wide {
 .pv-side.pv-list {
   height: 150px;
 }
+.pv-limits .sidebar > .sec:not(.acc),
+.pv-limits .sidebar > .tools {
+  display: none;
+}
 .pv-side > .sidebar {
   display: grid;
   background: var(--bg-side);

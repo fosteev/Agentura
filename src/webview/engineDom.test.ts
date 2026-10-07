@@ -105,7 +105,7 @@ describe('chat.info: движок и флаги', () => {
       compact: false,
       context: true,
       cost: false,
-      subagents: false,
+      subagents: true,
       files: false,
       images: true,
     });
@@ -377,7 +377,7 @@ describe('Выбор движка', () => {
 });
 
 describe('Chat: вкладка «агенты»', () => {
-  it('Codex: вкладки «агенты» нет ни в шапке, ни в панели, ни на рейке; Claude — есть', async () => {
+  it('Codex и Claude показывают вкладку «агенты» в шапке, панели и рейке', async () => {
     chat.value = {
       ...chat.value,
       sessionId: 's',
@@ -390,11 +390,11 @@ describe('Chat: вкладка «агенты»', () => {
     expect(host.querySelector('#ptab-agents')).not.toBeNull();
     info('codex');
     await flush();
-    expect(host.querySelector('#tab-agents')).toBeNull();
-    expect(host.querySelector('#ptab-agents')).toBeNull();
+    expect(host.querySelector('#tab-agents')).not.toBeNull();
+    expect(host.querySelector('#ptab-agents')).not.toBeNull();
     expect(
       host.querySelector('.rail button[aria-label*="gent"], .rail button[aria-label*="гент"]'),
-    ).toBeNull();
+    ).not.toBeNull();
   });
 });
 

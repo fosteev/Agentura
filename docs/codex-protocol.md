@@ -34,8 +34,11 @@ Codex подключён как второй движок (roadmap 15). Agentura
 
 - Политика подтверждений и sandbox: `thread/start` их не задаёт, действует `~/.codex/config.toml`. Настроек
   `approvalPolicy`/`sandbox` в расширении нет (`CodexAdapterConfig.thread` — только для smoke и тестов).
-- Режимы, план, compact, субагенты, файлы, цена/кэш/лимиты — у Codex в этом протоколе нет аналогов; UI прячет их по
-  флагам провайдера (`src/agent/features.ts`: `modes`, `compact`, `subagents`, `plan`, `files`, `cost`; `context` у
+- Режимы, план, compact, файлы, цена/кэш/лимиты — у Codex в этом протоколе нет аналогов; UI прячет их по
+  флагам провайдера (`src/agent/features.ts`: `modes`, `compact`, `plan`, `files`, `cost`; `context` и `subagents` у
   Codex включён). Нули в `turn.result` у Codex означают «неизвестно», не «0».
+- Субагенты приходят `item/started|completed` как `collabAgentToolCall` (`spawnAgent`) и
+  `subAgentActivity`; mapper связывает их по дочернему `threadId`. В ленте доступны статусы и итог, но не
+  отдельный транскрипт: app-server не передаёт его в родительском потоке.
 - Запросы, которых Agentura не поддерживает (форма MCP-сервера, секретный ввод, неизвестный метод), получают отказ и
   красную карточку «Codex request … is not supported / declined»; ход продолжается.

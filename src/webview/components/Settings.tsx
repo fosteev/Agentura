@@ -717,15 +717,24 @@ export function Settings() {
               >
                 {null}
               </Row>
-              <Row name={T.sidebarLimits.name} isNew desc={T.sidebarLimits.desc} k="sidebar.limits">
-                <Select
-                  k="sidebar.limits"
-                  value={v['sidebar.limits']}
-                  options={SIDEBAR_LIMITS_MODES.map((m): [string, string] => [
-                    m,
-                    T.sidebarLimits.options[m] ?? m,
-                  ])}
-                />
+              <Row
+                name={T.sidebarLimits.name}
+                isNew
+                desc={T.sidebarLimits.desc}
+                k="sidebar.limits"
+                below={
+                  <ChoiceCards
+                    label={T.sidebarLimits.name}
+                    value={v['sidebar.limits']}
+                    options={cardOptions(SIDEBAR_LIMITS_MODES, T.sidebarLimits.options)}
+                    preview={(limits) => (
+                      <SidebarPreview look={{ ...look, top: 'detailed', limits }} part="limits" />
+                    )}
+                    onPick={(limits) => commit('sidebar.limits', limits)}
+                  />
+                }
+              >
+                {null}
               </Row>
               <Row
                 name={T.listView.name}

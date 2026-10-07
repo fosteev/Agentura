@@ -577,11 +577,35 @@ export function ComposerPreview({ layout }: { layout: ComposerLayout }) {
   );
 }
 
-/** Боковая панель: `part="top"` — верх (аккаунт, лимиты), `"list"` — заголовок «Сессии» и список. */
-export function SidebarPreview({ look, part }: { look: SidebarLook; part: 'top' | 'list' }) {
+/** Боковая панель: верх, лимиты нескольких движков или список сессий. */
+export function SidebarPreview({ look, part }: { look: SidebarLook; part: 'top' | 'limits' | 'list' }) {
+  const data = sidebarData(Date.now());
+  if (part === 'limits') {
+    data.provider = 'claude';
+    data.engines = [
+      {
+        engine: 'codex',
+        state: 'ok',
+        email: TEXT.account.email,
+        plan: 'Plus',
+        windows: [
+          { kind: 'fiveHour', percent: 78, resetsAt: data.now + 60 * 60_000 },
+          { kind: 'weekly', percent: 41, resetsAt: data.now + 2 * 24 * 60 * 60_000 },
+        ],
+        updatedAt: data.now,
+      },
+      {
+        engine: 'antigravity',
+        state: 'ok',
+        email: TEXT.account.email,
+        windows: [{ kind: 'model', name: 'Gemini', percent: 23 }],
+        updatedAt: data.now,
+      },
+    ];
+  }
   return (
     <div class={`pv pv-side pv-${part}`} inert aria-hidden="true">
-      <SidebarView look={look} data={sidebarData(Date.now())} />
+      <SidebarView look={look} data={data} />
     </div>
   );
 }

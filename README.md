@@ -94,7 +94,7 @@ The extension does not ship the engine binary (200+ MB). It finds the system `cl
 `~/.claude/local` or Homebrew (on Windows it looks for `claude.exe`). To point it somewhere else, set `agentura.claudeExecutable`.
 
 ```
-code --install-extension agentura-0.6.0.vsix
+code --install-extension agentura-0.7.1.vsix
 ```
 
 To build from source:
@@ -102,7 +102,7 @@ To build from source:
 ```
 npm ci
 npm run check      # types, lint, unit tests, build
-npm run package    # agentura-0.6.0.vsix
+npm run package    # agentura-0.7.1.vsix
 ```
 
 ## Codex
@@ -113,7 +113,7 @@ tab and talks to it over stdio, the same way it runs `claude`. Approval policy a
 `~/.codex/config.toml`; Agentura does not override them.
 
 Supported: streaming replies, Stop, the model and effort pickers, command, file-change and permission approvals,
-agent questions, images in a message, tool rows and the `changes` tab, the context size next to the input box (after the
+agent questions, images in a message, tool rows, the `changes` and `agents` tabs (subagent graph, status, and summary), the context size next to the input box (after the
 first turn: until Codex reports its window, there is no gauge), and session history: the sidebar lists the recent
 Codex threads of the project folder, up to 500 (including ones started in the Codex CLI),
 and you can resume and rename them. When `codex` is installed, the sidebar starts a short `codex app-server` to read
@@ -121,12 +121,12 @@ that list (at most every 30 seconds); a thread started in the CLI shows up on th
 
 Not in this version (hidden in the interface, not faked):
 
-- Permission modes, plan review, `/compact` and the agents tab. Codex has no equivalents in the app-server protocol
-  Agentura uses.
+- Permission modes, plan review and `/compact`. Codex has no equivalents in the app-server protocol Agentura uses.
 - Cost and cache: Codex does not report them. The context gauge has no thresholds or auto-compact marks for the
   same reason. Subscription limits (5-hour and weekly, from `account/rateLimits/read`) are shown in the sidebar.
 - File attachments (text and PDF). Images are sent.
 - Restored Codex history has no per-turn token counts, and a thread row in the sidebar shows no turns or cost.
+- A Codex subagent has no separate transcript: app-server does not provide it in the parent stream.
 - "Always" on a command approval writes a permanent rule to `~/.codex/rules`; the card says so.
 - An edit shows in the `changes` tab and the diff as the changed fragment, not as a whole-file before/after.
 

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.1 — 2026-10-07
+
+### Changed
+
+- **Engine limits layout previews.** The "Sidebar" settings page now shows all five layouts as selectable
+  preview cards with Claude, Codex and Antigravity limits instead of a dropdown. Click or use arrow keys to select.
+- **Codex subagents.** The agents tab and graph now show Codex subagent lifecycle, hierarchy, prompt, model and
+  returned summary.
+
 ## 0.7.0 — 2026-10-07
 
 ### Added

@@ -41,7 +41,8 @@ export const CLAUDE_FEATURES: Readonly<ProviderFeatures> = {
 };
 
 /**
- * Codex (app-server 0.160): режимов, compact, субагентов и плана в нашем адаптере нет (no-op); вопросы агента
+ * Codex (app-server 0.160): режимов, compact и плана в нашем адаптере нет (no-op); субагенты маппятся из
+ * `collabAgentToolCall`/`subAgentActivity`; вопросы агента
  * (`item/tool/requestUserInput`) приходят карточкой — `questions: true`;
  * контекст есть (настоящий `context.usage` из `thread/tokenUsage/updated`, без порогов и автосжатия), цены/кэша/лимитов нет
  * (`totalCostUsd: 0` = «неизвестно», лимитов подписки и cache TTL нет); `files` адаптер отбрасывает.
@@ -52,7 +53,7 @@ export const CODEX_FEATURES: Readonly<ProviderFeatures> = {
   compact: false,
   context: true,
   cost: false,
-  subagents: false,
+  subagents: true,
   plan: false,
   questions: true,
   images: true,

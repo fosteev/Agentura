@@ -270,6 +270,35 @@ describe('вкладка настроек', () => {
     ).not.toBeNull();
   });
 
+  it('лимиты движков: пять разных превью даже при плотном верхе; выбор пишет настройку', async () => {
+    const host = mount(Settings);
+    state({ 'sidebar.top': 'dense' });
+    await flush();
+    const row = host.querySelector('[data-key="agentura.sidebar.limits"]')!;
+    expect(row.querySelector('select')).toBeNull();
+    const cards = [...row.querySelectorAll<HTMLElement>('[role="radio"]')];
+    expect(cards.map((c) => c.dataset.value)).toEqual(['stack', 'switch', 'table', 'active', 'header']);
+    for (const card of cards) {
+      expect(card.querySelector('.pv[inert][aria-hidden="true"]')).not.toBeNull();
+      if (card.dataset.value === 'header') {
+        expect(card.querySelectorAll('.head .hx .m')).toHaveLength(3);
+        expect(card.querySelector('.sec.acc')).toBeNull();
+      } else {
+        expect(card.querySelector('.sec.acc')?.getAttribute('data-limits')).toBe(card.dataset.value);
+        expect(card.textContent).toContain('Claude');
+        expect(card.textContent).toContain('Codex');
+        expect(card.querySelector('.mk.agy')).not.toBeNull();
+      }
+    }
+    expect(row.querySelector('[aria-checked="true"]')?.getAttribute('data-value')).toBe('active');
+    cards[0]!.click();
+    expect(sets().at(-1)).toEqual({ type: 'settings.set', key: 'sidebar.limits', value: 'stack' });
+    state({ 'sidebar.limits': 'stack' });
+    await flush();
+    cards[0]!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    expect(sets().at(-1)).toEqual({ type: 'settings.set', key: 'sidebar.limits', value: 'switch' });
+  });
+
   it('шрифт карточками: каждая своим шрифтом, наведение примеряет на образец, клик пишет', async () => {
     const host = mount(Settings);
     state({ 'font.code': 'My Mono' });
