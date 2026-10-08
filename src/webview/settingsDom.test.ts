@@ -33,6 +33,7 @@ function mount(component: () => unknown) {
 }
 
 const values: SettingsValues = {
+  'jira.agentTools': { comment: true, transition: true, worklog: true },
   defaultPermissionMode: 'manual',
   allowBypassPermissions: false,
   defaultModel: '',
@@ -712,6 +713,23 @@ describe('страница «Интеграции»', () => {
     const boxes = [...p.querySelectorAll<HTMLInputElement>('.cbs input')];
     expect(boxes).toHaveLength(3);
     expect(boxes.every((b) => b.disabled)).toBe(true);
+    expect(p.querySelector('.set[data-key$="jira.agentTools"] .soon')?.textContent).toContain('источник не пишет');
+  });
+
+  it('инструменты агента (этап 8): источник пишет — флажки активны и пишут настройку целиком', async () => {
+    const host = page({ jiraffe: { state: 'absent', instances: [] }, own: [inst('a')], active: 'own', writes: true });
+    await flush();
+    const p = pageEl(host);
+    const boxes = [...p.querySelectorAll<HTMLInputElement>('.set[data-key$="jira.agentTools"] .cbs input')];
+    expect(boxes.map((b) => [b.disabled, b.checked])).toEqual([
+      [false, true],
+      [false, true],
+      [false, true],
+    ]);
+    expect(p.querySelector('.set[data-key$="jira.agentTools"] .soon')).toBeNull();
+    boxes[1]!.checked = false;
+    boxes[1]!.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(sets()).toEqual([{ type: 'settings.set', key: 'jira.agentTools', value: { comment: true, transition: false, worklog: true } }]);
   });
 
   it('шестая страница в навигации; стрелки ↑↓ проходят по кругу через неё', async () => {

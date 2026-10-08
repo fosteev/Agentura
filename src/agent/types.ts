@@ -396,6 +396,29 @@ export interface SessionOptions {
   title?: string;
   /** Разрешить `bypassPermissions` (настройка `agentura.allowBypassPermissions`). */
   allowBypassPermissions?: boolean;
+  /** Инструменты задачи Jira (roadmap 19, этап 8): подключает только Claude (MCP-сервер `agentura_jira`), остальные движки — нет. */
+  taskTools?: TaskTools;
+}
+
+/** Что агент может сделать в задаче чата сейчас: ключ задачи по умолчанию и включённые инструменты. */
+export interface TaskToolsSpec {
+  /** Ключ задачи чата (`NEWMFC-1482`). */
+  issue: string;
+  /** Имя инстанса Jira — для описания сервера модели. */
+  instance: string;
+  tools: ('comment' | 'transition' | 'worklog')[];
+}
+
+/**
+ * Инструменты задачи Jira для агента: хост решает, есть ли они (чат в задаче, источник пишет, настройка), и выполняет
+ * вызов. Движок подписывается на изменения и пересобирает набор (привязка/отвязка, смена источника или настройки).
+ */
+export interface TaskTools {
+  /** Нет — инструментов нет (чат вне задачи, источник только читает или всё выключено). */
+  spec(): TaskToolsSpec | undefined;
+  onDidChange(listener: () => void): () => void;
+  /** Вызов инструмента; аргументы — от модели (недоверенные). Ошибка — `isError`, не исключение. */
+  run(tool: 'comment' | 'transition' | 'worklog', args: Record<string, unknown>): Promise<{ text: string; isError?: boolean }>;
 }
 
 /**

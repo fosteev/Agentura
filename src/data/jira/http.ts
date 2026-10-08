@@ -1,9 +1,15 @@
 // Скопировано из fosteev/jiraffe 0.7.0 src/jira/http.ts. Правки помечены «Agentura:».
-// Agentura: оставлены `HttpClient.getJson` и вспомогательное для него; `getBinary`, `postJson` (запись — этап 8),
-// `isOwnUrl` и `canonicalBaseUrl` не копировались (последний уже есть в ../../extension/taskLink.ts); `../l10n` → `./i18n`;
-// ответ `getJson` читается с потолком `maxBytes` (код `limit`).
+// Agentura: оставлены `HttpClient.getJson`, `postJson` (этап 8 roadmap 19 — запись агентом: как есть, с `isOwnUrl` и
+// `maybeSaved`) и вспомогательное для них; `getBinary` и `canonicalBaseUrl` не копировались (последний уже есть в
+// ../../extension/taskLink.ts); `../l10n` → `./i18n`; ответ `getJson` и `postJson` читается с потолком `maxBytes` (код `limit`).
 import { t } from './i18n';
 import type { InstanceKind } from './types';
+
+/** Хвост сообщения об ошибке записи, после которой запрос мог дойти до Jira (таймаут, обрыв, 5xx прокси, не-JSON 2xx). */
+/** Потолок ответа на запись: Jira отдаёт созданный комментарий/ворклог — килобайты (приёмка этапа 8). */
+const WRITE_MAX_BYTES = 1024 * 1024;
+
+export const maybeSaved = (): string => t('the write may have been saved; check the issue log before retrying');
 
 export class JiraError extends Error {
   constructor(
@@ -65,6 +71,21 @@ export type Query = Record<string, string | number | undefined>;
 /** Убирает хвостовые слэши; context path (`/jira`) сохраняется. */
 export function normalizeBaseUrl(url: string): string {
   return url.trim().replace(/\/+$/, '');
+}
+
+/**
+ * Адрес принадлежит инстансу: http(s), тот же origin и путь под context path `baseUrl`.
+ * Только на такие адреса уходит `Authorization` (атрибутам из HTML Jira и полям ответа не доверяем).
+ */
+export function isOwnUrl(url: string, baseUrl: string): boolean {
+  try {
+    const u = new URL(url);
+    const base = new URL(normalizeBaseUrl(baseUrl));
+    const root = base.pathname.replace(/\/*$/, '/');
+    return (u.protocol === 'https:' || u.protocol === 'http:') && u.origin === base.origin && !u.username && !u.password && u.pathname.startsWith(root);
+  } catch {
+    return false;
+  }
 }
 
 export function authHeader(kind: InstanceKind, token: string, email?: string): string {
@@ -176,6 +197,74 @@ export class HttpClient {
       return JSON.parse(text) as T;
     } catch {
       throw new JiraError(0, t('The response is not JSON. Check the instance URL (a context path such as /jira may be needed).'), url, 'format');
+    }
+  }
+
+  /**
+   * POST с JSON-телом (запись: комментарий, переход, ворклог). Отличия от `getJson`:
+   * - адрес — только `baseUrl` + путь, и он обязан пройти `isOwnUrl` (иначе `blocked` без запроса);
+   * - `redirect: 'manual'`, **любой 3xx — ошибка** `redirect`: тело записи и `Authorization` никуда не пересылаем
+   *   (fetch на 302/303 превратил бы POST в GET и молча «успешно» вернул HTML); `login.jsp` — 401;
+   * - обрыв или таймаут после отправки — «запись могла сохраниться»: повторять только после проверки журнала.
+   * Пустой ответ (204) — `undefined`. В сообщения не попадают ни токен, ни тело запроса.
+   */
+  async postJson<T>(path: string, body: unknown, query?: Query): Promise<T | undefined> {
+    const url = this.url(path, query);
+    if (!isOwnUrl(url, this.baseUrl)) throw new JiraError(0, t('The URL does not belong to the instance. Authorized request is blocked.'), '', 'blocked');
+    if (this.badToken) throw new JiraError(0, t('The token contains spaces, line breaks or non-ASCII characters. Copy it again.'), url, 'format');
+    const saved = maybeSaved();
+    let res: Response;
+    try {
+      res = await this.fetchImpl(url, {
+        method: 'POST',
+        headers: { Authorization: this.auth, Accept: 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        redirect: 'manual',
+        signal: AbortSignal.timeout(this.timeoutMs),
+      });
+    } catch (e) {
+      const timeout = e instanceof Error && (e.name === 'TimeoutError' || e.name === 'AbortError');
+      // Соединение не установлено (отказ, DNS, сертификат) — запрос точно не ушёл; иначе (сброс и т. п.) — мог уйти.
+      const notSent = /ECONNREFUSED|ENOTFOUND|EAI_AGAIN|EHOSTUNREACH|ENETUNREACH|CERT|SIGNATURE|SELF_SIGNED|UNABLE_TO_VERIFY/i.test(networkReason(e));
+      throw new JiraError(
+        0,
+        timeout
+          ? t('No response from {0}: timed out; {1}', this.baseUrl, saved)
+          : t('No connection to {0}: {1}', this.baseUrl, this.scrub(networkReason(e))) + (notSent ? '' : `; ${saved}`),
+        url,
+        'network',
+      );
+    }
+    if ((res.status >= 300 && res.status < 400) || res.type === 'opaqueredirect') {
+      void res.body?.cancel().catch(() => undefined);
+      const loc = res.headers.get('location') ?? '';
+      if (/\/login\.jsp(?:[?#]|$)/i.test(loc)) throw new JiraError(401, t('Jira redirected to the login page. The token is invalid or lacks write access.'), url);
+      throw new JiraError(res.status, t('The server redirected a write request. Request canceled; check the instance URL (https, context path).'), url, 'redirect');
+    }
+    let text: string;
+    // Agentura: ответ на запись тоже с потолком (Jira отдаёт созданный объект — килобайты)
+    const tooBig = () => new JiraError(0, t('The response from {0} is too large', this.baseUrl), url, 'limit');
+    try {
+      text = await readTextLimited(res, Math.min(this.maxBytes, WRITE_MAX_BYTES), tooBig);
+    } catch (e) {
+      if (e instanceof JiraError) throw e;
+      throw new JiraError(0, t('The response from {0} was cut off; {1}', this.baseUrl, saved), url, 'network');
+    }
+    if (!res.ok) {
+      const denied = res.headers.get('x-authentication-denied-reason');
+      const details = [describeBody(text), denied ? `X-Authentication-Denied-Reason: ${denied}` : ''].filter(Boolean).join('; ');
+      // 502/503/504 — ответил прокси перед Jira, сама Jira запрос могла дописать: та же неоднозначность, что и таймаут.
+      if (res.status === 502 || res.status === 503 || res.status === 504) {
+        throw new JiraError(res.status, `${messageForStatus(res.status, this.scrub(details))}; ${saved}`, url, 'network');
+      }
+      throw new JiraError(res.status, messageForStatus(res.status, this.scrub(details)), url);
+    }
+    if (!text.trim()) return undefined;
+    try {
+      return JSON.parse(text) as T;
+    } catch {
+      // 2xx, но не JSON: запись, скорее всего, прошла — сообщаем, но не как «не сохранено».
+      throw new JiraError(0, t('The write response is not JSON; {0}', saved), url, 'format');
     }
   }
 

@@ -1,6 +1,7 @@
-// Скопировано из fosteev/jiraffe 0.7.0 test/http.test.ts (без canonicalBaseUrl — он в extension/taskLink.ts).
+// Скопировано из fosteev/jiraffe 0.7.0 test/http.test.ts (без canonicalBaseUrl — он в extension/taskLink.ts);
+// этап 8: `isOwnUrl` — из test/attachments.test.ts, `postJson` — из test/worklog.test.ts Jiraffe.
 import { describe, expect, it } from 'vitest';
-import { HttpClient, JiraError, authHeader, normalizeBaseUrl } from './http';
+import { HttpClient, JiraError, authHeader, isOwnUrl, normalizeBaseUrl } from './http';
 
 function mockFetch(status: number, body: unknown, calls: { url: string; init: RequestInit }[] = []): typeof fetch {
   return (async (url: string, init: RequestInit) => {
@@ -147,5 +148,98 @@ describe('HttpClient: потолок ответа (Agentura)', () => {
     const f = (async () => new Response('{}', { status: 200, headers: { 'content-length': '999999999' } })) as unknown as typeof fetch;
     const err = await fail(new HttpClient({ baseUrl: 'https://x.example', kind: 'dc', token: 't', fetchImpl: f, maxBytes: 1_000 }).getJson('/p'));
     expect(err.code).toBe('limit');
+  });
+});
+
+const BASE = 'https://jira.example.test/jira';
+const TOKEN = 'secret-token-123';
+
+describe('isOwnUrl', () => {
+  it('тот же origin и context path', () => {
+    expect(isOwnUrl(`${BASE}/secure/attachment/1/a.png`, BASE)).toBe(true);
+    expect(isOwnUrl('https://jira.example.test/secure/attachment/1/a.png', BASE)).toBe(false); // вне /jira
+    expect(isOwnUrl('https://jira.example.test/jiraX/a.png', BASE)).toBe(false);
+    expect(isOwnUrl('http://jira.example.test/jira/a.png', BASE)).toBe(false); // другая схема — другой origin
+    expect(isOwnUrl('https://evil.test/jira/a.png', BASE)).toBe(false);
+    expect(isOwnUrl('https://jira.example.test.evil.test/jira/a.png', BASE)).toBe(false);
+    expect(isOwnUrl('https://u:p@jira.example.test/jira/a.png', BASE)).toBe(false);
+    expect(isOwnUrl('javascript:alert(1)', BASE)).toBe(false);
+    expect(isOwnUrl('https://ex.atlassian.net/rest/api/2/attachment/content/1', 'https://ex.atlassian.net')).toBe(true);
+  });
+});
+
+describe('HttpClient.postJson', () => {
+  const http = (route: (url: string, init: RequestInit) => Response | Promise<Response>) =>
+    new HttpClient({ baseUrl: BASE, kind: 'dc', token: TOKEN, fetchImpl: ((u: string, i: RequestInit) => route(u, i)) as unknown as typeof fetch });
+  it('3xx — ошибка redirect, по Location не идём; login.jsp — 401', async () => {
+    let n = 0;
+    let init: RequestInit | undefined;
+    const h = http((_, i) => {
+      n++;
+      init = i;
+      return new Response(null, { status: 302, headers: { location: 'https://evil.example.test/x' } });
+    });
+    await expect(h.postJson('/rest/x', {})).rejects.toMatchObject({ code: 'redirect' });
+    expect(n).toBe(1);
+    expect(init?.redirect).toBe('manual');
+    const h2 = http(() => new Response(null, { status: 302, headers: { location: '/jira/login.jsp?os_destination=x' } }));
+    await expect(h2.postJson('/rest/x', {})).rejects.toMatchObject({ status: 401 });
+  });
+  it('таймаут — «запись могла сохраниться», токена в тексте нет', async () => {
+    const h = http(() => {
+      const e = new Error(`boom ${TOKEN}`);
+      e.name = 'TimeoutError';
+      throw e;
+    });
+    const err = await fail(h.postJson('/rest/x', { a: 1 }));
+    expect(err).toBeInstanceOf(JiraError);
+    expect(err.message).toMatch(/may have been saved/);
+    expect(err.message).not.toContain(TOKEN);
+    const h2 = http(() => {
+      throw Object.assign(new Error('fetch failed'), { cause: { code: 'ECONNRESET', message: TOKEN } });
+    });
+    const e2 = await fail(h2.postJson('/rest/x', {}));
+    expect(e2.message).not.toContain(TOKEN);
+    expect(e2.message).toMatch(/may have been saved/); // сброс соединения — запрос мог уйти
+    const h3 = http(() => {
+      throw Object.assign(new Error('fetch failed'), { cause: { code: 'ECONNREFUSED' } });
+    });
+    const e3 = await fail(h3.postJson('/rest/x', {}));
+    expect(e3.message).not.toMatch(/may have been saved/); // соединения не было — запись точно не ушла
+  });
+  it('502/503/504 прокси — «запись могла сохраниться» (code network); 500 — обычная ошибка', async () => {
+    const e = await fail(http(() => new Response('<html>Gateway Timeout</html>', { status: 504 })).postJson('/rest/x', {}));
+    expect(e).toMatchObject({ status: 504, code: 'network' });
+    expect(e.message).toMatch(/may have been saved/);
+    const e2 = await fail(http(() => new Response('{"errorMessages":["boom"]}', { status: 500 })).postJson('/rest/x', {}));
+    expect(e2.code).toBe('http');
+    expect(e2.message).not.toMatch(/may have been saved/);
+  });
+  it('400 с errors — текст в сообщении; 204 — undefined; 2xx не-JSON — format', async () => {
+    const h = http(() => new Response(JSON.stringify({ errors: { comment: 'Comment body can not be empty!' } }), { status: 400 }));
+    await expect(h.postJson('/rest/x', {})).rejects.toThrow(/can not be empty/);
+    await expect(http(() => new Response(null, { status: 204 })).postJson('/rest/x', {})).resolves.toBeUndefined();
+    await expect(http(() => new Response('<html/>', { status: 201 })).postJson('/rest/x', {})).rejects.toMatchObject({ code: 'format' });
+  });
+  it('адрес вне инстанса не отправляется; свой — с телом JSON и авторизацией', async () => {
+    let n = 0;
+    const h = http(() => {
+      n++;
+      return new Response('{}');
+    });
+    await expect(h.postJson('/../../evil', {})).rejects.toMatchObject({ code: 'blocked' }); // путь вышел из context path
+    expect(n).toBe(0);
+    let sent = '';
+    let init: RequestInit | undefined;
+    const h2 = http((u, i) => {
+      sent = u;
+      init = i;
+      return new Response('{"id":"7"}', { status: 201 });
+    });
+    await expect(h2.postJson('/rest/api/2/issue/ABC-1/worklog', { a: 1 }, { adjustEstimate: 'leave' })).resolves.toEqual({ id: '7' });
+    expect(sent).toBe('https://jira.example.test/jira/rest/api/2/issue/ABC-1/worklog?adjustEstimate=leave');
+    expect(init?.method).toBe('POST');
+    expect(init?.body).toBe('{"a":1}');
+    expect((init?.headers as Record<string, string>).Authorization).toBe(`Bearer ${TOKEN}`);
   });
 });

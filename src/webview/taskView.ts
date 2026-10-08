@@ -114,3 +114,21 @@ export function eventText(e: TaskEvent): { label: string; text: string; strong?:
   const t = e.text.length > 240 ? `${e.text.slice(0, 240)}…` : e.text;
   return { label, text: e.kind === 'comment' ? `«${t}»` : t };
 }
+
+/** Сколько «в задаче →» ждёт события в ленте (загрузка после записи идёт сама); дольше — переход забывается. */
+export const FOCUS_TTL_MS = 60_000;
+
+/**
+ * Событие, к которому ведёт «в задаче →» (этап 8): по `id`, если он известен (ждём именно его); иначе самое свежее
+ * событие этого вида — сначала «моё» (автор = текущий пользователь Jira). Для статуса и комментария — не старше двух
+ * минут до клика (ворклог датируется днём работы, у него проверки времени нет).
+ */
+export function focusTarget(
+  events: readonly TaskEvent[],
+  focus: { kind: TaskEvent['kind']; id?: string; since: number } | undefined,
+): TaskEvent | undefined {
+  if (!focus) return undefined;
+  if (focus.id) return events.find((e) => e.id === focus.id);
+  const fresh = (e: TaskEvent) => e.kind === focus.kind && (e.kind === 'worklog' || e.at >= focus.since - 120_000);
+  return events.find((e) => fresh(e) && e.mine) ?? events.find(fresh);
+}

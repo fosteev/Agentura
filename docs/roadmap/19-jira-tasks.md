@@ -1,7 +1,7 @@
 # 19 — Чаты по задачам Jira: группы, режим задачи, своё подключение и Jiraffe
 
 > **Статус:** этап 1 принят 2026-10-08 (ветка `stage-1-task-groups` от `feature/task-groups`); этап 3 (Jiraffe) принят
-> отдельной приёмкой (`feature/agentura-tasks`, 30d982d); этап 2 принят 2026-10-08 (ветка `stage-2-jira-sources`); этап 4 принят 2026-10-08 (ветка `stage-4-sidebar-tasks`); этап 5 принят 2026-10-08 (ветка `stage-5-task-tab`, вёрстка — ручная проверка в pending); этап 6 принят 2026-10-08 (ветка `stage-6-integrations`, вёрстка и живые действия — ручная проверка в pending); этап 7 принят 2026-10-08 (ветка `stage-7-task-tab-per-task`, вёрстка и живое переключение/Reload Window — ручная проверка в pending); следующий — **8**. Ветка roadmap `feature/task-groups`
+> отдельной приёмкой (`feature/agentura-tasks`, 30d982d); этап 2 принят 2026-10-08 (ветка `stage-2-jira-sources`); этап 4 принят 2026-10-08 (ветка `stage-4-sidebar-tasks`); этап 5 принят 2026-10-08 (ветка `stage-5-task-tab`, вёрстка — ручная проверка в pending); этап 6 принят 2026-10-08 (ветка `stage-6-integrations`, вёрстка и живые действия — ручная проверка в pending); этап 7 принят 2026-10-08 (ветка `stage-7-task-tab-per-task`, вёрстка и живое переключение/Reload Window — ручная проверка в pending); этап 8 принят 2026-10-08 (ветка `stage-8-agent-jira-tools`; Jiraffe API v2 — jiraffe 489333d; живой прогон записи — в pending); следующий — **9**. Ветка roadmap `feature/task-groups`
 > (от `feature/engine-limits`, 0.8.0 ещё не в main).
 > Прототип — `prototype/screens/tasks.html` (`#a|#b|#c|#d|#ask`) и `prototype/screens/task-mode.html`
 > (`#open|#comment|#changes|#rail|#jiraffe|#settings`); галерея v38, разделы «Режим задачи» и «Чаты по задачам Jira».
@@ -129,7 +129,8 @@ Jiraffe (`/Users/fost/Projects/jiraffe`, 0.7.0, ветка main, VS Code Marketp
     вопроса, `transition` и `worklog` — через обычную карточку разрешения. Настройка
     `agentura.jira.agentTools` (`{comment, transition, worklog}: boolean`, все `true`). В ленте — `jira · комментарий
     NEWMFC-1482 ✓ · в задаче →`. Codex и Antigravity — не в этом roadmap (агент пишет в Jira своими скиллами;
-    изменения всё равно видны через опрос).
+    изменения всё равно видны через опрос). *Приёмка этапа 8: сервер называется `agentura_jira` (не `jira`); `comment` без
+    вопроса — только короткий (≤ 2000) без похожего на секрет и не чаще 3 за 10 мин; карточка не обходится bypass/auto.*
 14. **Страница настроек «Интеграции»** (шестая, `settings#integrations`): источник; Jiraffe — версия, число
     инстансов или «не установлен · поставить»; свои подключения списком (+ подключить, проверить, удалить);
     `tasks.refresh`, `tasks.humanChanges`, `jira.agentTools` (неактивно, пока источник не дал запись).
@@ -771,24 +772,135 @@ webview. Сначала спайк, потом реализация или ос�
 
 ### 8. Инструменты Jira для агента (Claude) — **opus, high**, после 7; Jiraffe API v2 — параллельно
 
-- [ ] Agentura: `addComment` в копии клиента (`POST /rest/api/2/issue/{key}/comment`, тело — wiki-текст), `transition`,
-      `addWorklog` (без Tempo — только Jira worklog; Tempo — допущение «потом»)
-- [ ] MCP-сервер `jira` (решение 13) в Claude-адаптере, только когда сессия в группе и источник даёт запись;
-      ключ задачи по умолчанию — из группы; `agentura.jira.agentTools`
-- [ ] `toolView.ts`: `mcp__jira__*` → op `jira`, «jira · комментарий KEY», ссылка «в задаче →» открывает вкладку
-      «задача» и прокручивает к событию; немедленное обновление карточки после результата
-- [ ] разрешения: `transition`, `worklog` — карточка разрешения как у прочих инструментов
-- [ ] Jiraffe (репо jiraffe, параллельно): API v2 — `addComment` (новый метод клиента), `transitions`,
+- [x] Agentura: `addComment` в копии клиента (`POST /rest/api/2/issue/{key}/comment`, тело — wiki-текст), `transition`,
+      `addWorklog` (без Tempo — только Jira worklog; Tempo — допущение «потом») — `client.test`, `http.test` (`postJson`),
+      `source.test` (`OwnSource.writer`, `JiraffeSource.writer` через API v2)
+- [x] MCP-сервер `jira` (решение 13) в Claude-адаптере, только когда сессия в группе и источник даёт запись;
+      ключ задачи по умолчанию — из группы; `agentura.jira.agentTools` — `jiraMcp.test` (настоящий SDK + zod через
+      in-memory MCP-клиент), `adapter.test`, `agentTools.test`, `settings.test`, `settingsDom.test`, `manifest.test`
+- [x] `toolView.ts`: `mcp__agentura_jira__*` → op `jira`, «jira · комментарий KEY», ссылка «в задаче →» открывает вкладку
+      «задача» и прокручивает к событию; немедленное обновление карточки после результата — `toolView.test`,
+      `taskPaneDom.test`, `taskService.test` (`afterWrite`)
+- [x] разрешения: `transition`, `worklog` — карточка разрешения как у прочих инструментов — `adapter.test` (comment к своей
+      задаче — без вопроса, к чужой и в plan — карточкой; transition/worklog — карточкой)
+- [x] Jiraffe (репо jiraffe, параллельно, jiraffe 489333d): API v2 — `addComment` (новый метод клиента), `transitions`,
       `transition`, `logWork` (через `submitWorklog`, с Tempo); `apiVersion: 2`, v1 совместим
-- [ ] тесты: MCP-инструменты на фейковом источнике; `toolView` для `mcp__jira__comment`
+- [x] тесты: MCP-инструменты на фейковом источнике; `toolView` для `mcp__agentura_jira__comment`
 
-- [ ] (решение владельца 2026-10-08, долг этапа 7) «×» внутренней вкладки чата во вкладке задачи: если идёт ход или
-      ждёт разрешения — модальный вопрос «Остановить ход и закрыть чат?»; в простое — закрывать сразу; тест
+- [x] (решение владельца 2026-10-08, долг этапа 7) «×» внутренней вкладки чата во вкладке задачи: если идёт ход или
+      ждёт разрешения — модальный вопрос «Остановить ход и закрыть чат?»; в простое — закрывать сразу; тест — `tabSlots.test`
+- [ ] живой прогон: комментарий/статус/ворклог агентом в Jira DC и Cloud, своё подключение и Jiraffe 0.8.0, карточка
+      разрешения, «в задаче →», модальный вопрос «×» в VS Code — **пользователь**
 
-**Готово, когда:** `npm run check` зелёный в обоих репо; живой прогон — в pending.
+**Готово, когда:** `npm run check` зелёный в обоих репо; живой прогон — в pending. (Agentura: `TZ=UTC npm run check` —
+136 файлов, 1834 теста, зелёный; Jiraffe API v2 принят отдельно, jiraffe 489333d.)
 
 **Сессия:** opus, high (запись во внешнюю систему от имени пользователя, разрешения); Jiraffe-часть — sonnet,
 high параллельно.
+
+**Решения (2026-10-08, по итогам сессии 8):**
+
+Раскладка файлов:
+- Клиент: `src/data/jira/http.ts` — `postJson`, `isOwnUrl`, `maybeSaved` из jiraffe как есть (только `baseUrl` + путь, `redirect:
+  'manual'`, любой 3xx — ошибка, `login.jsp` — 401, таймаут/обрыв/502–504/не-JSON 2xx — «запись могла сохраниться», токен — `scrub`;
+  ответ с потолком `maxBytes`), переводы — `i18n.ts`; `client.ts` — `addComment` (новый), `addWorklog` (`adjustEstimate=leave`),
+  `transitions` (`mapTransitions`: вместо полей экрана — `requiresFields`, как в API v2), `transition`, `startedWithOffset`, `localDate`;
+  `types.ts` — `TransitionInfo`.
+- Источник: `src/extension/jira/source.ts` — `JiraWriter` (`addComment`/`transitions`/`transition`/`logWork`) и `JiraSource.writer?`:
+  `OwnSource` — всегда, `JiraffeSource` — при `hasJiraffeWrite` (`jiraffeApi.ts`: `apiVersion >= 2` и все четыре метода — функции);
+  проверки до вызова (ключ, тело ≤ 32 000, ворклог 1…86 400 с, дата `YYYY-MM-DD`, комментарий ворклога ≤ 30 000), ответы Jiraffe —
+  по форме (`cleanTransitions`, `idOf`); `JiraSources.canWrite()`; сигнатура `onDidChange` учитывает появление записи у Jiraffe.
+- Хост инструментов: `src/extension/jira/agentTools.ts` — `AgentJiraTools` (без vscode): `spec()` (задача вкладки `TaskTab.taskKey`,
+  источник с записью, настройка), `changed()` → подписчики, `run()` (ошибки — `isError` текстом, ≤ 1000 символов), разбор аргументов
+  модели, `pickTransition`, таймаут 60 с, строка `event: <вид>[:<id>]` в результате; `TaskService.afterWrite` — загрузка карточки сразу.
+  `chatPanel.ts` — создаёт его на вкладку, `ChatDeps.taskTools` → `SessionOptions.taskTools` (только Claude); пересчёт — `syncTask`,
+  `services.jira.onDidChange`, смена `agentura.jira.*`.
+- Движок: `src/agent/claude/jiraMcp.ts` — `buildJiraServer` (`createSdkMcpServer` + `tool` SDK 0.3.285, схемы zod, `alwaysLoad`,
+  `instructions` с ключом задачи); `adapter.ts` — `mcpServers: {jira}` в опциях сессии, `setMcpServers` при смене набора,
+  `autoAllow` для `comment`; zod — внешний в `esbuild.mjs` (тот же экземпляр, что у SDK), грузится `import('zod')` рядом с SDK.
+- Общее: `src/shared/jiraTools.ts` — имена `mcp__agentura_jira__*` (сервер `agentura_jira` — приёмка), `readAgentTools`/`isAgentToolsSetting`, `eventLine`/`eventRefOf`,
+  `formatSeconds`. Настройка `agentura.jira.agentTools` — `settings.ts` (`SettingKey`, валидация — ровно три флажка), `package.json`,
+  `package.nls*.json`; страница «Интеграции» — `AgentToolsBoxes` вместо заглушки (`IntegrationsState.writes`).
+- Webview: `toolView.ts` — `jiraView` (`jira · комментарий KEY`, `статус KEY → To Do`, `ворклог KEY · 1h 30m`), `jiraTaskLink`;
+  `Log.tsx` — «✓ · в задаче →»; `Chat.tsx` — `openTaskEvent` (вкладка «задача» на «изменениях», при `strip` — `task.openExternal`);
+  `store.ts` — `taskFocus`; `taskView.ts` — `focusTarget`, `FOCUS_TTL_MS`; `TaskPane.tsx` — прокрутка и подсветка `.tk-evt.focus`
+  (`media/tasks.css`); `Cards.tsx` — в карточке разрешения инструмента Jira виден текст комментария/ворклога; `strings*.ts` — вопросы
+  карточки разрешения и подписи.
+- «×» (долг этапа 7): `TabSlots.requestClose` + `TabSlotsIo.confirmClose` (`TaskTabPanel` — модальный `showWarningMessage`,
+  тексты — `hostStrings.closeBusyChat*`); повторный «×», пока висит вопрос, второго вопроса не открывает.
+
+Контракт:
+- Инструменты модели: `comment {text, issue?}`, `transition {to, issue?}` (`to` — имя целевого статуса, перехода или id; нет совпадения —
+  ошибка со списком выполнимых переходов), `worklog {minutes 1…1440, date? YYYY-MM-DD (не в будущем, по умолчанию сегодня), comment?, issue?}`.
+  `issue` по умолчанию — задача чата; другая задача — только на том же инстансе.
+- Разрешения: `comment` к задаче чата — без вопроса (`canUseTool` адаптера), кроме режима plan и ограничений приёмки (ниже); к другой задаче, `transition`, `worklog` —
+  обычная карточка разрешения (в ней виден текст комментария/ворклога).
+- Ошибки источника (в том числе Jiraffe «already being sent» и «…may have been saved; check the issue, then call again») уходят модели
+  текстом как есть с префиксом `Error:`; своих повторов нет. Своё подключение само сторожит «одна запись того же вида в ту же задачу»
+  и (приёмка) один отказ повтора после «запись могла сохраниться» — как Jiraffe.
+- Строка `event: comment:<id>` / `event: status` / `event: worklog[:<id>]` в результате — по ней «в задаче →» находит событие ленты (без id —
+  самое свежее «моё» событие этого вида, для статуса и комментария — не старше двух минут до клика; ждёт появления до 60 с).
+
+Отступления и почему:
+- Свой `pickTransition` по словам модели вместо отдельного инструмента «список переходов» — решение 13 называет три инструмента;
+  список модель получает в тексте ошибки.
+- Id ворклога Tempo (Jiraffe `via: 'tempo'`) не отдаётся как id события — в ленте задачи это не id ворклога Jira; событие ищется по виду.
+- Сервер подключается в опциях сессии, если набор есть на старте, иначе — `setMcpServers` при привязке (в т. ч. посреди сессии).
+
+Скоуп-решения исполнителя (aiTokens, comment в plan, запись в другую задачу) — в `19-jira-tasks.pending.md` («этап 8»).
+
+**Решения приёмки (2026-10-08, этап 8; два прохода — свой и независимый Opus-ревьюер на безопасность):**
+- Сервер `agentura_jira` (`JIRA_MCP_SERVER`), инструменты `mcp__agentura_jira__*`: со своим сервером пользователя `jira` не
+  пересекаются ни имена, ни правила разрешений (`mcp__jira__*` из его настроек к нашим не относятся и наоборот).
+- bypassPermissions/auto: `q.setMcpPermissionModeOverride('agentura_jira', 'default')` сразу после `query` — карточка у
+  `transition`/`worklog`/чужой задачи остаётся в любом режиме (SDK в bypass `canUseTool` не зовёт; override только ужесточает и
+  запоминается до подключения сервера).
+- «Всегда разрешать» на карточке инструмента Jira — только до конца сессии (`ClaudeSession.jiraAsk` переписывает `destination` подсказок
+  на `session`): правило в `.claude/settings.local.json` действовало бы во всех сессиях проекта и в самом CLI.
+- `comment` без вопроса — только от нашего сервера (`opts.mcpServer.source === 'sdk'`; старый CLI без поля — по имени), текст ≤ 2000 и
+  без похожего на секрет (`autoCommentOk`: ключи PEM/AWS/GitHub/GitLab/Slack/`sk-`, JWT, `…KEY=…`, base64/hex ≥ 48), не больше
+  3 за 10 мин на сессию (`AUTO_COMMENTS`/`AUTO_WINDOW_MS`); иначе карточка. Причина — prompt injection из текста задачи: comment был
+  единственным каналом наружу без вопроса.
+- Своё подключение: после ошибки «запись могла сохраниться» (или нашего таймаута 60 с) следующий вызов того же вида в ту же задачу
+  один раз отклоняется (10 мин, как `unsure` у Jiraffe API v2); замок «уже отправляется» снимается по окончании самой записи, а не по таймауту.
+- Сервер собран под задачу: чат перепривязали, пока висела карточка, — вызов отклоняется («now attached to …»), ничего не пишется.
+- `setMcpServers` с ошибкой — сигнатура набора сбрасывается (следующее изменение подключит снова); ответ записи — потолок 1 МБ.
+- Карточка разрешения показывает текст комментария/ворклога целиком (длинный — прокрутка, `pre.jt`), без обрезки на 1200.
+- Не чинили (низкий риск): строки ленты старых вызовов без `issue` после перепривязки чата подписываются новым ключом, «в задаче →»
+  ведёт в новую задачу; своё подключение у `transition` делает два GET переходов (агент + проверка в `OwnSource.transition`).
+- Флейк `antigravity/sessions.test.ts` — не этот этап: `process.test.ts` создавал `agentura-agy-test-*` в общем tmpdir, который
+  sessions.test сверяет; префикс → `agy-kill-test-`. Отдельно замечен редкий флейк `webview/engineLimits.test.ts` (3/3 отдельно зелёные) — не этот этап.
+
+**Решения (2026-10-08, по итогам сессии 8b):**
+
+- **Контракт API v2 (Jiraffe `src/api.ts`, коммит 489333d в `feature/agentura-tasks`)** — `apiVersion: 2`, методы v1 без
+  изменений. Agentura проверяет `apiVersion >= 2` для записи (`>= 1` — для чтения), не `===`.
+  - `addComment(instanceId, key, body: string): Promise<{ id?: string }>` — `POST /rest/api/2/issue/{key}/comment`,
+    тело — wiki-разметка строкой и для DC, и для Cloud (весь клиент на REST v2, ADF не нужен). `body` — непустая после
+    trim строка ≤ 32 000 символов, уходит как есть (не тримится).
+  - `transitions(instanceId, key): Promise<TransitionInfo[]>`, `TransitionInfo = { id: string; name: string;
+    to: { name: string; category: 'new'|'indeterminate'|'done' }; requiresFields: boolean }`.
+  - `transition(instanceId, key, transitionId: string): Promise<void>` — Jiraffe сам заново берёт `transitions()`;
+    id не из списка → reject `…is not available for KEY`; `requiresFields: true` → reject `…requires fields that the API
+    cannot fill` (заполнение полей экрана в v2 нет). Agentura должна показывать агенту только переходы с
+    `requiresFields: false`.
+  - `logWork(instanceId, key, { seconds, started?, comment?, aiTokens? }): Promise<{ via: 'tempo'|'jira'; id?: string }>` —
+    через `submitWorklog` (Tempo, если у инстанса Tempo, иначе Jira worklog). `seconds` — целое 1…86 400; `started` —
+    `YYYY-MM-DD` (дата как есть) или ISO-дата-время (берётся его **локальная** дата), по умолчанию сегодня, будущее —
+    reject; в запись идёт локальный полдень дня. `comment` ≤ 30 000 (тримится). `aiTokens` — целое ≥ 0: Tempo — атрибут
+    AI Tokens, иначе «(AI Tokens: N)» в конце комментария. Tempo с обязательными атрибутами (кроме AI Tokens) → reject;
+    AI Tokens обязателен и не передан → reject `aiTokens is required by this Tempo instance`.
+  - Общее: инстанс — только из scope воркспейса, ключ нормализуется (как v1), чужой ввод в ошибках обрезан до 50;
+    диалогов и уведомлений нет (Tempo-ветка тоже), ошибки — reject с текстом `Jiraffe: …` (тексты Jira — локализованы,
+    без токена и email).
+  - Защита от дублей: одна запись одного вида на задачу одновременно — второй вызов reject `…is already being sent`.
+    Запись, оборвавшаяся без ответа (таймаут, обрыв, 5xx на POST; текст ошибки содержит «the write may have been saved»),
+    — следующий вызов того же вида по той же задаче в течение 10 мин один раз reject `…may have been saved; check the
+    issue, then call again`, следующий проходит. Агенту в MCP-ответе это отдавать текстом как есть.
+  - После записи (и после неуверенной ошибки) Jiraffe сам обновляет открытую карточку и сводки (ворклог — «Сегодня»,
+    переход — деревья и списки); после отказа самого API (валидация, недоступный переход) — нет.
+  - Замок API и замок формы ворклога Jiraffe — разные: одновременная запись из UI Jiraffe и через API не ловится
+    (принято, редкий случай).
 
 ### 9. Релиз 0.9.0 — **сам (Opus) или sonnet, medium**, после 8
 
@@ -799,6 +911,12 @@ high параллельно.
       подключение в двух воркспейсах, комментарий агента, комментарий человека во время хода, Reload Window; вкладка на задачу —
       переключение внутренних вкладок с идущим ходом и карточкой разрешения, «＋»/«×», Reload Window с несколькими чатами)
 - [ ] версия 0.9.0, `npm run package`, vsix без `.codex/` и `AGENTS.md`
+
+По реальному коду (после этапа 8): `zod` теперь внешний в `esbuild.mjs` и грузится `import('zod')` рядом с SDK — он в `dependencies`,
+проверить, что попал в vsix (`npx vsce ls | grep zod`), и что инструменты Jira работают из собранного vsix (не только из dev-хоста);
+MCP-сервер называется `agentura_jira` (в README/CHANGELOG — так); Jiraffe API v2 в `feature/agentura-tasks` (489333d) ещё не смержен
+и не выпущен — релиз Jiraffe 0.8.0 до или вместе с Agentura 0.9.0; в CHANGELOG — запись агентом в Jira от имени пользователя, что
+спрашивается, а что нет. Ручные проверки этапа 8 — в pending («Этап 8»).
 
 **Готово, когда:** vsix собран, pending-файл есть.
 

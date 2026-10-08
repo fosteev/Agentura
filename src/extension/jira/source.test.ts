@@ -5,7 +5,7 @@ import { createJiraClient } from '../../data/jira/client';
 import { JIRA_SOURCES, type JiraSourceSetting } from '../../settings';
 import { parseJiraffeApi, type JiraffeApi } from './jiraffeApi';
 import { OwnInstanceStore, type OwnInstance } from './ownInstances';
-import { JiraSources, JiraffeSource, OwnSource, normalizeIssueKey, resolveSourceKind } from './source';
+import { isIsoDate, JiraSources, JiraffeSource, OwnSource, normalizeIssueKey, resolveSourceKind } from './source';
 
 const fixture = JSON.parse(readFileSync(join(__dirname, '../../../test/fixtures/jira/issue-dc.json'), 'utf8'));
 
@@ -271,6 +271,93 @@ describe('JiraffeSource', () => {
   });
 });
 
+describe('JiraffeSource: запись (API v2, этап 8)', () => {
+  const v2 = (calls: unknown[][], over: Partial<JiraffeApi> = {}) =>
+    fakeJiraffe({
+      apiVersion: 2,
+      addComment: async (...a) => {
+        calls.push(['comment', ...a]);
+        return { id: '77' };
+      },
+      transitions: async (...a) => {
+        calls.push(['transitions', ...a]);
+        return [
+          { id: '11', name: 'Start', to: { name: 'In Progress', category: 'indeterminate' }, requiresFields: false },
+          { id: 5 as never, name: 'junk', to: {} as never, requiresFields: false },
+          { id: '31', name: 'Done', to: { name: 'Done', category: 'zzz' as never }, requiresFields: true },
+        ];
+      },
+      transition: async (...a) => void calls.push(['transition', ...a]),
+      logWork: async (...a) => {
+        calls.push(['logWork', ...a]);
+        return { via: 'jira', id: '9' };
+      },
+      ...over,
+    });
+
+  it('v1 — источник только читает; v2 без одного из методов — тоже', () => {
+    expect(new JiraffeSource(fakeJiraffe()).writer).toBeUndefined();
+    expect(new JiraffeSource(v2([], { logWork: undefined })).writer).toBeUndefined();
+    expect(new JiraffeSource(v2([], { apiVersion: 3 })).writer).toBeDefined();
+  });
+
+  it('ключ нормализуется, тело и ворклог проверяются до вызова; ответы чужого расширения — по форме', async () => {
+    const calls: unknown[][] = [];
+    const w = new JiraffeSource(v2(calls)).writer!;
+    expect(await w.addComment('jf', ' a-1 ', 'h3. Итог')).toEqual({ id: '77' });
+    await expect(w.addComment('jf', 'A-1', '   ')).rejects.toThrow(/empty/);
+    await expect(w.addComment('jf', 'A-1', 'x'.repeat(32_001))).rejects.toThrow(/32000/);
+    expect(await w.transitions('jf', 'a-1')).toEqual([
+      { id: '11', name: 'Start', to: { name: 'In Progress', category: 'indeterminate' }, requiresFields: false },
+      { id: '31', name: 'Done', to: { name: 'Done', category: 'indeterminate' }, requiresFields: true },
+    ]);
+    await w.transition('jf', 'a-1', '11');
+    expect(await w.logWork('jf', 'a-1', { seconds: 5400, date: '2026-10-05', comment: '' })).toEqual({ id: '9' });
+    await expect(w.logWork('jf', 'A-1', { seconds: 0, date: '2026-10-05', comment: '' })).rejects.toThrow(/seconds/);
+    await expect(w.logWork('jf', 'A-1', { seconds: 60, date: '2026-02-31', comment: '' })).rejects.toThrow(/invalid date/);
+    await expect(w.addComment('jf', 'x/../y', 'a')).rejects.toThrow(/invalid issue key/);
+    expect(calls).toEqual([
+      ['comment', 'jf', 'A-1', 'h3. Итог'],
+      ['transitions', 'jf', 'A-1'],
+      ['transition', 'jf', 'A-1', '11'],
+      ['logWork', 'jf', 'A-1', { seconds: 5400, started: '2026-10-05' }],
+    ]);
+  });
+
+  it('ворклог в Tempo — id не отдаётся (это не id ворклога Jira в ленте); отказ Jiraffe — как есть', async () => {
+    const tempo = new JiraffeSource(v2([], { logWork: async () => ({ via: 'tempo', id: 't-1' }) })).writer!;
+    expect(await tempo.logWork('jf', 'A-1', { seconds: 60, date: '2026-10-05', comment: 'x' })).toEqual({});
+    const busy = new JiraffeSource(
+      v2([], { addComment: async () => Promise.reject(new Error('Jiraffe: comment for A-1 is already being sent')) }),
+    ).writer!;
+    await expect(busy.addComment('jf', 'A-1', 'x')).rejects.toThrow(/already being sent/);
+  });
+
+  it('JiraSources.canWrite: текущий источник с записью', async () => {
+    const a = manager({ exports: v2([]) });
+    await a.m.refresh();
+    expect(a.m.canWrite()).toBe(true);
+    const b = manager({ exports: fakeJiraffe() });
+    await b.m.refresh();
+    expect(b.m.canWrite()).toBe(false);
+    const c = manager({ installed: false });
+    await c.m.refresh();
+    expect(c.m.canWrite()).toBe(false);
+    const d = manager({ installed: false, own: true });
+    await d.ready;
+    await d.m.refresh();
+    expect(d.m.canWrite()).toBe(true);
+  });
+});
+
+describe('isIsoDate', () => {
+  it('только существующая дата YYYY-MM-DD', () => {
+    expect(isIsoDate('2026-10-05')).toBe(true);
+    expect(isIsoDate('2024-02-29')).toBe(true);
+    for (const d of ['2026-02-31', '2026-13-01', '2026-1-5', '2026-10-05T00:00', 20261005, undefined]) expect(isIsoDate(d)).toBe(false);
+  });
+});
+
 describe('OwnSource', () => {
   const routes = (u: URL) => {
     if (u.pathname === '/rest/api/2/issue/ABC-123') return fixture.issue;
@@ -313,5 +400,63 @@ describe('OwnSource', () => {
     const sec = secrets();
     const store = new OwnInstanceStore(memento({ 'agentura.jira.instances': [ownInst] }), sec, 'ws');
     await expect(new OwnSource(store).issue('own', 'ABC-1')).rejects.toThrow(/token not found/);
+  });
+});
+
+describe('OwnSource: запись (этап 8)', () => {
+  type Call = { method: string; path: string; query: string; body?: unknown };
+  async function setup() {
+    const calls: Call[] = [];
+    const fetchImpl = (async (u: string, init: RequestInit = {}) => {
+      const url = new URL(u);
+      calls.push({
+        method: init.method ?? 'GET',
+        path: url.pathname,
+        query: url.search,
+        ...(typeof init.body === 'string' ? { body: JSON.parse(init.body) } : {}),
+      });
+      if (url.pathname.endsWith('/transitions') && (init.method ?? 'GET') === 'GET') {
+        return new Response(
+          JSON.stringify({
+            transitions: [
+              { id: '11', name: 'Start', to: { name: 'In Progress', statusCategory: { key: 'indeterminate' } } },
+              { id: '31', name: 'Resolve', to: { name: 'Done', statusCategory: { key: 'done' } }, fields: { resolution: { required: true } } },
+            ],
+          }),
+        );
+      }
+      if (url.pathname.endsWith('/comment')) return new Response(JSON.stringify({ id: '100' }), { status: 201 });
+      if (url.pathname.endsWith('/worklog')) return new Response(JSON.stringify({ id: '200' }), { status: 201 });
+      return new Response(null, { status: 204 });
+    }) as unknown as typeof fetch;
+    const { store } = ownStore(false);
+    await store.add(ownInst, 'tok');
+    return { calls, w: new OwnSource(store, (i, token) => createJiraClient(i, token, { fetchImpl })).writer };
+  }
+
+  it('комментарий, переход по свежему списку, ворклог — стандартный worklog Jira в полдень дня', async () => {
+    const { calls, w } = await setup();
+    expect(await w.addComment('own', 'abc-1', '*жирный*')).toEqual({ id: '100' });
+    await w.transition('own', 'ABC-1', '11');
+    expect(await w.logWork('own', 'ABC-1', { seconds: 3600, date: '2026-10-05', comment: 'сделал' })).toEqual({ id: '200' });
+    expect(calls.map((c) => `${c.method} ${c.path}${c.query}`)).toEqual([
+      'POST /rest/api/2/issue/ABC-1/comment',
+      'GET /rest/api/2/issue/ABC-1/transitions?expand=transitions.fields',
+      'POST /rest/api/2/issue/ABC-1/transitions',
+      'POST /rest/api/2/issue/ABC-1/worklog?adjustEstimate=leave',
+    ]);
+    expect(calls[0]!.body).toEqual({ body: '*жирный*' });
+    expect(calls[2]!.body).toEqual({ transition: { id: '11' } });
+    const wl = calls[3]!.body as { started: string; timeSpentSeconds: number; comment: string };
+    expect(wl.timeSpentSeconds).toBe(3600);
+    expect(wl.comment).toBe('сделал');
+    expect(wl.started).toMatch(/^2026-10-05T12:00:00\.000[+-]\d{4}$/);
+  });
+
+  it('переход не из списка или с обязательными полями — отказ без записи', async () => {
+    const { calls, w } = await setup();
+    await expect(w.transition('own', 'ABC-1', '99')).rejects.toThrow(/not available/);
+    await expect(w.transition('own', 'ABC-1', '31')).rejects.toThrow(/requires screen fields/);
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([]);
   });
 });

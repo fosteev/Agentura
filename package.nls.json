@@ -105,5 +105,9 @@
   "config.tasks.refresh.description": "How the issue card of a chat tab is refreshed.",
   "config.tasks.refresh.enum.30s": "Every 30 seconds while a tab of the issue is visible, and right after a turn",
   "config.tasks.refresh.enum.manual": "Only with the refresh button (and once when the tab opens)",
-  "config.tasks.humanChanges.description": "Show changes made by other people in the issue feed and the “commented while the agent was working” notice."
+  "config.tasks.humanChanges.description": "Show changes made by other people in the issue feed and the “commented while the agent was working” notice.",
+  "config.jira.agentTools.description": "Jira tools for the agent (Claude engine only): what it may do in the chat’s task on your behalf through the current Jira source. A short comment on the chat’s task is posted without asking (a long one, one that looks like a secret, more than 3 in 10 minutes or in plan mode asks first), a status change and a worklog go through the usual permission card.",
+  "config.jira.agentTools.comment": "Comment on the task (without asking).",
+  "config.jira.agentTools.transition": "Change the task status (asks permission).",
+  "config.jira.agentTools.worklog": "Log work time (asks permission)."
 }

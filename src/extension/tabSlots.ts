@@ -41,6 +41,11 @@ export interface TabSlotsIo {
   onNew(): void;
   /** Закрыли последний чат — вкладке редактора больше нечего показывать. */
   onEmpty(): void;
+  /**
+   * «×» чата с идущим ходом или ждущим ответа (решение владельца 2026-10-08): модальный вопрос «Остановить ход и закрыть
+   * чат?»; `false` — не закрывать. Нет — закрывается сразу.
+   */
+  confirmClose?(title: string | undefined): Promise<boolean>;
 }
 
 function subscribe<T>(set: Set<T>, cb: T): Disposable {
@@ -56,6 +61,8 @@ export class TabSlots {
   private seq = 0;
   private lastChats = '';
   private lastTitle = '';
+  /** Чаты, по которым сейчас открыт вопрос «закрыть?» — повторный «×» второй вопрос не открывает. */
+  private readonly asking = new Set<string>();
 
   constructor(
     readonly taskKey: string,
@@ -118,7 +125,7 @@ export class TabSlots {
     }
     if (isTabRequest(m)) {
       if (m.type === 'tab.select') this.activate(m.id);
-      else if (m.type === 'tab.close') this.close(m.id);
+      else if (m.type === 'tab.close') void this.requestClose(m.id);
       else this.io.onNew();
       return;
     }
@@ -128,6 +135,31 @@ export class TabSlots {
     if (typeof tag === 'string' && tag !== this.activeId) return;
     const s = this.activeId !== undefined ? this.slot(this.activeId) : undefined;
     for (const cb of [...(s?.msg ?? [])]) cb(m);
+  }
+
+  /** «×» внутренней вкладки: в простое — сразу, при ходе или ждущем запросе — после подтверждения (`confirmClose`). */
+  async requestClose(id: string): Promise<void> {
+    const info = this.slot(id)?.describe();
+    if (!info) {
+      this.close(id);
+      return;
+    }
+    const busy = info.status === 'working' || info.status === 'waiting';
+    if (busy && this.io.confirmClose) {
+      if (this.asking.has(id)) return;
+      this.asking.add(id);
+      let ok: boolean;
+      try {
+        ok = await this.io.confirmClose(info.title);
+      } catch {
+        ok = false;
+      } finally {
+        this.asking.delete(id);
+      }
+      // пока висел вопрос, чат могли закрыть другим путём (вкладка редактора, отвязка)
+      if (!ok || !this.slot(id)) return;
+    }
+    this.close(id);
   }
 
   /** Закрыть чат `id` (внутренняя вкладка «×»): его `ChatPanel` закрывается, показывается соседний. */

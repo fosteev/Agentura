@@ -10,7 +10,7 @@ import type { TaskCard, TaskChatRow, TaskEvent, TaskStateMessage } from '../shar
 import { initialState } from './chatState';
 import { Chat } from './components/Chat';
 import { initialHud } from './hudState';
-import { chat, handleHostMessage, hudState, taskCardMode, taskChats, taskState } from './store';
+import { chat, dispatchEvent, handleHostMessage, hudState, taskCardMode, taskChats, taskFocus, taskState } from './store';
 import * as vscode from './vscode';
 
 let stored: unknown;
@@ -96,6 +96,7 @@ beforeEach(() => {
   taskState.value = undefined;
   taskChats.value = [];
   taskCardMode.value = 'panel';
+  taskFocus.value = undefined;
 });
 
 afterEach(() => vi.restoreAllMocks());
@@ -427,3 +428,75 @@ describe('узкая вёрстка', () => {
     expect(q(host, '#pane-task').getAttribute('aria-labelledby')).toBe('tab-task');
   });
 });
+
+describe('инструменты Jira агента в ленте (этап 8)', () => {
+  /** Ход с вызовом `mcp__agentura_jira__<tool>` и его результатом. */
+  function toolRow(tool: string, input: Record<string, unknown>, content: string, isError = false) {
+    handleHostMessage({ type: 'chat.info', project: 'p', cwd: '/p', allowBypass: false, taskCard: taskCardMode.value });
+    let at = Date.now() - 5_000;
+    dispatchEvent({ type: 'turn.start', at, prompt: 'сделай' }, at);
+    dispatchEvent({ type: 'tool.start', toolUseId: 'j1', name: `mcp__agentura_jira__${tool}`, input }, (at += 10));
+    dispatchEvent({ type: 'tool.result', toolUseId: 'j1', isError, content, durationMs: 300 }, at + 10);
+  }
+  const row = (host: Element) => qa(host, '.log .e').find((e) => e.querySelector('.op')?.textContent === 'jira')!;
+
+  it('«jira · комментарий NEWMFC-1482 ✓ · в задаче →»: клик открывает «задачу» на изменениях и подсвечивает событие', async () => {
+    const host = mount();
+    post(state({ events: [ev({ id: 'comment:10234', kind: 'comment', at: T0, mine: true, author: 'Я', text: 'Итог' })] }));
+    toolRow('comment', { text: 'h3. Итог' }, 'Comment added to NEWMFC-1482 (id 10234).\nevent: comment:10234');
+    await flush();
+    const r = row(host);
+    expect(r.querySelector('.what')!.textContent).toBe('комментарий NEWMFC-1482');
+    expect(r.querySelector('.r')!.textContent).toBe('✓ · в задаче →');
+    [...r.querySelectorAll<HTMLElement>('.r a')].find((a) => a.textContent === 'в задаче →')!.click();
+    await flush();
+    expect(q(host, '.pane.side').getAttribute('data-active')).toBe('task');
+    expect(q(host, '.tk-seg button[aria-pressed="true"]').textContent).toContain('изменения');
+    const evt = q(host, '.tk-evt[data-id="comment:10234"]');
+    expect(evt.classList.contains('focus')).toBe(true);
+    expect(taskFocus.value).toBeUndefined();
+  });
+
+  it('событие ещё не пришло — переход ждёт следующей загрузки; без id — самое свежее «моё» этого вида', async () => {
+    const host = mount();
+    post(state({ events: [] }));
+    toolRow('transition', { to: 'Done' }, 'NEWMFC-1482 moved to "Done".\nevent: status');
+    await flush();
+    expect(row(host).querySelector('.what')!.textContent).toBe('статус NEWMFC-1482 → Done');
+    [...row(host).querySelectorAll<HTMLElement>('.r a')].find((a) => a.textContent === 'в задаче →')!.click();
+    await flush();
+    expect(taskFocus.value).toMatchObject({ kind: 'status' });
+    const now = Date.now();
+    post(
+      state({
+        fetchedAt: now,
+        events: [
+          ev({ id: 'hist:2', kind: 'status', at: now, mine: true, author: 'Я', field: 'status', from: 'In Progress', to: 'Done' }),
+          ev({ id: 'hist:1', kind: 'status', at: now - 1000, author: 'Ольга К.' }),
+        ],
+      }),
+    );
+    await flush();
+    expect(q(host, '.tk-evt[data-id="hist:2"]').classList.contains('focus')).toBe(true);
+    expect(taskFocus.value).toBeUndefined();
+  });
+
+  it('ворклог по другой задаче или ошибка — без «в задаче →»; `tasks.card = strip` — ссылка открывает задачу как полоска', async () => {
+    const host = mount();
+    post(state());
+    toolRow('worklog', { minutes: 90, issue: 'ABC-7' }, 'Logged 1h 30m on ABC-7.\nevent: worklog:5');
+    await flush();
+    expect(row(host).querySelector('.what')!.textContent).toBe('ворклог ABC-7 · 1h 30m');
+    expect(row(host).textContent).not.toContain('в задаче');
+    for (const host2 of mounted.splice(0)) render(null, host2);
+    chat.value = initialState();
+    taskCardMode.value = 'strip';
+    const h2 = mount();
+    post(state());
+    toolRow('worklog', { minutes: 30 }, 'Logged 30m on NEWMFC-1482.\nevent: worklog');
+    await flush();
+    [...row(h2).querySelectorAll<HTMLElement>('.r a')].find((a) => a.textContent === 'в задаче →')!.click();
+    expect(sent.at(-1)).toEqual({ type: 'task.openExternal' });
+  });
+});
+

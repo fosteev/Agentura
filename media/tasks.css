@@ -150,6 +150,8 @@ html:is([data-width="900"],[data-width="full"],[data-width="vscode"]) .pane.side
 .tk-body.evs { gap: 0; padding-top: 6px; }
 .tk-evt { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); }
 .tk-evt.new { padding-left: 8px; margin-left: -8px; border-radius: 0 3px 3px 0; }
+/* «в задаче →» у строки инструмента Jira (этап 8): событие, к которому перешли */
+.tk-evt.focus { outline: 1px solid var(--vscode-focusBorder, var(--accent)); outline-offset: 2px; border-radius: 3px; }
 .tk-evt .av2 { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 9.5px; color: #fff; background: #8a6bb0; }
 .tk-evt .av2.ag { border-radius: 4px; background: transparent; }
 .tk-evt .av2.ag .mk { width: 22px; height: 22px; font-size: 11px; border-radius: 4px; }

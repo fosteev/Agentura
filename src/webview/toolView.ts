@@ -1,5 +1,7 @@
 /** Как строка инструмента `e` выглядит в ленте: глагол, что, результат справа. Чистые функции. */
 import { ui } from './strings';
+import { eventRefOf, formatSeconds, jiraToolOf, type JiraToolName } from '../shared/jiraTools';
+import type { TaskEventKind } from '../shared/task';
 
 export interface ToolView {
   op: string;
@@ -41,7 +43,39 @@ function shortName(name: string): string {
   return name.startsWith('mcp__') ? (name.split('__').pop() ?? name) : name;
 }
 
-export function toolView(name: string, input: Record<string, unknown>, cwd?: string): ToolView {
+/** Ключ задачи из входа инструмента Jira; нет — задача чата (`taskIssue`). */
+function jiraIssue(input: Record<string, unknown>, taskIssue?: string): string {
+  const own = str(input['issue'])?.trim().toUpperCase();
+  return own || taskIssue || '';
+}
+
+/** `jira · комментарий NEWMFC-1482`, `jira · статус NEWMFC-1482 → Done`, `jira · ворклог NEWMFC-1482 · 1h 30m`. */
+function jiraView(
+  tool: JiraToolName,
+  input: Record<string, unknown>,
+  taskIssue?: string,
+): ToolView {
+  const parts = [ui.log.jira[tool] ?? tool, jiraIssue(input, taskIssue)].filter(Boolean);
+  let what = parts.join(' ');
+  const to = str(input['to']);
+  if (tool === 'transition' && to) what += ` → ${to}`;
+  const minutes = input['minutes'];
+  if (tool === 'worklog' && typeof minutes === 'number')
+    what += ` · ${formatSeconds(minutes * 60)}`;
+  return { op: 'jira', what: clip(what) };
+}
+
+/**
+ * Строка инструмента. `taskIssue` — ключ задачи чата (`NEWMFC-1482`): им подписаны инструменты Jira без явного `issue`.
+ */
+export function toolView(
+  name: string,
+  input: Record<string, unknown>,
+  cwd?: string,
+  taskIssue?: string,
+): ToolView {
+  const jira = jiraToolOf(name);
+  if (jira) return jiraView(jira, input, taskIssue);
   const file = str(input['file_path']) ?? str(input['notebook_path']);
   switch (name) {
     case 'Read':
@@ -225,6 +259,26 @@ export function toolLinks(
     return out;
   }
   return {};
+}
+
+/**
+ * «в задаче →» у успешного инструмента Jira по задаче этого чата: какое событие ленты показать. `id` — из строки
+ * `event: …` результата (нет — самое свежее «моё» событие этого вида). Чужая задача или ошибка — ссылки нет.
+ */
+export function jiraTaskLink(
+  name: string,
+  input: Record<string, unknown>,
+  content: string | undefined,
+  state: string,
+  taskIssue: string | undefined,
+): { kind: TaskEventKind; id?: string } | undefined {
+  const tool = jiraToolOf(name);
+  if (!tool || state !== 'ok' || !taskIssue) return undefined;
+  if (jiraIssue(input, taskIssue) !== taskIssue.toUpperCase()) return undefined;
+  const ref = content ? eventRefOf(content) : undefined;
+  const kind: TaskEventKind =
+    tool === 'comment' ? 'comment' : tool === 'transition' ? 'status' : 'worklog';
+  return ref && ref.kind === kind ? ref : { kind };
 }
 
 /** Статус публикации артефакта по результату инструмента. */

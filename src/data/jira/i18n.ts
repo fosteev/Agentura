@@ -24,6 +24,18 @@ const RU: Record<string, string> = {
   'The response from {0} is too large': 'Ответ от {0} слишком большой',
   '{0}. The server certificate is not trusted. A corporate CA can be added via NODE_EXTRA_CA_CERTS.':
     '{0}. Сертификат сервера не доверенный. Корпоративный CA можно добавить через NODE_EXTRA_CA_CERTS.',
+  // запись (этап 8): переводы — из bundle.l10n.ru.json Jiraffe
+  'the write may have been saved; check the issue log before retrying':
+    'запись могла сохраниться — проверьте журнал задачи, прежде чем повторять',
+  'The URL does not belong to the instance. Authorized request is blocked.':
+    'Адрес не относится к инстансу — запрос с авторизацией запрещён',
+  'No response from {0}: timed out; {1}': 'Нет ответа от {0}: превышено время ожидания; {1}',
+  'Jira redirected to the login page. The token is invalid or lacks write access.':
+    'Jira перенаправила на страницу входа — токен недействителен или нет прав на запись',
+  'The server redirected a write request. Request canceled; check the instance URL (https, context path).':
+    'Сервер ответил перенаправлением на запись — запрос отменён; проверьте адрес инстанса (https, context path)',
+  'The response from {0} was cut off; {1}': 'Ответ от {0} оборвался; {1}',
+  'The write response is not JSON; {0}': 'Ответ на запись не похож на JSON; {0}',
 };
 
 /** Сообщение на языке хоста; `{0}`, `{1}` — подстановки. */

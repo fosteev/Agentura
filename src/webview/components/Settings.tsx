@@ -54,6 +54,7 @@ import {
   TaskTabPreview,
 } from './SettingsPreview';
 import { fontStack } from '../appearance';
+import { JIRA_TOOLS, type AgentToolsSetting } from '../../shared/jiraTools';
 import { codeFonts, installedFonts, uiFonts, userFonts } from '../fonts';
 import {
   SETTINGS_SECTIONS,
@@ -228,6 +229,33 @@ function InfoRow({
   );
 }
 
+/**
+ * Инструменты Jira для агента (этап 8): три флажка пишут `agentura.jira.agentTools` целиком. Источник не пишет в Jira
+ * (нет источника, Jiraffe без API v2) — флажки неактивны и причина рядом (решение 14).
+ */
+function AgentToolsBoxes({ value, writes }: { value: AgentToolsSetting; writes: boolean }) {
+  const A = T.integrations.agentTools;
+  void errors.value['jira.agentTools']; // отказ записи — перерисовать флажки по значению из настроек
+  return (
+    <div class="cbs" aria-disabled={writes ? undefined : 'true'}>
+      {JIRA_TOOLS.map((t) => (
+        <label key={t} class={writes ? undefined : 'off'}>
+          <input
+            type="checkbox"
+            disabled={!writes}
+            checked={value[t]}
+            aria-label={A[t]}
+            onChange={(e) => commit('jira.agentTools', { ...value, [t]: (e.currentTarget as HTMLInputElement).checked })}
+          />
+          {A[t]}
+          {t !== 'comment' && <em> {A.ask}</em>}
+        </label>
+      ))}
+      {!writes && <em class="soon">{A.noWrite}</em>}
+    </div>
+  );
+}
+
 /** Страница «Интеграции» (roadmap 19, этап 6, решение 14): источник Jira, Jiraffe, свои подключения, обновление и инструменты агента. */
 function IntegrationsRows({ v }: { v: SettingsValues }) {
   const I = T.integrations;
@@ -332,18 +360,9 @@ function IntegrationsRows({ v }: { v: SettingsValues }) {
       <Row name={I.humanChanges.name} isNew desc={I.humanChanges.desc} k="tasks.humanChanges">
         <Toggle k="tasks.humanChanges" value={v['tasks.humanChanges']} />
       </Row>
-      <InfoRow name={I.agentTools.name} desc={I.agentTools.desc} keyText="agentura.jira.agentTools">
-        <div class="cbs" aria-disabled="true">
-          {(['comment', 'transition', 'worklog'] as const).map((t) => (
-            <label key={t} class="off">
-              <input type="checkbox" disabled checked={false} aria-label={I.agentTools[t]} />
-              {I.agentTools[t]}
-              {t !== 'comment' && <em> {I.agentTools.ask}</em>}
-            </label>
-          ))}
-          <em class="soon">{I.agentTools.soon}</em>
-        </div>
-      </InfoRow>
+      <Row name={I.agentTools.name} isNew desc={I.agentTools.desc} k="jira.agentTools">
+        <AgentToolsBoxes value={v['jira.agentTools']} writes={st?.writes === true} />
+      </Row>
     </>
   );
 }

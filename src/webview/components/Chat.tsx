@@ -31,6 +31,7 @@ import {
   tabChats,
   activeTabChat,
   taskState,
+  taskFocus,
   tick,
 } from '../store';
 import { activeCard, pendingPlan } from '../chatState';
@@ -44,7 +45,7 @@ import { Composer } from './Composer';
 import { Empty } from './Empty';
 import { Hud, type Tab } from './Hud';
 import { TabBar, type TabItem } from './TabBar';
-import { Log } from './Log';
+import { Log, type TaskEventRef } from './Log';
 import { useStickToBottom } from '../useStickToBottom';
 import { AgentsPane, ChangesPane, type AgentsPaneModel } from './SidePanes';
 import { GitPane } from './GitPane';
@@ -370,6 +371,20 @@ export function Chat() {
     else if (wide.value) updatePanel({ tab: 'agents', off: false });
     else tab.value = 'agents';
   };
+  // «в задаче →» у строки инструмента Jira (этап 8): вкладка «задача» на «изменениях», прокрутка к событию; вкладки нет
+  // (`tasks.card = strip`) — задача открывается как из полоски
+  const openTaskEvent = (ref: TaskEventRef) => {
+    if (!taskOn) {
+      send({ type: 'task.openExternal' });
+      return;
+    }
+    taskFocus.value = { ...ref, since: Date.now() };
+    if (wide.value) updatePanel({ tab: 'task', off: false, taskView: 'changes' });
+    else {
+      updatePanel({ taskView: 'changes' });
+      tab.value = 'task';
+    }
+  };
   // вкладки панели: в пустой сессии недоступны, активна «изменения»
   const panelTab: NonNullable<PanelState['tab']> =
     panel.tab === 'task'
@@ -519,6 +534,7 @@ export function Chat() {
               onOpenUrl={(url) => send({ type: 'link.open', url })}
               onOpenImage={openImage}
               onOpenFile={openFile}
+              onTaskEvent={openTaskEvent}
               hud={h}
               working={working}
               turnStartedAt={s.turnStartedAt}
