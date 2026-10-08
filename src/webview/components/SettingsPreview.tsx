@@ -1,6 +1,6 @@
 import type { ComponentChildren } from 'preact';
 import type { FeedRow } from '../chatState';
-import type { SessionSummary } from '../../protocol';
+import type { SessionSummary, TaskGroupSummary } from '../../protocol';
 import type { AgentsView, ComposerLayout, FeedStyle, GitLayout } from '../../settings';
 import type { GitFileStatus, GitFileView, GitRepoView, GitSnapshot } from '../../shared/git';
 import { agentMapView } from '../agentsView';
@@ -36,6 +36,10 @@ const TEXT = {
       'миграция табло на новый ws-client',
     ],
     account: { email: 'you@example.com', plan: 'Max 5×', login: 'через CLI · ок' },
+    tasks: [
+      ['NEWMFC-1482', 'Электронная очередь: талон не печатается после перерыва', 'В работе'],
+      ['GARM-833', 'Pulse: пуш о тревоге дублируется', 'Открыта'],
+    ],
   },
   en: {
     ask: 'Fix the ticket counter flicker on the board',
@@ -50,6 +54,10 @@ const TEXT = {
       'move the board to the new ws-client',
     ],
     account: { email: 'you@example.com', plan: 'Max 5×', login: 'CLI · ok' },
+    tasks: [
+      ['NEWMFC-1482', 'Electronic queue: the ticket is not printed after a break', 'In progress'],
+      ['GARM-833', 'Pulse: the alarm push is duplicated', 'Open'],
+    ],
   },
 }[uiLang];
 
@@ -577,9 +585,42 @@ export function ComposerPreview({ layout }: { layout: ComposerLayout }) {
   );
 }
 
-/** Боковая панель: верх, лимиты нескольких движков или список сессий. */
-export function SidebarPreview({ look, part }: { look: SidebarLook; part: 'top' | 'limits' | 'list' }) {
+/** Фикстура групп задач для превью `tasks.sidebar`: две задачи, чаты s0+s1 и s3; остальные — вне задач. */
+function taskFixture(sessions: SessionSummary[]): { sessions: SessionSummary[]; tasks: TaskGroupSummary[] } {
+  const [a, b] = TEXT.tasks as [string, string, string][];
+  const spec: [[string, string, string], string[]][] = [
+    [a!, ['s0', 's1']],
+    [b!, ['s3']],
+  ];
+  const tasks = spec.map(([[key, title, status], sessionIds], i): TaskGroupSummary => ({
+    taskKey: `jira:demo:${key}`,
+    meta: { key, instanceId: 'demo', title, status, statusCategory: i === 0 ? 'indeterminate' : 'new', url: '' },
+    sessionIds,
+  }));
+  const keyOf = new Map(tasks.flatMap((t) => t.sessionIds.map((id) => [id, t.meta] as const)));
+  return {
+    sessions: sessions.map((s) => {
+      const m = keyOf.get(s.id);
+      return m ? { ...s, task: { key: m.key, title: m.title, status: m.status } } : s;
+    }),
+    tasks,
+  };
+}
+
+/** Боковая панель: верх, лимиты нескольких движков, список сессий или задачи Jira (группы / секция). */
+export function SidebarPreview({
+  look,
+  part,
+}: {
+  look: SidebarLook;
+  part: 'top' | 'limits' | 'list' | 'tasks';
+}) {
   const data = sidebarData(Date.now());
+  if (part === 'tasks') {
+    const fx = taskFixture(data.sessions);
+    data.sessions = fx.sessions;
+    data.tasks = fx.tasks;
+  }
   if (part === 'limits') {
     data.provider = 'claude';
     data.engines = [

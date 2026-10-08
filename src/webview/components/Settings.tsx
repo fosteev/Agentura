@@ -8,6 +8,7 @@ import {
   MIN_POLL_MINUTES,
   SESSION_LIST_MODES,
   SIDEBAR_LIMITS_MODES,
+  TASK_SIDEBAR_MODES,
   SIDEBAR_TOP_MODES,
   COMPOSER_LAYOUTS,
   FEED_STYLES,
@@ -731,6 +732,23 @@ export function Settings() {
                       <SidebarPreview look={{ ...look, top: 'detailed', limits }} part="limits" />
                     )}
                     onPick={(limits) => commit('sidebar.limits', limits)}
+                  />
+                }
+              >
+                {null}
+              </Row>
+              <Row
+                name={T.tasksSidebar.name}
+                isNew
+                desc={T.tasksSidebar.desc}
+                k="tasks.sidebar"
+                below={
+                  <ChoiceCards
+                    label={T.tasksSidebar.name}
+                    value={v['tasks.sidebar']}
+                    options={cardOptions(TASK_SIDEBAR_MODES, T.tasksSidebar.options)}
+                    preview={(tasks) => <SidebarPreview look={{ ...look, tasks }} part="tasks" />}
+                    onPick={(tasks) => commit('tasks.sidebar', tasks)}
                   />
                 }
               >

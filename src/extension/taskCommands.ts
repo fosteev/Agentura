@@ -4,7 +4,7 @@ import { hostStrings } from '../shared/l10n';
 import { issueContext } from '../data/jira/text';
 import { ChatPanel, type ChatServices } from './chatPanel';
 import { parseTaskKey, taskKeyOf, type TaskGroups, type TaskMeta } from './taskGroups';
-import { bareMeta, baseUrlOfIssueUrl, parseIssueInput, type IssueInput } from './taskLink';
+import { bareMeta, baseUrlOfIssueUrl, parseIssueInput, sessionIdOf, type IssueInput } from './taskLink';
 import { currentLanguage } from './webviewHost';
 
 /**
@@ -63,7 +63,7 @@ export function registerTaskCommands(
   const t = () => hostStrings(currentLanguage());
 
   const bind = async (arg?: unknown): Promise<void> => {
-    const sessionId = typeof arg === 'string' ? arg : undefined;
+    const sessionId = sessionIdOf(arg);
     const panel = sessionId ? ChatPanel.panelOf(sessionId) : ChatPanel.target();
     if (!panel && !sessionId) {
       void vscode.window.showWarningMessage(t().bindTaskNoTab);
@@ -93,7 +93,7 @@ export function registerTaskCommands(
   };
 
   const unbind = (arg?: unknown): void => {
-    const sessionId = typeof arg === 'string' ? arg : undefined;
+    const sessionId = sessionIdOf(arg);
     const panel = sessionId ? ChatPanel.panelOf(sessionId) : ChatPanel.target();
     if (!panel && !sessionId) {
       void vscode.window.showWarningMessage(t().bindTaskNoTab);

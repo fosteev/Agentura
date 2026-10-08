@@ -1,0 +1,56 @@
+/* Agentura · задачи Jira в боковой панели (roadmap 19, этап 4). Эталон — prototype/screens/tasks.html (#a группы, #c секция),
+   prototype/shared/tasks.css. Всё под .sidebar: имена .tkey, .pill, .plus, .tag общие и в других местах значат своё. */
+
+/* ключ задачи и статус */
+.sidebar .tkey { font: 11px/16px var(--mono); padding: 0 5px; border-radius: 3px; background: var(--bg-code); color: var(--fg); white-space: nowrap; flex: none; }
+.sidebar .pill { --c: var(--fg-mute); font: 10.5px/15px var(--font); padding: 0 6px; border-radius: 8px; white-space: nowrap; flex: none; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--c); background: color-mix(in srgb, var(--c) 16%, transparent); }
+.sidebar .pill.wip { --c: var(--info); }
+.sidebar .pill.done { --c: var(--ok); }
+.sidebar .pill.open { --c: var(--fg-mute); }
+.sidebar :is(.tg-h, .tk) .plus { position: relative; z-index: 1; color: var(--fg-mute); font-size: 15px; line-height: 1; padding: 0 3px; border-radius: 3px; flex: none; }
+.sidebar :is(.tg-h, .tk) .plus:hover { color: var(--fg); background: var(--bg-hover); }
+
+/* заголовок группы и карточка: действие — кнопка .hit вокруг ключа, её ::before растянут на весь заголовок; «＋» поверх */
+.sidebar :is(.tg-h, .tk) { position: relative; }
+.sidebar .hit { text-align: left; }
+.sidebar .hit::before { content: ""; position: absolute; inset: 0; }
+.sidebar .hit:focus-visible { outline: none; }
+.sidebar .hit:focus-visible::before { outline: 1px solid var(--accent); outline-offset: -1px; }
+
+/* A · группа задачи в списке сессий (tasks.sidebar = groups) */
+.sidebar .tg-h { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto auto; gap: 1px 8px; align-items: center; padding: 5px 10px 5px 14px; width: 100%; text-align: left; cursor: pointer; color: var(--fg); }
+.sidebar .tg-h:hover { background: var(--bg-hover); }
+.sidebar .tw { border: 4px solid transparent; border-left: 5px solid var(--fg-mute); width: 0; height: 0; margin-left: 2px; }
+.sidebar .tw.open { border: 4px solid transparent; border-top: 5px solid var(--fg-mute); margin: 3px 0 0; }
+.sidebar .tg-h .kp { display: flex; gap: 6px; align-items: center; min-width: 0; }
+.sidebar .tg-h .cn { font: 11px var(--mono); color: var(--fg-mute); white-space: nowrap; }
+.sidebar .tg-h .tt { grid-column: 2 / 5; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
+.sidebar .tg-h.nokey { padding-top: 7px; padding-bottom: 3px; }
+.sidebar .tg-h.nokey .kp b { font-weight: 600; font-size: 11px; color: var(--fg-mute); letter-spacing: .02em; }
+.sidebar .tgp + .tgp { border-top: 1px solid var(--line); }
+.sidebar .tgp.sel > .tg-h { background: color-mix(in srgb, var(--sel) 22%, transparent); }
+/* чат внутри группы: отступ под стрелку заголовка; в «Без задачи» — тот же */
+/* [data-tasks]: перебить padding строк cur/live вида compact (hud.css), иначе текущий чат теряет отступ */
+.sidebar[data-tasks] .s.nest { padding-left: 28px; }
+.sidebar .s.nest .t .mk { margin-right: 6px; vertical-align: -2px; }
+
+/* C · секция «Задачи» (tasks.sidebar = section) */
+.sidebar .sec.tasks { max-height: 45%; overflow: auto; }
+.sidebar .sec.tasks h3 .count { font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--fg-mute); }
+.sidebar .tk { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 8px; align-items: center; padding: 6px 10px 6px 14px; width: 100%; text-align: left; cursor: pointer; color: var(--fg); }
+.sidebar .tk:hover { background: var(--bg-hover); }
+.sidebar .tk.sel { background: var(--sel); }
+.sidebar .tk .kp { display: flex; gap: 6px; align-items: center; min-width: 0; }
+.sidebar .tk .ri { display: flex; gap: 5px; align-items: center; color: var(--fg-mute); font: 11px var(--mono); white-space: nowrap; }
+.sidebar .tk .tt { grid-column: 1 / 3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
+.sidebar .tk .sub { grid-column: 1 / 3; color: var(--fg-mute); font: 10.5px var(--mono); }
+/* секция «Задачи» делает панель колонкой: число прямых детей меняется, а сетка в hud.css рассчитана на пять рядов */
+.sidebar[data-tasks="section"] { display: flex; flex-direction: column; }
+.sidebar[data-tasks="section"] > * { flex: none; }
+.sidebar[data-tasks="section"] > .list { flex: 1 1 0; min-height: 0; }
+
+/* метка ключа справа в строке сессии (section): ещё одна колонка перед контекстом и временем */
+.sidebar .s .tag { font: 10.5px/15px var(--mono); padding: 0 4px; border-radius: 3px; background: var(--bg-code); color: var(--fg-mute); white-space: nowrap; align-self: center; }
+.sidebar .s.tagged { grid-template-columns: 10px 1fr auto auto auto; }
+.sidebar:is([data-ctx="off"], [data-time="off"]) .s.tagged { grid-template-columns: 10px 1fr auto auto; }
+.sidebar[data-ctx="off"][data-time="off"] .s.tagged { grid-template-columns: 10px 1fr auto; }
