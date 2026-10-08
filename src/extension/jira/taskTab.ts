@@ -18,6 +18,8 @@ export interface TaskTabDeps {
   prefill(text: string): void;
   /** Открыть адрес в браузере. */
   openUrl(url: string): void;
+  /** «Подключить Jira…» (команда подключения). */
+  connect?(): void;
   now?(): number;
 }
 
@@ -44,6 +46,11 @@ export class TaskTab {
     if (id && g) return { taskKey: g.taskKey, openedAt: g.group.openedAt[id] ?? 0 };
     const p = this.deps.pending();
     return p ? { taskKey: p, openedAt: this.pendingSince } : undefined;
+  }
+
+  /** Задача вкладки сейчас (группа или ожидание); нет — вкладка вне задачи. */
+  get taskKey(): TaskKey | undefined {
+    return this.key;
   }
 
   /** Вызывать при смене сессии/привязки, видимости вкладки, `ready` webview, смене групп. Дёшево, если ничего не изменилось. */
@@ -89,6 +96,9 @@ export class TaskTab {
     switch (m.type) {
       case 'task.refresh':
         void this.deps.service.refresh(key);
+        break;
+      case 'task.connect':
+        this.deps.connect?.();
         break;
       case 'task.toComposer': {
         const c = this.deps.service.commentOf(key, m.commentId);

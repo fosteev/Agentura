@@ -787,17 +787,23 @@ export function SidebarView({ look, data }: { look: SidebarLook; data: SidebarDa
                   </button>
                   <span class="cn">{layout.free.length}</span>
                 </div>
+                {/* внутри «Без задачи» — прежнее деление по дням (решение владельца 2026-10-08) */}
                 {freeOpen &&
-                  layout.free.map((s) => (
-                    <SessionRow
-                      key={s.id}
-                      s={s}
-                      isCurrent={data.current === s.id}
-                      now={n}
-                      ctxCol={look.context}
-                      mixed={mixed}
-                      nest
-                    />
+                  groupByDay(layout.free, n).map((g) => (
+                    <>
+                      <div class="day">{g.day}</div>
+                      {g.rows.map((s) => (
+                        <SessionRow
+                          key={s.id}
+                          s={s}
+                          isCurrent={data.current === s.id}
+                          now={n}
+                          ctxCol={look.context}
+                          mixed={mixed}
+                          nest
+                        />
+                      ))}
+                    </>
                   ))}
               </div>
             )}

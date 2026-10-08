@@ -26,6 +26,9 @@ import {
   showThinking,
   stopAgent,
   stopAgents,
+  taskCardMode,
+  taskChats,
+  taskState,
   tick,
 } from '../store';
 import { activeCard, pendingPlan } from '../chatState';
@@ -43,6 +46,8 @@ import { Log } from './Log';
 import { useStickToBottom } from '../useStickToBottom';
 import { AgentsPane, ChangesPane, type AgentsPaneModel } from './SidePanes';
 import { GitPane } from './GitPane';
+import { TaskPane, TaskStrip } from './TaskPane';
+import { isTaskChat, latestSeen, taskPanelShown, unseenCount, visibleEvents } from '../taskView';
 import { agentPathSet, gitBadge } from '../gitView';
 import { agentsViewPane, defaultScope } from '../agentViews';
 import type { FeedRow } from '../chatState';
@@ -123,6 +128,19 @@ const ICON_GIT = (
     <circle cx="4.5" cy="12.5" r="1.6" />
     <circle cx="11.5" cy="5.5" r="1.6" />
     <path d="M4.5 5.1v5.8M11.5 7.1c0 2.4-2 3-7 3.8" />
+  </svg>
+);
+const ICON_TASK = (
+  <svg
+    class="ico"
+    viewBox="0 0 16 16"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="1.2"
+    aria-hidden="true"
+  >
+    <rect x="2.5" y="2.5" width="11" height="11" rx="2" />
+    <path d="M5.5 8.2l1.7 1.7 3.3-3.6" />
   </svg>
 );
 const ICON_AGENTS = (
@@ -256,8 +274,32 @@ export function Chat() {
   // в пустой сессии вкладки «изменения»/«агенты» отключены — после «new» возвращаемся в чат
   // вкладка «агенты» есть не у каждого движка (`features.subagents`): сохранённая или открытая — уступает «изменениям»
   const subagents = features.value.subagents;
-  const t = empty ? 'chat' : !subagents && tab.value === 'agents' ? 'changes' : tab.value;
+  // вкладка «задача» (чат по задаче, roadmap 19): доступна и в пустой сессии — карточку видно до первого сообщения
+  const ts = taskState.value;
+  const taskOn = taskPanelShown(taskCardMode.value, ts);
+  const t: Tab =
+    tab.value === 'task'
+      ? taskOn
+        ? 'task'
+        : 'chat'
+      : empty
+        ? 'chat'
+        : !subagents && tab.value === 'agents'
+          ? 'changes'
+          : tab.value;
   const now = tick.value;
+  // что человек уже видел в ленте задачи: пока данных не было, «нового» нет; первая загрузка считается просмотренной
+  const taskKey = ts?.taskKey;
+  const seen =
+    taskKey && panel.taskSeenKey === taskKey && panel.taskSeen !== undefined
+      ? panel.taskSeen
+      : Number.POSITIVE_INFINITY;
+  const [humanDone, setHumanDone] = useState<ReadonlySet<string>>(new Set());
+  useEffect(() => {
+    if (!ts || !taskKey || ts.fetchedAt === 0) return;
+    if (panel.taskSeenKey === taskKey && panel.taskSeen !== undefined) return;
+    updatePanel({ taskSeen: latestSeen(ts), taskSeenKey: taskKey });
+  }, [taskKey, ts?.fetchedAt]);
   const last = s.rows[s.rows.length - 1];
   const live = working
     ? liveLabel(
@@ -326,12 +368,28 @@ export function Chat() {
     else tab.value = 'agents';
   };
   // вкладки панели: в пустой сессии недоступны, активна «изменения»
-  const panelTab = empty
-    ? 'changes'
-    : !subagents && panel.tab === 'agents'
-      ? 'changes'
-      : (panel.tab ?? 'changes');
-  const panelAll: readonly TabItem<'changes' | 'git' | 'agents'>[] = [
+  const panelTab: NonNullable<PanelState['tab']> =
+    panel.tab === 'task'
+      ? taskOn
+        ? 'task'
+        : 'changes'
+      : empty
+        ? 'changes'
+        : !subagents && panel.tab === 'agents'
+          ? 'changes'
+          : (panel.tab ?? 'changes');
+  // вкладка «задача» видна (широкая — активна в несвёрнутой панели, узкая — открыта в шапке); открыта лента — бейджа нет:
+  // отметка «видел» сдвигается эффектом `TaskPane` после кадра, бейдж не должен мелькнуть на этот кадр
+  const taskShown = taskOn && (wide.value ? panelTab === 'task' && !panelOff : t === 'task');
+  const taskBdg = taskOn && !(taskShown && panel.taskView === 'changes') ? unseenCount(visibleEvents(ts), seen) : 0;
+  // относительные времена вкладки («обновлено …», «N мин назад») идут и в простое, когда общий тик стоит
+  useEffect(() => {
+    if (!taskShown) return;
+    tick.value = Date.now();
+    const id = setInterval(() => (tick.value = Date.now()), 15_000);
+    return () => clearInterval(id);
+  }, [taskShown]);
+  const panelAll: readonly TabItem<'changes' | 'git' | 'agents' | 'task'>[] = [
     {
       key: 'changes',
       label: ui.tabs.changes,
@@ -350,8 +408,15 @@ export function Chat() {
       disabled: empty,
       ...(agentsBdg ? { badge: agentsBdg } : {}),
     },
+    {
+      key: 'task',
+      label: ui.tabs.task,
+      ...(taskBdg ? { badge: { text: String(taskBdg), live: true } } : {}),
+    },
   ];
-  const panelItems = subagents ? panelAll : panelAll.filter((i) => i.key !== 'agents');
+  const panelItems = panelAll.filter(
+    (i) => (i.key !== 'agents' || subagents) && (i.key !== 'task' || taskOn),
+  );
 
   // вкладка «git» видна: широкая — активна и панель не свёрнута, узкая — открыта вкладка шапки
   const gitShown = wide.value ? panelTab === 'git' && !panelOff : t === 'git';
@@ -371,13 +436,17 @@ export function Chat() {
         onTab={(k) => (tab.value = k)}
         sidePanesEnabled={!empty}
         agentsTab={subagents}
+        taskTab={taskOn}
         badges={
           empty
-            ? {}
+            ? taskBdg
+              ? { task: taskBdg }
+              : {}
             : {
                 ...(changesBdg ? { changes: changesBdg } : {}),
                 ...(gitBdg ? { git: gitBdg } : {}),
                 ...(agentsBdg ? { agents: agentsBdg } : {}),
+                ...(taskBdg ? { task: taskBdg } : {}),
               }
         }
         sessions={recent.value}
@@ -412,6 +481,7 @@ export function Chat() {
           </span>
         </div>
       )}
+      {isTaskChat(ts) && <TaskStrip state={ts} />}
       <div
         class="body"
         ref={bodyRef}
@@ -604,6 +674,23 @@ export function Chat() {
             onTranscript={openAgentTranscript}
             onGraph={() => openGraph(selectedAgent.value)}
           />
+          {taskOn && (
+            <TaskPane
+              state={ts}
+              chats={taskChats.value}
+              provider={s.engine}
+              now={now}
+              hidden={wide.value ? panelTab !== 'task' : t !== 'task'}
+              visible={taskShown}
+              labelledBy={wide.value ? 'ptab-task' : 'tab-task'}
+              seg={panel.taskView ?? 'card'}
+              seen={seen}
+              humanDone={humanDone}
+              onSeg={(v) => updatePanel({ taskView: v })}
+              onSeen={(at) => updatePanel({ taskSeen: at, taskSeenKey: taskKey })}
+              onHumanDone={(id) => setHumanDone((d) => new Set(d).add(id))}
+            />
+          )}
         </aside>
         <nav class="rail" aria-label={ui.panel.railAria}>
           <button
@@ -635,6 +722,16 @@ export function Chat() {
               {agentsBdg && (
                 <span class={agentsBdg.live ? 'b live' : 'b'}>{agentsBdg.text.split(' / ')[0]}</span>
               )}
+            </button>
+          )}
+          {taskOn && (
+            <button
+              data-tip={taskBdg ? ui.task.badgeTitle(taskBdg) : ui.tabs.task}
+              aria-label={ui.panel.openTab(ui.tabs.task)}
+              onClick={() => updatePanel({ tab: 'task', off: false })}
+            >
+              {ICON_TASK}
+              {taskBdg > 0 && <span class="b live">{taskBdg}</span>}
             </button>
           )}
           <button

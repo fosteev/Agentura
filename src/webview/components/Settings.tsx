@@ -8,6 +8,7 @@ import {
   MIN_POLL_MINUTES,
   SESSION_LIST_MODES,
   SIDEBAR_LIMITS_MODES,
+  TASK_CARD_MODES,
   TASK_SIDEBAR_MODES,
   SIDEBAR_TOP_MODES,
   COMPOSER_LAYOUTS,
@@ -43,6 +44,7 @@ import {
   FeedPreview,
   GitPreview,
   SidebarPreview,
+  TaskCardPreview,
 } from './SettingsPreview';
 import { fontStack } from '../appearance';
 import { codeFonts, installedFonts, uiFonts, userFonts } from '../fonts';
@@ -851,6 +853,23 @@ export function Settings() {
                     options={cardOptions(GIT_LAYOUTS, T.gitLayout.options)}
                     preview={(layout) => <GitPreview layout={layout} />}
                     onPick={(layout) => commit('git.layout', layout)}
+                  />
+                }
+              >
+                {null}
+              </Row>
+              <Row
+                name={T.tasksCard.name}
+                isNew
+                desc={T.tasksCard.desc}
+                k="tasks.card"
+                below={
+                  <ChoiceCards
+                    label={T.tasksCard.name}
+                    value={v['tasks.card']}
+                    options={cardOptions(TASK_CARD_MODES, T.tasksCard.options)}
+                    preview={(mode) => <TaskCardPreview mode={mode} />}
+                    onPick={(mode) => commit('tasks.card', mode)}
                   />
                 }
               >

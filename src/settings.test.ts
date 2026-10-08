@@ -93,6 +93,8 @@ describe('sessionList', () => {
     expect(validateSetting('sidebar.limits', 'grid').ok).toBe(false);
     expect(validateSetting('tasks.sidebar', 'section')).toEqual({ ok: true, value: 'section' });
     expect(validateSetting('tasks.sidebar', 'tree').ok).toBe(false);
+    expect(validateSetting('tasks.card', 'split')).toEqual({ ok: true, value: 'split' });
+    expect(validateSetting('tasks.card', 'tab').ok).toBe(false);
     expect(validateSetting('feed.style', 'cards')).toEqual({ ok: true, value: 'cards' });
     expect(validateSetting('feed.style', 'grid').ok).toBe(false);
     for (const v of ['list', 'tree', 'lanes', 'cards', 'graph']) {
@@ -207,6 +209,7 @@ describe('readSettings', () => {
         'sidebar.top': 'mini',
         'sidebar.limits': 'grid',
         'tasks.sidebar': 'tree',
+        'tasks.card': 'tab',
         'feed.style': 'grid',
         'agents.view': 'map',
         'git.layout': 'rows',
@@ -219,6 +222,7 @@ describe('readSettings', () => {
       'sidebar.top': 'detailed',
       'sidebar.limits': 'active',
       'tasks.sidebar': 'groups',
+      'tasks.card': 'panel',
       'feed.style': 'journal',
       'agents.view': 'list',
       'git.layout': 'stack',

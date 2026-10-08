@@ -1,7 +1,7 @@
 # 19 — Чаты по задачам Jira: группы, режим задачи, своё подключение и Jiraffe
 
 > **Статус:** этап 1 принят 2026-10-08 (ветка `stage-1-task-groups` от `feature/task-groups`); этап 3 (Jiraffe) принят
-> отдельной приёмкой (`feature/agentura-tasks`, 30d982d); этап 2 принят 2026-10-08 (ветка `stage-2-jira-sources`); этап 4 принят 2026-10-08 (ветка `stage-4-sidebar-tasks`); следующий — **5**. Ветка roadmap `feature/task-groups`
+> отдельной приёмкой (`feature/agentura-tasks`, 30d982d); этап 2 принят 2026-10-08 (ветка `stage-2-jira-sources`); этап 4 принят 2026-10-08 (ветка `stage-4-sidebar-tasks`); этап 5 принят 2026-10-08 (ветка `stage-5-task-tab`, вёрстка — ручная проверка в pending); следующий — **6**. Ветка roadmap `feature/task-groups`
 > (от `feature/engine-limits`, 0.8.0 ещё не в main).
 > Прототип — `prototype/screens/tasks.html` (`#a|#b|#c|#d|#ask`) и `prototype/screens/task-mode.html`
 > (`#open|#comment|#changes|#rail|#jiraffe|#settings`); галерея v38, разделы «Режим задачи» и «Чаты по задачам Jira».
@@ -516,24 +516,99 @@ Jiraffe через `extensions.getExtension('fosteev.jiraffe').activate()` — �
 
 ### 5. Вкладка чата: полоска, вкладка «задача», сплит — **sonnet, high**, после 2 и 4
 
-- [ ] `agentura.tasks.card` по чек-листу (значения `panel|split|strip`, превью-карточки; `split` при источнике не
+- [x] `agentura.tasks.card` по чек-листу (значения `panel|split|strip`, превью-карточки; `split` при источнике не
       Jiraffe — как `panel`, пометка в превью)
-- [ ] полоска задачи над лентой (решение 8; `task-mode.html#open`)
-- [ ] вкладка правой панели `task`: `PanelState['tab']`, `panelAll`, панель в `<aside>`, кнопка в полосе с
+- [x] полоска задачи над лентой (решение 8; `task-mode.html#open`)
+- [x] вкладка правой панели `task`: `PanelState['tab']`, `panelAll`, панель в `<aside>`, кнопка в полосе с
       бейджем, узкий режим (вкладки в шапке), строки `ui.tabs.*`; содержимое по решению 10 (`task-mode.html#open`,
       `#comment`, `#changes`, `#rail`)
-- [ ] «в чат» у плашки комментария человека → `task.toComposer` → `composer.prefill`
-- [ ] `split`: при открытии чата по задаче — `JiraffeSource.openIssue(inst, key, false)` в активной колонке, чат —
-      `Beside` (`tasks.html#c`)
-- [ ] ошибки источника: нет подключения / 401 / сеть — строка в шапке панели с «подключить» / «повторить»
-- [ ] DOM-тесты панели (новое событие → бейдж и кромка, плашка человека, `humanChanges=false` прячет)
+- [x] «в чат» у плашки комментария человека → `task.toComposer` → `composer.prefill` (webview → хост проверен DOM-тестом,
+      `toComposer`→`prefill` — тестом `TaskTab` этапа 2)
+- [x] (код, выбор режима и условие показа проверены тестами; живой прогон с Jiraffe — пользователь) `split`: при открытии
+      чата по задаче — `JiraffeSource.openIssue(inst, key, false)` в активной колонке, чат — `Beside` (`tasks.html#c`)
+- [x] ошибки источника: нет подключения / 401 / сеть — строка в шапке панели с «подключить» / «повторить»
+- [x] DOM-тесты панели (новое событие → бейдж и кромка, плашка человека, `humanChanges=false` прячет)
+- [ ] вёрстка полоски, вкладки «задача», рельса и превью `tasks.card` в обеих темах и в узком режиме — **пользователь**
+      (глазами; браузер в сессии не использовался)
 
-- [ ] (решение владельца 2026-10-08, долг этапа 4) сайдбар `groups`: внутри «Без задачи» — прежнее деление по
+- [x] (решение владельца 2026-10-08, долг этапа 4) сайдбар `groups`: внутри «Без задачи» — прежнее деление по
       дням (`groupByDay(layout.free)`); DOM-тест
 
 **Готово, когда:** `npm run check` зелёный; DOM-тесты зелёные.
 
 **Сессия:** sonnet, high; после 2 и 4.
+
+**Решения (2026-10-08, по итогам сессии 5):**
+
+Раскладка файлов:
+- `src/settings.ts` — `TASK_CARD_MODES = ['panel','split','strip']`, `DEFAULT_TASK_CARD = 'panel'`, `isTaskCardMode`, ключ `tasks.card`
+  (`SettingKey`/`SETTING_KEYS`/`SettingsValues`/`validateSetting`/`readSettings`). По чек-листу: `package.json` (настройка и команда
+  `agentura.taskCard`), `package.nls*.json`, `shared/l10n.ts` (`taskCardViews`, `taskCardPlaceholder`), `extension.ts` (`pickTaskCard`),
+  `protocol.ts` (`chat.info.taskCard?`), `chatController.ts` (`settings().taskCard` → `pushInfo`), `chatPanel.ts` (читает настройку),
+  `strings*.ts` (`ui.settings.tasksCard`), `Settings.tsx` (`ChoiceCards` на странице «Внешний вид» после `git.layout`),
+  `SettingsPreview.tsx` (`TaskCardPreview` — схема окна: настоящая `TaskStrip` + условные блоки; в `split` пометка «только с Jiraffe»),
+  `media/settings.css` (`.pv-taskcard`, `.tcp-*`), `prototype/screens/settings.html` (строка настройки — `settingsDom` сверяет число `.set`).
+- Webview: `src/webview/taskView.ts` — чистая логика (`taskPanelShown`, `visibleEvents`, `latestSeen`, `unseenCount`, `humanPrompts`, `agoLabel`,
+  `eventText`, `eventActor`, `initials`, `sizeLabel`, `issueKeyOf`); `components/TaskPane.tsx` — `TaskPane` (вкладка) и `TaskStrip` (полоска);
+  `store.ts` — сигналы `taskState`, `taskChats`, `taskCardMode` и обработка `task.state` / `task.chats` / `chat.info.taskCard`;
+  `Chat.tsx` — вкладка `task` в `panelAll`/`panelItems`, `<TaskPane>` в `<aside>`, кнопка рельса с бейджем, полоска между шапкой/плашкой
+  лимита и `.body`; `Hud.tsx` — вкладка «задача» в узком режиме (`taskTab`, `badges.task`, тип `Tab` + `'task'`); `vscode.ts` — `PanelState`:
+  `tab: 'task'`, `taskView: 'card'|'changes'`, `taskSeen` (мс), `taskSeenKey`.
+- `media/tasks.css` (общий с боковой панелью): `.tk-strip` (+`.tkey`, `.pill`, `.ttl`, `.lnk`), вкладка — `.tkp` (корень `section.tabpane`), `.tk-seg`, `.tk-ph`
+  (`.l1`/`.l2`), `.tk-err`, `.tk-body`, `.tk-txt(.clamp)`, `.tk-cm(.new)`, `.tk-ban`, `.tk-feedh`, `.tk-evt(.new|.hum)`, `.tk-chats` (`.r`, `.cur`, `.newchat`).
+  Строки полоски: `grid-template-rows` корня `.webview` пересчитывается через `:has(> .tk-strip)`.
+- Хост: `shared/task.ts` — `TaskChatRow`, `TaskChatsMessage`; `TaskStateMessage.humanChanges?`; `TaskRequest` + `task.openChat {sessionId}`,
+  `task.connect`; `taskGroups.ts` — `taskChatRows(group, rows, current)`; `jira/taskTab.ts` — `taskKey` (геттер), dep `connect?`, обработка `task.connect`;
+  `jira/taskService.ts` — `humanChanges` в `task.state`; `chatPanel.ts` — `syncTask()` (= `taskTab.sync()` + `pushTaskChats()`), `pushTaskChats` (дедуп по JSON;
+  `force` на `ready`), перехват `task.newChat` (та же проверка `parseTaskKey`, команда `agentura.chatForTask`) и `task.openChat` (только сессии группы
+  задачи этой вкладки), `openCardBeside` (сплит), `OpenOptions.column`, параметр `column` у `resume`/`apply`.
+
+Контракт (на него опираются этапы 6–8):
+- Вкладка «задача» есть у чата, когда пришёл `task.state` с `taskKey` и `taskPanelShown(tasks.card, state)`: `panel` — всегда; `strip` — никогда; `split` —
+  только если `state.source !== 'jiraffe'` (при Jiraffe карточка слева, вкладки справа нет — как в `tasks.html#c`). Полоска — всегда, пока есть `taskKey`.
+- «Новое»: `PanelState.taskSeen` — `max(at)` событий и комментариев карточки на первой успешной загрузке (`fetchedAt > 0`) и далее при каждом
+  открытии вкладки «изменения» (панель видна + вид «изменения»); пока отметки нет — «нового» нет. Бейдж = события новее `taskSeen`; подсветка кромкой и
+  «новое · …» — новее отметки на момент открытия ленты (`baseline`), поэтому после открытия бейдж гаснет, а кромка остаётся, пока лента открыта. Комментарии
+  карточки новее отметки подсвечиваются в виде «карточка» и тоже входят в отметку (`latestSeen`). Пока лента открыта, бейджи не считаются. Плашка «пока агент работал» — `humanPrompts` (комментарий не-`mine` с `duringTurn`), «в чат» →
+  `task.toComposer` и плашка гаснет до перезагрузки webview (набор закрытых — в памяти).
+- Ошибки: `no-source`/`unknown-instance` → «подключить» (`task.connect` → `agentura.jira.connect`); `auth` → подсказка «Проверьте токен и нажмите ↻.», «подключить» и
+  «повторить»; `network`/`not-found`/`other` → «повторить» (`task.refresh`); `off` — только текст. Есть `card` и `error` — карточка показана, к тексту добавляется «показаны последние загруженные данные».
+- `task.chats {taskKey?, chats: TaskChatRow[]}` (хост → вкладка): чаты группы из списка сессий, новые сверху, `current` — сессия вкладки; шлётся при смене привязки/
+  видимости/списка сессий/группы и на `ready`. `task.openChat {sessionId}` (вкладка → хост) открывает чат группы через `ChatPanel.resume`.
+- `chat.info.taskCard` — значение настройки; `TaskStateMessage.humanChanges` — копия `agentura.tasks.humanChanges` (webview фильтрует чужие события и без хоста).
+- Сплит: `ChatPanel.openWithContext` (входы: «Открыть в Agentura» в Jiraffe и `agentura.chatForTask`/«＋») при `tasks.card = split` и источнике Jiraffe с `openIssue`
+  вызывает `openIssue(inst, key, false)`, затем открывает чат с `column: Beside`; сбой `openIssue` — чат открывается как обычно.
+
+Отступления и почему:
+- Полоска — отдельная строка на всю ширину вкладки (между шапкой и `.body`), а не внутри колонки ленты, как в прототипе: колонка ленты прокручивается, а сетка
+  `.webview` рассчитана на фиксированные ряды; ряды переключает `:has(> .tk-strip)`.
+- «Чаты по задаче» — заголовки чатов (`title` из списка сессий) + метка движка, а не «Чат N · движок» из прототипа: порядковых номеров чатов в группе у хоста нет.
+  Строка чужого чата — настоящая кнопка (открывает чат), в прототипе она не интерактивна. Это добавило сообщения `task.chats`/`task.openChat`.
+- Заголовок ленты без времени открытия чата («события задачи с открытия чата · новые сверху»): `openedAt` в вкладку не передаётся.
+- Нет `⋯` полоски (отвязка от задачи, решение 12) — отвязка пока только из меню строки сайдбара; в прототипе полоски `⋯` тоже нет.
+- Сплит включается только при открытии чата по задаче через `openWithContext`; обычный клик по чату группы в сайдбаре карточку Jiraffe не открывает (иначе каждый клик
+  плодил бы вкладки Jiraffe).
+- Узкая вёрстка: вкладка «задача» — в шапке (тип `Tab` + `'task'`), содержимое то же; рельса в узком режиме нет (как у остальных вкладок).
+- Описание — текст с `white-space: pre-wrap` и сворачиванием по эвристике (> 240 символов или > 4 строк), а не измерением высоты: в jsdom нет вёрстки.
+
+Скоуп (владельцу): перенесён в `19-jira-tasks.pending.md` («Решения на подтверждение», строки «этап 5»).
+
+Приёмка (2026-10-08, два прохода): исправлено —
+- `TaskService.postTo` до первого ответа отдаёт `source` по `sources.forInstance` (было `'none'`): при `split` с Jiraffe вкладка «задача» мелькала на время
+  первой загрузки, и клик по ней записывал `PanelState.tab = 'task'`;
+- относительные времена вкладки («обновлено …») стояли в простое (общий `tick` идёт только при ходе/агентах/кэше): пока вкладка «задача» видна, `Chat.tsx`
+  тикает раз в 15 с;
+- `taskGroups.onChange` теперь `syncTask()` (и `task.chats`), а не только `taskTab.sync()` — блок «Чаты по задаче» не обновлялся при привязке из сайдбара;
+- отметка «видел» = `latestSeen` (события и комментарии карточки): при `humanChanges = false` чужой комментарий карточки подсвечивался вечно; база
+  подсветки сбрасывается при смене задачи и не фиксируется, пока отметки нет; при открытой ленте бейджи (вкладка, рельс, переключатель) не считаются —
+  не мелькают на кадр до сдвига отметки;
+- `openWithContext`: вкладка задачи без сообщений при сплите показывается в колонке `Beside` (`reveal(column)`), а не под карточкой Jiraffe;
+- `key` у списков `TaskPane` (комментарии со своим «ещё», вложения, плашки, события, чаты); DOM-тесты: отвязка при `tab = 'task'`, повторный опрос без
+  бейджа, `humanChanges = false` и комментарии карточки.
+
+Не проверено: вёрстка и цвета в браузере/VS Code (только DOM-тесты и сборка), обе темы, узкий режим и рельса; живой `openIssue` Jiraffe и колонки `Beside`
+(`openCardBeside`/`apply` с `column` — только typecheck); `task.openChat`/`task.newChat` из вкладки в живом VS Code; `pushTaskChats` на реальных событиях списка сессий; поведение
+`reveal(column)` для уже открытой вкладки; ширина панели 380 из прототипа (`rp.wide`) не воспроизводилась — панель с прежней шириной по умолчанию. Проверки: `TZ=UTC npm run check` — 128 файлов, 1732 теста, зелёный.
 
 ### 6. Страница настроек «Интеграции» — **sonnet, high**, после 5
 
@@ -716,6 +791,8 @@ src/webview/components/Settings.tsx (страницы session|limits|sidebar|loo
 действия — команды `agentura.jira.connect`, `agentura.jira.disconnect(instanceId)`, `agentura.jira.test(instanceId)`
 (src/extension/jira/connectCommands.ts). Версию Jiraffe (`jiraffe.packageJSON.version`) нужно брать из
 `vscode.extensions.getExtension('fosteev.jiraffe')` — `jiraffeStatus()` её не отдаёт.
+После этапа 5: `agentura.tasks.card` уже в `src/settings.ts`/`SettingKey`/странице «Внешний вид» (страница «Интеграции» его не дублирует);
+`settingsDom.test.ts` сверяет число `.set` страницы с `prototype/screens/settings.html` — новые строки добавлять и туда.
 DoD: «Готово, когда» этапа 6. Проверка: npm run check.
 ```
 
@@ -730,6 +807,9 @@ DoD: «Готово, когда» этапа 6. Проверка: npm run check.
 roadmap. Если путь есть и он укладывается в этап — реализуй по чекбоксам; если нет — остановись и опиши в отчёте
 препятствие и цену.
 Вёрстка — prototype/screens/tasks.html#b и #d.
+После этапа 5 в `chatPanel.ts` на вкладку приходятся `TaskTab`, `pushTaskChats` (`task.chats`), перехват `task.newChat`/`task.openChat` и `openCardBeside`
+(`OpenOptions.column`) — при нескольких контроллерах в одной панели они должны жить на уровне панели/активного чата; блок «Чаты по задаче» уже в `TaskPane`
+(`src/webview/components/TaskPane.tsx`), внутренние вкладки чатов могут его заменить или дополнить.
 DoD: «Готово, когда» этапа 7. Проверка: npm run check.
 ```
 
@@ -748,6 +828,11 @@ src/webview/toolView.ts:44 toolView, :40 shortName; копия клиента sr
 `nudge` молчит в `manual` и после сбоя — для записи агентом надёжнее `services.tasks.refresh(taskKey)`).
 `postJson` копировать вместе с защитой Jiraffe как есть: адрес только `baseUrl` + путь через `isOwnUrl`, `redirect: 'manual'`,
 любой 3xx — ошибка (тело записи и `Authorization` никуда не пересылаются); токен — через `scrub` в текстах ошибок.
+После этапа 5: вкладка «задача» — `src/webview/components/TaskPane.tsx` (лента — вид `changes`, строки `.tk-evt` по `TaskEvent.id`); какая вкладка
+панели открыта, решает webview (`PanelState.tab`/`taskView` в `src/webview/vscode.ts`, `updatePanel` в `Chat.tsx`) — «в задаче →» это клик внутри webview,
+сообщение хосту не нужно. Вкладки нет при `tasks.card = strip` и при `split` с Jiraffe (`taskPanelShown`, `src/webview/taskView.ts`) — там «в задаче →»
+открывает задачу как полоска (`task.openExternal`). «Новое» считается по `event.at` (`PanelState.taskSeen`), у ворклога `at` = `started` — свежий ворклог
+задним числом бейджа не даст.
 SDK — проверить createSdkMcpServer/tool в установленной версии @anthropic-ai/claude-agent-sdk (node_modules, d.ts),
 не по памяти. Jiraffe API v2 делает параллельная сессия 8b — в Agentura опираться на контракт: addComment(inst, key,
 text), transitions(inst, key), transition(inst, key, id), logWork(inst, key, {seconds, started, comment}), apiVersion 2.

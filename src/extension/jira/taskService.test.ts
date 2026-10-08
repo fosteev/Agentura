@@ -82,6 +82,8 @@ describe('TaskService', () => {
     const h = harness();
     const { tv, posts } = h.view();
     h.svc.attach(TASK, tv);
+    // до первого ответа источник уже известен (вкладка при `tasks.card = split` решает по нему, этап 5)
+    expect(posts[0]).toMatchObject({ type: 'task.state', taskKey: TASK, source: 'own', fetchedAt: 0 });
     await h.flush();
     const last = posts.at(-1)!;
     expect(last).toMatchObject({ type: 'task.state', taskKey: TASK, source: 'own', fetchedAt: t0 });
