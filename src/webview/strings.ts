@@ -60,6 +60,12 @@ const ru = {
     newChat: 'новый чат',
     newChatTitle: 'Новый чат по этой задаче',
     openChatTitle: 'Открыть чат',
+    tabsAria: 'Чаты вкладки задачи',
+    tabUntitled: 'новый чат',
+    tabClose: 'Закрыть чат (ход останавливается)',
+    tabNew: 'Новый чат по задаче',
+    tabCount: (n: number) => `чатов: ${n} · общий контекст задачи`,
+    tabStatus: { working: 'идёт ход', waiting: 'ждёт ответа', error: 'ошибка', limited: 'упёрся в лимит' } as Record<string, string>,
     connect: 'подключить',
     retry: 'повторить',
     authHint: 'Проверьте токен и нажмите ↻.',
@@ -917,6 +923,14 @@ const ru = {
         strip: 'полоска — без вкладки',
       } as Record<string, string>,
       onlyJiraffe: 'только с Jiraffe',
+    },
+    tasksTab: {
+      name: 'Вкладки чатов по задаче',
+      desc: 'Как открываются чаты по задаче Jira. Вкладка на чат — каждый чат в своей вкладке редактора, как без задач; вкладка на задачу — одна вкладка на задачу, её чаты внутренними вкладками под полоской задачи. Действует на чаты, открытые после смены.',
+      options: {
+        chat: 'вкладка на чат',
+        task: 'вкладка на задачу — чаты внутри',
+      } as Record<string, string>,
     },
     integrations: {
       source: {

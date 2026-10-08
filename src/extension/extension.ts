@@ -19,7 +19,7 @@ import { SessionsService } from './sessionsService';
 import { showDebugState } from './debugPanel';
 import { SettingsPanel } from './settingsPanel';
 import { AGENTS_GRAPH_VIEW_TYPE } from './agentsGraphPanel';
-import { AGENTS_VIEWS, COMPOSER_LAYOUTS, FEED_STYLES, GIT_LAYOUTS, SIDEBAR_LIMITS_MODES, TASK_CARD_MODES, TASK_SIDEBAR_MODES, isProvider, readSettings, writeSetting, type SettingKey } from '../settings';
+import { AGENTS_VIEWS, COMPOSER_LAYOUTS, FEED_STYLES, GIT_LAYOUTS, SIDEBAR_LIMITS_MODES, TASK_CARD_MODES, TASK_SIDEBAR_MODES, TASK_TAB_MODES, isProvider, readSettings, writeSetting, type SettingKey } from '../settings';
 import { hostStrings } from '../shared/l10n';
 import { currentLanguage, setUserFonts, userFontsDir } from './webviewHost';
 import { UserFonts } from './googleFonts';
@@ -327,6 +327,28 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     }
   };
 
+  const pickTaskTab = async (): Promise<void> => {
+    const t = hostStrings(currentLanguage());
+    const cfg = vscode.workspace.getConfiguration('agentura');
+    const current = readSettings(cfg)['tasks.tab'];
+    const picked = await vscode.window.showQuickPick(
+      TASK_TAB_MODES.map((id) => ({
+        label: `${id === current ? '$(check) ' : ''}${t.taskTabViews[id]?.[0] ?? id}`,
+        description: id === current ? t.feedStyleCurrent : '',
+        detail: t.taskTabViews[id]?.[1] ?? '',
+        id,
+      })),
+      { placeHolder: t.taskTabPlaceholder },
+    );
+    if (!picked) return;
+    try {
+      await writeWhereSet('tasks.tab', picked.id);
+    } catch (e) {
+      log.warn('agentura.taskTab: не записать tasks.tab', e);
+      void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e));
+    }
+  };
+
   const pickFeedStyle = async (): Promise<void> => {
     const t = hostStrings(currentLanguage());
     const cfg = vscode.workspace.getConfiguration('agentura');
@@ -422,6 +444,7 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     vscode.commands.registerCommand('agentura.sidebarLimits', () => pickSidebarLimits()),
     vscode.commands.registerCommand('agentura.taskSidebar', () => pickTaskSidebar()),
     vscode.commands.registerCommand('agentura.taskCard', () => pickTaskCard()),
+    vscode.commands.registerCommand('agentura.taskTab', () => pickTaskTab()),
     vscode.commands.registerCommand('agentura.agentsView', () => pickAgentsView()),
     vscode.commands.registerCommand('agentura.gitLayout', () => pickGitLayout()),
     // второй аргумент — назначение из вкладки настроек (`fonts.add`); из палитры приходит пустым

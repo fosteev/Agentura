@@ -10,6 +10,7 @@ import {
   SIDEBAR_LIMITS_MODES,
   JIRA_SOURCES,
   TASK_CARD_MODES,
+  TASK_TAB_MODES,
   TASK_REFRESH_MODES,
   TASK_SIDEBAR_MODES,
   SIDEBAR_TOP_MODES,
@@ -50,6 +51,7 @@ import {
   GitPreview,
   SidebarPreview,
   TaskCardPreview,
+  TaskTabPreview,
 } from './SettingsPreview';
 import { fontStack } from '../appearance';
 import { codeFonts, installedFonts, uiFonts, userFonts } from '../fonts';
@@ -1020,6 +1022,23 @@ export function Settings() {
                     options={cardOptions(TASK_CARD_MODES, T.tasksCard.options)}
                     preview={(mode) => <TaskCardPreview mode={mode} />}
                     onPick={(mode) => commit('tasks.card', mode)}
+                  />
+                }
+              >
+                {null}
+              </Row>
+              <Row
+                name={T.tasksTab.name}
+                isNew
+                desc={T.tasksTab.desc}
+                k="tasks.tab"
+                below={
+                  <ChoiceCards
+                    label={T.tasksTab.name}
+                    value={v['tasks.tab']}
+                    options={cardOptions(TASK_TAB_MODES, T.tasksTab.options)}
+                    preview={(mode) => <TaskTabPreview mode={mode} />}
+                    onPick={(mode) => commit('tasks.tab', mode)}
                   />
                 }
               >

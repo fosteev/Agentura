@@ -15,6 +15,9 @@ import {
 } from '../composer';
 import {
   prefill,
+  activeTabChat,
+  stashComposerText,
+  takeComposerText,
   autoAttachments,
   autoFile,
   autoSelection,
@@ -285,6 +288,17 @@ export function Composer() {
   useEffect(() => {
     if (target) edRef.current?.focus();
   }, [target]);
+
+  // чат вкладки задачи (этап 7): поле монтируется заново на каждый чат, черновик прежнего — в сторе
+  const tabChat = useRef(activeTabChat.peek()).current;
+  const textRef = useRef(text);
+  textRef.current = text;
+  useEffect(() => {
+    if (tabChat === undefined) return;
+    const saved = takeComposerText(tabChat);
+    if (saved) writeText(saved);
+    return () => stashComposerText(tabChat, textRef.current);
+  }, []);
 
   // текст от хоста (`composer.prefill`, ссылка на задачу из Jiraffe): только в пустое поле
   const pre = prefill.value;

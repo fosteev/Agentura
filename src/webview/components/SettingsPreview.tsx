@@ -1,7 +1,8 @@
 import type { ComponentChildren } from 'preact';
 import type { FeedRow } from '../chatState';
 import type { SessionSummary, TaskGroupSummary } from '../../protocol';
-import type { AgentsView, ComposerLayout, FeedStyle, GitLayout, TaskCardMode } from '../../settings';
+import type { AgentsView, ComposerLayout, FeedStyle, GitLayout, TaskCardMode, TaskTabMode } from '../../settings';
+import type { TabChatsMessage } from '../../shared/taskTab';
 import type { TaskStateMessage } from '../../shared/task';
 import type { GitFileStatus, GitFileView, GitRepoView, GitSnapshot } from '../../shared/git';
 import { agentMapView } from '../agentsView';
@@ -14,7 +15,7 @@ import { Log } from './Log';
 import { SidebarView, type SidebarData, type SidebarLook } from './Sidebar';
 import { AgentsPane } from './SidePanes';
 import { GitPane } from './GitPane';
-import { TaskStrip } from './TaskPane';
+import { ChatTabs, TaskStrip } from './TaskPane';
 
 /**
  * Миниатюры вида во вкладке настроек: настоящие `Log` и `SidebarView` на фикстуре, уменьшенные CSS-`zoom`.
@@ -810,6 +811,43 @@ export function TaskCardPreview({ mode }: { mode: TaskCardMode }) {
         </div>
       )}
       {mode === 'split' && <small class="tcp-note">{ui.settings.tasksCard.onlyJiraffe}</small>}
+    </div>
+  );
+}
+
+/**
+ * Вкладки чатов по задаче (`tasks.tab`, roadmap 19, этап 7): схема окна редактора — ряд вкладок редактора, настоящая
+ * полоска `TaskStrip`, у `task` — настоящие внутренние вкладки `ChatTabs` (`tasks.html#b`), и лента.
+ */
+export function TaskTabPreview({ mode }: { mode: TaskTabMode }) {
+  const st = taskCardFixture();
+  const key = st.card!.key;
+  const [chat1, chat2] = TEXT.sessions as [string, string];
+  const other = (TEXT.tasks[1] as [string, string, string])[0];
+  const lines = (n: number) => Array.from({ length: n }, () => <i />);
+  const inner: TabChatsMessage = {
+    type: 'tab.chats',
+    taskKey: st.taskKey,
+    chats: [
+      { id: 'c1', title: chat1, provider: 'claude', status: 'idle', active: false },
+      { id: 'c2', title: chat2, provider: 'codex', status: 'working', active: true },
+    ],
+    persist: { taskKey: st.taskKey, chats: [] },
+  };
+  const tabs =
+    mode === 'task' ? [key, other, TEXT.sessions[2]!] : [`${key} · ${chat2}`, `${key} · ${chat1}`, TEXT.sessions[2]!];
+  return (
+    <div class={`pv pv-tasktab pv-tt-${mode}`} inert aria-hidden="true">
+      <div class="ttp-tabs">
+        {tabs.map((t, i) => (
+          <span class={i === 0 ? 'on' : undefined}>{t}</span>
+        ))}
+      </div>
+      <div class="ttp-chat">
+        <TaskStrip state={st} />
+        {mode === 'task' && <ChatTabs state={inner} />}
+        <div class="ttp-feed">{lines(4)}</div>
+      </div>
     </div>
   );
 }

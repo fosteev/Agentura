@@ -57,6 +57,12 @@ export const en: Ui = {
     newChat: 'new chat',
     newChatTitle: 'A new chat for this task',
     openChatTitle: 'Open the chat',
+    tabsAria: 'Chats of the task tab',
+    tabUntitled: 'new chat',
+    tabClose: 'Close the chat (stops its turn)',
+    tabNew: 'New chat for this task',
+    tabCount: (n: number) => `chats: ${n} · shared task context`,
+    tabStatus: { working: 'turn running', waiting: 'waiting for an answer', error: 'error', limited: 'hit a limit' } as Record<string, string>,
     connect: 'connect',
     retry: 'retry',
     authHint: 'Check the token and press ↻.',
@@ -900,6 +906,14 @@ export const en: Ui = {
         strip: 'strip — no tab',
       },
       onlyJiraffe: 'Jiraffe only',
+    },
+    tasksTab: {
+      name: 'Tabs for task chats',
+      desc: 'How chats for a Jira task open. Tab per chat: every chat in its own editor tab, as without tasks; tab per task: one tab per task, its chats as inner tabs under the task strip. Applies to chats opened after the change.',
+      options: {
+        chat: 'tab per chat',
+        task: 'tab per task — chats inside',
+      },
     },
     integrations: {
       source: {

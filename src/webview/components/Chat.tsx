@@ -28,6 +28,8 @@ import {
   stopAgents,
   taskCardMode,
   taskChats,
+  tabChats,
+  activeTabChat,
   taskState,
   tick,
 } from '../store';
@@ -46,7 +48,7 @@ import { Log } from './Log';
 import { useStickToBottom } from '../useStickToBottom';
 import { AgentsPane, ChangesPane, type AgentsPaneModel } from './SidePanes';
 import { GitPane } from './GitPane';
-import { TaskPane, TaskStrip } from './TaskPane';
+import { ChatTabs, TaskPane, TaskStrip } from './TaskPane';
 import { isTaskChat, latestSeen, taskDefaultView, taskPanelShown, unseenCount, visibleEvents } from '../taskView';
 import { agentPathSet, gitBadge } from '../gitView';
 import { agentsViewPane, defaultScope } from '../agentViews';
@@ -483,6 +485,7 @@ export function Chat() {
         </div>
       )}
       {isTaskChat(ts) && <TaskStrip state={ts} />}
+      {tabChats.value && <ChatTabs state={tabChats.value} />}
       <div
         class="body"
         ref={bodyRef}
@@ -745,7 +748,7 @@ export function Chat() {
           </button>
         </nav>
       </div>
-      <Composer />
+      <Composer key={activeTabChat.value ?? ''} />
     </div>
   );
 }
@@ -762,11 +765,13 @@ function useGitWatch(shown: boolean): void {
     return () => document.removeEventListener('visibilitychange', onVis);
   }, []);
   const on = shown && docVisible;
+  // вкладка задачи: показан другой чат — его git-клиенту `watch` заново (ушедший в фон снимает хост)
+  const tabChat = activeTabChat.value;
   useEffect(() => {
     if (!on) return;
     send({ type: 'git.watch', on: true });
     return () => send({ type: 'git.watch', on: false });
-  }, [on]);
+  }, [on, tabChat]);
 }
 
 /** Фокус там, где печатают или жмут кнопку: Enter и цифры принадлежат им, а не карточке. */
