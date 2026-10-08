@@ -259,6 +259,9 @@ Jiraffe (`/Users/fost/Projects/jiraffe`, 0.7.0, ветка main, VS Code Marketp
 - [ ] настройки `agentura.jira.source`, `agentura.tasks.refresh`, `agentura.tasks.humanChanges` (без превью)
 - [ ] команда «Agentura: Чат по задаче…» (решение 12) — с источником тянет карточку и кладёт `issueContext` файлом
 
+- [ ] (решение владельца 2026-10-08) `/clear` во вкладке задачи: новая сессия остаётся в группе той же задачи
+      (перенести задачу в `pendingTask`, заголовок «KEY · …» не снимать); тест
+
 **Готово, когда:** `npm run check` зелёный; тесты `eventsSince` (статус, комментарий агента «из этого чата»,
 комментарий человека, ворклог) на фикстуре; тест `resolveSource` на четыре значения настройки × «Jiraffe есть/нет».
 
