@@ -3,7 +3,7 @@
  * подпись строки, класс строки, строки лимитов. Эталон разметки и текстов — `prototype/screens/sessions.html`.
  */
 import type { LimitWindow } from '../agent/types';
-import type { SessionSummary } from '../protocol';
+import type { SessionSummary, TaskGroupSummary } from '../protocol';
 import { clock, resetLabel } from './chatState';
 import { formatCost } from './toolView';
 import { ui } from './strings';
@@ -60,14 +60,18 @@ export function groupByDay(
   return out;
 }
 
-/** Поиск по названию: без регистра, «ё» = «е», пустой запрос — весь список. */
-export function filterSessions<T extends Pick<SessionSummary, 'title'>>(
+/**
+ * Поиск по названию (и по ключу и названию задачи, если чат в задаче — вид `section`): без регистра, «ё» = «е»,
+ * пустой запрос — весь список.
+ */
+export function filterSessions<T extends Pick<SessionSummary, 'title' | 'task'>>(
   rows: readonly T[],
   query: string,
 ): T[] {
   const norm = (x: string) => x.toLowerCase().replace(/ё/g, 'е');
   const q = norm(query.trim());
-  return q ? rows.filter((s) => norm(s.title).includes(q)) : [...rows];
+  const text = (s: T) => (s.task ? `${s.title} ${s.task.key} ${s.task.title}` : s.title);
+  return q ? rows.filter((s) => norm(text(s)).includes(q)) : [...rows];
 }
 
 /** `131k`, `950`, `1.2M` — контекст в строке списка. */
@@ -199,4 +203,67 @@ export function limitRows(windows: readonly LimitWindow[], now: number): LimitRo
               : '',
       };
     });
+}
+
+/** Группа задачи в списке: метаданные, её чаты (по порядку списка) и время последнего. */
+export interface TaskBlock {
+  group: TaskGroupSummary;
+  /** Чаты, видимые при текущем поиске. */
+  rows: SessionSummary[];
+  /** Все чаты группы в списке, без учёта поиска (карточка секции: число, движки, последний чат). */
+  all: SessionSummary[];
+  /** Самый свежий чат группы (мс); по нему группы упорядочиваются. */
+  updatedAt: number;
+}
+
+export interface TaskLayout {
+  /** Группы с чатами — свежие сверху. */
+  blocks: TaskBlock[];
+  /** Чаты вне задач — «Без задачи». */
+  free: SessionSummary[];
+}
+
+const norm = (x: string): string => x.toLowerCase().replace(/ё/g, 'е');
+
+/**
+ * Раскладка списка сессий по группам задач (`sessions.update.tasks`). Группа без чатов в списке не показывается;
+ * поиск — по названию чата, ключу и названию задачи (совпала задача — видны все её чаты, иначе только совпавшие).
+ * Нет ни одной группы — `blocks` пуст, а `free` — весь (отфильтрованный) список: прежний вид списка по дням.
+ */
+export function taskLayout(
+  sessions: readonly SessionSummary[],
+  tasks: readonly TaskGroupSummary[] | undefined,
+  query: string,
+): TaskLayout {
+  const q = norm(query.trim());
+  const byId = new Map(sessions.map((s) => [s.id, s]));
+  const grouped = new Set<string>();
+  const blocks: TaskBlock[] = [];
+  for (const g of tasks ?? []) {
+    const rows = g.sessionIds.map((id) => byId.get(id)).filter((s): s is SessionSummary => !!s);
+    if (rows.length === 0) continue;
+    // чат входит максимум в одну группу (хост это гарантирует); повтор в другой группе не показываем
+    const mine = rows.filter((s) => !grouped.has(s.id));
+    if (mine.length === 0) continue;
+    for (const s of mine) grouped.add(s.id);
+    const taskHit = !q || norm(`${g.meta.key} ${g.meta.title}`).includes(q);
+    const shown = taskHit ? mine : mine.filter((s) => norm(s.title).includes(q));
+    if (shown.length === 0) continue;
+    blocks.push({ group: g, rows: shown, all: mine, updatedAt: Math.max(...mine.map((s) => s.updatedAt)) });
+  }
+  blocks.sort((a, b) => b.updatedAt - a.updatedAt);
+  const free = sessions.filter((s) => !grouped.has(s.id) && (!q || norm(s.title).includes(q)));
+  return { blocks, free };
+}
+
+/** Класс статус-пилюли по категории статуса Jira: `new` — серая, `indeterminate` — в работе, `done` — зелёная. */
+export function pillClass(category: 'new' | 'indeterminate' | 'done' | undefined): string {
+  return category === 'indeterminate' ? 'wip' : category === 'done' ? 'done' : 'open';
+}
+
+/** Движки чатов группы без повторов — метки `C` `X` в карточке секции «Задачи». */
+export function blockEngines(rows: readonly Pick<SessionSummary, 'provider'>[]): ('claude' | 'codex' | 'antigravity')[] {
+  const seen = new Set<'claude' | 'codex' | 'antigravity'>();
+  for (const r of rows) seen.add(r.provider ?? 'claude');
+  return [...seen];
 }

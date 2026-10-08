@@ -30,6 +30,7 @@ import type {
   SessionListMode,
   SettingKey,
   SidebarLimitsMode,
+  TaskSidebarMode,
   SidebarTopMode,
   SettingsValues,
 } from './settings';
@@ -258,6 +259,8 @@ export type ToWebview =
       top: SidebarTopMode;
       /** Вид лимитов всех движков при ≥ 2 установленных (`agentura.sidebar.limits`). */
       limits: SidebarLimitsMode;
+      /** Где задачи Jira: группы в списке или секция (`agentura.tasks.sidebar`, roadmap 19). */
+      tasks?: TaskSidebarMode;
     }
   /** Этап 6: аккаунт для боковой панели. */
   | ({ type: 'account.info' } & AccountSummary)
@@ -370,6 +373,8 @@ export type FromWebview =
   /** Чат: снимок карты агентов для его вкладки графа — только пока граф открыт (`agents.graph`). */
   | { type: 'agents.snapshot'; sessionId: string; graph: AgentGraphView }
   | { type: 'session.new' }
+  /** «＋» у группы задачи в боковой панели: новый чат по задаче (`agentura.chatForTask`); `taskKey` — `jira:<инстанс>:<KEY>`. */
+  | { type: 'task.newChat'; taskKey: string }
   /** Выбор движка в пустой вкладке (до первого сообщения); хост запоминает его как дефолт новых чатов. */
   | { type: 'engine.set'; provider: AgentProvider }
   | { type: 'limits.refresh' }
@@ -531,6 +536,7 @@ const FROM_WEBVIEW_TYPES: Record<FromWebview['type'], true> = {
   'agents.openGraph': true,
   'agents.snapshot': true,
   'session.new': true,
+  'task.newChat': true,
   'engine.set': true,
   'limits.refresh': true,
   'engine.login': true,
@@ -599,6 +605,7 @@ const FIELD_CHECKS: Partial<Record<FromWebview['type'], (m: Record<string, unkno
   'git.openFile': (m) => str(m.root) && str(m.path),
   'git.openRepository': () => true,
   'git.message': (m) => strings(m.roots),
+  'task.newChat': (m) => str(m.taskKey) && m.taskKey.length > 0 && m.taskKey.length <= 400,
   'task.toComposer': (m) => str(m.commentId) && m.commentId.length > 0 && m.commentId.length <= 200,
   'task.openExternal': (m) => m.attachmentId === undefined || (str(m.attachmentId) && m.attachmentId.length <= 200),
 };

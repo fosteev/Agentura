@@ -10,7 +10,7 @@ import type { AgyQuotaService } from './agyQuota';
 import type { CodexLimitsService } from './codexLimits';
 import type { EngineLocator } from './engineLocator';
 import { summarizeAgy, summarizeCodex } from './engineLimits';
-import { decorateSessions, type TaskGroups } from './taskGroups';
+import { decorateSessions, parseTaskKey, type TaskGroups } from './taskGroups';
 import { hostStrings } from '../shared/l10n';
 import { attachMessaging, currentLanguage, renderWebview, userFontsDir, webviewOptions } from './webviewHost';
 
@@ -54,6 +54,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       switch (m.type) {
         case 'session.new':
           void vscode.commands.executeCommand('agentura.newSession');
+          break;
+        case 'task.newChat':
+          // ключ из webview недоверенный: не ключ группы — молча игнор (иначе chatForTask спросил бы ключ в поле ввода)
+          if (parseTaskKey(m.taskKey)) void vscode.commands.executeCommand('agentura.chatForTask', m.taskKey);
           break;
         case 'session.resume':
           void vscode.commands.executeCommand('agentura.openSession', m.sessionId, m.provider);
@@ -101,7 +105,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       vscode.workspace.onDidChangeConfiguration((e) => {
         if (
           (e.affectsConfiguration('agentura.sessionList') ||
-            e.affectsConfiguration('agentura.sidebar')) &&
+            e.affectsConfiguration('agentura.sidebar') ||
+            e.affectsConfiguration('agentura.tasks.sidebar')) &&
           this.viewWrites === 0
         )
           this.pushView();
@@ -142,6 +147,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       time: v['sessionList.time'],
       top: v['sidebar.top'],
       limits: v['sidebar.limits'],
+      tasks: v['tasks.sidebar'],
     });
   }
 

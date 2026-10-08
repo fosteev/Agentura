@@ -64,3 +64,16 @@ export function baseUrlOfIssueUrl(url: string): string {
 export function bareMeta(key: string, instanceId: string, url: string): TaskMeta {
   return { key, instanceId, title: key, url };
 }
+
+/**
+ * Id сессии из аргумента команды: строка (вызов из кода) или контекст меню строки боковой панели
+ * (`webview/context`: `data-vscode-context` строки + `webview`) — объект с `sessionId`.
+ */
+export function sessionIdOf(arg: unknown): string | undefined {
+  if (typeof arg === 'string') return arg || undefined;
+  if (typeof arg === 'object' && arg !== null) {
+    const id = (arg as { sessionId?: unknown }).sessionId;
+    if (typeof id === 'string' && id) return id;
+  }
+  return undefined;
+}

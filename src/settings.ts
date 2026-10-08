@@ -40,6 +40,13 @@ export const SIDEBAR_LIMITS_MODES = ['stack', 'switch', 'table', 'active', 'head
 export type SidebarLimitsMode = (typeof SIDEBAR_LIMITS_MODES)[number];
 export const DEFAULT_SIDEBAR_LIMITS: SidebarLimitsMode = 'active';
 /**
+ * Где в боковой панели задачи Jira (`tasks.sidebar`, roadmap 19): `groups` — группы задач внутри списка сессий
+ * (чаты вложены под ключом задачи), `section` — секция «Задачи» над «Сессиями», в строке сессии метка ключа справа.
+ */
+export const TASK_SIDEBAR_MODES = ['groups', 'section'] as const;
+export type TaskSidebarMode = (typeof TASK_SIDEBAR_MODES)[number];
+export const DEFAULT_TASK_SIDEBAR: TaskSidebarMode = 'groups';
+/**
  * Источник Jira (`jira.source`, roadmap 19): `auto` — Jiraffe, если установлен и отдаёт API, иначе свои подключения
  * Agentura (если есть); `jiraffe` / `own` — только он; `off` — Jira не используется (группы в сайдбаре остаются).
  */
@@ -129,6 +136,7 @@ export type SettingKey =
   | 'sessionList.time'
   | 'sidebar.top'
   | 'sidebar.limits'
+  | 'tasks.sidebar'
   | 'feed.style'
   | 'composer.layout'
   | 'agents.view'
@@ -159,6 +167,7 @@ export const SETTING_KEYS: readonly SettingKey[] = [
   'sessionList.time',
   'sidebar.top',
   'sidebar.limits',
+  'tasks.sidebar',
   'feed.style',
   'composer.layout',
   'agents.view',
@@ -207,6 +216,7 @@ export interface SettingsValues {
   'sessionList.time': boolean;
   'sidebar.top': SidebarTopMode;
   'sidebar.limits': SidebarLimitsMode;
+  'tasks.sidebar': TaskSidebarMode;
   'feed.style': FeedStyle;
   'composer.layout': ComposerLayout;
   'agents.view': AgentsView;
@@ -249,6 +259,10 @@ export function isSessionListMode(v: unknown): v is SessionListMode {
 
 export function isSidebarLimitsMode(v: unknown): v is SidebarLimitsMode {
   return typeof v === 'string' && (SIDEBAR_LIMITS_MODES as readonly string[]).includes(v);
+}
+
+export function isTaskSidebarMode(v: unknown): v is TaskSidebarMode {
+  return typeof v === 'string' && (TASK_SIDEBAR_MODES as readonly string[]).includes(v);
 }
 
 export function isSidebarTopMode(v: unknown): v is SidebarTopMode {
@@ -433,6 +447,10 @@ export function validateSetting(key: SettingKey, value: unknown, lang: ErrLang =
       return isSidebarLimitsMode(value)
         ? { ok: true, value }
         : bad(t.allowed(SIDEBAR_LIMITS_MODES.join(', ')));
+    case 'tasks.sidebar':
+      return isTaskSidebarMode(value)
+        ? { ok: true, value }
+        : bad(t.allowed(TASK_SIDEBAR_MODES.join(', ')));
     case 'feed.style':
       return isFeedStyle(value) ? { ok: true, value } : bad(t.allowed(FEED_STYLES.join(', ')));
     case 'composer.layout':
@@ -463,6 +481,7 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
   const list = cfg.get<unknown>('sessionList.view');
   const top = cfg.get<unknown>('sidebar.top');
   const limits = cfg.get<unknown>('sidebar.limits');
+  const taskSb = cfg.get<unknown>('tasks.sidebar');
   const feed = cfg.get<unknown>('feed.style');
   const cl = cfg.get<unknown>('composer.layout');
   const agv = cfg.get<unknown>('agents.view');
@@ -498,6 +517,7 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
     'sessionList.time': cfg.get<unknown>('sessionList.time') !== false,
     'sidebar.top': isSidebarTopMode(top) ? top : DEFAULT_SIDEBAR_TOP,
     'sidebar.limits': isSidebarLimitsMode(limits) ? limits : DEFAULT_SIDEBAR_LIMITS,
+    'tasks.sidebar': isTaskSidebarMode(taskSb) ? taskSb : DEFAULT_TASK_SIDEBAR,
     'feed.style': isFeedStyle(feed) ? feed : DEFAULT_FEED_STYLE,
     'composer.layout': isComposerLayout(cl) ? cl : DEFAULT_COMPOSER_LAYOUT,
     'agents.view': isAgentsView(agv) ? agv : DEFAULT_AGENTS_VIEW,

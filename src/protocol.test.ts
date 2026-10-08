@@ -5,6 +5,9 @@ describe('protocol', () => {
   it('принимает известные сообщения webview и отбрасывает мусор', () => {
     expect(isFromWebview({ type: 'ready' })).toBe(true);
     expect(isFromWebview({ type: 'limits.refresh' })).toBe(true);
+    expect(isFromWebview({ type: 'task.newChat', taskKey: 'jira:x:A-1' })).toBe(true);
+    expect(isFromWebview({ type: 'task.newChat' })).toBe(false);
+    expect(isFromWebview({ type: 'task.newChat', taskKey: 'x'.repeat(401) })).toBe(false);
     expect(isFromWebview({ type: 'send', sessionId: 's', text: 'привет' })).toBe(true);
     expect(isFromWebview({ type: 'preview.open', path: '/a/x.html' })).toBe(true);
     expect(isFromWebview({ type: 'link.open', url: 'https://claude.ai/artifact/1' })).toBe(true);

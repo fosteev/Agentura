@@ -135,6 +135,11 @@
         "category": "Agentura"
       },
       {
+        "command": "agentura.taskSidebar",
+        "title": "%command.taskSidebar.title%",
+        "category": "Agentura"
+      },
+      {
         "command": "agentura.agentsView",
         "title": "%command.agentsView.title%",
         "category": "Agentura"
@@ -161,6 +166,18 @@
       }
     ],
     "menus": {
+      "webview/context": [
+        {
+          "command": "agentura.bindTask",
+          "when": "webviewId == 'agentura.sidebar' && webviewSection == 'session' && !sessionBound",
+          "group": "task@1"
+        },
+        {
+          "command": "agentura.unbindTask",
+          "when": "webviewId == 'agentura.sidebar' && webviewSection == 'session' && sessionBound",
+          "group": "task@1"
+        }
+      ],
       "commandPalette": [
         {
           "command": "agentura.debug.showState",
@@ -359,6 +376,19 @@
           ],
           "default": "active",
           "description": "%config.sidebar.limits.description%"
+        },
+        "agentura.tasks.sidebar": {
+          "type": "string",
+          "enum": [
+            "groups",
+            "section"
+          ],
+          "enumDescriptions": [
+            "%config.tasks.sidebar.enum.groups%",
+            "%config.tasks.sidebar.enum.section%"
+          ],
+          "default": "groups",
+          "description": "%config.tasks.sidebar.description%"
         },
         "agentura.feed.style": {
           "type": "string",

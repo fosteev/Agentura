@@ -1,7 +1,7 @@
 # 19 — Чаты по задачам Jira: группы, режим задачи, своё подключение и Jiraffe
 
 > **Статус:** этап 1 принят 2026-10-08 (ветка `stage-1-task-groups` от `feature/task-groups`); этап 3 (Jiraffe) принят
-> отдельной приёмкой (`feature/agentura-tasks`, 30d982d); этап 2 принят 2026-10-08 (ветка `stage-2-jira-sources`); следующий — **4**. Ветка roadmap `feature/task-groups`
+> отдельной приёмкой (`feature/agentura-tasks`, 30d982d); этап 2 принят 2026-10-08 (ветка `stage-2-jira-sources`); этап 4 принят 2026-10-08 (ветка `stage-4-sidebar-tasks`); следующий — **5**. Ветка roadmap `feature/task-groups`
 > (от `feature/engine-limits`, 0.8.0 ещё не в main).
 > Прототип — `prototype/screens/tasks.html` (`#a|#b|#c|#d|#ask`) и `prototype/screens/task-mode.html`
 > (`#open|#comment|#changes|#rail|#jiraffe|#settings`); галерея v38, разделы «Режим задачи» и «Чаты по задачам Jira».
@@ -427,20 +427,92 @@ Jiraffe через `extensions.getExtension('fosteev.jiraffe').activate()` — �
 
 ### 4. Боковая панель: группы и секция «Задачи» — **sonnet, high**, после 1
 
-- [ ] `agentura.tasks.sidebar` по чек-листу настройки-вида (значения `groups|section`, превью — `SidebarPreview`
+- [x] `agentura.tasks.sidebar` по чек-листу настройки-вида (значения `groups|section`, превью — `SidebarPreview`
       с фикстурой групп)
-- [ ] `groups`: заголовок группы — ключ, статус-пилюля, число чатов, «＋», сворачивание (состояние в
+- [x] `groups`: заголовок группы — ключ, статус-пилюля, число чатов, «＋», сворачивание (состояние в
       `setState` webview), заголовок задачи второй строкой; чаты вложены; «Без задачи» в конце. Вёрстка —
       `prototype/screens/tasks.html#a`, стили `prototype/shared/tasks.css`
-- [ ] `section`: секция «Задачи» (карточки задач, движки чатов, «＋») над «Сессиями», в строке сессии — метка
+- [x] `section`: секция «Задачи» (карточки задач, движки чатов, «＋») над «Сессиями», в строке сессии — метка
       ключа справа (`tasks.html#c`)
-- [ ] все три вида списка (`sessionList.view`) и три вида верха работают с группами; тесты `sessionsDom.test.ts`
-- [ ] контекстное меню строки: «Привязать к задаче…» / «Отвязать от задачи»
+- [x] все три вида списка (`sessionList.view`) и три вида верха работают с группами; тесты `sessionsDom.test.ts`
+- [ ] контекстное меню строки: «Привязать к задаче…» / «Отвязать от задачи» — код, манифест (`webview/context`) и тесты
+      готовы; **живой клик правой кнопкой в VS Code — пользователь** (форма аргумента команды из меню — см. «Решения сессии 4»)
+- [ ] вёрстка группы/секции/метки ключа/превью в настройках в обеих темах и трёх видах списка — **пользователь** (глазами;
+      браузер в сессии не использовался)
 
 **Готово, когда:** `npm run check` зелёный; DOM-тесты на оба вида; превью в настройках рисуется.
 
 **Сессия:** sonnet, high; после 1 (после 2 — если исполнитель один; файлы не пересекаются, но одно репо —
 последовательно).
+
+**Решения (2026-10-08, по итогам сессии 4):**
+
+Раскладка файлов:
+- `src/settings.ts` — `TASK_SIDEBAR_MODES = ['groups','section']`, `DEFAULT_TASK_SIDEBAR = 'groups'`, `isTaskSidebarMode`, ключ
+  `tasks.sidebar` в `SettingKey`/`SETTING_KEYS`/`SettingsValues`/`validateSetting`/`readSettings`. По чек-листу: `package.json`
+  (настройка `agentura.tasks.sidebar`, команда `agentura.taskSidebar` — quick pick `pickTaskSidebar` в `extension.ts`),
+  `package.nls*.json`, `shared/l10n.ts` (`taskSidebarViews`, `taskSidebarPlaceholder`), `protocol.ts` (`sidebar.view.tasks?`),
+  `sidebarView.ts` (шлёт `tasks`, слушает `agentura.tasks.sidebar`), `strings*.ts` (`ui.sidebar.tasks.*`, `tasksSidebar` для
+  настроек), `Settings.tsx` (`ChoiceCards` в странице «Боковая панель», после лимитов), `SettingsPreview.tsx`
+  (`SidebarPreview part="tasks"` + `taskFixture`: две задачи и свободные чаты), `media/settings.css` (`.pv-tasks`).
+- `src/webview/sessionsView.ts` — чистая логика: `taskLayout(sessions, tasks, query)` → `{blocks, free}`, `pillClass`,
+  `blockEngines`. `src/webview/components/Sidebar.tsx` — `TaskGroup` (вид `groups`), `TaskCard` (вид `section`), `NewTaskChat`,
+  `StatusPill`, `EngineMark`; сигналы `tasksMode`, `taskGroups`, `taskFold`. `src/webview/vscode.ts` — `readTaskFold/saveTaskFold`
+  (`WebviewState.taskFold: string[]`, ≤ 200) и `SidebarFold.tasks` (секция «Задачи»).
+- `media/tasks.css` (новый, подключён в `webviewHost.ts` после `hud.css`; всё под `.sidebar`). Классы: `.tgp` (+`.sel`, `.none`) —
+  группа; `.tg-h` (+`.nokey`) — заголовок (`.tw`/`.tw.open` стрелка, `.kp`, `.tkey`, `.pill.wip|done|open`, `.cn`, `.plus`, `.tt`);
+  `.s.nest` — вложенный чат; `.sec.tasks` / `.tk` (+`.sel`, `.kp`, `.ri`, `.tt`, `.sub`) — секция и карточка; `.s.tagged` / `.s .tag`
+  — метка ключа в строке. Атрибут `data-tasks="groups|section"` на `.sidebar` — только когда в списке есть хотя бы одна группа.
+- Меню строки: `package.json` `menus["webview/context"]` (`webviewId == 'agentura.sidebar' && webviewSection == 'session'`,
+  `sessionBound`), `data-vscode-context` на каждой строке сессии; `sessionIdOf(arg)` (`extension/taskLink.ts`) — команды
+  `bindTask`/`unbindTask` принимают и строку-id, и объект меню (`{sessionId, webview, …}`).
+
+Контракт (на него опираются этапы 5–6):
+- `sidebar.view.tasks?: 'groups'|'section'` (нет — `groups`). Новое сообщение webview → хост `{ type: 'task.newChat'; taskKey }`
+  (длина 1…400): `sidebarView.ts` вызывает `agentura.chatForTask` с этим ключом (команда сама разбирает `parseTaskKey`). Этап 5 для
+  «＋ новый чат» в блоке «Чаты по задаче» может переиспользовать то же сообщение, добавив обработчик во вкладке чата.
+- Раскладка: `groups` — группы сверху (самая свежая по `updatedAt` чата выше, а не в порядке хранилища), «Без задачи» в конце;
+  дней-заголовков внутри нет (время в строке уже даёт `whenLabel`). Нет групп вообще → прежний список по дням, без «Без задачи»
+  (`data-tasks` не ставится). `section` — секция скрыта, пока групп нет; список сессий прежний (по дням) с меткой
+  `task.key` справа у привязанных.
+- Поиск ищет и по ключу/названию задачи: совпала задача — видны все её чаты, иначе только совпавшие; при поиске свёрнутые группы
+  раскрыты. Плейсхолдер поиска меняется на «Поиск по названию, ключу задачи», когда группы есть.
+- Свёрнутость: `setState` webview `taskFold` (ключи групп; «Без задачи» — `-free`); по умолчанию всё развёрнуто.
+
+Отступления и почему:
+- В `section` нет «↻» секции из прототипа (подтянуть задачи из Jiraffe): секция показывает только задачи, у которых уже есть чаты,
+  списка «моих задач» источники не дают. Клик по карточке — возобновить её самый свежий чат (в прототипе поведения нет).
+- Заголовок группы и карточка — `div` с сеткой, не `<button>` как в прототипе: вложенные кнопки невалидны. Действие — настоящая
+  `<button class="kp hit">` вокруг ключа и статуса, её `::before` растянут на весь заголовок (кликабелен весь, фокус обводит весь);
+  «＋» — соседняя кнопка поверх (`z-index`). *(Приёмка: у исполнителя был `div role="button"` с вложенной «＋» — скринридер
+  такую «＋» не видит.)*
+- Класс ключа задачи `.tkey`, а не `.key` из прототипа: `.set .key` в настройках — подпись ключа настройки (тест
+  `settingsDom` и стили `settings.css` на него опираются).
+- Чат во вложенной строке не получает колонку-метку движка из прототипа (она сломала бы три вида списка): в списке с Codex/
+  Antigravity метка `C`/`X`/`G` стоит перед названием, иначе её нет (движок и так в подписи второй строки).
+- Панель в `section` — flex-колонка (`.sidebar[data-tasks="section"]`): сетка hud.css/webview.css рассчитана на пять
+  дочерних элементов, секция «Задачи» добавляет шестой. `.sec.tasks` ограничена 45 % высоты и прокручивается.
+- В `prototype/screens/settings.html` добавлена строка настройки `agentura.tasks.sidebar` (тест `settingsDom` сверяет число строк
+  `.set` с прототипом).
+- Команда `agentura.bindTask` в меню — «Привязать к задаче…» (переименована из «Привязать вкладку к задаче…», чтобы подходила и
+  строке без вкладки); `unbindTask` без изменений.
+- Чистка ссылок на пропавшие сессии в группах (из «известных ограничений» этапа 1) не делалась: раскладка и `decorateSessions`
+  их отфильтровывают.
+
+Приёмка (2026-10-08, свой проход + второй проход Opus): поиск в `section` ищет и по ключу/названию задачи (`filterSessions` смотрит
+`s.task`); `TaskBlock.all` — все чаты группы без учёта поиска (карточка: число, движки, последний чат); во время поиска
+сворачивание групп не действует; «Без задачи» — имя кнопки её текст; хост игнорирует `task.newChat` с ключом, который не
+разбирается `parseTaskKey`; `taskLayout` без поиска считается один раз за рендер; `.sidebar[data-tasks] .s.nest` — отступ
+вложенного чата не теряется у текущей/живой строки в compact. Тесты: состояние свёрнутости → `saveTaskFold`, поиск в `section`,
+`section` без чатов в группах = прежний вид.
+
+Скоуп (владельцу): (1) клик по карточке секции «Задачи» открывает последний чат — откат: убрать `onClick` у `TaskCard`;
+(2) сворачивание групп запоминается в состоянии webview панели, но не в настройках — откат не нужен.
+
+Не проверено: вёрстка и цвета в браузере/VS Code (только DOM-тесты и сборка), обе темы; живое меню `webview/context` (форма
+аргумента `{sessionId, webview, …}` взята из реализации VS Code, не из документации — если придёт иначе, правка в `sessionIdOf`);
+«＋» у группы в живом VS Code (`agentura.chatForTask` проверена этапом 2 только тестами); ширины колонок `.s.tagged` в трёх
+видах списка. Проверки: `TZ=UTC npm run check` — 126 файлов, 1706 тестов (после приёмки), зелёный.
 
 ### 5. Вкладка чата: полоска, вкладка «задача», сплит — **sonnet, high**, после 2 и 4
 
@@ -610,6 +682,9 @@ DoD: «Готово, когда» этапа 4. Проверка: npm run check.
 (#open, #comment, #changes, #rail) и tasks.html#c (split). Точки входа: src/webview/components/Chat.tsx:334 panelAll,
 :608 rail; SidePanes.tsx (эталон панели — ChangesPane); src/webview/vscode.ts:21 PanelState; TabBar.tsx (бейджи).
 Данные — сообщение task.state из этапа 2 (src/protocol.ts).
+После этапа 4: «＋ новый чат» в блоке «Чаты по задаче» — то же сообщение `task.newChat {taskKey}` (protocol.ts), что шлёт боковая
+панель; в sidebarView.ts оно уже превращается в `agentura.chatForTask`, для вкладки чата нужен такой же обработчик (chatPanel.ts), с той же проверкой `parseTaskKey(m.taskKey)` (недоверенный ввод).
+Кнопки внутри кликабельной строки — по образцу `.hit` из media/tasks.css (настоящая кнопка + растянутый `::before`), не `role="button"` с вложенной кнопкой.
 По реальному коду (после этапа 2): точные типы — src/shared/task.ts (`TaskStateMessage`, `TaskCard`, `TaskEvent`,
 `TaskRequest`); контракт и семантика полей (`duringTurn` для плашки, `mine`, `fromThisChat`, отсутствие `taskKey` =
 «задачи нет», `card`+`error` = устаревшая карточка) — «Решения … по итогам сессии 2» в этом файле. Описание и

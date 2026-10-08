@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { instanceIdFromUrl, parseIssueInput } from './taskLink';
+import { instanceIdFromUrl, parseIssueInput, sessionIdOf } from './taskLink';
 
 describe('parseIssueInput', () => {
   it('ключ', () => {
@@ -27,5 +27,16 @@ describe('parseIssueInput', () => {
   });
   it('instanceIdFromUrl', () => {
     expect(instanceIdFromUrl('https://Jira.Example.com:8443/')).toBe('jira-example-com-8443');
+  });
+});
+
+describe('sessionIdOf', () => {
+  it('строка — как есть, контекст меню строки сайдбара — sessionId из объекта, прочее — нет', () => {
+    expect(sessionIdOf('abc')).toBe('abc');
+    expect(sessionIdOf({ sessionId: 's1', webview: 'agentura.sidebar', webviewSection: 'session' })).toBe('s1');
+    expect(sessionIdOf('')).toBeUndefined();
+    expect(sessionIdOf({ sessionId: 5 })).toBeUndefined();
+    expect(sessionIdOf(undefined)).toBeUndefined();
+    expect(sessionIdOf(null)).toBeUndefined();
   });
 });

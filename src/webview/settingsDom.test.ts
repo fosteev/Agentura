@@ -49,6 +49,7 @@ const values: SettingsValues = {
   'sessionList.time': true,
   'sidebar.top': 'detailed',
   'sidebar.limits': 'active',
+  'tasks.sidebar': 'groups',
   'feed.style': 'journal',
   'composer.layout': 'classic',
   'agents.view': 'list',
@@ -126,6 +127,7 @@ describe('вкладка настроек', () => {
       'agentura.limits.readKeychain',
       'agentura.sidebar.top',
       'agentura.sidebar.limits',
+      'agentura.tasks.sidebar',
       'agentura.sessionList.view',
       'agentura.sessionList.context',
       'agentura.sessionList.time',
@@ -297,6 +299,28 @@ describe('вкладка настроек', () => {
     await flush();
     cards[0]!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
     expect(sets().at(-1)).toEqual({ type: 'settings.set', key: 'sidebar.limits', value: 'switch' });
+  });
+
+  it('задачи Jira в панели: два превью с фикстурой групп (группы / секция), выбор пишет настройку', async () => {
+    const host = mount(Settings);
+    state();
+    await flush();
+    const row = host.querySelector('[data-key="agentura.tasks.sidebar"]')!;
+    expect(row.querySelector('select')).toBeNull();
+    const cards = [...row.querySelectorAll<HTMLElement>('[role="radio"]')];
+    expect(cards.map((c) => c.dataset.value)).toEqual(['groups', 'section']);
+    for (const card of cards) expect(card.querySelector('.pv[inert][aria-hidden="true"]')).not.toBeNull();
+    const [groups, section] = cards as [HTMLElement, HTMLElement];
+    expect(groups.querySelectorAll('.tgp')).toHaveLength(3); // две задачи и «Без задачи»
+    expect(groups.querySelector('.tgp .tkey')!.textContent).toBe('NEWMFC-1482');
+    expect(groups.querySelector('.tgp .pill')).not.toBeNull();
+    expect(groups.querySelector('.sec.tasks')).toBeNull();
+    expect(section.querySelector('.sec.tasks .tk')).not.toBeNull();
+    expect(section.querySelector('.tgp')).toBeNull();
+    expect(section.querySelector('.s .tag')!.textContent).toBe('NEWMFC-1482');
+    expect(row.querySelector('[aria-checked="true"]')?.getAttribute('data-value')).toBe('groups');
+    section.click();
+    expect(sets().at(-1)).toEqual({ type: 'settings.set', key: 'tasks.sidebar', value: 'section' });
   });
 
   it('шрифт карточками: каждая своим шрифтом, наведение примеряет на образец, клик пишет', async () => {

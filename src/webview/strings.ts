@@ -843,6 +843,14 @@ const ru = {
         dense: 'плотно — лимиты в заголовке панели',
       } as Record<string, string>,
     },
+    tasksSidebar: {
+      name: 'Задачи Jira в боковой панели',
+      desc: 'Где показаны чаты по задачам Jira: группами внутри списка сессий (под ключом задачи, статус-пилюля и «＋» нового чата) или отдельной секцией «Задачи» над «Сессиями», а в строке сессии — метка ключа справа.',
+      options: {
+        groups: 'группы в списке сессий',
+        section: 'секция «Задачи» над сессиями',
+      } as Record<string, string>,
+    },
     sidebarLimits: {
       name: 'Лимиты движков',
       desc: 'Как выложены лимиты, когда установлено два и больше движков: стопка карточек, переключатель, таблица, активный движок подробно или мини-шкалы в заголовке. Если установлен только Claude, секция выглядит как раньше.',
@@ -982,6 +990,17 @@ const ru = {
     updatedAt: 'данные на',
     refreshFailed: 'не обновилось',
     sessions: 'Сессии',
+    tasks: {
+      section: 'Задачи',
+      noTask: 'Без задачи',
+      chats: (n: number) => `${n} ${plural(n, 'чат', 'чата', 'чатов')}`,
+      newChat: 'Новый чат по задаче',
+      groupTip: (key: string, title: string) => `${key} · ${title}`,
+      lastChat: (when: string) => `последний чат: ${when}`,
+      fold: (key: string, folded: boolean) => `${folded ? 'Развернуть' : 'Свернуть'} задачу ${key}`,
+      openLast: (key: string) => `Открыть последний чат по ${key}`,
+      searchWithTasks: 'Поиск по названию, ключу задачи',
+    },
     listMode: {
       names: { detailed: 'подробно', compact: 'компактно', dense: 'плотно' },
       icons: { detailed: '☰', compact: '≡', dense: '≣' },

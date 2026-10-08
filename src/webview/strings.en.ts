@@ -826,6 +826,14 @@ export const en: Ui = {
         dense: 'dense — limits in the panel header',
       },
     },
+    tasksSidebar: {
+      name: 'Jira tasks in the sidebar',
+      desc: 'Where chats for Jira tasks are shown: as groups inside the session list (under the task key, with a status pill and a ＋ for a new chat) or as a separate “Tasks” section above “Sessions”, with a key tag on the right of each session row.',
+      options: {
+        groups: 'groups in the session list',
+        section: '“Tasks” section above the sessions',
+      },
+    },
     sidebarLimits: {
       name: 'Engine limits',
       desc: 'How limits are laid out when two or more engines are installed: a stack of cards, a switch, a table, the active engine in detail, or mini-gauges in the header. With only Claude installed the section looks as before.',
@@ -965,6 +973,17 @@ export const en: Ui = {
     updatedAt: 'data as of',
     refreshFailed: 'refresh failed',
     sessions: 'Sessions',
+    tasks: {
+      section: 'Tasks',
+      noTask: 'No task',
+      chats: (n: number) => `${n} ${pl(n, 'chat', 'chats')}`,
+      newChat: 'New chat for the task',
+      groupTip: (key: string, title: string) => `${key} · ${title}`,
+      lastChat: (when: string) => `last chat: ${when}`,
+      fold: (key: string, folded: boolean) => `${folded ? 'Expand' : 'Collapse'} task ${key}`,
+      openLast: (key: string) => `Open the last chat for ${key}`,
+      searchWithTasks: 'Search by name or task key',
+    },
     listMode: {
       names: { detailed: 'detailed', compact: 'compact', dense: 'dense' },
       icons: { detailed: '☰', compact: '≡', dense: '≣' },

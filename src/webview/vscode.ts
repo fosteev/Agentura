@@ -45,6 +45,8 @@ export interface WebviewState {
   panel?: PanelState;
   /** Боковая панель: свёрнутые секции. */
   fold?: SidebarFold;
+  /** Боковая панель: свёрнутые группы задач (ключи групп). */
+  taskFold?: string[];
   /** Вкладка настроек: открытый раздел. */
   settingsSection?: SettingsSection;
   /** Вкладка графа агентов: выбранные ход и агент (`sessionId` — сессия, которую граф показывал). */
@@ -65,6 +67,8 @@ export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 export interface SidebarFold {
   account?: boolean;
   sessions?: boolean;
+  /** Секция «Задачи» (вид `section`). */
+  tasks?: boolean;
 }
 
 function readState(): WebviewState {
@@ -140,7 +144,21 @@ export function readFold(): SidebarFold {
   const out: SidebarFold = {};
   if (typeof f.account === 'boolean') out.account = f.account;
   if (typeof f.sessions === 'boolean') out.sessions = f.sessions;
+  if (typeof f.tasks === 'boolean') out.tasks = f.tasks;
   return out;
+}
+
+/** Потолок запоминаемых свёрнутых групп: ключи пропавших задач не копятся вечно. */
+const TASK_FOLD_MAX = 200;
+
+/** Свёрнутые группы задач в боковой панели (ключи `jira:<инстанс>:<KEY>`); переживают перезагрузку вида. */
+export function readTaskFold(): string[] {
+  const v = readState().taskFold;
+  return Array.isArray(v) ? v.filter((k): k is string => typeof k === 'string').slice(0, TASK_FOLD_MAX) : [];
+}
+
+export function saveTaskFold(keys: readonly string[]): void {
+  writeState({ ...readState(), taskFold: keys.slice(-TASK_FOLD_MAX) });
 }
 
 export function saveFold(fold: SidebarFold): void {

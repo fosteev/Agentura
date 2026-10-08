@@ -500,6 +500,9 @@ html[data-width='380'] .num.wide {
 .pv-side.pv-list {
   height: 150px;
 }
+.pv-side.pv-tasks {
+  height: 230px;
+}
 .pv-limits .sidebar > .sec:not(.acc),
 .pv-limits .sidebar > .tools {
   display: none;
@@ -510,7 +513,10 @@ html[data-width='380'] .num.wide {
 }
 .pv-list .sidebar > .head,
 .pv-list .sidebar > .sec.acc,
-.pv-list .sidebar > .tools {
+.pv-list .sidebar > .tools,
+.pv-tasks .sidebar > .head,
+.pv-tasks .sidebar > .sec.acc,
+.pv-tasks .sidebar > .tools {
   display: none;
 }
 
