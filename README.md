@@ -14,6 +14,11 @@ engine as Claude Code, through your installed `claude` and its login. Codex CLI 
 
 Personal project, not on the Marketplace. Install it from a `.vsix` (see [Install](#install)).
 
+> **New in 0.9 — Jira tasks.** Chats grouped by Jira issue; a "task" tab beside the chat with the issue card and a
+> live change feed (the agent's comment shows up right away); one tab per task with its chats inside; Jira connected
+> in Agentura or through [Jiraffe](https://github.com/fosteev/jiraffe) 0.8; and Claude can comment, change status and
+> log work on the issue, asking before anything but a short comment. See [Jira tasks](#jira-tasks).
+
 ## Features
 
 - **Two engines.** Claude (default) or Codex, picked per tab in the "agent" menu under the input box.
