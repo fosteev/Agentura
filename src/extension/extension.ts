@@ -402,7 +402,7 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
       ChatPanel.runStatus(context, log, services),
     ),
     vscode.commands.registerCommand('agentura.openSettings', () =>
-      SettingsPanel.show(context, log),
+      SettingsPanel.show(context, log, jira),
     ),
     // правка настроек (UI, settings.json, вкладка настроек) доходит до открытых вкладок чата
     vscode.workspace.onDidChangeConfiguration((e) => {

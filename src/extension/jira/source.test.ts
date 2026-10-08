@@ -195,6 +195,21 @@ describe('JiraSources', () => {
     expect(m.jiraffeStatus().state).toBe('ready');
   });
 
+  it('jiraffeInstances и activeKind — данные для страницы настроек', async () => {
+    const { m, ready, setSetting } = manager({ exports: fakeJiraffe(), own: true });
+    await ready;
+    expect(m.activeKind()).toBe('own'); // до refresh Jiraffe ещё нет
+    await m.refresh();
+    expect(m.jiraffeInstances().map((i) => i.id)).toEqual(['jf']);
+    expect(m.activeKind()).toBe('jiraffe');
+    setSetting('own');
+    await m.refresh();
+    expect(m.jiraffeInstances()).toEqual([]);
+    expect(m.activeKind()).toBe('own');
+    setSetting('off');
+    expect(m.activeKind()).toBeUndefined();
+  });
+
   it('смена настройки и onDidChangeInstances Jiraffe дают onDidChange; без изменений — тишина', async () => {
     const jf = fakeJiraffe();
     const { m, setSetting } = manager({ exports: jf });

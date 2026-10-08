@@ -1,10 +1,13 @@
 /** Стор вкладки настроек: значения из хоста, черновики полей, ошибки, итог «проверить». */
 import { signal } from '@preact/signals';
 import type { ToWebview } from '../protocol';
+import type { IntegrationsState } from '../shared/integrations';
 import type { EngineCheck, SettingKey, SettingsValues } from '../settings';
 import { send } from './vscode';
 
 export const settingsValues = signal<SettingsValues | undefined>(undefined);
+/** Jiraffe и свои подключения Jira (страница «Интеграции»); до ответа хоста — `undefined`. */
+export const integrations = signal<IntegrationsState | undefined>(undefined);
 export const overridden = signal<SettingKey[]>([]);
 /** Текст ошибки у поля: ошибка проверки (до отправки) или отказ хоста. */
 export const errors = signal<Partial<Record<SettingKey, string>>>({});
@@ -22,6 +25,9 @@ export function handleSettingsMessage(m: ToWebview): void {
     case 'settings.state':
       settingsValues.value = m.values;
       overridden.value = m.overridden;
+      break;
+    case 'integrations.state':
+      integrations.value = m.state;
       break;
     case 'settings.error':
       errors.value = { ...errors.value, [m.key]: m.message };
@@ -61,6 +67,14 @@ export function addFont(kind: 'ui' | 'code' | 'panels'): void {
 export function removeFont(family: string): void {
   send({ type: 'fonts.remove', family });
 }
+
+/** Страница «Интеграции»: «подключить», «проверить», «удалить» — команды этапа 2; «поставить» — карточка Jiraffe в Extensions. */
+export const integrationsAction = {
+  connect: () => send({ type: 'integrations.connect' }),
+  test: (instanceId: string) => send({ type: 'integrations.test', instanceId }),
+  disconnect: (instanceId: string) => send({ type: 'integrations.disconnect', instanceId }),
+  installJiraffe: () => send({ type: 'integrations.installJiraffe' }),
+};
 
 export function reveal(target: 'ui' | 'json'): void {
   send({ type: 'settings.reveal', target });

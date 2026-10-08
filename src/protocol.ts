@@ -20,6 +20,7 @@ import type { ImageProblem } from './shared/images';
 import type { FileProblem } from './shared/files';
 import { isAgentGraphView, type AgentGraphView } from './shared/agentsGraph';
 import type { GitNotice, GitRequest } from './shared/git';
+import type { IntegrationsState } from './shared/integrations';
 import type { TaskChatsMessage, TaskRequest, TaskStateMessage } from './shared/task';
 import type {
   EngineCheck,
@@ -151,6 +152,8 @@ export type ToWebview =
     }
   /** Вкладка настроек (этап 3 roadmap 0.2): значения `agentura.*` и ключи, перекрытые настройками рабочей папки. */
   | { type: 'settings.state'; values: SettingsValues; overridden: SettingKey[] }
+  /** Страница «Интеграции» (roadmap 19, этап 6): Jiraffe и свои подключения Jira. */
+  | { type: 'integrations.state'; state: IntegrationsState }
   /** Отказ записи настройки (проверка не прошла или запись не удалась) — текст у поля. */
   | { type: 'settings.error'; key: SettingKey; message: string }
   /** Ответ на «проверить» у пути к claude. */
@@ -404,6 +407,11 @@ export type FromWebview =
   | { type: 'settings.set'; key: SettingKey; value: unknown }
   /** «проверить»: найти claude по этому пути (пусто — системный) и показать версию и источник. */
   | { type: 'settings.checkEngine'; path: string; /** Чей путь проверять; нет — claude. */ engine?: AgentProvider }
+  /** Страница «Интеграции»: команды этапа 2 (`agentura.jira.connect|test|disconnect`) и «поставить» Jiraffe. */
+  | { type: 'integrations.connect' }
+  | { type: 'integrations.test'; instanceId: string }
+  | { type: 'integrations.disconnect'; instanceId: string }
+  | { type: 'integrations.installJiraffe' }
   /** «в настройках VS Code» / «settings.json». */
   | { type: 'settings.reveal'; target: 'ui' | 'json' }
   /** «Добавить из Google Fonts…» под карточками: выбор семейства для интерфейса, кода или панелей (все семейства). */
@@ -554,6 +562,10 @@ const FROM_WEBVIEW_TYPES: Record<FromWebview['type'], true> = {
   'settings.set': true,
   'settings.checkEngine': true,
   'settings.reveal': true,
+  'integrations.connect': true,
+  'integrations.test': true,
+  'integrations.disconnect': true,
+  'integrations.installJiraffe': true,
   'fonts.add': true,
   'fonts.remove': true,
   'git.watch': true,
@@ -613,6 +625,8 @@ const FIELD_CHECKS: Partial<Record<FromWebview['type'], (m: Record<string, unkno
   'git.openRepository': () => true,
   'git.message': (m) => strings(m.roots),
   'task.newChat': (m) => str(m.taskKey) && m.taskKey.length > 0 && m.taskKey.length <= 400,
+  'integrations.test': (m) => str(m.instanceId) && m.instanceId.length > 0 && m.instanceId.length <= 200,
+  'integrations.disconnect': (m) => str(m.instanceId) && m.instanceId.length > 0 && m.instanceId.length <= 200,
   'task.connect': () => true,
   'task.openChat': (m) => str(m.sessionId) && m.sessionId.length > 0 && m.sessionId.length <= 200,
   'task.toComposer': (m) => str(m.commentId) && m.commentId.length > 0 && m.commentId.length <= 200,

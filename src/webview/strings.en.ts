@@ -791,6 +791,7 @@ export const en: Ui = {
       limits: 'Context and limits',
       sidebar: 'Sidebar',
       look: 'Appearance',
+      integrations: 'Integrations',
       engine: 'Engine',
     },
     source: 'Stored in VS Code settings, “User” scope. Applied immediately, no restart needed.',
@@ -892,13 +893,69 @@ export const en: Ui = {
     },
     tasksCard: {
       name: 'Task card in the chat',
-      desc: 'Where the Jira task is shown in a chat for a task. Panel: a “task” tab on the right (card and change feed); split: Jiraffe’s card on the left, the chat on the right (Jiraffe only, otherwise as Panel); strip: only the line above the feed.',
+      desc: 'Where the Jira task is shown in a chat for a task. Panel: a “task” tab on the right (card and change feed); split: Jiraffe’s card on the left, the chat on the right, the “task” tab opens on changes (Jiraffe only, otherwise as Panel); strip: only the line above the feed.',
       options: {
         panel: 'panel — a “task” tab on the right',
         split: 'split — Jiraffe’s card on the left',
         strip: 'strip — no tab',
       },
       onlyJiraffe: 'Jiraffe only',
+    },
+    integrations: {
+      source: {
+        name: 'Jira task source',
+        desc: 'Where Agentura gets tasks for the strip and the “task” tab. Auto: Jiraffe when it is installed and exposes its API, otherwise your own connections. Off: tasks are not requested; groups in the session list stay.',
+        options: {
+          auto: 'auto',
+          jiraffe: 'Jiraffe',
+          own: 'own connections',
+          off: 'off',
+        },
+        activeJiraffe: 'Active now: Jiraffe',
+        activeOwn: 'Active now: own connections',
+        activeNone: 'No source is active — tasks are not loaded',
+      },
+      jiraffe: {
+        name: 'Jiraffe',
+        desc: 'The Jira extension for VS Code. Agentura takes the workspace instances and tokens from it; the task card gets “Open in Agentura”.',
+        install: 'install',
+        absent: '✗ not installed',
+        noApi: (ver: string) =>
+          `✗ ${ver ? `Jiraffe ${ver}` : 'Jiraffe'} is installed but exposes no API for Agentura — update the extension`,
+        inactive: (ver: string) =>
+          `${ver ? `Jiraffe ${ver}` : 'Jiraffe'} is installed · not used right now (source is own connections or off)`,
+        ready: (ver: string) => `✓ ${ver ? `Jiraffe ${ver}` : 'Jiraffe'} is installed`,
+        instances: (n: number) => `${n} ${n === 1 ? 'instance' : 'instances'}`,
+        noInstances: 'no instances in this workspace',
+      },
+      own: {
+        name: 'Own connections',
+        desc: 'Jira connected directly in Agentura, without Jiraffe: the address and token belong to this workspace only, the token lives in VS Code SecretStorage.',
+        connect: 'connect',
+        test: 'test',
+        remove: 'remove',
+        empty: 'No connections.',
+        kind: { dc: 'Server / DC', cloud: 'Cloud' },
+        aria: 'Own Jira connections',
+      },
+      refresh: {
+        name: 'Refresh the task',
+        desc: 'How often to read the task from Jira while a chat for it is open. Manual: the ↻ button in the “task” tab; the task is re-read after an agent turn in both modes.',
+        options: { '30s': 'every 30 s', manual: 'manual' },
+      },
+      humanChanges: {
+        name: 'Show changes made by people',
+        desc: 'Comments, status changes and worklogs made by someone other than the agent go into “changes” and the “send to the agent?” banner.',
+      },
+      agentTools: {
+        name: 'Jira tools for the agent',
+        desc: 'What the agent will be able to do in the task on your behalf. Not available yet: writing to Jira comes in a later update.',
+        comment: 'comment',
+        transition: 'status',
+        worklog: 'worklog',
+        ask: 'ask permission',
+        soon: 'not available yet',
+      },
     },
     sidebarLimits: {
       name: 'Engine limits',

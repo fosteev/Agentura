@@ -95,6 +95,12 @@ describe('sessionList', () => {
     expect(validateSetting('tasks.sidebar', 'tree').ok).toBe(false);
     expect(validateSetting('tasks.card', 'split')).toEqual({ ok: true, value: 'split' });
     expect(validateSetting('tasks.card', 'tab').ok).toBe(false);
+    expect(validateSetting('jira.source', 'own')).toEqual({ ok: true, value: 'own' });
+    expect(validateSetting('jira.source', 'cloud').ok).toBe(false);
+    expect(validateSetting('tasks.refresh', 'manual')).toEqual({ ok: true, value: 'manual' });
+    expect(validateSetting('tasks.refresh', '5s').ok).toBe(false);
+    expect(validateSetting('tasks.humanChanges', false)).toEqual({ ok: true, value: false });
+    expect(validateSetting('tasks.humanChanges', 'no').ok).toBe(false);
     expect(validateSetting('feed.style', 'cards')).toEqual({ ok: true, value: 'cards' });
     expect(validateSetting('feed.style', 'grid').ok).toBe(false);
     for (const v of ['list', 'tree', 'lanes', 'cards', 'graph']) {
@@ -210,6 +216,8 @@ describe('readSettings', () => {
         'sidebar.limits': 'grid',
         'tasks.sidebar': 'tree',
         'tasks.card': 'tab',
+        'jira.source': 'x',
+        'tasks.refresh': '1s',
         'feed.style': 'grid',
         'agents.view': 'map',
         'git.layout': 'rows',
@@ -223,6 +231,9 @@ describe('readSettings', () => {
       'sidebar.limits': 'active',
       'tasks.sidebar': 'groups',
       'tasks.card': 'panel',
+      'jira.source': 'auto',
+      'tasks.refresh': '30s',
+      'tasks.humanChanges': true,
       'feed.style': 'journal',
       'agents.view': 'list',
       'git.layout': 'stack',

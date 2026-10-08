@@ -799,12 +799,12 @@ export function TaskCardPreview({ mode }: { mode: TaskCardMode }) {
         </div>
       )}
       {chat}
-      {mode === 'panel' && (
+      {mode !== 'strip' && (
         <div class="tcp-side">
           <div class="tcp-tabs">
-            <span>{ui.tabs.changes}</span>
+            <span class={mode === 'split' ? 'on' : undefined}>{ui.tabs.changes}</span>
             <span>{ui.tabs.git}</span>
-            <span class="on">{ui.tabs.task}</span>
+            <span class={mode === 'panel' ? 'on' : undefined}>{ui.tabs.task}</span>
           </div>
           <div class="tcp-feed">{lines(5)}</div>
         </div>
