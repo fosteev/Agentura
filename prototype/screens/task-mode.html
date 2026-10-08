@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="ru" data-theme="dark" data-width="vscode">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agentura · режим задачи</title>
+<link rel="stylesheet" href="../shared/tokens.css">
+<link rel="stylesheet" href="../shared/preview.css">
+<link rel="stylesheet" href="../shared/hud.css">
+<link rel="stylesheet" href="../shared/settings.css">
+<link rel="stylesheet" href="../shared/tasks.css">
+<link rel="stylesheet" href="../shared/tooltip.css">
+</head>
+<body>
+<div class="preview-bar">
+  <b>Режим задачи · Jiraffe в чате</b>
+  <span class="grp"><button data-set-theme="dark">Тёмная</button><button data-set-theme="light">Светлая</button></span>
+  <span class="grp"><a href="#open">open</a> <a href="#comment">comment</a> <a href="#changes">changes</a> <a href="#rail">rail</a> <a href="#jiraffe">jiraffe</a> <a href="#settings">settings</a></span>
+  <a href="../index.html">← оглавление</a>
+</div>
+<div class="preview-stage">
+<div class="webview" id="win"></div>
+</div>
+<script src="../shared/preview.js"></script>
+<script>
+(function () {
+  var v = (location.hash.slice(1) || 'open').toLowerCase();
+  if (['open', 'comment', 'changes', 'rail', 'jiraffe', 'settings'].indexOf(v) < 0) v = 'open';
+  var after = v === 'changes' || v === 'rail'; // агент уже перевёл задачу в «Тестирование»
+
+  var T = [
+    { k: 'NEWMFC-1482', t: 'Электронная очередь: талон не печатается после перерыва', st: after ? 'Тестирование' : 'В работе', c: after ? 'test' : 'wip', open: true, chats: [
+      { n: 1, e: 'claude', t: 'почему не печатает после перерыва', ctx: '168k', w: 'вчера' },
+      { n: 2, e: 'codex', t: 'восстановление очереди печати', ctx: '74k', w: v === 'jiraffe' ? '12 мин' : 'сейчас', live: v !== 'jiraffe' } ] },
+    { k: 'NEWMFC-1490', t: 'Окно записи: неверный часовой пояс', st: 'Тестирование', c: 'test', open: true, chats: [
+      { n: 1, e: 'codex', t: 'часовой пояс в окне записи', ctx: '22k', w: '10:20' } ] },
+    { k: 'GARM-833', t: 'Pulse: пуш о тревоге дублируется', st: 'Открыта', c: 'open', open: false, chats: [
+      { n: 1, e: 'claude', t: 'дубль пуша тревоги', ctx: '96k', w: 'вчера' }, { n: 2, e: 'claude', t: 'тест дедупликации', ctx: '35k', w: 'вчера' }, { n: 3, e: 'codex', t: 'ревью фикса', ctx: '12k', w: 'пн' } ] }
+  ];
+  var FREE = [
+    { e: 'claude', t: 'мигание счётчика талонов', ctx: '131k', w: '12:40' },
+    { e: 'codex', t: 'почему падает lint в ws-client', ctx: '12k', w: '11:48' },
+    { e: 'claude', t: 'переименовать TicketCounter в хук', ctx: '8k', w: '09:41' }
+  ];
+  var K = { claude: 'C', codex: 'X' };
+  function mk(e) { return '<i class="mk ' + e + '" title="' + e + '">' + K[e] + '</i>'; }
+  function pill(t) { return '<span class="pill ' + t.c + '">' + t.st + '</span>'; }
+  function tic(c, s) { return '<i class="tic ' + c + '">' + (s || '') + '</i>'; }
+
+  // ───── боковая панель ─────
+  function acc() {
+    function L(a, p, r) { return '<div class="L lim-hot"><span>' + a + '</span><span class="bar"><i style="width:' + p + '%"></i></span><span class="n">' + p + ' %</span><em class="rs">' + r + '</em></div>'; }
+    return '<section class="sec acc"><h3><span class="tri"></span>Аккаунт и лимиты<button class="refresh">↻</button></h3><div class="who"><b>andrey@example.com</b><span>· Max 5×</span><i class="okd"></i></div><div class="lims">' + L('Окно 5 часов', 62, '→ 17:00') + L('Неделя', 34, '→ чт 09:00') + '</div></section>';
+  }
+  function chatRow(c, cur) {
+    return '<button class="c' + (cur === c ? ' cur' : '') + (c.live ? ' live' : '') + '"><span class="dot"></span>' + mk(c.e) + '<span class="t">' + (c.n ? '<em>Чат ' + c.n + ' ·</em> ' : '') + c.t + '</span><span class="cx">' + c.ctx + '</span><span class="when">' + c.w + '</span></button>';
+  }
+  function group(t, cur) {
+    return '<div class="tgp' + (t.chats.indexOf(cur) >= 0 ? ' sel' : '') + '"><button class="tg-h" title="' + t.t + '"><i class="tw' + (t.open ? ' open' : '') + '"></i><span class="kp"><span class="key">' + t.k + '</span>' + pill(t) + '</span><span class="cn">' + t.chats.length + '</span><span class="plus">＋</span><span class="tt">' + t.t + '</span></button>' +
+      (t.open ? t.chats.map(function (c) { return chatRow(c, cur); }).join('') : '') + '</div>';
+  }
+  function sidebar(cur, gear) {
+    return '<div class="sidebar" data-top="compact" data-list="compact"><div class="head"><span>Agentura</span><button class="gear' + (gear ? ' on' : '') + '">⚙</button></div>' + acc() +
+      '<section class="sec"><h3><span class="tri"></span>Сессии<span class="r" style="color:var(--fg-mute)">queue-board</span><button class="add" style="display:inline">＋</button><button class="view">≡</button></h3></section>' +
+      '<div class="tools"><input type="search" placeholder="Поиск по названию, ключу задачи" disabled><button>⚲</button></div><div class="list">' +
+      T.map(function (t) { return group(t, cur); }).join('') +
+      '<div class="tgp none"><button class="tg-h nokey"><i class="tw open"></i><span class="kp"><b>Без задачи</b></span><span class="cn">3</span><span class="plus">＋</span></button>' + FREE.map(function (c) { return chatRow(c, cur); }).join('') + '</div></div></div>';
+  }
+
+  // ───── чат ─────
+  function jrow(op, what, r, hl) { return '<div class="e jira' + (hl ? ' hl' : '') + '"><span class="p">▸</span><span class="op">jira</span><span class="what">' + what + '</span><span class="r">' + r + '</span></div>'; }
+  function log() {
+    var j = '';
+    if (v === 'comment') j = jrow('', 'комментарий <span class="dim">NEWMFC-1482</span>', '<span class="pass">✓</span> · <a href="#">в задаче →</a>', true);
+    if (after) j = jrow('', 'статус <span class="dim">NEWMFC-1482 →</span> Тестирование', '<span class="pass">✓</span> · <a href="#">в задаче →</a>') +
+      jrow('', 'комментарий <span class="dim">NEWMFC-1482</span>', '<span class="pass">✓</span> · <a href="#">в задаче →</a>') + jrow('', 'ворклог <span class="dim">NEWMFC-1482 ·</span> 1 ч', '<span class="pass">✓</span> · <a href="#">в задаче →</a>');
+    var tx = v === 'comment' ? 'Оставил в задаче комментарий с причиной и ссылкой на правку; статус пока не трогаю — сначала прогоните на стенде.' :
+      after ? 'Перевёл задачу в «Тестирование», оставил комментарий и залогировал час. Ольга К. уже проверяет на стенде.' :
+      'Причина в <code>PrintQueue.resume()</code>: после паузы флаг <code>busy</code> не сбрасывался, и очередь считала принтер занятым. Теперь он сбрасывается при <code>onPause</code>; добавил тест на печать после перерыва.';
+    return '<div class="log">' +
+      '<div class="ref"><span class="p">✓</span><span>контекст задачи <b>NEWMFC-1482</b> · описание, 4 комментария, 2 вложения · <a href="#">обновить</a></span><span class="at">14:41</span></div>' +
+      '<div class="u"><span class="p">&gt;</span><span>Талон не печатается после перерыва оператора: принтер в статусе ready, а очередь печати стоит. Разберись и почини, по задаче.</span><span class="at">14:42</span></div>' +
+      '<div class="e think"><span class="p">▸</span><span class="op">think</span><span class="what">после паузы сбрасывается соединение с принтером, а флаг busy остаётся</span><span class="r">8s</span></div>' +
+      '<div class="e"><span class="p">▸</span><span class="op">read</span><span class="what"><span class="dim">packages/printer/src/</span>PrintQueue.ts</span><span class="r">0.3s</span></div>' +
+      '<div class="e"><span class="p">▸</span><span class="op">edit</span><span class="what"><span class="dim">packages/printer/src/</span>PrintQueue.ts</span><span class="r"><span class="add">+9</span> <span class="del">−2</span> · <a href="#">diff</a></span></div>' +
+      '<div class="e run"><span class="p">▸</span><span class="op">bash</span><span class="what">pnpm test --filter printer</span><span class="r"><span class="pass">21 ✓</span> · 6.4s</span></div>' + j +
+      '<div class="txt"><p>' + tx + '</p></div><div class="sum"><span>in 410</span><span>out 892</span><span>cache r74 100</span><b>$0.06</b><span>19s</span></div></div>';
+  }
+  function compose() {
+    var b = '', i; for (i = 0; i < 20; i++) b += '<i' + (i < 7 ? ' class="on"' : '') + '></i>';
+    return '<footer class="compose"><div class="blocks">' + b + '</div><div class="ctx"><span><span class="chip">NEWMFC-1482</span></span><span class="cn">контекст <b class="ok">74 100</b> / 200 000 · <button>сжать</button></span></div>' +
+      '<div class="prompt"><span class="p">$</span><span class="text">задача, @файл, /команда</span></div><div class="opts"><button class="mode">режим <b>manual</b></button><button class="agent">агент <b>codex</b></button><button>модель <b>gpt-5-codex</b></button><button>effort <b>high</b></button><button class="send">enter ↵</button></div></footer>';
+  }
+  function strip() {
+    var t = T[0];
+    return '<div class="strip"><span class="key">' + t.k + '</span>' + pill(t) + '<span class="ttl" title="' + t.t + '">' + t.t + '</span><a href="#">в Jiraffe ↗</a></div>';
+  }
+  function tab(label, o) { o = o || {}; return '<div class="etab' + (o.on ? ' on' : '') + '">' + (o.ic || '') + '<span class="n">' + label + '</span><span class="x">×</span></div>'; }
+  function tabs(a) { return '<div class="etabs">' + a.join('') + '</div>'; }
+
+  // ───── правая панель ─────
+  var CM = {
+    k: '<div class="cm"><div class="w"><b>М. Крылова</b> · вчера 17:20</div><p>Приложила лог терминала за пятницу, обрыв соединения с принтером виден около 14:05.</p></div>',
+    p: '<div class="cm"><div class="w"><b>И. Петров</b> · сегодня 09:12</div><p>Подтверждаю на втором киоске. Печатает только после ручной перезагрузки.</p></div>',
+    d: '<div class="cm"><div class="w"><b>Д. Соколов</b> · сегодня 12:05</div><p>Похоже на тот же сброс сокета, что в NEWMFC-1431. Проверьте, нет ли там общего кода.</p></div>',
+    a: '<div class="cm new"><div class="w">' + '<b>' + 'агент</b> (от имени Андрей Фостеев) · только что<span class="nw">новое · только что</span></div><p class="full">Причина: после паузы не сбрасывался флаг busy в PrintQueue.resume(). Исправлено, тесты принтера проходят (21). Проверьте печать после второго перерыва.</p></div>'
+  };
+  function ptabs(sel) {
+    function bt(n, label, extra) { return '<button role="tab" aria-selected="' + (n === sel) + '">' + label + (extra || '') + '</button>'; }
+    return '<div class="ptabs" role="tablist">' + bt('ch', 'изменения') + bt('git', 'git') + bt('ag', 'агенты') +
+      bt('task', 'задача', v === 'comment' ? ' <span class="b live">1</span>' : '') +
+      '<button class="phide" title="Скрыть панель"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1"><rect x="1.5" y="2.5" width="13" height="11" rx="1"/><path d="M10 2.5v11" stroke-dasharray="1.6 1.4"/></svg></button></div>';
+  }
+  function panel() {
+    var t = T[0], cardOn = v !== 'changes';
+    var h = '<aside class="rp wide">' + ptabs('task') +
+      '<div class="seg2"><button class="' + (cardOn ? 'on' : '') + '">карточка</button><button class="' + (cardOn ? '' : 'on') + '">изменения' + (v === 'comment' ? '<span class="b">1</span>' : v === 'changes' ? '<span class="b">4</span>' : '') + '</button></div>' +
+      '<div class="ph"><div class="l1"><span class="key">' + t.k + '</span>' + pill(t) + '<span class="sp"></span><button class="refresh" title="Обновить задачу">↻</button><span class="upd">' + (v === 'comment' ? 'только что' : 'обновлено 10 с назад') + '</span></div><div class="l2">Исполнитель <b>А. Фостеев</b> · приоритет <b>высокий</b></div></div>';
+    if (cardOn) {
+      h += '<div class="ro sc" id="sc">' +
+        '<div><h5>Описание</h5><div class="desc">На терминале в МФЦ после перерыва оператора (пауза ≥ 5 минут) талон выдаётся на экран, но печать не запускается. Принтер в статусе ready, в логе — ни ошибок, ни запросов на печать. Воспроизводится на киосках с принтером Custom TK-180, версия терминала 4.12.</div><a class="more" href="#">ещё</a></div>' +
+        '<div><h5>Вложения<em>2</em></h5><div class="chips"><span class="chip2">terminal-2026-10-03.log <i>148 КБ</i></span><span class="chip2">kiosk-printer-status.png <i>212 КБ</i></span></div></div>' +
+        '<div><h5>Комментарии<em>' + (v === 'comment' ? '5' : '4') + ' · новые снизу</em></h5>' + CM.k + CM.p + CM.d + (v === 'comment' ? CM.a : '') + '</div></div>';
+    } else {
+      h += '<div class="banner2"><span><b>Ольга К.</b> прокомментировала, пока агент работал. Отправить агенту?</span><button>в чат</button></div>' +
+        '<div class="feedh">события задачи с 14:41, когда открыт чат · новые сверху</div><div class="evs">' +
+        '<div class="evt hum"><span class="av2">ОК</span><div><div class="h"><b>Ольга К.</b> · человек<span class="tm">2 мин назад</span></div><div class="bd">комментарий: «Проверила на стенде: талон печатается, но после второго перерыва снова встаёт.»</div></div></div>' +
+        '<div class="evt"><span class="av2 ag">' + mk('codex') + '</span><div><div class="h"><b>агент</b> · от имени А. Фостеева<span class="tm">6 мин назад</span></div><div class="bd">ворклог: <b>1 ч</b> · «Диагностика и правка очереди печати»</div><span class="fr">из этого чата</span></div></div>' +
+        '<div class="evt"><span class="av2 ag">' + mk('codex') + '</span><div><div class="h"><b>агент</b> · от имени А. Фостеева<span class="tm">9 мин назад</span></div><div class="bd">комментарий: «Причина: после паузы не сбрасывался флаг busy в PrintQueue.resume()…»</div><span class="fr">из этого чата</span></div></div>' +
+        '<div class="evt"><span class="av2 ag">' + mk('codex') + '</span><div><div class="h"><b>агент</b> · от имени А. Фостеева<span class="tm">14 мин назад</span></div><div class="bd">статус: В работе <span class="arrow">→</span> <b>Тестирование</b></div><span class="fr">из этого чата</span></div></div></div>';
+    }
+    h += '<div class="chfoot"><h5>Чаты по задаче<em>2</em></h5>' +
+      '<div class="r">' + mk('claude') + '<span>Чат 1 · claude</span><em>вчера</em></div>' +
+      '<div class="r cur">' + mk('codex') + '<span><span class="dot"></span>Чат 2 · codex <em>· этот</em></span><em>сейчас</em></div>' +
+      '<div class="nw"><span>＋</span><span>новый чат</span></div></div></aside>';
+    return h;
+  }
+  function rail() {
+    function ic(p) { return '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.2">' + p + '</svg>'; }
+    return '<nav class="rl"><button title="изменения">' + ic('<path d="M2 4h12M2 8h7M2 12h10"/>') + '</button><button title="git">' + ic('<circle cx="4" cy="3.5" r="1.6"/><circle cx="4" cy="12.5" r="1.6"/><circle cx="12" cy="6" r="1.6"/><path d="M4 5v6M12 7.6c0 3-8 1.5-8 3.4"/>') + '</button><button title="агенты">' + ic('<circle cx="8" cy="3.5" r="1.8"/><circle cx="3.5" cy="12" r="1.8"/><circle cx="12.5" cy="12" r="1.8"/><path d="M7 5l-2.5 5.3M9 5l2.5 5.3"/>') + '</button>' +
+      '<button class="sel" title="задача · 2 новых изменения">' + ic('<rect x="2.5" y="2.5" width="11" height="11" rx="2"/><path d="M5.5 8.2l1.7 1.7 3.3-3.6"/>') + '<span class="b live">2</span></button>' +
+      '<button class="show" title="Показать панель">' + ic('<rect x="1.5" y="2.5" width="13" height="11" rx="1"/><path d="M10 2.5v11"/>') + '</button></nav>';
+  }
+
+  // ───── карточка Jiraffe ─────
+  function card() {
+    var t = T[0];
+    return '<div class="jf"><div class="crumb"><i class="tic">✓</i><span>' + t.k + '</span><span>·</span><span>Задача</span><span>·</span><span>Приоритет: высокий</span></div><h1>' + t.t + '</h1>' +
+      '<div class="bar"><button class="btn st">В работе ▾</button><button class="btn ai open" id="aibtn">Открыть в Agentura <span class="cnt" title="Чатов по задаче">2</span> ▾</button><button class="btn">Ворклог</button><button class="btn">↗</button></div>' +
+      '<div class="meta"><div><span>Исполнитель</span><b>А. Фостеев</b></div><div><span>Автор</span><b>М. Крылова</b></div><div><span>Компонент</span><b>smart_eq_terminal</b></div><div><span>Обновлено</span><b>сегодня, 14:12</b></div></div>' +
+      '<h4>Описание</h4><div class="rich"><p>На терминале в МФЦ после перерыва оператора (пауза ≥ 5 минут) талон выдаётся на экран, но печать не запускается. Принтер в статусе <code>ready</code>, в логе — ни ошибок, ни запросов на печать.</p><p>Воспроизводится на киосках с принтером Custom TK-180, версия терминала 4.12. Помогает только перезапуск службы.</p></div>' +
+      '<div class="subtabs"><span class="on">Комментарии<i class="cnt">4</i></span><span>История<i class="cnt">9</i></span><span>Ворклог<i class="cnt">3</i></span></div>' +
+      '<div class="cmt"><span class="av">МК</span><div><div class="w"><b>М. Крылова</b> · вчера 17:20</div><p>Приложила лог терминала за пятницу, обрыв соединения с принтером виден около 14:05.</p></div></div>' +
+      '<div class="cmt"><span class="av" style="background:#8a6bb0">ИП</span><div><div class="w"><b>И. Петров</b> · сегодня 09:12</div><p>Подтверждаю на втором киоске. Печатает только после ручной перезагрузки.</p></div></div>' +
+      '<div class="menu" id="mn"><div class="hd">Открыть в Agentura · режим задачи</div>' +
+      '<div class="it hl">' + mk('codex') + '<span>Продолжить: Чат 2 · codex<small>восстановление очереди печати · 74k ctx</small></span><span class="w">12 мин назад</span></div>' +
+      '<div class="it">' + mk('claude') + '<span>Чат 1 · claude<small>почему не печатает после перерыва · 168k ctx</small></span><span class="w">вчера</span></div>' +
+      '<hr><div class="it"><span class="pl">＋</span><span>Новый чат по задаче<small>панель «задача» откроется справа</small></span><span class="w">claude ▾</span></div></div></div>';
+  }
+
+  // ───── настройки ─────
+  function settings() {
+    var nav = ['Новая сессия', 'Контекст и лимиты', 'Боковая панель', 'Внешний вид', 'Интеграции', 'Движок'];
+    function sw(on) { return '<span class="tg' + (on ? ' on' : '') + '" role="switch"></span>'; }
+    function set(nm, ds, key, ctl, cls, extra) { return '<div class="set ' + (cls || '') + '"><span class="nm">' + nm + '</span><span class="ds">' + ds + '</span><span class="key">' + key + '</span><span class="ctl">' + ctl + '</span>' + (extra || '') + '</div>'; }
+    function cb(on, l, em) { return '<label><span class="bx' + (on ? ' on' : '') + '">' + (on ? '✓' : '') + '</span>' + l + (em ? ' <em>' + em + '</em>' : '') + '</label>'; }
+    return '<div class="stw"><nav class="st-nav"><div class="st-tabs">' + nav.map(function (n) { return '<button class="' + (n === 'Интеграции' ? 'on' : '') + '">' + n + '</button>'; }).join('') +
+      '</div><div class="src">Хранится в настройках VS Code, раздел «Пользователь». Меняется сразу, без перезапуска.<a href="#">открыть settings.json</a></div></nav>' +
+      '<div class="st-body"><h2>Интеграции</h2><h2 style="margin-top:6px;font-weight:500">Jiraffe<small>расширение Jira для VS Code</small></h2>' +
+      set('Интеграция с Jiraffe', 'Кнопка «Открыть в Agentura» в карточке задачи и режим задачи в чате. Выключено — чаты по задаче работают как обычные сессии, без панели «задача».', 'agentura.jiraffe.enabled', sw(true), '', '<div class="ok">✓ Jiraffe 0.7.0 установлен <span class="dim">· 2 инстанса: jira.sccloud.ru, jira.pilot-gps.com</span></div>') +
+      set('Открывать панель «задача» в чатах по задаче', 'В правой панели чата: карточка задачи только для чтения, события и список чатов по задаче.', 'agentura.jiraffe.taskPanel', sw(true), 'sub') +
+      set('Обновлять задачу', 'Как часто панель «задача» перечитывает задачу из Jira. Вручную — кнопка ↻ в панели.', 'agentura.jiraffe.refresh', '<span class="dd">каждые 30 с</span>', 'sub') +
+      set('Показывать изменения от людей', 'Комментарии, статусы и ворклоги, сделанные не агентом, попадают в «изменения» и в плашку «отправить агенту?».', 'agentura.jiraffe.showHumanChanges', sw(true), 'sub') +
+      set('Инструменты Jira для агента', 'Что агент может делать в задаче от вашего имени. Каждое действие видно в ленте строкой «jira» и в «изменениях».', 'agentura.jiraffe.tools',
+        '<div class="cbs">' + cb(true, 'комментарий') + cb(true, 'статус', 'спрашивать разрешение') + cb(true, 'ворклог', 'спрашивать разрешение') + '</div>', '') +
+      '</div></div>';
+  }
+
+  // ───── сборка ─────
+  var cur = T[0].chats[1];
+  var chatTabs = tabs([tab('NEWMFC-1482 · Чат 2', { on: true, ic: mk('codex') }), tab('NEWMFC-1482 · Чат 1', { ic: mk('claude') }), tab('lint в ws-client', { ic: mk('codex') })]);
+  var main = chatTabs + '<div class="pane">' + strip() + log() + compose() + '</div>';
+  var ed, sb;
+  if (v === 'rail') ed = '<div class="edrow"><div class="egrp">' + main + '</div>' + rail() + '</div>';
+  else if (v === 'jiraffe') { cur = null; ed = tabs([tab('NEWMFC-1482', { on: true, ic: tic('jf', 'J') })]) + card(); }
+  else if (v === 'settings') { cur = null; ed = tabs([tab('Настройки Agentura', { on: true, ic: '<i class="tic" style="background:var(--fg-mute)">⚙</i>' })]) + settings(); }
+  else ed = '<div class="edrow"><div class="egrp narrow">' + main + '</div>' + panel() + '</div>';
+  document.getElementById('win').innerHTML = sidebar(cur, v === 'settings') + '<div class="ed">' + ed + '</div>';
+
+  var b = document.getElementById('aibtn'), m = document.getElementById('mn');
+  if (b && m) { var jf = b.closest('.jf').getBoundingClientRect(), r = b.getBoundingClientRect(); m.style.left = (r.left - jf.left) + 'px'; m.style.top = (r.bottom - jf.top + 4) + 'px'; }
+  var sc = document.getElementById('sc');
+  if (sc && v === 'comment') sc.scrollTop = sc.scrollHeight;
+  window.addEventListener('hashchange', function () { location.reload(); });
+})();
+</script>
+<script src="../shared/tooltip.js"></script>
+</body>
+</html>
