@@ -307,6 +307,8 @@ export class ChatController {
   private turnStartedAt: number | undefined;
   /** Ходы сессии (время): по ним лента задачи отличает «изменил этот чат» (roadmap 19). */
   private readonly turnLog = new TurnLog();
+  /** Токены чата для «AI Tokens» ворклога: история при возобновлении/пересеве + ходы этой сессии. */
+  private readonly tokenTally = new TokenTally();
   /** С прошлого итога приходил `turn.start` — иначе итог закрывает самое старое сообщение очереди. */
   private turnSeen = false;
   private readonly pendingRequests = new Map<string, AgentEvent>();
@@ -475,6 +477,7 @@ export class ChatController {
     deps.setTitle(this.tabLabel());
     deps.onSession?.(id);
     for (const e of history.events) this.trackEdit(e);
+    this.tokenTally.reset(history.events);
     // webview уже прислал `ready`, пока читали историю, — шлём сразу; иначе она уйдёт на его `ready`
     if (this.readyCount > 0) this.postHistory();
     else this.seedPending = true;
@@ -556,6 +559,7 @@ export class ChatController {
       buffer.map((b) => b.event),
     );
     if (history) {
+      this.tokenTally.reset(merged.history);
       this.postHistory({ ...history, events: merged.history }, this.resumed?.title ?? this.title);
     } else this.deps.post({ type: 'session.reset' });
     this.postAttach();
@@ -611,6 +615,11 @@ export class ChatController {
 
   get task(): string | undefined {
     return this.taskKey;
+  }
+
+  /** Токены чата для «AI Tokens» ворклога (`TokenTally`): 0 — расход неизвестен. */
+  get tokens(): number {
+    return this.tokenTally.total;
   }
 
   /** Ходы текущей сессии вкладки (мс); после `/clear` журнал начинается заново. */
@@ -689,6 +698,7 @@ export class ChatController {
     this.seedPending = false;
     this.touched = false;
     this.turnLog.clear();
+    this.tokenTally.reset();
     this.deps.onSession?.(undefined, 'clear');
     this.status = 'idle';
     this.title = undefined;
@@ -1539,6 +1549,7 @@ export class ChatController {
       // ход кончается и обрывом сессии: иначе открытый ход «покрывает» всё до now (ложные duringTurn / «из этого чата»)
       else if (e.type === 'turn.result' || e.type === 'session.closed') this.turnLog.end(Date.now());
     }
+    this.tokenTally.note(e);
     this.deps.onEvent?.(e);
 
     switch (e.type) {
@@ -1740,6 +1751,44 @@ export function planDecision(
     }
     case 'reject':
       return { approve: false, feedback: PLAN_REJECT_MESSAGE, interrupt: true };
+  }
+}
+
+/** Токены хода для «AI Tokens» ворклога: вход, выход и запись кэша; чтение кэша (повтор контекста каждый ход) не считаем. */
+export function turnTokens(u: { input: number; output: number; cacheWrite: number } | undefined): number {
+  return u ? (u.input || 0) + (u.output || 0) + (u.cacheWrite || 0) : 0;
+}
+
+/**
+ * Токены чата для «AI Tokens»: итоги закрытых основных ходов (без субагентов) + `usage.message` идущего хода —
+ * ворклог агент пишет обычно в том же ходе, где работал, и без них этот ход не попал бы в число.
+ * Итог хода заменяет его накопленные сообщения; обрыв сессии без итога оставляет их в сумме.
+ */
+export class TokenTally {
+  private done = 0;
+  private running = 0;
+
+  get total(): number {
+    return this.done + this.running;
+  }
+
+  note(e: AgentEvent): void {
+    if (e.agentId) return;
+    if (e.type === 'usage.message') this.running += turnTokens(e.usage);
+    else if (e.type === 'turn.result') {
+      this.done += turnTokens(e.usage);
+      this.running = 0;
+    } else if (e.type === 'session.closed') {
+      this.done += this.running;
+      this.running = 0;
+    }
+  }
+
+  /** Заново по истории (возобновление, пересев); без событий — обнулить (`/clear`). */
+  reset(events: readonly AgentEvent[] = []): void {
+    this.done = 0;
+    this.running = 0;
+    for (const e of events) this.note(e);
   }
 }
 

@@ -137,6 +137,12 @@ export function buildJiraServer(
             .optional()
             .describe('Day of the work, YYYY-MM-DD in local time. Default: today.'),
           comment: z.string().max(30_000).optional().describe('What was done (plain text).'),
+          aiTokens: z
+            .number()
+            .int()
+            .min(0)
+            .optional()
+            .describe('AI tokens spent on the work. Omit it: the extension fills in this chat\'s token usage.'),
           issue,
         },
         (args) => call(tools, 'worklog', args, spec.issue),

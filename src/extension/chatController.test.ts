@@ -2785,4 +2785,45 @@ describe('граф агентов во вкладке редактора (roadma
     // /clear сообщает вкладке причину: новая сессия остаётся в группе задачи
     expect(sessionCalls).toContainEqual([undefined, 'clear']);
   });
+  it('tokens: сумма входа, выхода и записи кэша основных ходов (без чтения кэша и субагентов); /clear обнуляет', async () => {
+    const { controller, sessions } = setup();
+    controller.start();
+    await tick();
+    const s = sessions[0]!;
+    const result = (usage: { input: number; output: number; cacheRead: number; cacheWrite: number }, agentId?: string) => ({
+      type: 'turn.result' as const,
+      ok: true,
+      subtype: 'success',
+      interrupted: false,
+      durationMs: 1,
+      apiDurationMs: 1,
+      numTurns: 1,
+      totalCostUsd: 0,
+      permissionDenials: [],
+      usage,
+      ...(agentId ? { agentId } : {}),
+    });
+    expect(controller.tokens).toBe(0);
+    s.emit(result({ input: 100, output: 50, cacheRead: 9000, cacheWrite: 20 }));
+    s.emit(result({ input: 10, output: 5, cacheRead: 0, cacheWrite: 0 }, 'a1'));
+    s.emit(result({ input: 1, output: 2, cacheRead: 1, cacheWrite: 3 }));
+    expect(controller.tokens).toBe(176);
+    // идущий ход: ворклог пишется до его итога — сообщения хода уже в числе; итог хода их заменяет
+    const msg = (input: number, agentId?: string) => ({
+      type: 'usage.message' as const,
+      messageId: `m${input}`,
+      model: 'm',
+      usage: { input, output: 0, cacheRead: 500, cacheWrite: 0 },
+      final: true,
+      ...(agentId ? { agentId } : {}),
+    });
+    s.emit(msg(40));
+    s.emit(msg(7, 'a1'));
+    s.emit(msg(60));
+    expect(controller.tokens).toBe(276);
+    s.emit(result({ input: 100, output: 4, cacheRead: 1000, cacheWrite: 0 }));
+    expect(controller.tokens).toBe(280);
+    controller.newSession(true);
+    expect(controller.tokens).toBe(0);
+  });
 });

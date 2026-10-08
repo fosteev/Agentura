@@ -29,7 +29,7 @@ function themeVars(t) {
 --vscode-gitDecoration-addedResourceForeground:${t.add};--vscode-gitDecoration-deletedResourceForeground:${t.del_};--vscode-editorHoverWidget-background:${t.hoverbg};--vscode-editorHoverWidget-border:${t.hoverb};--vscode-editorHoverWidget-foreground:${t.fg};--vscode-widget-shadow:${t.shadow};`.replace(/\n/g, '');
 }
 
-const CSS = ['fonts/fonts.css', 'tokens.css', 'hud.css', 'agents.css', 'agents-map.css', 'changes.css', 'git.css', 'feed.css', 'composer.css', 'attach.css', 'webview.css', 'tooltip.css'];
+const CSS = ['fonts/fonts.css', 'tokens.css', 'hud.css', 'tasks.css', 'agents.css', 'agents-map.css', 'changes.css', 'git.css', 'feed.css', 'composer.css', 'attach.css', 'webview.css', 'tooltip.css'];
 const cssFor = (surface) => [
   ...CSS,
   ...(surface === 'settings' ? ['settings.css'] : []),

@@ -40,7 +40,7 @@ describe('buildJiraServer', () => {
     expect(Object.keys(byName['comment']!.inputSchema.properties ?? {})).toEqual(['text', 'issue']);
     expect(byName['transition']!.inputSchema.required).toEqual(['to']);
     expect(byName['worklog']!.inputSchema.required).toEqual(['minutes']);
-    expect(Object.keys(byName['worklog']!.inputSchema.properties ?? {})).toEqual(['minutes', 'date', 'comment', 'issue']);
+    expect(Object.keys(byName['worklog']!.inputSchema.properties ?? {})).toEqual(['minutes', 'date', 'comment', 'aiTokens', 'issue']);
     expect(client.getInstructions()).toContain('NEWMFC-1482');
     await client.close();
   });

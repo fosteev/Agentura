@@ -615,6 +615,8 @@ export class ChatPanel {
       sources: services.jira,
       settings: () => readAgentTools(vscode.workspace.getConfiguration('agentura').get<unknown>('jira.agentTools')),
       afterWrite: (key) => services.tasks.afterWrite(key),
+      // AI Tokens ворклога агента — расход этого чата, если агент не назвал своё число
+      aiTokens: () => this.controller?.tokens,
     });
     this.jiraTools = jiraTools;
     this.controller = new ChatController({

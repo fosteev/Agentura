@@ -25,6 +25,8 @@ export interface AgentToolsDeps {
   afterWrite(taskKey: TaskKey): Promise<void> | void;
   /** «Сегодня» для ворклога (локальная дата). */
   today?(): string;
+  /** Токены этого чата — подставляются в `aiTokens` ворклога, если агент не передал своё число. */
+  aiTokens?(): number | undefined;
 }
 
 /** Переход по словам агента: id, название перехода или целевого статуса (без регистра). */
@@ -188,7 +190,13 @@ export class AgentJiraTools implements TaskTools {
         const comment = (str(args['comment']) ?? '').trim();
         if (comment.length > MAX_WORK_COMMENT) throw new ToolError(`"comment" is longer than ${MAX_WORK_COMMENT} characters`);
         const seconds = minutes * 60;
-        const r = await writer.logWork(inst, key, { seconds, date, comment });
+        const given = args['aiTokens'];
+        if (given !== undefined && (typeof given !== 'number' || !Number.isInteger(given) || given < 0 || given > 1e12)) {
+          throw new ToolError('"aiTokens" must be a non-negative integer');
+        }
+        const own = this.deps.aiTokens?.();
+        const aiTokens = typeof given === 'number' ? given : own !== undefined && own > 0 ? Math.round(own) : undefined;
+        const r = await writer.logWork(inst, key, { seconds, date, comment, ...(aiTokens !== undefined ? { aiTokens } : {}) });
         return [
           `Logged ${formatSeconds(seconds)} on ${key} for ${date}${r.id ? ` (worklog ${r.id})` : ''}.`,
           eventLine(r.id ? `worklog:${r.id}` : 'worklog'),

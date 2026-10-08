@@ -197,3 +197,81 @@ export const limits = () => ({
   ],
   updatedAt: Date.now(),
 });
+
+// ---- Jira task fixture (roadmap 19): chats of one task, its card and change feed --------------------------------
+
+export const TASK_KEY = 'jira:inst:QUE-214';
+const taskUrl = (k) => `https://jira.example.com/browse/${k}`;
+export const taskMeta = (key, title, status, statusCategory) => ({ key, instanceId: 'inst', title, status, statusCategory, url: taskUrl(key) });
+
+export const taskGroups = [
+  { taskKey: TASK_KEY, meta: taskMeta('QUE-214', 'Board counter blinks to zero after a reconnect', 'In Progress', 'indeterminate'), sessionIds: ['s1', 's3'] },
+  { taskKey: 'jira:inst:QUE-198', meta: taskMeta('QUE-198', 'Kiosk: ticket printer does not retry on paper-out', 'To Do', 'new'), sessionIds: ['s2'] },
+];
+
+/** Sessions of the sidebar with the task marks (`task` is what the "section" layout shows on the row). */
+export const taskSessions = sessions.map((s) => {
+  const g = taskGroups.find((x) => x.sessionIds.includes(s.id));
+  return g ? { ...s, task: { key: g.meta.key, title: g.meta.title, status: g.meta.status, statusCategory: g.meta.statusCategory } } : s;
+});
+
+/** The finished turn plus the agent's own comment on the task (shown as a `jira · comment QUE-214` row). */
+export function taskTurn() {
+  const ev = finishedTurn();
+  const at = ev.find((e) => e.type === 'turn.start').at + 38_000;
+  const i = ev.findIndex((e) => e.type === 'usage.message');
+  ev.splice(i, 0, ...tool(at, 'mcp__agentura_jira__comment', { text: 'Fixed: the counter keeps the last snapshot on reconnect, retries back off exponentially. Tests: 14 passed.' },
+    'Comment added to QUE-214 (id 10234).\nevent: comment:10234', { ms: 700 }));
+  return ev;
+}
+
+const HOUR = 3_600_000;
+export function taskCard() {
+  const now = Date.now();
+  return {
+    key: 'QUE-214', instanceId: 'inst', instanceName: 'Jira DC', title: 'Board counter blinks to zero after a reconnect',
+    type: 'Bug', status: 'In Progress', statusCategory: 'indeterminate', assignee: 'You', priority: 'High', url: taskUrl('QUE-214'),
+    updatedAt: now - 3 * MIN,
+    description: 'After the socket reconnects the queue board shows 0 for a second or two and then the real number. Looks like the counter is reset in onOpen before the first snapshot arrives.\nSeen on the lobby board, 2.4.1.',
+    attachments: [
+      { id: 'a1', filename: 'board-blink.mp4', size: 2_400_000, mimeType: 'video/mp4', url: 'https://x/a1' },
+      { id: 'a2', filename: 'console.log', size: 38_000, mimeType: 'text/plain', url: 'https://x/a2' },
+    ],
+    comments: [
+      { id: 'c1', author: 'Maria K.', mine: false, at: now - 5 * HOUR, text: 'Reproduced on the lobby board, it happens on every Wi-Fi drop.' },
+      { id: 'c2', author: 'You', mine: true, at: now - 4 * MIN, text: 'Fixed: the counter keeps the last snapshot on reconnect, retries back off exponentially. Tests: 14 passed.' },
+    ],
+  };
+}
+
+export function taskEvents() {
+  const now = Date.now();
+  return [
+    { id: 'comment:10236', kind: 'comment', at: now - 2 * MIN, author: 'Oleg P.', mine: false, fromThisChat: false, duringTurn: true, commentId: '10236',
+      text: 'Please also check the second board in the hall, it blinks the same way.' },
+    { id: 'comment:10234', kind: 'comment', at: now - 4 * MIN, author: 'You', mine: true, fromThisChat: true, duringTurn: true, commentId: '10234',
+      text: 'Fixed: the counter keeps the last snapshot on reconnect, retries back off exponentially. Tests: 14 passed.' },
+    { id: 'hist:1:0', kind: 'status', at: now - 40 * MIN, author: 'You', mine: true, fromThisChat: false, duringTurn: false, field: 'status', from: 'To Do', to: 'In Progress',
+      text: 'status: To Do → In Progress' },
+  ];
+}
+
+export const taskState = () => ({ type: 'task.state', taskKey: TASK_KEY, card: taskCard(), events: taskEvents(), fetchedAt: Date.now() - 20_000, source: 'own' });
+export const taskChatRows = () => ({
+  type: 'task.chats', taskKey: TASK_KEY,
+  chats: [
+    { id: 's1', title: 'Fix board counter blink', updatedAt: ago(1), state: 'live', current: true },
+    { id: 's3', title: 'Hall board: same blink', provider: 'codex', updatedAt: ago(95), state: 'idle', current: false },
+  ],
+});
+export const tabChats = () => ({
+  type: 'tab.chats', taskKey: TASK_KEY,
+  chats: [
+    { id: 't1', title: 'Fix board counter blink', provider: 'claude', status: 'working', active: true },
+    { id: 't2', title: 'Hall board: same blink', provider: 'codex', status: 'idle', active: false },
+    { id: 't3', title: '', provider: 'claude', status: 'idle', active: false },
+  ],
+  persist: { taskKey: TASK_KEY, chats: [{ provider: 'claude', id: 's1' }, { provider: 'codex', id: 's3' }], active: 's1' },
+});
+export const integrations = { jiraffe: { state: 'ready', version: '0.8.0', instances: [{ id: 'inst', name: 'Jira DC', baseUrl: 'https://jira.example.com', kind: 'dc' }] },
+  own: [{ id: 'cloud', name: 'Team Cloud', baseUrl: 'https://example.atlassian.net', kind: 'cloud' }], active: 'jiraffe', writes: true };
