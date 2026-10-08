@@ -8,6 +8,10 @@ import {
   DEFAULT_COMPOSER_LAYOUT, DEFAULT_GIT_LAYOUT,
   DEFAULT_SIDEBAR_LIMITS,
   GIT_LAYOUTS,
+  DEFAULT_JIRA_SOURCE,
+  DEFAULT_TASK_REFRESH,
+  JIRA_SOURCES,
+  TASK_REFRESH_MODES,
   SIDEBAR_LIMITS_MODES,
 } from './settings';
 
@@ -123,5 +127,37 @@ describe('agentura.sidebar.limits', () => {
 
   it('команда выбора вида объявлена', () => {
     expect(pkg.contributes.commands.map((c) => c.command)).toContain('agentura.sidebarLimits');
+  });
+});
+
+describe('настройки Jira (roadmap 19, этап 2)', () => {
+  const pkg = read('package.json') as {
+    contributes: {
+      configuration: {
+        properties: Record<string, { type?: string; enum?: string[]; enumDescriptions?: string[]; default?: unknown }>;
+      };
+      commands: { command: string }[];
+    };
+  };
+  const props = pkg.contributes.configuration.properties;
+
+  it('agentura.jira.source и agentura.tasks.refresh: enum и значение по умолчанию совпадают с кодом, у значений есть описания', () => {
+    expect(props['agentura.jira.source']!.enum).toEqual([...JIRA_SOURCES]);
+    expect(props['agentura.jira.source']!.default).toBe(DEFAULT_JIRA_SOURCE);
+    expect(props['agentura.jira.source']!.enumDescriptions).toHaveLength(JIRA_SOURCES.length);
+    expect(props['agentura.tasks.refresh']!.enum).toEqual([...TASK_REFRESH_MODES]);
+    expect(props['agentura.tasks.refresh']!.default).toBe(DEFAULT_TASK_REFRESH);
+    expect(props['agentura.tasks.refresh']!.enumDescriptions).toHaveLength(TASK_REFRESH_MODES.length);
+  });
+
+  it('agentura.tasks.humanChanges — boolean, по умолчанию true', () => {
+    expect(props['agentura.tasks.humanChanges']).toMatchObject({ type: 'boolean', default: true });
+  });
+
+  it('команды подключения Jira и «Чат по задаче…» объявлены', () => {
+    const ids = pkg.contributes.commands.map((c) => c.command);
+    for (const c of ['agentura.jira.connect', 'agentura.jira.disconnect', 'agentura.jira.test', 'agentura.chatForTask']) {
+      expect(ids).toContain(c);
+    }
   });
 });

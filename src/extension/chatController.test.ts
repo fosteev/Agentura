@@ -2689,4 +2689,43 @@ describe('граф агентов во вкладке редактора (roadma
     await controller.handle({ type: 'agents.snapshot', sessionId: 'sess-1', graph: graph(1) });
     expect(toGraph).toHaveLength(0);
   });
+
+  it('ходы для ленты задачи: старт/итог главного агента пишутся в журнал, субагент — нет, /clear обнуляет', async () => {
+    const { controller, sessions, deps } = setup();
+    const events: string[] = [];
+    const sessionCalls: [string | undefined, string | undefined][] = [];
+    deps.onEvent = (e) => events.push(e.type);
+    deps.onSession = (id, why) => void sessionCalls.push([id, why]);
+    controller.start();
+    await tick();
+    const s = sessions[0]!;
+    const result = {
+      type: 'turn.result' as const,
+      ok: true,
+      subtype: 'success',
+      interrupted: false,
+      durationMs: 1,
+      apiDurationMs: 1,
+      numTurns: 1,
+      totalCostUsd: 0,
+      permissionDenials: [],
+      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    };
+    s.emit({ type: 'turn.start', at: 1000, prompt: 'x' });
+    s.emit({ type: 'turn.start', at: 1500, prompt: 'sub', agentId: 'a1' });
+    expect(controller.turns()).toEqual([{ start: 1000 }]);
+    s.emit(result);
+    const [span] = controller.turns();
+    expect(span!.start).toBe(1000);
+    expect(span!.end).toBeGreaterThanOrEqual(1000);
+    expect(events).toEqual(['turn.start', 'turn.start', 'turn.result']);
+    // обрыв сессии закрывает идущий ход: иначе он «покрывал» бы всё до now
+    s.emit({ type: 'turn.start', at: 2000, prompt: 'y' });
+    s.emit({ type: 'session.closed', reason: 'error', message: 'boom' });
+    expect(controller.turns()[1]!.end).toBeGreaterThanOrEqual(2000);
+    controller.newSession(true);
+    expect(controller.turns()).toEqual([]);
+    // /clear сообщает вкладке причину: новая сессия остаётся в группе задачи
+    expect(sessionCalls).toContainEqual([undefined, 'clear']);
+  });
 });

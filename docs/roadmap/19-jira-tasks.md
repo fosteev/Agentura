@@ -1,7 +1,7 @@
 # 19 — Чаты по задачам Jira: группы, режим задачи, своё подключение и Jiraffe
 
 > **Статус:** этап 1 принят 2026-10-08 (ветка `stage-1-task-groups` от `feature/task-groups`); этап 3 (Jiraffe) принят
-> отдельной приёмкой (`feature/agentura-tasks`, 30d982d); следующий — **2**. Ветка roadmap `feature/task-groups`
+> отдельной приёмкой (`feature/agentura-tasks`, 30d982d); этап 2 принят 2026-10-08 (ветка `stage-2-jira-sources`); следующий — **4**. Ветка roadmap `feature/task-groups`
 > (от `feature/engine-limits`, 0.8.0 ещё не в main).
 > Прототип — `prototype/screens/tasks.html` (`#a|#b|#c|#d|#ask`) и `prototype/screens/task-mode.html`
 > (`#open|#comment|#changes|#rail|#jiraffe|#settings`); галерея v38, разделы «Режим задачи» и «Чаты по задачам Jira».
@@ -240,32 +240,136 @@ Jiraffe (`/Users/fost/Projects/jiraffe`, 0.7.0, ветка main, VS Code Marketp
 
 Копия клиента, два источника за одним интерфейсом, сервис задачи с опросом и лентой изменений.
 
-- [ ] `src/data/jira/`: копии `http.ts`, `client.ts` (`myself`, `issue`, `issueDetail`, `worklogs`), `mappers.ts`,
+- [x] `src/data/jira/`: копии `http.ts`, `client.ts` (`myself`, `issue`, `issueDetail`, `worklogs`), `mappers.ts`,
       `types.ts`, `text.ts` (`htmlToText`, `issueContext`) с шапкой-источником (решение 5); тесты копируются вместе с
       фикстурой `test/fixtures/issue-dc.json` Jiraffe
-- [ ] сверить: Jiraffe `src/commands/instances.ts` — id инстанса = `instanceIdFromUrl` (решение 1); расхождение —
+- [x] сверить: Jiraffe `src/commands/instances.ts` — id инстанса = `instanceIdFromUrl` (решение 1); расхождение —
       в отчёт
-- [ ] `src/extension/jira/source.ts`: `interface JiraSource { kind: 'jiraffe'|'own'; instances(); issue(inst,key);
+- [x] `src/extension/jira/source.ts`: `interface JiraSource { kind: 'jiraffe'|'own'; instances(); issue(inst,key);
       myself(inst); openIssue?(inst,key,beside) }`; `OwnSource` (решение 4, `context.secrets`), `JiraffeSource`
       (`vscode.extensions.getExtension('fosteev.jiraffe')` → `activate()` → `exports.apiVersion >= 1`),
       `resolveSource(setting)` по решению 3, пересчёт при установке/удалении расширений и смене настройки
-- [ ] команды «Agentura: Подключить Jira…», «Отключить Jira…», «Проверить подключение Jira» — шаги по образцу
+- [x] (код и чистая логика проверены тестами; живой прогон — пользователь) команды «Agentura: Подключить Jira…», «Отключить Jira…», «Проверить подключение Jira» — шаги по образцу
       Jiraffe `src/commands/instances.ts:96`; nls ru/en
-- [ ] `src/extension/jira/taskService.ts`: `TaskCard` (решение 10, текст вместо HTML), `TaskEvent`
+- [x] `src/extension/jira/taskService.ts` (+ `taskEvents.ts`): `TaskCard` (решение 10, текст вместо HTML), `TaskEvent`
       `{kind:'status'|'field'|'comment'|'worklog', at, author, mine, fromThisChat, text}`, `eventsSince(card,
       openedAt, turns)`; опрос по решению 11; кеш карточки на задачу (одна выборка на все вкладки группы)
-- [ ] протокол: `task.state {card?, events, error?, fetchedAt, source}` хост → вкладка чата;
+- [x] протокол: `task.state {card?, events, error?, fetchedAt, source}` хост → вкладка чата;
       `task.refresh`, `task.toComposer {commentId}`, `task.openExternal` вкладка → хост
-- [ ] настройки `agentura.jira.source`, `agentura.tasks.refresh`, `agentura.tasks.humanChanges` (без превью)
-- [ ] команда «Agentura: Чат по задаче…» (решение 12) — с источником тянет карточку и кладёт `issueContext` файлом
+- [x] настройки `agentura.jira.source`, `agentura.tasks.refresh`, `agentura.tasks.humanChanges` (без превью)
+- [x] (код и разбор ввода проверены; живой прогон — пользователь) команда «Agentura: Чат по задаче…» (решение 12) — с источником тянет карточку и кладёт `issueContext` файлом
 
-- [ ] (решение владельца 2026-10-08) `/clear` во вкладке задачи: новая сессия остаётся в группе той же задачи
+- [x] (решение владельца 2026-10-08) `/clear` во вкладке задачи: новая сессия остаётся в группе той же задачи
       (перенести задачу в `pendingTask`, заголовок «KEY · …» не снимать); тест
 
 **Готово, когда:** `npm run check` зелёный; тесты `eventsSince` (статус, комментарий агента «из этого чата»,
 комментарий человека, ворклог) на фикстуре; тест `resolveSource` на четыре значения настройки × «Jiraffe есть/нет».
 
 **Сессия:** sonnet, high; после 1. Можно параллельно с этапом 3 (другое репо, контракт — решение 6).
+
+**Решения (2026-10-08, по итогам сессии 2):**
+
+Раскладка файлов:
+- `src/data/jira/` — копия чистого слоя Jiraffe 0.7.0 (в шапке каждого файла: источник и список правок): `types.ts`, `http.ts`
+  (только `HttpClient.getJson`, `authHeader`, `normalizeBaseUrl`, `JiraError`; **без** `getBinary`, `postJson`, `isOwnUrl`,
+  `canonicalBaseUrl` — последний уже в `extension/taskLink.ts`), `client.ts` (`myself`, `issue`, `watchers`, `worklogs`,
+  `issueDetail`, `createJiraClient`; из `issueDetail` убран best-effort запрос названия эпика DC), `mappers.ts` (без
+  `mapVersion`), `text.ts` (`htmlToText`, `issueContext`; `IssueCard` Jiraffe заменён на `{instanceName, issue}`), `i18n.ts`
+  (замена `l10n.ts` Jiraffe: ключ — английский текст, перевод ru в таблице, `setJiraLang`; по умолчанию `en`). Тесты
+  `http/mappers/text.test.ts` — копии тестов Jiraffe (без sanitize/epics/поиска), фикстура `test/fixtures/jira/issue-dc.json`.
+- `src/shared/task.ts` — типы для хоста и webview (без vscode): `TaskCard`, `TaskEvent`, `TaskStateMessage`, `TaskRequest`,
+  `TaskError`/`TaskErrorCode`, `TaskSourceKind`, `isTaskRequest`.
+- `src/extension/jira/`: `jiraffeApi.ts` (интерфейс API v1 + `parseJiraffeApi(exports)`), `ownInstances.ts`
+  (`OwnInstanceStore`, `workspaceId`, `ownTokenKey`), `source.ts` (`JiraSource`, `JiraffeSource`, `OwnSource`,
+  `resolveSourceKind`, `JiraSources`, `normalizeIssueKey`), `taskEvents.ts` (`buildSnapshot`, `eventsSince`, `TurnLog`),
+  `taskService.ts` (`TaskService`), `taskTab.ts` (`TaskTab` — связка вкладки чата с сервисом), `connectCommands.ts`
+  (команды подключения), `setup.ts` (`createJira(context, taskGroups)` — всё вместе, читает настройки). Тесты рядом.
+- `ChatServices` получил `tasks: TaskService` и `jira: JiraSources`. `registerTaskCommands(context, log, services)` (раньше
+  только `services`); `knownInstances(groups, sources)` теперь учитывает инстансы Jiraffe и своих подключений.
+
+Контракт (на него опираются этапы 4–6, 8):
+- **Протокол.** Хост → вкладка: `{ type: 'task.state'; taskKey?: string; card?: TaskCard; events: TaskEvent[]; error?: TaskError;
+  fetchedAt: number; source: 'jiraffe'|'own'|'none' }` — на `ready` webview, после каждой загрузки, при смене привязки и
+  видимости; нет `taskKey` — вкладка вне задачи (сбросить). Есть `card` и `error` одновременно — карточка устарела (последняя
+  удачная), рядом причина. Вкладка → хост: `{ type: 'task.refresh' }`, `{ type: 'task.toComposer'; commentId }` (хост
+  вставляет `«KEY · автор:\nтекст»` через `composer.prefill`, не отправляет), `{ type: 'task.openExternal'; attachmentId? }`
+  (без поля — задача: при источнике Jiraffe `openIssue(…, beside=true)`, иначе/при сбое — ссылка в браузере; с полем —
+  вложение по id из последнего снимка, только http/https). Запросы разбирает `TaskTab.handle`, до `ChatController` не доходят.
+- **`TaskCard`**: `key, instanceId, instanceName, title, type, status, statusCategory, assignee?, priority?, url, updatedAt (мс),
+  description (текст ≤ 20 000), attachments[{id, filename, size, mimeType, url}], comments[{id, author, mine, at, text}]`
+  (новые снизу). Описание и комментарии — **текст**: webview обязан рисовать его как текст (`textContent`), не как HTML.
+- **`TaskEvent`**: `id, kind ('status'|'field'|'comment'|'worklog'), at (мс), author, mine, fromThisChat, duringTurn, text,
+  field?/from?/to? (status, field), commentId? (comment)`. Лента — новые сверху, только `at > openedAt` сессии (0 — с начала),
+  не больше 100. `mine` = автор совпал с `myself` (Cloud — `accountId`, DC — `name`; `myself` не ответил — `mine` везде
+  `false`). `fromThisChat` = `mine` и `at` внутри хода сессии + 60 с. **`duringTurn`** (новое поле, нужно для плашки) =
+  `at` внутри хода без запаса: плашка «<имя> прокомментировал(а), пока агент работал» — `kind==='comment' && !mine &&
+  duringTurn`; `humanChanges=false` хост применяет сам (не-`mine` события в ленту не попадают). Время ворклога — `started`
+  (когда работа сделана), не момент записи. Бейдж «новое с прошлого просмотра» хост не считает — этап 5 сравнивает
+  `event.at` со своим `lastSeen`.
+- **Ходы** вкладки: `ChatController.turns()` (журнал `TurnLog`: `turn.start`/`turn.result` главного агента, в памяти, `/clear`
+  обнуляет; после Reload Window журнал пуст — «из этого чата» у старых событий не определяется). Новый dep
+  `ChatDeps.onEvent(e)` (каждое событие движка) — по нему `TaskTab` подталкивает загрузку после `turn.result` и после
+  `tool.result`, в тексте которого есть ключ задачи (без учёта регистра).
+- **Опрос**: `TaskService` держит запись на задачу (кеш общий для вкладок группы, у каждой вкладки своя лента по её
+  `openedAt` и ходам). Таймер 30 с — только пока видна хотя бы одна вкладка и `tasks.refresh = '30s'`; загрузка не чаще
+  раза в 5 с на задачу (↻ тоже: в окно 5 с вкладка получает кеш); первая загрузка — при открытии вкладки в любом режиме,
+  в `manual` затем только ↻. После каждой загрузки `TaskGroups.updateMeta` — только если title/status/statusCategory/url
+  изменились (иначе сайдбар перерисовывался бы каждые 30 с).
+- **Источник** (`JiraSources`): `current()` по `resolveSourceKind` (решение 3), `forInstance(id)`, `allInstances()`,
+  `jiraffeStatus() → {state: 'absent'|'no-api'|'ready'|'inactive', instances, apiVersion?}` (`inactive` — добавлено приёмкой) и `ownInstances()` — для страницы
+  «Интеграции» (этап 6), `refresh()`/`onDidChange`. Jiraffe активируется только при `auto`/`jiraffe`. `exports === undefined`
+  (недоверенный воркспейс) и бросок `activate()` = `no-api`. Токен своего подключения — `agentura.jira.token.<wsId>.<id>`,
+  `wsId = sha1(URI первой папки)` / `global`; список — `workspaceState['agentura.jira.instances']`.
+- **Команды**: `agentura.jira.connect`, `agentura.jira.disconnect(instanceId?)`, `agentura.jira.test(instanceId?)`,
+  `agentura.chatForTask(taskKey?)` (аргумент — ключ группы `jira:<инстанс>:<KEY>` — без вопроса; нужен этапу 4 для «＋»).
+- **Настройки** (`src/settings.ts`: `JIRA_SOURCES`, `DEFAULT_JIRA_SOURCE`, `TASK_REFRESH_MODES`, `DEFAULT_TASK_REFRESH`): в
+  `SettingKey`/`SettingsValues` и в страницу настроек не добавлялись — это этап 6 (`setup.ts` читает конфигурацию напрямую).
+- **`/clear`** (решение владельца): `ChatDeps.onSession(id, why?: 'clear')`; чистая функция `nextTabTask` (taskGroups.ts):
+  задача из группы переходит в `pendingTask`, ключ в заголовке остаётся, пришедшая сессия входит в ту же группу. Сбой
+  возобновления по-прежнему в группу не входит. Распространяется и на «новую сессию» кнопкой во вкладке (тот же `newSession`).
+
+Отступления и почему:
+- `eventsSince(snapshot, openedAt, turns, {now, humanChanges, limit})` — первым аргументом снимок `TaskSnapshot {card, changes}`
+  (все изменения без привязки к чату), а не `card`: ленту собирает `buildSnapshot` один раз на загрузку.
+- Источник при `auto`: если Jiraffe не знает инстанс задачи (вне набора воркспейса), а свои знают — берутся свои
+  (`forInstance`); при явных `jiraffe`/`own` подмены нет. Решение 3 это прямо не говорит; обратимо (убрать ветку в `forInstance`).
+- `manual`: `nudge` (после хода/инструмента) тоже отключён — иначе «вручную» не вручную. Решение 11 говорит о nudge без
+  оговорки про режим.
+- `OwnSource` не определяет capabilities (поле Epic Link DC): эпик DC в карточке не заполняется, Cloud — из `parent`.
+  Карточка Agentura эпик пока не показывает.
+- `canonicalBaseUrl` в `data/jira/http.ts` не дублируется — остался в `extension/taskLink.ts` (копия 0.7.0, этап 1).
+- Тексты ошибок Jira — на языке хоста через `data/jira/i18n.ts` (ключ — английская фраза Jiraffe; не переведённая —
+  выводится как есть).
+
+Правки приёмки (2026-10-08, два прохода ревью):
+- **Опрос после сбоя.** 401/403 (`error.code === 'auth'`) — таймер, `nudge` и «вкладка стала видимой» больше не грузят
+  (опрос с плохим токеном доводит учётку DC до CAPTCHA): только ↻ (`task.refresh`) или `reconfigure` (смена
+  настройки/источника, переподключение). Прочие сбои подряд (429, сеть, неизвестный инстанс) — автоматическая загрузка с
+  паузой 30 с → 60 → … ≤ 10 мин (`TaskService.autoAllowed`, `MAX_BACKOFF_MS`); ↻ паузу не ждёт (окно 5 с остаётся).
+- `reconfigure` во время загрузки: результат старого источника выбрасывается (`Entry.gen`), загрузка повторяется.
+- Переподключение своего инстанса (тот же id, новый токен) — `notifyIfChanged(true)` → `reconfigure` (раньше набор id не
+  менялся и ошибка 401 висела до ↻).
+- Текст ошибки источника в `task.state` — не длиннее 500 символов.
+- `buildSnapshot` проверяет типы и длины данных источника (Jiraffe — чужое расширение): строки/числа/массивы, ≤ 500
+  записей каждого вида, `statusCategory` вне `new|indeterminate|done` → `new`; id событий истории уникальны (повтор в ту
+  же секунду — суффикс `#n`). `JiraffeSource.instances()` — не бросает, мусорные записи отбрасывает.
+- `/clear`: новая сессия входит в группу с текущими метаданными группы, а не с запомненными вкладкой (не откатывает статус).
+- Второй проход (opus): журнал ходов закрывает ход и по `session.closed`/`teardown` (иначе ложные `duringTurn`); загрузка
+  источника ждёт не дольше 45 с (`SOURCE_TIMEOUT_MS`, `myself` — 15 с; повисший промис Jiraffe больше не держит `inflight`);
+  `htmlToText` режет вход до 100 000 символов (регулярки квадратичны на незакрытых тегах); `getJson` читает ответ с
+  потолком 20 МБ (код `limit`); запись задачи в `TaskService` забывается, когда закрылась последняя вкладка и загрузки нет;
+  `jiraffeStatus().state` — новое значение `inactive` (установлен, но `jira.source` = `own`/`off`: API не держим, число
+  инстансов 0); смена `agentura.tasks.*` — `TaskService.settingsChanged()` (таймеры и ленты заново без сброса кеша,
+  окна 5 с и блока после 401), полный `reconfigure` — только при смене источника/подключений.
+- Редиректы: `getJson` ходит только на `baseUrl` + путь, `Authorization` на чужой origin при редиректе fetch (undici,
+  Node ≥ 20) снимает, а сам ответ после такого редиректа — ошибка `redirect`; так же у Jiraffe 0.7.0 (`isOwnUrl` там
+  только у `getBinary`/`postJson`). Запросов по адресам из ответа Jira нет.
+
+Не проверено: живой Jira (DC/Cloud) и живой Jiraffe 0.8.0 — всё на фикстуре и фейковом `exports`/`fetch`; команды
+подключения/«Чат по задаче…», `ChatPanel`-склейка (`onSession`, `TaskTab` в конструкторе, `onDidChangeViewState`), активация
+Jiraffe через `extensions.getExtension('fosteev.jiraffe').activate()` — только typecheck/lint и тесты чистой логики; поведение
+`panel.visible` для опроса; сообщения `task.state` webview пока не читает (этап 5). Проверки: `npm run check` (TZ=UTC) — см.
+отчёт сессии (126 файлов, 1675 тестов).
 
 ### 3. Jiraffe: API v1 и «Открыть в Agentura» (репо jiraffe) — **sonnet, high**, параллельно с 2
 
@@ -491,8 +595,9 @@ DoD: «Готово, когда» этапа 3. Проверка: npm run lint &
 По реальному коду (после этапа 1): данные — `sessions.update.tasks?: TaskGroupSummary[]` (`{taskKey, meta, sessionIds}`,
 id в порядке списка, поля нет — групп нет) и `SessionSummary.task?` (src/protocol.ts); шлёт только боковая панель
 (sidebarView.ts pushSessions, decorateSessions). Пункты меню строки — команды `agentura.bindTask` / `agentura.unbindTask`
-с аргументом id сессии (src/extension/taskCommands.ts). «＋» у группы — `agentura.openWithContext` нельзя без
-context; нужна команда «новый чат по задаче» (taskKey → новая вкладка с `bind`), добавить в этом этапе.
+с аргументом id сессии (src/extension/taskCommands.ts). «＋» у группы — `agentura.chatForTask` с аргументом-ключом
+группы (`jira:<инстанс>:<KEY>`, делается в этапе 2: без вопроса, тянет карточку из источника, открывает новую вкладку
+в группе); отдельную команду заводить не нужно.
 DoD: «Готово, когда» этапа 4. Проверка: npm run check.
 ```
 
@@ -505,6 +610,16 @@ DoD: «Готово, когда» этапа 4. Проверка: npm run check.
 (#open, #comment, #changes, #rail) и tasks.html#c (split). Точки входа: src/webview/components/Chat.tsx:334 panelAll,
 :608 rail; SidePanes.tsx (эталон панели — ChangesPane); src/webview/vscode.ts:21 PanelState; TabBar.tsx (бейджи).
 Данные — сообщение task.state из этапа 2 (src/protocol.ts).
+По реальному коду (после этапа 2): точные типы — src/shared/task.ts (`TaskStateMessage`, `TaskCard`, `TaskEvent`,
+`TaskRequest`); контракт и семантика полей (`duringTurn` для плашки, `mine`, `fromThisChat`, отсутствие `taskKey` =
+«задачи нет», `card`+`error` = устаревшая карточка) — «Решения … по итогам сессии 2» в этом файле. Описание и
+комментарии приходят текстом — рисовать как текст. Бейдж «новое» считает webview по `event.at` и своему `lastSeen`.
+Запросы вкладки: `task.refresh`, `task.toComposer {commentId}`, `task.openExternal {attachmentId?}` (хост уже
+обрабатывает в `TaskTab.handle`; `split` — открыть карточку Jiraffe через `services.tasks.sourceFor(taskKey)?.openIssue
+(instanceId, key, false)` — добавить отдельным запросом, в этапе 2 его нет). Ошибки источника — `state.error.code`
+(`off|no-source|unknown-instance|auth|not-found|network|other`), сообщение уже на языке хоста. При `auth` хост сам
+больше не опрашивает (только ↻) — в карточке рядом с ошибкой нужна подсказка «проверьте токен и нажмите ↻»; при других
+сбоях опрос идёт с растущей паузой (до 10 мин).
 DoD: «Готово, когда» этапа 5. Проверка: npm run check.
 ```
 
@@ -515,6 +630,14 @@ DoD: «Готово, когда» этапа 5. Проверка: npm run check.
 <общая шапка>
 Задача: этап 6 roadmap (решение 14). Вёрстка — prototype/screens/task-mode.html#settings. Эталон страницы —
 src/webview/components/Settings.tsx (страницы session|limits|sidebar|look|engine), строки — strings.ts/strings.en.ts.
+По реальному коду (после этапа 2): настройки `agentura.jira.source`, `agentura.tasks.refresh`,
+`agentura.tasks.humanChanges` уже в package.json и в src/settings.ts (`JIRA_SOURCES`, `TASK_REFRESH_MODES`), но не в
+`SettingKey`/`SettingsValues` и не в settingsController — добавить. Данные страницы — `ChatServices.jira` (`JiraSources`:
+`setting()`, `jiraffeStatus() → {state: absent|no-api|ready|inactive, instances, apiVersion?}` (`inactive` — установлен,
+но не используется при `jira.source` = own/off), `ownInstances()`, `onDidChange`);
+действия — команды `agentura.jira.connect`, `agentura.jira.disconnect(instanceId)`, `agentura.jira.test(instanceId)`
+(src/extension/jira/connectCommands.ts). Версию Jiraffe (`jiraffe.packageJSON.version`) нужно брать из
+`vscode.extensions.getExtension('fosteev.jiraffe')` — `jiraffeStatus()` её не отдаёт.
 DoD: «Готово, когда» этапа 6. Проверка: npm run check.
 ```
 
@@ -539,6 +662,14 @@ DoD: «Готово, когда» этапа 7. Проверка: npm run check.
 <общая шапка>
 Задача: этап 8 roadmap, часть Agentura (решение 13). Точки входа: src/agent/claude/adapter.ts:397 mcpServers;
 src/webview/toolView.ts:44 toolView, :40 shortName; копия клиента src/data/jira/client.ts (этап 2).
+По реальному коду (после этапа 2): в копии клиента `src/data/jira/http.ts` нет `postJson`/`isOwnUrl` (не копировались) —
+взять из jiraffe `src/jira/http.ts` вместе с `maybeSaved` и его l10n-ключом в `data/jira/i18n.ts`; источник —
+интерфейс `JiraSource` (src/extension/jira/source.ts): записывающие методы дописать в него, `OwnSource` и `JiraffeSource`
+(через API v2); текущий источник задачи — `services.tasks.sourceFor(taskKey)` / `services.jira.forInstance(instanceId)`;
+«немедленное обновление карточки» — `services.tasks.nudge(taskKey)` (TaskTab уже подталкивает по ключу в `tool.result`;
+`nudge` молчит в `manual` и после сбоя — для записи агентом надёжнее `services.tasks.refresh(taskKey)`).
+`postJson` копировать вместе с защитой Jiraffe как есть: адрес только `baseUrl` + путь через `isOwnUrl`, `redirect: 'manual'`,
+любой 3xx — ошибка (тело записи и `Authorization` никуда не пересылаются); токен — через `scrub` в текстах ошибок.
 SDK — проверить createSdkMcpServer/tool в установленной версии @anthropic-ai/claude-agent-sdk (node_modules, d.ts),
 не по памяти. Jiraffe API v2 делает параллельная сессия 8b — в Agentura опираться на контракт: addComment(inst, key,
 text), transitions(inst, key), transition(inst, key, id), logWork(inst, key, {seconds, started, comment}), apiVersion 2.

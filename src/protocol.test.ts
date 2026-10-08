@@ -78,6 +78,25 @@ describe('protocol', () => {
     expect(isFromWebview({ type: 'agent.transcript', sessionId: 's', taskId: 't' })).toBe(false);
   });
 
+  it('вкладка задачи (roadmap 19, этап 2): запросы проверяются по полям', () => {
+    const ok = [
+      { type: 'task.refresh' },
+      { type: 'task.toComposer', commentId: '50001' },
+      { type: 'task.openExternal' },
+      { type: 'task.openExternal', attachmentId: '40001' },
+    ];
+    for (const m of ok) expect(isFromWebview(m), JSON.stringify(m)).toBe(true);
+    const bad = [
+      { type: 'task.toComposer' },
+      { type: 'task.toComposer', commentId: '' },
+      { type: 'task.toComposer', commentId: 5 },
+      { type: 'task.toComposer', commentId: 'x'.repeat(201) },
+      { type: 'task.openExternal', attachmentId: 5 },
+      { type: 'task.state' }, // это сообщение хоста, от webview не принимается
+    ];
+    for (const m of bad) expect(isFromWebview(m), JSON.stringify(m)).toBe(false);
+  });
+
   it('вкладка «git» (roadmap 12): запросы проверяются по полям', () => {
     const ok = [
       { type: 'git.watch', on: true },

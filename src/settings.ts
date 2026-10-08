@@ -40,6 +40,19 @@ export const SIDEBAR_LIMITS_MODES = ['stack', 'switch', 'table', 'active', 'head
 export type SidebarLimitsMode = (typeof SIDEBAR_LIMITS_MODES)[number];
 export const DEFAULT_SIDEBAR_LIMITS: SidebarLimitsMode = 'active';
 /**
+ * Источник Jira (`jira.source`, roadmap 19): `auto` — Jiraffe, если установлен и отдаёт API, иначе свои подключения
+ * Agentura (если есть); `jiraffe` / `own` — только он; `off` — Jira не используется (группы в сайдбаре остаются).
+ */
+export const JIRA_SOURCES = ['auto', 'jiraffe', 'own', 'off'] as const;
+export type JiraSourceSetting = (typeof JIRA_SOURCES)[number];
+export const DEFAULT_JIRA_SOURCE: JiraSourceSetting = 'auto';
+export const isJiraSource = (v: unknown): v is JiraSourceSetting => JIRA_SOURCES.includes(v as JiraSourceSetting);
+/** Обновление карточки задачи (`tasks.refresh`): опрос раз в 30 с, пока вкладка видна, или только вручную. */
+export const TASK_REFRESH_MODES = ['30s', 'manual'] as const;
+export type TaskRefreshMode = (typeof TASK_REFRESH_MODES)[number];
+export const DEFAULT_TASK_REFRESH: TaskRefreshMode = '30s';
+export const isTaskRefresh = (v: unknown): v is TaskRefreshMode => TASK_REFRESH_MODES.includes(v as TaskRefreshMode);
+/**
  * Вид ленты чата (`feed.style`): `journal` — плоский журнал, как раньше; `folded` — завершённые ходы со свёрнутыми
  * действиями; `replies` — реплики с чипами действий; `cards` — ход карточкой. DOM один, вид — `data-feed` + CSS.
  */

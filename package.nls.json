@@ -79,5 +79,18 @@
   "config.language.description": "Agentura interface language. Applies after the window reloads.",
   "config.language.enum.auto": "Same as VS Code: Russian when VS Code is in Russian, English otherwise",
   "config.language.enum.ru": "Russian",
-  "config.limits.readKeychain.description": "Read the Claude Code token from the macOS Keychain to request subscription limits (/api/oauth/usage). The token is used only for that request and sent nowhere else. Without it, on macOS the 5-hour and weekly percentages are unavailable until the first turn (then from the engine response) if ~/.claude/.credentials.json does not exist."
+  "config.limits.readKeychain.description": "Read the Claude Code token from the macOS Keychain to request subscription limits (/api/oauth/usage). The token is used only for that request and sent nowhere else. Without it, on macOS the 5-hour and weekly percentages are unavailable until the first turn (then from the engine response) if ~/.claude/.credentials.json does not exist.",
+  "command.chatForTask.title": "Chat for Issue…",
+  "command.jira.connect.title": "Connect Jira…",
+  "command.jira.disconnect.title": "Disconnect Jira…",
+  "command.jira.test.title": "Test Jira Connection",
+  "config.jira.source.description": "Where Agentura gets Jira issue data (cards, change feed). User and workspace settings.",
+  "config.jira.source.enum.auto": "Auto: Jiraffe if it is installed and exposes its API, otherwise the connections made in Agentura",
+  "config.jira.source.enum.jiraffe": "Jiraffe only (extension fosteev.jiraffe 0.8.0+)",
+  "config.jira.source.enum.own": "Only the connections made in Agentura (“Agentura: Connect Jira…”)",
+  "config.jira.source.enum.off": "Off: no issue cards or polling (chat groups stay in the sidebar)",
+  "config.tasks.refresh.description": "How the issue card of a chat tab is refreshed.",
+  "config.tasks.refresh.enum.30s": "Every 30 seconds while a tab of the issue is visible, and right after a turn",
+  "config.tasks.refresh.enum.manual": "Only with the refresh button (and once when the tab opens)",
+  "config.tasks.humanChanges.description": "Show changes made by other people in the issue feed and the “commented while the agent was working” notice."
 }

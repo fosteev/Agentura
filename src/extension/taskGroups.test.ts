@@ -4,6 +4,7 @@ import type { MementoLike } from './sessionMemory';
 import {
   TaskGroups,
   decorateSessions,
+  nextTabTask,
   parseTaskKey,
   routeTaskOpen,
   taskKeyOf,
@@ -211,5 +212,39 @@ describe('decorateSessions', () => {
     expect(tasks).toEqual([
       { taskKey: K1, meta: expect.objectContaining({ key: 'NEWMFC-1' }), sessionIds: ['s1'] },
     ]);
+  });
+});
+
+describe('nextTabTask (/clear во вкладке задачи)', () => {
+  const task = { taskKey: 'jira:inst:ABC-1', meta: { key: 'ABC-1', instanceId: 'inst', title: 'T', url: '' } };
+  const none = () => undefined;
+
+  it('/clear: задача из группы переходит в ожидание, ключ вкладки не снимается', () => {
+    expect(nextTabTask({ member: task }, { clear: true }, none)).toEqual({ pending: task });
+  });
+
+  it('следом пришёл id новой сессии: она входит в ту же группу', () => {
+    const afterClear = nextTabTask({ member: task }, { clear: true }, none);
+    const joined = nextTabTask(afterClear, { id: 'new-sess' }, none);
+    expect(joined.join).toEqual(task);
+    expect(joined.member).toEqual(task);
+    expect(joined.pending).toBeUndefined();
+  });
+
+  it('/clear во вкладке вне задачи ничего не привязывает', () => {
+    expect(nextTabTask({}, { clear: true }, none)).toEqual({});
+  });
+
+  it('сбой возобновления (id нет, не /clear): группу не наследуем, ожидание сохраняется', () => {
+    expect(nextTabTask({ member: task }, {}, none)).toEqual({});
+    expect(nextTabTask({ pending: task }, {}, none)).toEqual({ pending: task });
+  });
+
+  it('id без ожидания: вкладка узнаёт группу сессии', () => {
+    const group = { task: task.meta, sessions: [], openedAt: {} };
+    expect(nextTabTask({}, { id: 's1' }, (id) => (id === 's1' ? { taskKey: task.taskKey, group } : undefined))).toEqual({
+      member: { taskKey: task.taskKey, meta: task.meta },
+    });
+    expect(nextTabTask({}, { id: 's2' }, none)).toEqual({});
   });
 });

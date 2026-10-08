@@ -59,6 +59,7 @@ import {
 } from '../shared/prompt';
 import type { LiveSessions } from '../data/sessions';
 import { mergeReplay, StreamTail } from './reseedReplay';
+import { TurnLog, type TurnSpan } from './jira/taskEvents';
 
 /** Всё, что контроллеру нужно от VS Code, — через этот интерфейс: сам контроллер vscode не импортирует. */
 class EngineMissingError extends Error {}
@@ -157,8 +158,13 @@ export interface ChatDeps {
   openSession?(id: string, provider: AgentProvider): void;
   /** Название сессии по id (строка списка) — заголовок вкладки и webview после `resume`. */
   titleOf?(id: string, provider: AgentProvider): Promise<string | undefined>;
-  /** Вкладка сменила сессию (`undefined` — пока нет): реестр открытых сессий и строка `cur` списка. */
-  onSession?(id: string | undefined): void;
+  /**
+   * Вкладка сменила сессию (`undefined` — пока нет): реестр открытых сессий и строка `cur` списка. `why: 'clear'` — новая
+   * сессия по `/clear` или кнопке «новая сессия» во вкладке (а не сбой возобновления): вкладка задачи остаётся в её группе.
+   */
+  onSession?(id: string | undefined, why?: 'clear'): void;
+  /** Каждое событие движка главного агента и субагентов (после обновления статуса): итог хода, результат инструмента. */
+  onEvent?(e: AgentEvent): void;
   /** Версия движка из `session.init` — секция «Аккаунт» боковой панели. */
   onEngineVersion?(version: string): void;
   /** Показать канал журнала расширения (карточка ошибки, этап 7). */
@@ -293,6 +299,8 @@ export class ChatController {
    */
   private remoteWanted: boolean | undefined;
   private turnStartedAt: number | undefined;
+  /** Ходы сессии (время): по ним лента задачи отличает «изменил этот чат» (roadmap 19). */
+  private readonly turnLog = new TurnLog();
   /** С прошлого итога приходил `turn.start` — иначе итог закрывает самое старое сообщение очереди. */
   private turnSeen = false;
   private readonly pendingRequests = new Map<string, AgentEvent>();
@@ -582,6 +590,11 @@ export class ChatController {
     return this.taskKey;
   }
 
+  /** Ходы текущей сессии вкладки (мс); после `/clear` журнал начинается заново. */
+  turns(): TurnSpan[] {
+    return this.turnLog.turns();
+  }
+
   /** Название сессии сменили снаружи (переименование в списке). */
   setTitle(title: string): void {
     const id = this.sessionId;
@@ -652,7 +665,8 @@ export class ChatController {
     this.resumed = undefined;
     this.seedPending = false;
     this.touched = false;
-    this.deps.onSession?.(undefined);
+    this.turnLog.clear();
+    this.deps.onSession?.(undefined, 'clear');
     this.status = 'idle';
     this.title = undefined;
     this.deps.setTitle(this.tabLabel());
@@ -1495,6 +1509,12 @@ export class ChatController {
     if (this.status !== prev || e.type === 'session.title') {
       this.deps.setTitle(this.tabLabel());
     }
+    if (!e.agentId) {
+      if (e.type === 'turn.start') this.turnLog.start(e.at);
+      // ход кончается и обрывом сессии: иначе открытый ход «покрывает» всё до now (ложные duringTurn / «из этого чата»)
+      else if (e.type === 'turn.result' || e.type === 'session.closed') this.turnLog.end(Date.now());
+    }
+    this.deps.onEvent?.(e);
 
     switch (e.type) {
       case 'permission.request':
@@ -1644,6 +1664,7 @@ export class ChatController {
   }
 
   private teardown(): void {
+    this.turnLog.end(Date.now());
     this.generation++;
     this.unsubscribe?.();
     this.unsubscribe = undefined;

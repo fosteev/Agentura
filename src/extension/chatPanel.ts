@@ -41,7 +41,11 @@ import {
   type Route,
 } from './panelRouting';
 import type { ContextRequest } from './contextRequest';
-import { parseTaskKey, routeTaskOpen, taskKeyOf, type TaskGroups, type TaskKey, type TaskMeta } from './taskGroups';
+import { nextTabTask, parseTaskKey, routeTaskOpen, taskKeyOf, type TabTask, type TaskGroups, type TaskKey, type TaskMeta } from './taskGroups';
+import { isTaskRequest } from '../shared/task';
+import { TaskTab } from './jira/taskTab';
+import type { TaskService } from './jira/taskService';
+import type { JiraSources } from './jira/source';
 import type { SessionMemory } from './sessionMemory';
 import type { SessionsService } from './sessionsService';
 import type { UsageService } from './usage';
@@ -97,6 +101,10 @@ export interface ChatServices {
   memory: SessionMemory;
   /** Группы чатов по задачам Jira (roadmap 19). */
   taskGroups: TaskGroups;
+  /** Карточка задачи и лента изменений для вкладок (этап 2): источник Jira, кеш, опрос. */
+  tasks: TaskService;
+  /** Источники Jira: Jiraffe и свои подключения (решения 3, 4). */
+  jira: JiraSources;
   /** Поиск `claude` (асинхронный, с прогревом). */
   engine: EngineLocator;
   /** Поиск `codex` (без прогрева: нужен только тому, кто выбрал Codex). */
@@ -230,7 +238,10 @@ export class ChatPanel {
   private started = false;
   private lazy = false;
   /** Задача (`openWithContext`, «Привязать к задаче»): первая сессия вкладки входит в её группу. */
-  private pendingTask: { taskKey: TaskKey; meta: TaskMeta } | undefined;
+  private pendingTask: TabTask | undefined;
+  /** Группа, в которую вход вкладки уже состоит (для `/clear`: новая сессия остаётся в ней). */
+  private member: TabTask | undefined;
+  private readonly taskTab: TaskTab;
   /** Вкладка графа агентов этой вкладки чата (roadmap 11, этап 2): одна на чат. */
   private readonly graph: ChatGraphSlot;
 
@@ -373,10 +384,13 @@ export class ChatPanel {
     if (id) {
       this.services.taskGroups.add(taskKey, meta, { provider: this.provider, id }, Date.now());
       this.pendingTask = undefined;
+      this.member = { taskKey, meta };
     } else {
       this.pendingTask = { taskKey, meta };
+      this.member = undefined;
     }
     this.controller.setTask(meta.key);
+    this.taskTab.sync();
     ChatPanel.sessionsChanged(this.services);
   }
 
@@ -390,7 +404,9 @@ export class ChatPanel {
     const id = this.controller.sessionId;
     if (id) this.services.taskGroups.remove(id);
     this.pendingTask = undefined;
+    this.member = undefined;
     this.controller.setTask(undefined);
+    this.taskTab.sync();
     ChatPanel.sessionsChanged(this.services);
   }
 
@@ -622,18 +638,26 @@ export class ChatPanel {
         const row = (await services.antigravityAdapter().listSessions(folder.uri.fsPath)).find((r) => r.id === id);
         return row && row.title !== id ? row.title : undefined;
       },
-      onSession: (id) => {
-        if (id && this.pendingTask) {
-          services.taskGroups.add(this.pendingTask.taskKey, this.pendingTask.meta, { provider: this.provider, id }, Date.now());
-          this.pendingTask = undefined;
-        }
-        // новая сессия во вкладке (/clear, сбой возобновления) в группу не входит — ключ в заголовке только у ожидающей
-        this.controller.setTask(
-          id ? services.taskGroups.groupOf(id)?.group.task.key : this.pendingTask?.meta.key,
+      onSession: (id, why) => {
+        // /clear — новая сессия остаётся в группе задачи; сбой возобновления — нет (`nextTabTask`)
+        const next = nextTabTask(
+          { ...(this.pendingTask ? { pending: this.pendingTask } : {}), ...(this.member ? { member: this.member } : {}) },
+          { ...(id ? { id } : {}), clear: why === 'clear' },
+          (sid) => services.taskGroups.groupOf(sid),
         );
+        if (next.join && id) {
+          // метаданные группы свежее запомненных вкладкой (опрос обновил статус/название, пока шёл прежний чат)
+          const meta = services.taskGroups.group(next.join.taskKey)?.task ?? next.join.meta;
+          services.taskGroups.add(next.join.taskKey, meta, { provider: this.provider, id }, Date.now());
+        }
+        this.pendingTask = next.pending;
+        this.member = next.member;
+        this.controller.setTask((next.pending ?? next.member)?.meta.key);
+        this.taskTab.sync();
         this.graph.claimPending();
         ChatPanel.sessionsChanged(services);
       },
+      onEvent: (e) => this.taskTab.onAgentEvent(e),
       openGraph: (agentId) => this.graph.show(agentId),
       graphSnapshot: (m) => this.graph.snapshot(m),
       onEngineVersion: (v) => {
@@ -642,8 +666,24 @@ export class ChatPanel {
       },
     });
 
+    // карточка и лента задачи: подписка на `TaskService`, пока вкладка в группе (или ждёт её)
+    this.taskTab = new TaskTab({
+      service: services.tasks,
+      groups: services.taskGroups,
+      sessionId: () => this.controller.sessionId,
+      pending: () => this.pendingTask?.taskKey,
+      visible: () => panel.visible,
+      turns: () => this.controller.turns(),
+      post: (m) => postToWebview(panel.webview, m),
+      prefill: (text) => this.controller.prefill(text),
+      openUrl: (u) => void vscode.env.openExternal(vscode.Uri.parse(u)),
+    });
     // возобновляемая сессия (клик в списке, Reload Window) из группы задачи — ключ задачи в заголовке сразу
-    if (open.resumeId) this.controller.setTask(services.taskGroups.groupOf(open.resumeId)?.group.task.key);
+    if (open.resumeId) {
+      const g = services.taskGroups.groupOf(open.resumeId);
+      this.member = g ? { taskKey: g.taskKey, meta: g.group.task } : undefined;
+      this.controller.setTask(g?.group.task.key);
+    }
 
     this.graph = new ChatGraphSlot(
       {
@@ -666,12 +706,18 @@ export class ChatPanel {
           void git.handle(m).catch((e) => log.error(`${m.type}: ${String(e)}`));
           return;
         }
+        // запросы вкладки задачи — сервису задач, сессия движка не нужна
+        if (isTaskRequest(m)) {
+          this.taskTab.handle(m);
+          return;
+        }
         // 'ready' уже обработан в attachMessaging (init); остальное — контроллеру
         void this.controller.handle(m).catch((e) => log.error(`${m.type}: ${String(e)}`));
         if (m.type === 'ready') {
           // webview чата пересоздан — он не помнит, что граф открыт
           this.graph.chatReady();
           git.refresh();
+          this.taskTab.resend();
         }
       }),
       git,
@@ -705,8 +751,12 @@ export class ChatPanel {
         if (e.webviewPanel.active) ChatPanel.lastActive = this;
         // восстановленная фоновая вкладка: движок стартует, когда её впервые открыли
         if (e.webviewPanel.visible) this.startEngine();
+        this.taskTab.sync();
         ChatPanel.sessionsChanged(services);
       }),
+      // метаданные и состав групп изменились (привязка из сайдбара, опрос): вкладка перепроверяет свою задачу
+      { dispose: services.taskGroups.onChange(() => this.taskTab.sync()) },
+      { dispose: () => this.taskTab.dispose() },
       files.watch(),
       new EditorContextTracker(files, (ctx) => this.controller.postEditorContext(ctx)),
       { dispose: () => this.controller.dispose() },
