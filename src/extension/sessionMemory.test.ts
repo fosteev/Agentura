@@ -41,4 +41,19 @@ describe('SessionMemory', () => {
     mem.setEngineVersion('claude 2.1.285');
     expect(mem.engineVersion()).toBe('claude 2.1.285');
   });
+
+  it('сессии по внешнему ключу: запись, удаление, мусор в хранилище — нет сессии', () => {
+    const m = memento();
+    const mem = new SessionMemory(m);
+    expect(mem.keyed('k')).toBeUndefined();
+    mem.setKeyed('k', { provider: 'claude', id: 's1' });
+    mem.setKeyed('j', { provider: 'codex', id: 's2' });
+    expect(mem.keyed('k')).toEqual({ provider: 'claude', id: 's1' });
+    expect(mem.keyed('j')).toEqual({ provider: 'codex', id: 's2' });
+    mem.setKeyed('k', undefined);
+    expect(mem.keyed('k')).toBeUndefined();
+    m.data['agentura.keyedSessions'] = { x: { provider: 'gpt', id: 'a' }, y: 'z' };
+    expect(mem.keyed('x')).toBeUndefined();
+    expect(mem.keyed('y')).toBeUndefined();
+  });
 });

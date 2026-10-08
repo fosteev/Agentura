@@ -14,6 +14,7 @@ import {
   type SlashItem,
 } from '../composer';
 import {
+  prefill,
   autoAttachments,
   autoFile,
   autoSelection,
@@ -284,6 +285,14 @@ export function Composer() {
   useEffect(() => {
     if (target) edRef.current?.focus();
   }, [target]);
+
+  // текст от хоста (`composer.prefill`, ссылка на задачу из Jiraffe): только в пустое поле
+  const pre = prefill.value;
+  useEffect(() => {
+    if (pre === undefined) return;
+    prefill.value = undefined;
+    if (!(edRef.current?.textContent ?? '')) writeText(pre);
+  }, [pre]);
 
   // каретка: selectionchange ловит и клавиши, и мышь
   useEffect(() => {

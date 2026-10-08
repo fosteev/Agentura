@@ -197,6 +197,8 @@ export type ToWebview =
    * или причина отказа. Картинки из тех же источников приходят `image.picked`.
    */
   | { type: 'file.picked'; items: PickedFile[] }
+  /** Текст в пустое поле ввода (`agentura.openWithContext`): набранное не затирается. */
+  | { type: 'composer.prefill'; text: string }
   /** Начата новая сессия (команда, `/clear`, `new`): очистить ленту. */
   | { type: 'session.reset' }
   /**

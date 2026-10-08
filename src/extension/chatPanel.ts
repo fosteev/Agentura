@@ -40,6 +40,7 @@ import {
   type PanelView,
   type Route,
 } from './panelRouting';
+import type { ContextRequest } from './contextRequest';
 import type { SessionMemory } from './sessionMemory';
 import type { SessionsService } from './sessionsService';
 import type { UsageService } from './usage';
@@ -225,6 +226,8 @@ export class ChatPanel {
   }
   private started = false;
   private lazy = false;
+  /** Внешний ключ (`openWithContext`): первая сессия вкладки запоминается под ним. */
+  private pendingKey: string | undefined;
   /** Вкладка графа агентов этой вкладки чата (roadmap 11, этап 2): одна на чат. */
   private readonly graph: ChatGraphSlot;
 
@@ -307,12 +310,39 @@ export class ChatPanel {
     services: ChatServices,
     session: string | SessionRef,
     from?: ChatPanel,
-  ): void {
+  ): ChatPanel | undefined {
     // без провайдера — `claude` (старые вызовы: боковая панель, команда, память воркспейса)
     const ref: SessionRef = typeof session === 'string' ? { provider: 'claude', id: session } : session;
     const fromIndex = from ? ChatPanel.panels.indexOf(from) : undefined;
     const route = routeResume(ChatPanel.views(), ref, fromIndex);
-    ChatPanel.apply(route, context, log, services, { resumeId: ref.id, provider: ref.provider });
+    return ChatPanel.apply(route, context, log, services, { resumeId: ref.id, provider: ref.provider });
+  }
+
+  /**
+   * Чат с контекстом снаружи (`agentura.openWithContext`, кнопка «Спросить ИИ» в Jiraffe): по ключу уже есть
+   * сессия — возобновить её, иначе новая вкладка с контекстом файлом в поле ввода. Сессия запоминается под ключом,
+   * когда движок пришлёт её id; ключ с сессией, которой нет в списке (так и не отправили), начинается заново.
+   * `prompt` — в поле ввода, если оно пустое.
+   */
+  static async openWithContext(
+    context: vscode.ExtensionContext,
+    log: Logger,
+    services: ChatServices,
+    req: ContextRequest,
+  ): Promise<void> {
+    const ref = req.sessionKey ? services.memory.keyed(req.sessionKey) : undefined;
+    if (ref && (await services.sessions.list()).some((r) => r.id === ref.id)) {
+      const panel = ChatPanel.resume(context, log, services, ref);
+      if (panel && req.prompt) panel.controller.prefill(req.prompt);
+      return;
+    }
+    const panel = ChatPanel.apply(routeNew(ChatPanel.views()), context, log, services, {});
+    if (!panel) return;
+    if (req.sessionKey) panel.pendingKey = req.sessionKey;
+    panel.controller.attachFiles([
+      { name: req.name, path: req.name, kind: 'text', data: req.context, size: req.context.length },
+    ]);
+    if (req.prompt) panel.controller.prefill(req.prompt);
   }
 
   /** Кнопка `/status` боковой панели: выполнить во вкладке (активной или новой). */
@@ -533,7 +563,11 @@ export class ChatPanel {
         const row = (await services.antigravityAdapter().listSessions(folder.uri.fsPath)).find((r) => r.id === id);
         return row && row.title !== id ? row.title : undefined;
       },
-      onSession: () => {
+      onSession: (id) => {
+        if (id && this.pendingKey) {
+          services.memory.setKeyed(this.pendingKey, { provider: this.provider, id });
+          this.pendingKey = undefined;
+        }
         this.graph.claimPending();
         ChatPanel.sessionsChanged(services);
       },

@@ -8,10 +8,11 @@ export interface MementoLike {
 
 const OPEN = 'agentura.openSessions';
 const ENGINE = 'agentura.engineVersion';
+const KEYED = 'agentura.keyedSessions';
 
 /**
  * Память воркспейса (`workspaceState`, этап 6): открытые вкладки (запас к состоянию webview для
- * сериализатора) и версия движка.
+ * сериализатора), версия движка и сессии по внешнему ключу (`agentura.openWithContext`).
  */
 export class SessionMemory {
   constructor(private readonly state: MementoLike) {}
@@ -49,5 +50,23 @@ export class SessionMemory {
 
   setEngineVersion(label: string): void {
     void this.state.update(ENGINE, label);
+  }
+
+  /** Сессия, начатая по внешнему ключу (например, задача Jira из Jiraffe). */
+  keyed(key: string): SessionRef | undefined {
+    const v = this.state.get<unknown>(KEYED);
+    const ref = v && typeof v === 'object' ? (v as Record<string, unknown>)[key] : undefined;
+    if (!ref || typeof ref !== 'object') return undefined;
+    const { provider, id } = ref as SessionRef;
+    return isProvider(provider) && typeof id === 'string' && id ? { provider, id } : undefined;
+  }
+
+  setKeyed(key: string, ref: SessionRef | undefined): void {
+    const v = this.state.get<unknown>(KEYED);
+    const all: Record<string, SessionRef> =
+      v && typeof v === 'object' ? { ...(v as Record<string, SessionRef>) } : {};
+    if (ref) all[key] = ref;
+    else delete all[key];
+    void this.state.update(KEYED, all);
   }
 }

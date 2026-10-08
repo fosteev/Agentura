@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { ChatPanel, createAdapter, type ChatServices } from './chatPanel';
+import { contextRequest } from './contextRequest';
 import { Logger } from './logger';
 import { SIDEBAR_VIEW_ID, SidebarProvider } from './sidebarView';
 import { LimitsSource, startLimitsPolling } from '../data/limits';
@@ -326,6 +327,14 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
       // нет поля provider (старые вызовы, строки списка Claude) — `claude`
       const p: AgentProvider = isProvider(provider) ? provider : 'claude';
       ChatPanel.resume(context, log, services, { provider: p, id });
+    }),
+    // служебная: чат с контекстом из другого расширения (Jiraffe — задача Jira), в палитру не выносится
+    vscode.commands.registerCommand('agentura.openWithContext', (arg: unknown) => {
+      const req = contextRequest(arg);
+      if (req) return ChatPanel.openWithContext(context, log, services, req);
+      log.warn(
+        'agentura.openWithContext: ожидается { context: string, name?, prompt?, sessionKey?: string }',
+      );
     }),
     vscode.commands.registerCommand('agentura.showStatus', () =>
       ChatPanel.runStatus(context, log, services),

@@ -115,6 +115,8 @@ export interface DraftFile {
 }
 /** Текстовые файлы и pdf в поле ввода: «+», перетаскивание из проводника VS Code. */
 export const draftFiles = signal<DraftFile[]>([]);
+/** Текст для пустого поля ввода от хоста (`composer.prefill`); поле забирает его и сбрасывает. */
+export const prefill = signal<string | undefined>(undefined);
 /**
  * Вложения в истории сессии с последней компакции (снимок хоста `session.attach`): лимиты API —
  * на запрос со всей историей, поэтому новые вложения проверяются с их учётом.
@@ -376,6 +378,9 @@ export function handleHostMessage(m: ToWebview): void {
       break;
     case 'attach.picked':
       for (const hit of m.items) addExtra({ kind: hit.isDir ? 'folder' : 'file', path: hit.path });
+      break;
+    case 'composer.prefill':
+      prefill.value = m.text;
       break;
     case 'file.picked':
       addFiles(m.items);

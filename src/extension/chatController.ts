@@ -278,6 +278,8 @@ export class ChatController {
   private reseedSeq = 0;
   /** Команда боковой панели, пришедшая до готовности webview. */
   private queuedCommand: 'status' | undefined;
+  /** Вложения и текст поля ввода (`agentura.openWithContext`), пришедшие до готовности webview. */
+  private queuedPosts: ToWebview[] = [];
   // Снимок для пересева: то, что webview пропустил бы, окажись он пересоздан при живом хосте.
   private lastInit: Extract<AgentEvent, { type: 'session.init' }> | undefined;
   /** Режим и effort новой сессии из настроек: webview получает их снова, если готов позже создания сессии. */
@@ -548,6 +550,21 @@ export class ChatController {
     else this.queuedCommand = name;
   }
 
+  /** Положить файлы в поле ввода (контекст снаружи): сразу или когда webview будет готов. */
+  attachFiles(items: PickedFile[]): void {
+    this.postWhenReady({ type: 'file.picked', items });
+  }
+
+  /** Текст в поле ввода, если оно пустое (контекст снаружи). */
+  prefill(text: string): void {
+    this.postWhenReady({ type: 'composer.prefill', text });
+  }
+
+  private postWhenReady(m: ToWebview): void {
+    if (this.readyCount > 0) this.deps.post(m);
+    else this.queuedPosts.push(m);
+  }
+
   private tabLabel(): string {
     return tabTitle(this.status, this.title, hostStrings(this.deps.lang ?? 'ru').untitledTab);
   }
@@ -598,6 +615,8 @@ export class ChatController {
       deps.post({ type: 'chat.command', name: this.queuedCommand });
       this.queuedCommand = undefined;
     }
+    for (const m of this.queuedPosts) deps.post(m);
+    this.queuedPosts = [];
   }
 
   postEditorContext(ctx: Omit<Extract<ToWebview, { type: 'editor.context' }>, 'type'>): void {
