@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { AgentEvent } from '../types';
+import type { AgentEvent, TaskToolsSpec } from '../types';
 import { AsyncQueue } from '../stream';
 import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -671,5 +671,176 @@ describe('promptParent — точка отката по транскрипту',
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('ClaudeSession: инструменты задачи Jira (roadmap 19, этап 8)', () => {
+  /** Набор хоста с подменяемой спецификацией и ручным «изменилось». */
+  function taskTools(initial: TaskToolsSpec | undefined) {
+    let spec = initial;
+    const listeners = new Set<() => void>();
+    return {
+      tools: {
+        spec: () => spec,
+        onDidChange: (l: () => void) => {
+          listeners.add(l);
+          return () => void listeners.delete(l);
+        },
+        run: async () => ({ text: 'ok' }),
+      },
+      set(next: TaskToolsSpec | undefined) {
+        spec = next;
+        for (const l of [...listeners]) l();
+      },
+      listeners,
+    };
+  }
+  const SPEC: TaskToolsSpec = { issue: 'NEWMFC-1482', instance: 'DC', tools: ['comment', 'transition', 'worklog'] };
+  /** SDK с MCP-функциями: сервер — простая запись, без zod-схем. */
+  async function sdkWithMcp() {
+    const servers: unknown[] = [];
+    const setCalls: Record<string, unknown>[] = [];
+    const overrides: unknown[][] = [];
+    const fake = fakeSdk({
+      setMcpServers: async (s: Record<string, unknown>) => {
+        setCalls.push(s);
+        return { added: Object.keys(s), removed: [], errors: {} };
+      },
+      setMcpPermissionModeOverride: async (...a: unknown[]) => {
+        overrides.push(a);
+        return {};
+      },
+    });
+    const sdk = {
+      ...(fake.sdk as object),
+      tool: (name: string) => ({ name }),
+      createSdkMcpServer: (o: { name: string; tools: { name: string }[] }) => {
+        servers.push(o);
+        return { type: 'sdk', name: o.name, instance: {}, tools: o.tools.map((t) => t.name) };
+      },
+    } as never;
+    const zod = { z: (await import('zod')).z };
+    return { fake, sdk, servers, setCalls, overrides, zod };
+  }
+
+  it('чат в задаче: сервер `agentura_jira` в опциях; comment к своей задаче — без вопроса, к чужой и в plan — карточкой', async () => {
+    const m = await sdkWithMcp();
+    const host = taskTools(SPEC);
+    const session = await new ClaudeAdapter({ loadSdk: async () => m.sdk, loadZod: async () => m.zod }).createSession({
+      cwd: '/w',
+      taskTools: host.tools,
+    });
+    const opts = m.fake.calls[0]!.options;
+    expect(Object.keys(opts['mcpServers'] as object)).toEqual(['agentura_jira']);
+    expect((opts['mcpServers'] as Record<string, { tools: string[] }>)['agentura_jira']!.tools).toEqual(['comment', 'transition', 'worklog']);
+    const canUseTool = opts['canUseTool'] as CanUseTool;
+    const sig = { signal: new AbortController().signal };
+    await expect(canUseTool('mcp__agentura_jira__comment', { text: 'x' }, { ...sig, toolUseID: 'c1' })).resolves.toEqual({
+      behavior: 'allow',
+      updatedInput: { text: 'x' },
+    });
+    await expect(canUseTool('mcp__agentura_jira__comment', { text: 'x', issue: 'newmfc-1482' }, { ...sig, toolUseID: 'c2' })).resolves.toMatchObject({
+      behavior: 'allow',
+    });
+    // другая задача, переход и ворклог — обычная карточка разрешения
+    const seen: AgentEvent[] = [];
+    session.events.on((e) => void seen.push(e));
+    void canUseTool('mcp__agentura_jira__comment', { text: 'x', issue: 'ABC-1' }, { ...sig, toolUseID: 'c3' });
+    void canUseTool('mcp__agentura_jira__transition', { to: 'Done' }, { ...sig, toolUseID: 't1' });
+    void canUseTool('mcp__agentura_jira__worklog', { minutes: 5 }, { ...sig, toolUseID: 'w1' });
+    await session.setMode('plan');
+    void canUseTool('mcp__agentura_jira__comment', { text: 'x' }, { ...sig, toolUseID: 'c4' });
+    await tick();
+    expect(seen.filter((e) => e.type === 'permission.request').map((e) => (e as { toolUseId: string }).toolUseId)).toEqual([
+      'c3',
+      't1',
+      'w1',
+      'c4',
+    ]);
+    session.dispose();
+    expect(host.listeners.size).toBe(0);
+  });
+
+  it('набор меняется — setMcpServers: снят ({}), подключён заново, пересобран; без изменений — ничего', async () => {
+    const m = await sdkWithMcp();
+    const host = taskTools(undefined);
+    const session = await new ClaudeAdapter({ loadSdk: async () => m.sdk, loadZod: async () => m.zod }).createSession({
+      cwd: '/w',
+      taskTools: host.tools,
+    });
+    expect(m.fake.calls[0]!.options['mcpServers']).toBeUndefined();
+    // без сервера comment не разрешается сам
+    const canUseTool = m.fake.calls[0]!.options['canUseTool'] as CanUseTool;
+    let settled = false;
+    void canUseTool('mcp__agentura_jira__comment', { text: 'x' }, { signal: new AbortController().signal, toolUseID: 'c0' }).then(
+      () => (settled = true),
+    );
+    host.set(SPEC);
+    host.set(SPEC);
+    host.set({ ...SPEC, tools: ['comment'] });
+    host.set(undefined);
+    await tick();
+    expect(settled).toBe(false);
+    expect(m.setCalls.map((s) => Object.keys(s))).toEqual([['agentura_jira'], ['agentura_jira'], []]);
+    expect((m.setCalls[1]!['agentura_jira'] as { tools: string[] }).tools).toEqual(['comment']);
+    session.dispose();
+  });
+
+  it('приёмка: bypass не обходит карточку (override сервера), чужой сервер, длинный/секретный текст, частота, «всегда» — на сессию', async () => {
+    const m = await sdkWithMcp();
+    const session = await new ClaudeAdapter({ loadSdk: async () => m.sdk, loadZod: async () => m.zod }).createSession({
+      cwd: '/w',
+      taskTools: taskTools(SPEC).tools,
+    });
+    await tick();
+    expect(m.overrides).toEqual([['agentura_jira', 'default']]);
+    const canUseTool = m.fake.calls[0]!.options['canUseTool'] as CanUseTool;
+    const sig = { signal: new AbortController().signal };
+    const seen: AgentEvent[] = [];
+    session.events.on((e) => void seen.push(e));
+    const ours = { name: 'agentura_jira', source: 'sdk' };
+    // одноимённый сервер из настроек — не наш: карточка
+    void canUseTool('mcp__agentura_jira__comment', { text: 'x' }, { ...sig, toolUseID: 'f1', mcpServer: { name: 'agentura_jira', source: 'user' } } as never);
+    // длинный текст и похожее на секрет — карточка
+    void canUseTool('mcp__agentura_jira__comment', { text: 'x'.repeat(2001) }, { ...sig, toolUseID: 'l1', mcpServer: ours } as never);
+    void canUseTool('mcp__agentura_jira__comment', { text: 'ключ:\nAPI_KEY=sk-abcdefghijklmnopqrstuvwxyz' }, { ...sig, toolUseID: 's1', mcpServer: ours } as never);
+    // частота: три без вопроса, четвёртый — карточка
+    for (const id of ['a1', 'a2', 'a3']) {
+      await expect(canUseTool('mcp__agentura_jira__comment', { text: 'ok' }, { ...sig, toolUseID: id, mcpServer: ours } as never)).resolves.toMatchObject({ behavior: 'allow' });
+    }
+    void canUseTool('mcp__agentura_jira__comment', { text: 'ok' }, { ...sig, toolUseID: 'a4', mcpServer: ours } as never);
+    // «Всегда разрешать» для перехода — только на сессию, в localSettings ничего
+    const answer = canUseTool('mcp__agentura_jira__transition', { to: 'Done' }, {
+      ...sig,
+      toolUseID: 't1',
+      mcpServer: ours,
+      suggestions: [{ type: 'addRules', rules: [{ toolName: 'mcp__agentura_jira__transition' }], behavior: 'allow', destination: 'localSettings' }],
+    } as never);
+    await tick();
+    expect(seen.filter((e) => e.type === 'permission.request').map((e) => (e as { toolUseId: string }).toolUseId)).toEqual([
+      'f1',
+      'l1',
+      's1',
+      'a4',
+      't1',
+    ]);
+    session.respondPermission('t1', 'allow-always');
+    await expect(answer).resolves.toMatchObject({
+      behavior: 'allow',
+      updatedPermissions: [{ type: 'addRules', destination: 'session' }],
+    });
+    session.dispose();
+  });
+
+  it('без набора хоста или без MCP-функций в SDK — как раньше, без сервера', async () => {
+    const plain = fakeSdk();
+    await new ClaudeAdapter({ loadSdk: async () => plain.sdk }).createSession({ cwd: '/w', taskTools: taskTools(SPEC).tools });
+    expect(plain.calls[0]!.options['mcpServers']).toBeUndefined();
+    const m = await sdkWithMcp();
+    await new ClaudeAdapter({
+      loadSdk: async () => m.sdk,
+      loadZod: async () => Promise.reject(new Error('no zod')),
+    }).createSession({ cwd: '/w', taskTools: taskTools(SPEC).tools });
+    expect(m.fake.calls[0]!.options['mcpServers']).toBeUndefined();
   });
 });

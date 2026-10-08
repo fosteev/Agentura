@@ -128,6 +128,21 @@ export class TaskService {
     return e ? this.load(e) : Promise.resolve();
   }
 
+  /**
+   * Агент записал в задачу (инструменты Jira, этап 8): загрузить сразу — мимо окна 5 с, режима `manual` и блока после
+   * 401 (запись только что прошла с этим же токеном). Идущая загрузка могла начаться до записи — дождаться её и грузить заново.
+   * На задачу никто не смотрит — ничего (откроют вкладку — загрузится).
+   */
+  async afterWrite(taskKey: TaskKey): Promise<void> {
+    let e = this.entries.get(taskKey);
+    if (e?.inflight) await e.inflight.catch(() => undefined);
+    e = this.entries.get(taskKey);
+    if (!e || e.viewers.size === 0) return;
+    if (e.inflight) return e.inflight; // кто-то начал загрузку уже после записи — её достаточно
+    e.lastStart = 0;
+    return this.load(e);
+  }
+
   /** После хода и после результата инструмента с ключом задачи; `manual` выключает только таймер (решение владельца 2026-10-08). */
   nudge(taskKey: TaskKey): void {
     const e = this.entries.get(taskKey);

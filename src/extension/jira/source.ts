@@ -1,7 +1,7 @@
-import { createJiraClient, type JiraClient } from '../../data/jira/client';
-import type { IssueDetail, Worklog } from '../../data/jira/types';
+import { createJiraClient, startedWithOffset, type JiraClient } from '../../data/jira/client';
+import type { IssueDetail, StatusCategory, TransitionInfo, Worklog } from '../../data/jira/types';
 import type { JiraSourceSetting } from '../../settings';
-import type { JiraffeApi } from './jiraffeApi';
+import { hasJiraffeWrite, type JiraffeApi } from './jiraffeApi';
 import type { OwnInstance, OwnInstanceStore } from './ownInstances';
 
 export interface JiraInstanceRef {
@@ -17,9 +17,86 @@ export interface MyselfResult {
   displayName: string;
 }
 
+/** Ворклог агента: секунды (целое 1…86 400), дата `YYYY-MM-DD` (локальная), комментарий (может быть пустым). */
+export interface WorkInput {
+  seconds: number;
+  date: string;
+  comment: string;
+}
+
+/** Потолки записи — как у Jiraffe API v2 (комментарий 32 000, комментарий ворклога 30 000, ворклог до суток). */
+export const MAX_COMMENT = 32_000;
+export const MAX_WORK_COMMENT = 30_000;
+export const MAX_WORK_SECONDS = 86_400;
+
+/**
+ * Запись в Jira от имени пользователя (этап 8 roadmap 19, инструменты агента): у своего подключения — копия клиента
+ * Jiraffe, у Jiraffe — его API v2. Ключ задачи проверяется; ошибки — reject.
+ */
+export interface JiraWriter {
+  addComment(instanceId: string, key: string, body: string): Promise<{ id?: string }>;
+  transitions(instanceId: string, key: string): Promise<TransitionInfo[]>;
+  transition(instanceId: string, key: string, transitionId: string): Promise<void>;
+  logWork(instanceId: string, key: string, work: WorkInput): Promise<{ id?: string }>;
+}
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Дата `YYYY-MM-DD`, которая существует в календаре. */
+export function isIsoDate(s: unknown): s is string {
+  if (typeof s !== 'string' || !DATE_RE.test(s)) return false;
+  const [y, m, d] = s.split('-').map(Number) as [number, number, number];
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
+}
+
+/** Проверка записи до запроса (общая для обоих источников): мусор не уходит ни в Jira, ни в чужое расширение. */
+function checkComment(body: unknown): string {
+  if (typeof body !== 'string' || !body.trim()) throw new Error('comment body is empty');
+  if (body.length > MAX_COMMENT) throw new Error(`comment is longer than ${MAX_COMMENT} characters`);
+  return body;
+}
+
+function checkWork(w: WorkInput): WorkInput {
+  if (!Number.isInteger(w.seconds) || w.seconds < 1 || w.seconds > MAX_WORK_SECONDS) throw new Error(`seconds must be an integer from 1 to ${MAX_WORK_SECONDS}`);
+  if (!isIsoDate(w.date)) throw new Error(`invalid date "${String(w.date).slice(0, 20)}"`);
+  if (typeof w.comment !== 'string' || w.comment.length > MAX_WORK_COMMENT) throw new Error(`worklog comment is longer than ${MAX_WORK_COMMENT} characters`);
+  return w;
+}
+
+const CATEGORIES: readonly StatusCategory[] = ['new', 'indeterminate', 'done'];
+
+/** Переходы из чужого расширения: только записи правильной формы, не больше 100. */
+function cleanTransitions(raw: unknown): TransitionInfo[] {
+  if (!Array.isArray(raw)) return [];
+  const out: TransitionInfo[] = [];
+  for (const t of raw.slice(0, 100) as Partial<TransitionInfo>[]) {
+    if (!t || typeof t.id !== 'string' || !t.id || t.id.length > 50) continue;
+    const to = t.to && typeof t.to === 'object' ? t.to : undefined;
+    const cat = to?.category;
+    out.push({
+      id: t.id,
+      name: typeof t.name === 'string' ? t.name.slice(0, 200) : '',
+      to: {
+        name: typeof to?.name === 'string' ? to.name.slice(0, 200) : '',
+        category: cat && CATEGORIES.includes(cat) ? cat : 'indeterminate',
+      },
+      requiresFields: t.requiresFields === true,
+    });
+  }
+  return out;
+}
+
+const idOf = (r: unknown): { id?: string } => {
+  const id = r && typeof r === 'object' ? (r as { id?: unknown }).id : undefined;
+  return typeof id === 'string' || typeof id === 'number' ? { id: String(id).slice(0, 50) } : {};
+};
+
 /** Источник данных Jira: Jiraffe (его API v1) или своё подключение Agentura — один интерфейс для сервиса задачи. */
 export interface JiraSource {
   readonly kind: 'jiraffe' | 'own';
+  /** Запись (этап 8): своё подключение — всегда, Jiraffe — только с API v2; нет — источник только читает. */
+  readonly writer?: JiraWriter | undefined;
   instances(): JiraInstanceRef[];
   issue(instanceId: string, key: string): Promise<{ issue: IssueDetail; worklogs: Worklog[] }>;
   myself(instanceId: string): Promise<MyselfResult>;
@@ -37,7 +114,25 @@ export function normalizeIssueKey(key: unknown): string {
 
 export class JiraffeSource implements JiraSource {
   readonly kind = 'jiraffe' as const;
-  constructor(private readonly api: JiraffeApi) {}
+  readonly writer: JiraWriter | undefined;
+
+  constructor(private readonly api: JiraffeApi) {
+    if (!hasJiraffeWrite(api)) return;
+    // API v2: ответы чужого расширения — по форме, ключ и тело проверены до вызова
+    this.writer = {
+      addComment: async (inst, key, body) => idOf(await api.addComment(inst, normalizeIssueKey(key), checkComment(body))),
+      transitions: async (inst, key) => cleanTransitions(await api.transitions(inst, normalizeIssueKey(key))),
+      transition: async (inst, key, id) => {
+        await api.transition(inst, normalizeIssueKey(key), id);
+      },
+      logWork: async (inst, key, w) => {
+        const { seconds, date, comment } = checkWork(w);
+        const r: unknown = await api.logWork(inst, normalizeIssueKey(key), { seconds, started: date, ...(comment ? { comment } : {}) });
+        // id Tempo — не id ворклога Jira в ленте задачи: событие найдётся по виду
+        return r && typeof r === 'object' && (r as { via?: unknown }).via === 'jira' ? idOf(r) : {};
+      },
+    };
+  }
 
   /** Ответ чужого расширения: не массив / бросил — пусто; записи без строковых `id`/`baseUrl` отбрасываются. */
   instances(): JiraInstanceRef[] {
@@ -76,11 +171,39 @@ export class JiraffeSource implements JiraSource {
 
 export class OwnSource implements JiraSource {
   readonly kind = 'own' as const;
+  readonly writer: JiraWriter;
 
   constructor(
     private readonly store: Pick<OwnInstanceStore, 'list' | 'get' | 'token'>,
     private readonly makeClient: (inst: OwnInstance, token: string) => JiraClient = createJiraClient,
-  ) {}
+  ) {
+    this.writer = {
+      addComment: async (inst, key, body) => {
+        const k = normalizeIssueKey(key);
+        const text = checkComment(body);
+        return (await this.client(inst)).client.addComment(k, text);
+      },
+      transitions: async (inst, key) => {
+        const k = normalizeIssueKey(key);
+        return (await this.client(inst)).client.transitions(k);
+      },
+      transition: async (inst, key, id) => {
+        const k = normalizeIssueKey(key);
+        const { client } = await this.client(inst);
+        // как у Jiraffe API v2: только переход из свежего списка и без обязательных полей экрана
+        const t = (await client.transitions(k)).find((x) => x.id === id);
+        if (!t) throw new Error(`transition "${String(id).slice(0, 50)}" is not available for ${k}`);
+        if (t.requiresFields) throw new Error(`transition "${t.name}" requires screen fields; do it in Jira`);
+        await client.transition(k, t.id);
+      },
+      logWork: async (inst, key, w) => {
+        const k = normalizeIssueKey(key);
+        const { seconds, date, comment } = checkWork(w);
+        // своё подключение пишет стандартный worklog Jira (Tempo — только через Jiraffe; решение этапа 8)
+        return (await this.client(inst)).client.addWorklog(k, { started: startedWithOffset(date), timeSpentSec: seconds, comment });
+      },
+    };
+  }
 
   instances(): JiraInstanceRef[] {
     return this.store.list().map(({ id, name, baseUrl, kind }) => ({ id, name, baseUrl, kind }));
@@ -184,6 +307,11 @@ export class JiraSources {
     return this.current()?.kind;
   }
 
+  /** Текущий источник умеет писать (свои подключения — да, Jiraffe — с API v2): страница «Интеграции», этап 8. */
+  canWrite(): boolean {
+    return !!this.current()?.writer;
+  }
+
   ownInstances(): JiraInstanceRef[] {
     return this.deps.own.instances();
   }
@@ -261,6 +389,7 @@ export class JiraSources {
     const sig = JSON.stringify([
       this.deps.setting(),
       this.jiraffeState,
+      !!this.jiraffe?.writer,
       this.jiraffe?.instances().map((i) => i.id) ?? [],
       this.deps.own.instances().map((i) => i.id),
     ]);

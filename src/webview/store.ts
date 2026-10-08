@@ -69,7 +69,7 @@ import {
   type QuestionCard,
 } from './chatState';
 import type { AgentsView, ComposerLayout, FeedStyle, GitLayout, TaskCardMode } from '../settings';
-import type { TaskChatRow, TaskStateMessage } from '../shared/task';
+import type { TaskChatRow, TaskEventKind, TaskStateMessage } from '../shared/task';
 import type { TabChatsMessage } from '../shared/taskTab';
 import type { GitOp, GitSnapshot } from '../shared/git';
 import { pushHistory } from './composer';
@@ -139,6 +139,11 @@ export const gitLayout = signal<GitLayout>('stack');
 export const taskCardMode = signal<TaskCardMode>('panel');
 /** Карточка и лента изменений задачи вкладки (`task.state`, roadmap 19); нет `taskKey` — вкладка вне задачи. */
 export const taskState = signal<TaskStateMessage | undefined>(undefined);
+/**
+ * «в задаче →» у строки инструмента Jira (этап 8): событие ленты, к которому вкладка «задача» прокручивает, когда оно
+ * появится (`id` — точное, иначе самое свежее «моё» этого вида не раньше `since − 2 мин`). Найдено — сбрасывается.
+ */
+export const taskFocus = signal<{ kind: TaskEventKind; id?: string; since: number } | undefined>(undefined);
 /** Чаты группы задачи вкладки (`task.chats`) для блока «Чаты по задаче». */
 export const taskChats = signal<TaskChatRow[]>([]);
 /** Вкладка на задачу (`tasks.tab = task`, этап 7): её чаты внутренними вкладками; нет — обычная вкладка чата. */
@@ -521,6 +526,8 @@ export function handleHostMessage(m: ToWebview): void {
       break;
     case 'task.state':
       // нет ключа — вкладка вне задачи: карточку и чаты сбрасываем
+      // другая задача (или никакой) — переход к событию прежней не нужен
+      if (taskState.value?.taskKey !== m.taskKey) taskFocus.value = undefined;
       taskState.value = m.taskKey ? m : undefined;
       if (!m.taskKey) taskChats.value = [];
       break;
@@ -556,6 +563,7 @@ function switchTabChat(prev: string, next: string | undefined, seeded: boolean):
   // полоска и блок «Чаты по задаче» — от показанного чата (у чата без задачи хост их не пришлёт)
   taskState.value = undefined;
   taskChats.value = [];
+  taskFocus.value = undefined;
   // события прежнего чата хост больше не шлёт — фильтр брошенной сессии здесь только мешал бы возврату к ней
   abandonedSessionId = undefined;
   replyTarget.value = undefined;

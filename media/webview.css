@@ -101,6 +101,8 @@ body {
 .ask .md .codeblock .copy { position: absolute; top: 4px; right: 6px; font-size: 10.5px; color: var(--fg-mute); opacity: 0; }
 .ask .md .codeblock:hover .copy, .ask .md .codeblock .copy:focus { opacity: 1; }
 .ask .bd pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+/* карточка разрешения инструмента Jira (этап 8): текст комментария/ворклога целиком, длинный — с прокруткой */
+.ask .bd pre.jt { max-height: 40vh; overflow-y: auto; }
 .ask .opt[disabled] { cursor: default; }
 .ask .opt[disabled]:not(.sel) { opacity: .6; }
 .ask .opt[disabled]:hover { background: none; }

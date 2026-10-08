@@ -10,6 +10,7 @@ import {
   toolView,
   toolLinks,
   artifactStatus,
+  jiraTaskLink,
 } from './toolView';
 
 const cwd = '/Users/fost/Projects/Agentura';
@@ -160,5 +161,30 @@ describe('Artifact', () => {
     expect(artifactStatus({ quickstart: {} })).toBeUndefined();
     expect(artifactStatus('Error: x')).toBeUndefined();
     expect(artifactStatus(undefined)).toBeUndefined();
+  });
+});
+
+describe('инструменты Jira агента (этап 8)', () => {
+  it('jira · комментарий / статус → / ворклог · время; без issue — ключ задачи чата', () => {
+    expect(toolView('mcp__agentura_jira__comment', { text: 'x' }, cwd, 'NEWMFC-1482')).toEqual({ op: 'jira', what: 'комментарий NEWMFC-1482' });
+    expect(toolView('mcp__agentura_jira__transition', { to: 'Done', issue: 'abc-1' }, cwd, 'NEWMFC-1482')).toEqual({
+      op: 'jira',
+      what: 'статус ABC-1 → Done',
+    });
+    expect(toolView('mcp__agentura_jira__worklog', { minutes: 90 }, cwd)).toEqual({ op: 'jira', what: 'ворклог · 1h 30m' });
+    // чужой MCP-сервер — как прежде
+    expect(toolView('mcp__other__comment', { text: 'x' }, cwd).op).toBe('comment');
+  });
+
+  it('«в задаче →»: только успех и задача чата; id — из строки события, вид — по инструменту', () => {
+    const link = (name: string, input: Record<string, unknown>, content: string, state = 'ok', issue: string | undefined = 'NEWMFC-1482') =>
+      jiraTaskLink(name, input, content, state, issue);
+    expect(link('mcp__agentura_jira__comment', {}, 'ok\nevent: comment:7')).toEqual({ kind: 'comment', id: 'comment:7' });
+    expect(link('mcp__agentura_jira__transition', {}, 'ok\nevent: status')).toEqual({ kind: 'status' });
+    expect(link('mcp__agentura_jira__worklog', { issue: 'newmfc-1482' }, 'ok')).toEqual({ kind: 'worklog' });
+    expect(link('mcp__agentura_jira__comment', { issue: 'ABC-1' }, 'ok\nevent: comment:7')).toBeUndefined();
+    expect(link('mcp__agentura_jira__comment', {}, 'Error', 'err')).toBeUndefined();
+    expect(jiraTaskLink('mcp__agentura_jira__comment', {}, 'ok', 'ok', undefined)).toBeUndefined();
+    expect(link('Bash', {}, 'ok')).toBeUndefined();
   });
 });

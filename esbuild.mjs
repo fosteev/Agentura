@@ -11,8 +11,9 @@ const extension = {
   outdir: 'dist',
   format: 'cjs',
   platform: 'node',
-  // SDK — ESM с нативным бинарником CLI, ищет его через import.meta.url: не бандлить (этап 2).
-  external: ['vscode', '@anthropic-ai/claude-agent-sdk'],
+  // SDK — ESM с нативным бинарником CLI, ищет его через import.meta.url: не бандлить (этап 2). zod — тоже внешний:
+  // схемы MCP-инструментов (roadmap 19, этап 8) должны быть того же экземпляра zod, что у SDK (`import('zod')` рядом с SDK).
+  external: ['vscode', '@anthropic-ai/claude-agent-sdk', 'zod'],
   // фикстуры состояний для agentura.debug.showState (этап 7) — текстом в бандл
   loader: { '.jsonl': 'text' },
 };

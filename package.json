@@ -583,6 +583,33 @@
           "type": "boolean",
           "default": true,
           "description": "%config.tasks.humanChanges.description%"
+        },
+        "agentura.jira.agentTools": {
+          "type": "object",
+          "default": {
+            "comment": true,
+            "transition": true,
+            "worklog": true
+          },
+          "properties": {
+            "comment": {
+              "type": "boolean",
+              "default": true,
+              "description": "%config.jira.agentTools.comment%"
+            },
+            "transition": {
+              "type": "boolean",
+              "default": true,
+              "description": "%config.jira.agentTools.transition%"
+            },
+            "worklog": {
+              "type": "boolean",
+              "default": true,
+              "description": "%config.jira.agentTools.worklog%"
+            }
+          },
+          "additionalProperties": false,
+          "description": "%config.jira.agentTools.description%"
         }
       }
     }

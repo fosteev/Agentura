@@ -120,6 +120,54 @@ describe('TabSlots', () => {
     expect(io.onEmpty).toHaveBeenCalledTimes(1);
   });
 
+  it('«×» при ходе или ждущем запросе — вопрос (решение владельца, этап 8); «нет» — чат остаётся; в простое — без вопроса', async () => {
+    const { tab, chat, io } = setup();
+    let answer = false;
+    const asked: (string | undefined)[] = [];
+    const confirmClose = vi.fn(async (title: string | undefined) => {
+      asked.push(title);
+      return answer;
+    });
+    Object.assign(io, { confirmClose });
+    const a = chat(st('working', 'sa', 'Чат A'));
+    const b = chat(st('waiting', 'sb'));
+    const c = chat(st('idle', 'sc'));
+    tab.activate(a.id);
+    // «нет»: ход идёт дальше, чат на месте
+    await tab.requestClose(a.id);
+    expect(a.gone.n).toBe(0);
+    expect(tab.ids).toEqual([a.id, b.id, c.id]);
+    // повторный «×», пока висит вопрос, второго вопроса не открывает
+    answer = true;
+    const first = tab.requestClose(b.id);
+    tab.receive({ type: 'tab.close', id: b.id });
+    await first;
+    expect(confirmClose).toHaveBeenCalledTimes(2);
+    expect(b.gone.n).toBe(1);
+    // «да» — закрыт
+    await tab.requestClose(a.id);
+    expect(a.gone.n).toBe(1);
+    expect(asked).toEqual(['Чат A', undefined, 'Чат A']);
+    // простой — сразу, вопрос не задаётся
+    tab.receive({ type: 'tab.close', id: c.id });
+    expect(c.gone.n).toBe(1);
+    expect(confirmClose).toHaveBeenCalledTimes(3);
+    expect(io.onEmpty).toHaveBeenCalledTimes(1);
+  });
+
+  it('«×»: пока висел вопрос, чат закрыли другим путём — второе закрытие не происходит', async () => {
+    const { tab, chat, io } = setup();
+    let release: (v: boolean) => void = () => undefined;
+    Object.assign(io, { confirmClose: () => new Promise<boolean>((r) => (release = r)) });
+    const a = chat(st('working', 'sa'));
+    chat(st('idle', 'sb'));
+    const p = tab.requestClose(a.id);
+    tab.close(a.id);
+    release(true);
+    await p;
+    expect(a.gone.n).toBe(1);
+  });
+
   it('«＋» — новый чат по задаче; закрытие вкладки редактора закрывает все чаты', () => {
     const { tab, chat, io } = setup();
     const a = chat(st('idle', 'sa'));

@@ -389,3 +389,37 @@ describe('TaskService', () => {
     }
   });
 });
+
+describe('TaskService.afterWrite (инструменты агента, этап 8)', () => {
+  it('запись агента — загрузка сразу: мимо окна 5 с, ручного режима и блока после 401; без зрителей — ничего', async () => {
+    const h = harness({ refresh: 'manual' });
+    const { tv } = h.view();
+    h.svc.attach(TASK, tv);
+    await h.flush();
+    expect(h.calls.issue).toBe(1);
+    await h.svc.refresh(TASK); // окно 5 с — кеш
+    expect(h.calls.issue).toBe(1);
+    await h.svc.afterWrite(TASK);
+    expect(h.calls.issue).toBe(2);
+    h.fail(new JiraError(401, 'Not authorized', 'u'));
+    await h.svc.afterWrite(TASK);
+    h.fail(undefined);
+    h.svc.nudge(TASK); // после 401 сам не грузит
+    await h.flush();
+    expect(h.calls.issue).toBe(3);
+    await h.svc.afterWrite(TASK);
+    expect(h.calls.issue).toBe(4);
+    await h.svc.afterWrite('jira:inst:NONE-1');
+    expect(h.calls.issue).toBe(4);
+  });
+
+  it('загрузка уже идёт (начата до записи) — дождаться её и загрузить заново', async () => {
+    const h = harness();
+    const { tv } = h.view();
+    h.svc.attach(TASK, tv); // первая загрузка в полёте
+    expect(h.calls.issue).toBe(1);
+    await h.svc.afterWrite(TASK);
+    expect(h.calls.issue).toBe(2);
+  });
+});
+

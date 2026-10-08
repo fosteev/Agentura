@@ -9,6 +9,7 @@ import type {
   EffortLevel,
   PermissionMode,
   RetryPoint,
+  TaskTools,
 } from '../agent/types';
 import {
   nextStatus,
@@ -165,6 +166,8 @@ export interface ChatDeps {
    * сессия по `/clear` или кнопке «новая сессия» во вкладке (а не сбой возобновления): вкладка задачи остаётся в её группе.
    */
   onSession?(id: string | undefined, why?: 'clear'): void;
+  /** Инструменты задачи Jira для агента (этап 8): уходят в опции сессии Claude. */
+  taskTools?: TaskTools;
   /** Каждое событие движка главного агента и субагентов (после обновления статуса): итог хода, результат инструмента. */
   onEvent?(e: AgentEvent): void;
   /** Версия движка из `session.init` — секция «Аккаунт» боковой панели. */
@@ -1427,6 +1430,8 @@ export class ChatController {
         cwd: deps.cwd,
         // режимов Claude у Codex нет: его политику задаёт конфиг, а не эти настройки
         allowBypassPermissions: hasModes && s.allowBypass,
+        // инструменты задачи Jira (roadmap 19, этап 8, решение 13) — только Claude; есть ли они сейчас, решает сам набор
+        ...(claude && deps.taskTools ? { taskTools: deps.taskTools } : {}),
       };
       const open = (): Promise<AgentSession> =>
         resume

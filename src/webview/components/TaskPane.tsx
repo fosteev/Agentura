@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import type { AgentProvider } from '../../agent/types';
 import type { TaskChatRow, TaskEvent, TaskStateMessage } from '../../shared/task';
 import type { TabChatsMessage } from '../../shared/taskTab';
@@ -10,6 +10,8 @@ import {
   descriptionLong,
   eventActor,
   eventText,
+  focusTarget,
+  FOCUS_TTL_MS,
   humanPrompts,
   initials,
   issueKeyOf,
@@ -19,6 +21,7 @@ import {
   visibleEvents,
 } from '../taskView';
 import { send } from '../vscode';
+import { taskFocus } from '../store';
 
 export type TaskSeg = 'card' | 'changes';
 
@@ -74,12 +77,29 @@ function SourceError({ state }: { state: TaskStateMessage }) {
   );
 }
 
-function EventRow({ e, fresh, provider, now }: { e: TaskEvent; fresh: boolean; provider: AgentProvider | undefined; now: number }) {
+function EventRow({
+  e,
+  fresh,
+  focused,
+  provider,
+  now,
+}: {
+  e: TaskEvent;
+  fresh: boolean;
+  /** К событию привёл «в задаче →» строки инструмента Jira. */
+  focused?: boolean;
+  provider: AgentProvider | undefined;
+  now: number;
+}) {
   const t = ui.task;
   const actor = eventActor(e);
   const body = eventText(e);
   return (
-    <div class={`tk-evt${actor === 'human' ? ' hum' : ''}${fresh ? ' new' : ''}`} data-kind={e.kind}>
+    <div
+      class={`tk-evt${actor === 'human' ? ' hum' : ''}${fresh ? ' new' : ''}${focused ? ' focus' : ''}`}
+      data-kind={e.kind}
+      data-id={e.id}
+    >
       {actor === 'agent' ? (
         <span class="av2 ag">
           <Mark provider={provider} />
@@ -171,8 +191,27 @@ export function TaskPane({
   const unseen = watching ? 0 : unseenCount(events, seen);
   const prompts = humanPrompts(events, humanDone);
   const key = card?.key ?? (taskKey ? issueKeyOf(taskKey) : '');
+  // «в задаче →» (этап 8): когда событие появилось в открытой ленте — прокрутить к нему и подсветить
+  const root = useRef<HTMLElement>(null);
+  const [focused, setFocused] = useState<string | undefined>(undefined);
+  const focus = taskFocus.value;
+  const target = watching ? focusTarget(events, focus) : undefined;
+  useEffect(() => {
+    if (focus && Date.now() - focus.since > FOCUS_TTL_MS) taskFocus.value = undefined;
+    if (!target) return;
+    taskFocus.value = undefined;
+    setFocused(target.id);
+    const el = [...(root.current?.querySelectorAll<HTMLElement>('.tk-evt') ?? [])].find((x) => x.dataset['id'] === target.id);
+    el?.scrollIntoView?.({ block: 'center' });
+  }, [target?.id, focus, state?.fetchedAt]);
+  useEffect(() => {
+    if (!focused) return;
+    const h = setTimeout(() => setFocused(undefined), 4000);
+    return () => clearTimeout(h);
+  }, [focused]);
   return (
     <section
+      ref={root}
       class="tabpane tkp"
       id="pane-task"
       role="tabpanel"
@@ -289,7 +328,7 @@ export function TaskPane({
               <div class="empty">{t.feedEmpty}</div>
             ) : (
               events.map((e) => (
-                <EventRow key={e.id} e={e} fresh={e.at > mark} provider={provider} now={now} />
+                <EventRow key={e.id} e={e} fresh={e.at > mark} focused={e.id === focused} provider={provider} now={now} />
               ))
             )}
           </div>

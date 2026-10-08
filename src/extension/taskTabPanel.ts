@@ -8,6 +8,7 @@ import { postToWebview } from '../protocol';
 import type { Logger } from './logger';
 import { chatIcon, type ChatSurface } from './chatSurface';
 import { TabSlots, type SlotInfo } from './tabSlots';
+import { hostStrings } from '../shared/l10n';
 import { parseTaskKey, type TaskKey } from './taskGroups';
 import { attachMessaging, currentLanguage, renderWebview, userFontsDir, webviewOptions } from './webviewHost';
 
@@ -55,6 +56,13 @@ export class TaskTabPanel {
       // «＋» — как «＋» группы в боковой панели: контекст задачи из источника, чат придёт сюда же (`ChatPanel.apply`)
       onNew: () => void vscode.commands.executeCommand('agentura.chatForTask', taskKey),
       onEmpty: () => panel.dispose(),
+      // «×» чата с идущим ходом или ждущим ответа — модальный вопрос (решение владельца 2026-10-08)
+      confirmClose: async (title) => {
+        const t = hostStrings(currentLanguage());
+        const button = t.closeBusyChatButton;
+        const pick = await vscode.window.showWarningMessage(t.closeBusyChat(title), { modal: true, detail: t.closeBusyChatDetail }, button);
+        return pick === button;
+      },
     });
     TaskTabPanel.tabs.push(this);
     this.disposables.push(

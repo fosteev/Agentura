@@ -19,3 +19,5 @@ export interface Comment { id: string; author?: UserRef; created: string; bodyHt
 export interface HistoryEntry { author?: UserRef; created: string; items: { field: string; from: string | null; to: string | null }[] }
 export interface Worklog { id: string; author?: UserRef; started: string; timeSpentSec: number; comment: string;
   attributes?: Record<string, string> }
+/** Agentura (этап 8): переход задачи в форме Jiraffe API v2 `transitions()` — с признаком обязательных полей экрана. */
+export interface TransitionInfo { id: string; name: string; to: { name: string; category: StatusCategory }; requiresFields: boolean }

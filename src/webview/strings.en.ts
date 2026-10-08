@@ -1,7 +1,14 @@
 import type { Ui } from './strings';
+import { jiraMcpName } from '../shared/jiraTools';
 
 /** English UI strings. Same keys and signatures as the Russian dictionary in `strings.ts` (checked by the compiler). */
 const pl = (n: number, one: string, many: string): string => (n === 1 ? one : many);
+
+const JIRA_PERM_EN: Record<string, string> = {
+  [jiraMcpName('transition')]: 'Allow changing the Jira issue status?',
+  [jiraMcpName('worklog')]: 'Allow logging work in Jira?',
+  [jiraMcpName('comment')]: 'Allow a Jira comment?',
+};
 
 export const en: Ui = {
   hud: {
@@ -123,6 +130,9 @@ export const en: Ui = {
     openFile: 'Open the file in an editor tab',
     inPath: (path: string) => `in ${path}`,
     todoWhat: 'to-do list',
+    jira: { comment: 'comment', transition: 'status', worklog: 'worklog' } as Record<string, string>,
+    inTask: 'in task →',
+    inTaskTitle: 'Show the event in the “task” tab',
     askFallback: 'question',
     planReady: 'plan ready',
     fileNoCopy:
@@ -244,7 +254,8 @@ export const en: Ui = {
       sent: 'retrying…',
     },
     permTitle: (tool: string) =>
-      tool === 'Bash'
+      JIRA_PERM_EN[tool] ??
+      (tool === 'Bash'
         ? 'Allow running this command?'
         : tool === 'Edit' || tool === 'MultiEdit'
           ? 'Allow editing this file?'
@@ -252,7 +263,7 @@ export const en: Ui = {
             ? 'Allow writing this file?'
             : tool === 'Permissions'
               ? 'Allow additional permissions?'
-              : `Allow ${tool}?`,
+              : `Allow ${tool}?`),
     modeTag: (mode: string) => `mode ${mode}`,
     subagent: 'subagent',
     allow: 'Allow',
@@ -963,12 +974,12 @@ export const en: Ui = {
       },
       agentTools: {
         name: 'Jira tools for the agent',
-        desc: 'What the agent will be able to do in the task on your behalf. Not available yet: writing to Jira comes in a later update.',
+        desc: 'What the agent (Claude engine) may do in the chat’s task on your behalf through the current source: a comment without asking, status and worklog through the permission card.',
         comment: 'comment',
         transition: 'status',
         worklog: 'worklog',
         ask: 'ask permission',
-        soon: 'not available yet',
+        noWrite: 'the source cannot write to Jira: connect Jira or update Jiraffe to 0.8.0',
       },
     },
     sidebarLimits: {

@@ -4,6 +4,7 @@
  * Источник правды — настройки VS Code: вкладка настроек только читает и пишет их.
  */
 import type { AgentProvider, EffortLevel, PermissionMode } from './agent/types';
+import { isAgentToolsSetting, readAgentTools, type AgentToolsSetting } from './shared/jiraTools';
 
 export const EFFORT_LEVELS: readonly EffortLevel[] = ['low', 'medium', 'high', 'xhigh', 'max'];
 /** Режимы по умолчанию как в настройке: `manual` — обычный режим с подтверждениями. */
@@ -157,6 +158,7 @@ export type SettingKey =
   | 'jira.source'
   | 'tasks.refresh'
   | 'tasks.humanChanges'
+  | 'jira.agentTools'
   | 'feed.style'
   | 'composer.layout'
   | 'agents.view'
@@ -193,6 +195,7 @@ export const SETTING_KEYS: readonly SettingKey[] = [
   'jira.source',
   'tasks.refresh',
   'tasks.humanChanges',
+  'jira.agentTools',
   'feed.style',
   'composer.layout',
   'agents.view',
@@ -247,6 +250,8 @@ export interface SettingsValues {
   'jira.source': JiraSourceSetting;
   'tasks.refresh': TaskRefreshMode;
   'tasks.humanChanges': boolean;
+  /** Инструменты Jira для агента (roadmap 19, этап 8): какие из трёх агент получает. */
+  'jira.agentTools': AgentToolsSetting;
   'feed.style': FeedStyle;
   'composer.layout': ComposerLayout;
   'agents.view': AgentsView;
@@ -378,6 +383,7 @@ const ERRORS = {
     allowed: (list: string) => `Допустимо: ${list}.`,
     allowedOrEmpty: (list: string) => `Допустимо: пусто, ${list}.`,
     yesNo: 'Нужно да или нет.',
+    agentTools: 'Нужен объект с флажками comment, transition, worklog.',
     string: 'Нужна строка.',
     wholeMinutes: 'Нужно целое число минут.',
     atLeast: (n: number) => `Не меньше ${n}.`,
@@ -396,6 +402,7 @@ const ERRORS = {
     allowed: (list: string) => `Allowed: ${list}.`,
     allowedOrEmpty: (list: string) => `Allowed: empty, ${list}.`,
     yesNo: 'Must be yes or no.',
+    agentTools: 'Must be an object with comment, transition and worklog flags.',
     string: 'A string is required.',
     wholeMinutes: 'A whole number of minutes is required.',
     atLeast: (n: number) => `At least ${n}.`,
@@ -500,6 +507,10 @@ export function validateSetting(key: SettingKey, value: unknown, lang: ErrLang =
       return isJiraSource(value) ? { ok: true, value } : bad(t.allowed(JIRA_SOURCES.join(', ')));
     case 'tasks.refresh':
       return isTaskRefresh(value) ? { ok: true, value } : bad(t.allowed(TASK_REFRESH_MODES.join(', ')));
+    case 'jira.agentTools':
+      return isAgentToolsSetting(value)
+        ? { ok: true, value: { comment: value.comment, transition: value.transition, worklog: value.worklog } }
+        : bad(t.agentTools);
     case 'feed.style':
       return isFeedStyle(value) ? { ok: true, value } : bad(t.allowed(FEED_STYLES.join(', ')));
     case 'composer.layout':
@@ -576,6 +587,7 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
     'jira.source': isJiraSource(jiraSource) ? jiraSource : DEFAULT_JIRA_SOURCE,
     'tasks.refresh': isTaskRefresh(taskRefresh) ? taskRefresh : DEFAULT_TASK_REFRESH,
     'tasks.humanChanges': cfg.get<unknown>('tasks.humanChanges') !== false,
+    'jira.agentTools': readAgentTools(cfg.get<unknown>('jira.agentTools')),
     'feed.style': isFeedStyle(feed) ? feed : DEFAULT_FEED_STYLE,
     'composer.layout': isComposerLayout(cl) ? cl : DEFAULT_COMPOSER_LAYOUT,
     'agents.view': isAgentsView(agv) ? agv : DEFAULT_AGENTS_VIEW,

@@ -155,7 +155,8 @@ const posix = process.platform === 'win32' ? describe.skip : describe;
 
 posix('живое убийство дерева', () => {
   it('SIGINT agy, SIGKILL потомка, пережившего agy (своя группа процессов, как у run_command)', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'agentura-agy-test-'));
+    // не `agentura-agy-*`: sessions.test параллельно сверяет такие папки в общем tmpdir (был флейк)
+    const dir = mkdtempSync(join(tmpdir(), 'agy-kill-test-'));
     const script = join(dir, 'fake.mjs');
     // «agy»: порождает отдельную группу с `sleep`, по SIGINT выходит с 1 — потомок остаётся (как у настоящего)
     writeFileSync(

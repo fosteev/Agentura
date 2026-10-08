@@ -46,6 +46,8 @@ import type { ContextRequest } from './contextRequest';
 import { nextTabTask, parseTaskKey, routeTaskOpen, taskChatRows, taskKeyOf, type TabTask, type TaskGroups, type TaskKey, type TaskMeta } from './taskGroups';
 import { isTaskRequest, type TaskChatsMessage } from '../shared/task';
 import { TaskTab } from './jira/taskTab';
+import { AgentJiraTools } from './jira/agentTools';
+import { readAgentTools } from '../shared/jiraTools';
 import type { TaskService } from './jira/taskService';
 import type { JiraSources } from './jira/source';
 import type { SessionMemory } from './sessionMemory';
@@ -260,6 +262,7 @@ export class ChatPanel {
   /** Группа, в которую вход вкладки уже состоит (для `/clear`: новая сессия остаётся в ней). */
   private member: TabTask | undefined;
   private readonly taskTab: TaskTab;
+  private readonly jiraTools: AgentJiraTools;
   /** Вкладка графа агентов этой вкладки чата (roadmap 11, этап 2): одна на чат. */
   private readonly graph: ChatGraphSlot;
 
@@ -606,9 +609,18 @@ export class ChatPanel {
     const files = new WorkspaceFiles(folder.uri);
     const editorColumn = (): vscode.ViewColumn =>
       panel.viewColumn === vscode.ViewColumn.One ? vscode.ViewColumn.Two : vscode.ViewColumn.One;
+    // инструменты Jira для агента (этап 8): задача вкладки, источник с записью, `agentura.jira.agentTools`
+    const jiraTools = new AgentJiraTools({
+      taskKey: () => this.taskTab?.taskKey,
+      sources: services.jira,
+      settings: () => readAgentTools(vscode.workspace.getConfiguration('agentura').get<unknown>('jira.agentTools')),
+      afterWrite: (key) => services.tasks.afterWrite(key),
+    });
+    this.jiraTools = jiraTools;
     this.controller = new ChatController({
       lang: currentLanguage(),
       adapter: services.adapter,
+      taskTools: jiraTools,
       // возобновляемая сессия — своего движка; новая вкладка — `agentura.defaultProvider`
       provider: open.provider ?? defaultProvider(),
       adapterFor: (p) =>
@@ -912,6 +924,11 @@ export class ChatPanel {
       }),
       // метаданные и состав групп изменились (привязка из сайдбара, опрос): вкладка перепроверяет свою задачу
       { dispose: services.taskGroups.onChange(() => this.syncTask()) },
+      // источник Jira (запись появилась/пропала) и настройка инструментов агента — набор MCP-инструментов сессии
+      { dispose: services.jira.onDidChange(() => jiraTools.changed()) },
+      vscode.workspace.onDidChangeConfiguration((e) => {
+        if (e.affectsConfiguration('agentura.jira')) jiraTools.changed();
+      }),
       { dispose: () => this.taskTab.dispose() },
       files.watch(),
       new EditorContextTracker(files, (ctx) => this.controller.postEditorContext(ctx)),
@@ -941,6 +958,7 @@ export class ChatPanel {
   /** Привязка/группа/видимость вкладки изменились: задача для `TaskTab` и список «Чаты по задаче». */
   private syncTask(): void {
     this.taskTab.sync();
+    this.jiraTools.changed();
     void this.pushTaskChats();
   }
 

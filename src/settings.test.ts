@@ -104,6 +104,13 @@ describe('sessionList', () => {
     expect(validateSetting('tasks.refresh', '5s').ok).toBe(false);
     expect(validateSetting('tasks.humanChanges', false)).toEqual({ ok: true, value: false });
     expect(validateSetting('tasks.humanChanges', 'no').ok).toBe(false);
+    // инструменты Jira агента (этап 8): ровно три флажка
+    expect(validateSetting('jira.agentTools', { comment: false, transition: true, worklog: true })).toEqual({
+      ok: true,
+      value: { comment: false, transition: true, worklog: true },
+    });
+    expect(validateSetting('jira.agentTools', { comment: false }).ok).toBe(false);
+    expect(validateSetting('jira.agentTools', true).ok).toBe(false);
     expect(validateSetting('feed.style', 'cards')).toEqual({ ok: true, value: 'cards' });
     expect(validateSetting('feed.style', 'grid').ok).toBe(false);
     for (const v of ['list', 'tree', 'lanes', 'cards', 'graph']) {
@@ -239,6 +246,7 @@ describe('readSettings', () => {
       'jira.source': 'auto',
       'tasks.refresh': '30s',
       'tasks.humanChanges': true,
+      'jira.agentTools': { comment: true, transition: true, worklog: true },
       'feed.style': 'journal',
       'agents.view': 'list',
       'git.layout': 'stack',

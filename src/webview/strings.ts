@@ -1,5 +1,13 @@
 import type { EffortLevel } from '../agent/types';
 import { en } from './strings.en';
+import { jiraMcpName } from '../shared/jiraTools';
+
+/** Карточка разрешения инструментов Jira агента (этап 8 roadmap 19). */
+const JIRA_PERM_RU: Record<string, string> = {
+  [jiraMcpName('transition')]: 'Разрешить сменить статус задачи в Jira?',
+  [jiraMcpName('worklog')]: 'Разрешить записать ворклог в Jira?',
+  [jiraMcpName('comment')]: 'Разрешить комментарий в Jira?',
+};
 
 /**
  * Строки интерфейса webview в одном месте: русский словарь `ru` здесь, английский — `strings.en.ts`
@@ -126,6 +134,10 @@ const ru = {
     openFile: 'Открыть файл во вкладке редактора',
     inPath: (path: string) => `в ${path}`,
     todoWhat: 'список задач',
+    /** Инструменты Jira агента (roadmap 19, этап 8): «jira · комментарий NEWMFC-1482 ✓ · в задаче →». */
+    jira: { comment: 'комментарий', transition: 'статус', worklog: 'ворклог' } as Record<string, string>,
+    inTask: 'в задаче →',
+    inTaskTitle: 'Показать событие во вкладке «задача»',
     askFallback: 'вопрос',
     planReady: 'план готов',
     fileNoCopy:
@@ -247,7 +259,8 @@ const ru = {
       sent: 'повторяю…',
     },
     permTitle: (tool: string) =>
-      tool === 'Bash'
+      JIRA_PERM_RU[tool] ??
+      (tool === 'Bash'
         ? 'Разрешить запуск команды?'
         : tool === 'Edit' || tool === 'MultiEdit'
           ? 'Разрешить правку файла?'
@@ -255,7 +268,7 @@ const ru = {
             ? 'Разрешить запись файла?'
             : tool === 'Permissions'
               ? 'Разрешить дополнительные права?'
-              : `Разрешить ${tool}?`,
+              : `Разрешить ${tool}?`),
     modeTag: (mode: string) => `режим ${mode}`,
     subagent: 'субагент',
     allow: 'Разрешить',
@@ -980,12 +993,12 @@ const ru = {
       },
       agentTools: {
         name: 'Инструменты Jira для агента',
-        desc: 'Что агент сможет делать в задаче от вашего имени. Пока недоступно: запись в Jira появится в следующем обновлении.',
+        desc: 'Что агент (движок Claude) может делать в задаче чата от вашего имени через текущий источник: комментарий — без вопроса, статус и ворклог — через карточку разрешения.',
         comment: 'комментарий',
         transition: 'статус',
         worklog: 'ворклог',
         ask: 'спрашивать разрешение',
-        soon: 'пока недоступно',
+        noWrite: 'источник не пишет в Jira: подключите Jira или обновите Jiraffe до 0.8.0',
       },
     },
     sidebarLimits: {

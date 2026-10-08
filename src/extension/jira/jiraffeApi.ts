@@ -1,4 +1,4 @@
-import type { IssueDetail, Worklog } from '../../data/jira/types';
+import type { IssueDetail, StatusCategory, Worklog } from '../../data/jira/types';
 
 /**
  * Контракт Jiraffe API v1 (roadmap 19, решение 6; реализация — fosteev/jiraffe 0.8.0 `src/api.ts`). Типы `IssueDetail`/`Worklog`
@@ -14,6 +14,34 @@ export interface JiraffeApi {
   myself(instanceId: string): Promise<{ accountId?: string; name?: string; displayName: string }>;
   openIssue(instanceId: string, key: string, beside?: boolean): Promise<void>;
   onDidChangeInstances: (listener: () => unknown) => { dispose(): unknown };
+  // v2 (этап 8 roadmap 19, Jiraffe 0.8.0; сессия 8b): запись от имени пользователя, все ошибки — reject, диалогов нет;
+  // повторная запись того же вида в ту же задачу, пока предыдущая идёт, — reject «already being sent».
+  /** Комментарий (wiki-текст, непустой, ≤ 32 000 символов). */
+  addComment?(instanceId: string, key: string, body: string): Promise<{ id?: string }>;
+  /** Переходы задачи; `requiresFields` — у перехода есть обязательные поля экрана (через API не выполнить). */
+  transitions?(
+    instanceId: string,
+    key: string,
+  ): Promise<{ id: string; name: string; to: { name: string; category: StatusCategory }; requiresFields: boolean }[]>;
+  /** Перевести задачу; `transitionId` — только из свежего `transitions()`, переход с обязательными полями — reject. */
+  transition?(instanceId: string, key: string, transitionId: string): Promise<void>;
+  /** Ворклог (Tempo или Jira): `seconds` — целое 1…86 400, `started` — `YYYY-MM-DD` или ISO, `comment` ≤ 30 000. */
+  logWork?(
+    instanceId: string,
+    key: string,
+    work: { seconds: number; started?: string; comment?: string; aiTokens?: number },
+  ): Promise<{ via: 'tempo' | 'jira'; id?: string }>;
+}
+
+/** API v2 Jiraffe с записью: `apiVersion >= 2` и все четыре метода — функции. */
+export function hasJiraffeWrite(api: JiraffeApi): api is JiraffeApi & Required<Pick<JiraffeApi, 'addComment' | 'transitions' | 'transition' | 'logWork'>> {
+  return (
+    api.apiVersion >= 2 &&
+    typeof api.addComment === 'function' &&
+    typeof api.transitions === 'function' &&
+    typeof api.transition === 'function' &&
+    typeof api.logWork === 'function'
+  );
 }
 
 /**

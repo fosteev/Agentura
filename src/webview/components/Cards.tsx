@@ -18,9 +18,12 @@ import {
   retryTurn,
   showLog,
   submitQuestion,
+  taskState,
 } from '../store';
 import { ui } from '../strings';
 import { relPath, toolView } from '../toolView';
+import { jiraToolOf } from '../../shared/jiraTools';
+import { issueKeyOf } from '../taskView';
 
 const EDIT_TOOLS = new Set(['Edit', 'MultiEdit', 'Write']);
 
@@ -82,7 +85,12 @@ export function PermissionCard({
   const cmd = typeof c.input['command'] === 'string' ? (c.input['command'] as string) : undefined;
   const desc =
     typeof c.input['description'] === 'string' ? (c.input['description'] as string) : undefined;
-  const v = toolView(c.toolName, c.input, cwd);
+  const st = taskState.value;
+  const v = toolView(c.toolName, c.input, cwd, st?.card?.key ?? (st?.taskKey ? issueKeyOf(st.taskKey) : undefined));
+  // инструмент Jira (этап 8): что именно уйдёт в задачу — текст комментария / ворклога под строкой
+  const jiraText = jiraToolOf(c.toolName)
+    ? [c.input['text'], c.input['comment']].find((x): x is string => typeof x === 'string' && !!x.trim())
+    : undefined;
   const counts = c.preview;
   const dimNotes = [
     !edit && !cmd ? c.description : undefined,
@@ -124,7 +132,11 @@ export function PermissionCard({
             <Hunks c={c} />
           </>
         ) : (
-          <pre>{cmd ?? `${v.op} ${v.what}`.trim()}</pre>
+          // текст целиком (одобряют то, что уйдёт в Jira), длинный — с прокруткой
+          <pre class={jiraText ? 'jt' : undefined}>
+            {cmd ?? `${v.op} ${v.what}`.trim()}
+            {jiraText ? `\n\n${jiraText}` : ''}
+          </pre>
         )}
         {dimNotes.length > 0 && <p class="dim">{dimNotes.join(' · ')}</p>}
       </div>

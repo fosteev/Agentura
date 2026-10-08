@@ -21,4 +21,6 @@ export interface IntegrationsState {
   own: IntegrationsInstance[];
   /** Какой источник работает сейчас (по `jira.source` и наличию); нет — задач нет. */
   active?: 'jiraffe' | 'own';
+  /** Текущий источник пишет в Jira (этап 8): своё подключение — да, Jiraffe — с API v2. Нет — инструменты агента неактивны. */
+  writes?: boolean;
 }

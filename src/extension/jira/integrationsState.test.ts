@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { integrationsState } from './integrationsState';
 
 const inst = (id: string) => ({ id, name: id, baseUrl: `https://${id}.x`, kind: 'dc' as const });
-const src = (state: 'absent' | 'no-api' | 'ready' | 'inactive', active?: 'jiraffe' | 'own') => ({
+const src = (state: 'absent' | 'no-api' | 'ready' | 'inactive', active?: 'jiraffe' | 'own', writes = false) => ({
+  canWrite: () => writes,
   jiraffeStatus: () => ({ state, instances: 1 }),
   jiraffeInstances: () => [inst('jf')],
   ownInstances: () => [inst('own')],
@@ -15,7 +16,12 @@ describe('integrationsState', () => {
       jiraffe: { state: 'ready', version: '0.8.0', instances: [inst('jf')] },
       own: [inst('own')],
       active: 'jiraffe',
+      writes: false,
     });
+  });
+  it('writes — текущий источник пишет (этап 8)', () => {
+    expect(integrationsState(src('ready', 'jiraffe', true)).writes).toBe(true);
+    expect(integrationsState(src('absent')).writes).toBe(false);
   });
   it('не ready — инстансов Jiraffe нет; absent — без версии; нетекстовая версия отбрасывается', () => {
     expect(integrationsState(src('inactive', 'own'), '0.8.0').jiraffe).toEqual({ state: 'inactive', version: '0.8.0', instances: [] });

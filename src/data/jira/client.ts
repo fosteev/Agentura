@@ -1,13 +1,45 @@
 // Скопировано из fosteev/jiraffe 0.7.0 src/jira/client.ts. Правки помечены «Agentura:».
-// Agentura: оставлены `myself`, `issue`, `watchers`, `worklogs`, `issueDetail`; поиск, переходы, ворклоги-запись, эпики,
-// проекты, версии, вложения-скачивание — не копировались (этап 8 дописывает `addComment`). В `issueDetail` убран best-effort
+// Agentura: оставлены `myself`, `issue`, `watchers`, `worklogs`, `issueDetail`, запись (этап 8 roadmap 19): `addWorklog`,
+// `transitions` (+ `mapTransitions`: вместо полей экрана — признак `requiresFields`, как в Jiraffe API v2), `transition`
+// (без полей экрана) и новый `addComment` (в Jiraffe 0.7.0 его нет); `startedWithOffset`/`localDate` — из src/jira/worklog.ts.
+// Поиск, Tempo, эпики, проекты, версии, вложения-скачивание — не копировались. В `issueDetail` убран best-effort
 // запрос названия эпика DC: у своего подключения нет определения поля Epic Link.
 import { HttpClient, JiraError, type HttpOptions } from './http';
 import { mapIssueDetail, mapUser, mapWorklog } from './mappers';
-import type { Instance, InstanceKind, IssueDetail, UserRef, Worklog } from './types';
+import type { Instance, InstanceKind, IssueDetail, StatusCategory, TransitionInfo, UserRef, Worklog } from './types';
 
 type Raw = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 const asArray = (r: unknown): Raw[] => (Array.isArray(r) ? (r as Raw[]) : []);
+
+const CATEGORY: Record<string, StatusCategory> = { new: 'new', indeterminate: 'indeterminate', done: 'done' };
+
+/**
+ * Ответ `GET /issue/{key}/transitions?expand=transitions.fields`. Agentura: обязательные поля экрана без значения по
+ * умолчанию не перечисляются — только `requiresFields` (такой переход без формы не выполнить).
+ */
+export function mapTransitions(r: unknown): TransitionInfo[] {
+  return asArray((r as Raw | undefined)?.transitions).map((t) => ({
+    id: String(t.id),
+    name: String(t.name ?? ''),
+    to: { name: String(t.to?.name ?? ''), category: CATEGORY[String(t.to?.statusCategory?.key)] ?? 'indeterminate' },
+    requiresFields: Object.values((t.fields ?? {}) as Record<string, Raw>).some((f) => f && f.required === true && f.hasDefaultValue !== true),
+  }));
+}
+
+/** `started` ворклога Jira: полдень выбранной даты с локальным смещением без двоеточия (`2026-10-04T12:00:00.000+0300`). */
+export function startedWithOffset(date: string): string {
+  const [y, m, d] = date.split('-').map(Number);
+  const off = -new Date(y!, m! - 1, d!, 12).getTimezoneOffset();
+  const abs = Math.abs(off);
+  const pad = (n: number): string => String(n).padStart(2, '0');
+  return `${date}T12:00:00.000${off >= 0 ? '+' : '-'}${pad(Math.floor(abs / 60))}${pad(abs % 60)}`;
+}
+
+/** Локальная дата `YYYY-MM-DD`. */
+export function localDate(d = new Date()): string {
+  const pad = (n: number): string => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
 
 export interface MyselfInfo { id: string; name: string; displayName: string; email?: string }
 
@@ -59,6 +91,36 @@ export class JiraClient {
       if (e instanceof JiraError && (e.status === 403 || e.status === 404)) return [];
       throw e;
     }
+  }
+
+  /** Agentura: комментарий `POST /rest/api/2/issue/{key}/comment`, тело — wiki-разметка (API v2) строкой. */
+  async addComment(key: string, body: string): Promise<{ id?: string }> {
+    const r = await this.http.postJson<Raw>(`/rest/api/2/issue/${encodeURIComponent(key)}/comment`, { body });
+    return r && r.id !== undefined ? { id: String(r.id) } : {};
+  }
+
+  /**
+   * Стандартная запись ворклога: `POST /rest/api/2/issue/{key}/worklog?adjustEstimate=…` (по умолчанию `leave` — как в
+   * скриптах: остаток оценки не трогаем). `started` — с локальным смещением (`startedWithOffset`), комментарий — строкой (API v2).
+   */
+  async addWorklog(
+    key: string,
+    w: { started: string; timeSpentSec: number; comment: string },
+    adjustEstimate: 'leave' | 'auto' = 'leave',
+  ): Promise<{ id?: string }> {
+    const body = { started: w.started, timeSpentSeconds: w.timeSpentSec, ...(w.comment ? { comment: w.comment } : {}) };
+    const r = await this.http.postJson<Raw>(`/rest/api/2/issue/${encodeURIComponent(key)}/worklog`, body, { adjustEstimate });
+    return r && r.id !== undefined ? { id: String(r.id) } : {};
+  }
+
+  /** Доступные текущему пользователю переходы задачи. */
+  async transitions(key: string): Promise<TransitionInfo[]> {
+    return mapTransitions(await this.http.getJson<Raw>(`/rest/api/2/issue/${encodeURIComponent(key)}/transitions`, { expand: 'transitions.fields' }));
+  }
+
+  /** Перевести задачу: `POST /issue/{key}/transitions`. Agentura: без полей экрана. */
+  async transition(key: string, id: string): Promise<void> {
+    await this.http.postJson(`/rest/api/2/issue/${encodeURIComponent(key)}/transitions`, { transition: { id } });
   }
 
   /**
