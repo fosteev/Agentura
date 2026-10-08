@@ -4,6 +4,8 @@
   "command.newSession.title": "New Session",
   "command.openLast.title": "Open Last Session",
   "command.resumeSession.title": "Resume Session",
+  "command.bindTask.title": "Bind Tab to Issue…",
+  "command.unbindTask.title": "Unbind from Issue",
   "command.refreshUsage.title": "Refresh Limits",
   "command.openSettings.title": "Settings",
   "command.feedStyle.title": "Feed Style…",

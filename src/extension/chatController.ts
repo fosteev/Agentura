@@ -566,7 +566,20 @@ export class ChatController {
   }
 
   private tabLabel(): string {
-    return tabTitle(this.status, this.title, hostStrings(this.deps.lang ?? 'ru').untitledTab);
+    return tabTitle(this.status, this.title, hostStrings(this.deps.lang ?? 'ru').untitledTab, this.taskKey);
+  }
+
+  /** Ключ задачи Jira, к которой привязан чат: попадает в заголовок вкладки; `undefined` — чат вне групп. */
+  private taskKey: string | undefined;
+
+  setTask(key: string | undefined): void {
+    if (this.taskKey === key) return;
+    this.taskKey = key;
+    this.deps.setTitle(this.tabLabel());
+  }
+
+  get task(): string | undefined {
+    return this.taskKey;
   }
 
   /** Название сессии сменили снаружи (переименование в списке). */

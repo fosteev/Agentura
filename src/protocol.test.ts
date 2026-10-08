@@ -116,6 +116,21 @@ describe('protocol', () => {
     for (const m of bad) expect(isFromWebview(m), JSON.stringify(m)).toBe(false);
   });
 
+  it('sessions.update несёт группы задач и метку task у строки (roadmap 19)', () => {
+    const post = vi.fn().mockResolvedValue(true);
+    const msg = {
+      type: 'sessions.update' as const,
+      sessions: [
+        { id: 's1', title: 'чат', turns: 1, state: 'idle' as const, updatedAt: 1, task: { key: 'K-1', title: 'Фикс' } },
+      ],
+      tasks: [
+        { taskKey: 'jira:a:K-1', meta: { key: 'K-1', instanceId: 'a', title: 'Фикс', url: '' }, sessionIds: ['s1'] },
+      ],
+    };
+    postToWebview({ postMessage: post }, msg);
+    expect(post).toHaveBeenCalledWith(msg);
+  });
+
   it('обёртки postMessage передают сообщение как есть', () => {
     const toWebview = vi.fn().mockResolvedValue(true);
     postToWebview({ postMessage: toWebview }, { type: 'init', surface: 'chat', version: '0.0.1' });

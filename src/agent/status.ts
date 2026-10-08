@@ -100,9 +100,16 @@ export function statusMarker(status: ChatStatus): string {
 export const TAB_TITLE_MAX = 40;
 
 /** Заголовок вкладки: маркер состояния + название сессии (или `untitled`, пока его нет). */
-export function tabTitle(status: ChatStatus, title: string | undefined, untitled: string): string {
+export function tabTitle(
+  status: ChatStatus,
+  title: string | undefined,
+  untitled: string,
+  /** Чат по задаче: ключ задачи перед названием («NEWMFC-1482 · название»); обрезается только название. */
+  taskKey?: string,
+): string {
   const marker = statusMarker(status);
   const name = title?.trim() || untitled;
-  const base = name.length > TAB_TITLE_MAX ? `${name.slice(0, TAB_TITLE_MAX - 1).trimEnd()}…` : name;
+  const short = name.length > TAB_TITLE_MAX ? `${name.slice(0, TAB_TITLE_MAX - 1).trimEnd()}…` : name;
+  const base = taskKey ? `${taskKey} · ${short}` : short;
   return marker ? `${marker} ${base}` : base;
 }

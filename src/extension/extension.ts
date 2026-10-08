@@ -12,6 +12,8 @@ import { DiffDocuments } from './diffDocuments';
 import { PreviewPanels } from './previewPanels';
 import { AccountService } from './account';
 import { SessionMemory } from './sessionMemory';
+import { TaskGroups, parseTaskKey, taskSessionRows } from './taskGroups';
+import { registerTaskCommands } from './taskCommands';
 import { SessionsService } from './sessionsService';
 import { showDebugState } from './debugPanel';
 import { SettingsPanel } from './settingsPanel';
@@ -62,6 +64,7 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
   const live = new LiveSessions();
   const transcripts = new TranscriptCache();
   const memory = new SessionMemory(context.workspaceState);
+  const taskGroups = new TaskGroups(context.workspaceState);
 
   // шрифты, скачанные из Google Fonts: папка данных расширения; сеть — только по команде
   const userFonts = new UserFonts({
@@ -105,7 +108,7 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
 
   const agyQuota = new AgyQuotaService(() => antigravityEngine.path());
   const codexLimits = new CodexLimitsService(async () => ((await codexEngine.available()) ? codexEngine.path() : undefined));
-  const sidebar = new SidebarProvider(context, log, usage, sessions, account, {
+  const sidebar = new SidebarProvider(context, log, usage, sessions, account, taskGroups, {
     codexLimits,
     agyQuota,
     codexEngine,
@@ -129,6 +132,7 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     sessions,
     account,
     memory,
+    taskGroups,
     engine,
     codexEngine,
     antigravityEngine,
@@ -333,9 +337,18 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
       const req = contextRequest(arg);
       if (req) return ChatPanel.openWithContext(context, log, services, req);
       log.warn(
-        'agentura.openWithContext: ожидается { context: string, name?, prompt?, sessionKey?: string }',
+        'agentura.openWithContext: ожидается { context: string, name?, prompt?, sessionKey?, task?: TaskMeta, session?: string }',
       );
     }),
+    // служебная: чаты группы задачи для меню «Открыть в Agentura» в Jiraffe (в палитру не выносится)
+    vscode.commands.registerCommand('agentura.taskSessions', async (arg: unknown) => {
+      const a = arg && typeof arg === 'object' ? (arg as Record<string, unknown>) : {};
+      if (typeof a.instanceId !== 'string' || typeof a.key !== 'string') return [];
+      const parsed = parseTaskKey(`jira:${a.instanceId}:${a.key}`);
+      if (!parsed) return [];
+      return taskSessionRows(taskGroups.group(parsed.taskKey), await sessions.list());
+    }),
+    ...registerTaskCommands(services),
     vscode.commands.registerCommand('agentura.showStatus', () =>
       ChatPanel.runStatus(context, log, services),
     ),

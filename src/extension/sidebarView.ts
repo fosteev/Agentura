@@ -10,6 +10,7 @@ import type { AgyQuotaService } from './agyQuota';
 import type { CodexLimitsService } from './codexLimits';
 import type { EngineLocator } from './engineLocator';
 import { summarizeAgy, summarizeCodex } from './engineLimits';
+import { decorateSessions, type TaskGroups } from './taskGroups';
 import { hostStrings } from '../shared/l10n';
 import { attachMessaging, currentLanguage, renderWebview, userFontsDir, webviewOptions } from './webviewHost';
 
@@ -39,6 +40,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     private readonly usage: UsageService,
     private readonly sessions: SessionsService,
     private readonly account: AccountService,
+    private readonly taskGroups: TaskGroups,
     private readonly engines: SidebarEngines,
   ) {}
 
@@ -91,6 +93,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         this.rows = rows;
         this.pushSessions();
       }),
+      this.taskGroups.onChange(() => this.pushSessions()),
       this.account.onUpdate((a) => this.post({ type: 'account.info', ...a })),
       this.engines.codexLimits.onUpdate(() => void this.pushEngineLimits()),
       this.engines.agyQuota.onUpdate(() => void this.pushEngineLimits()),
@@ -119,9 +122,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const current = ChatPanel.currentSessionId();
     const provider = ChatPanel.currentProvider();
     const project = vscode.workspace.workspaceFolders?.[0]?.name;
+    const { sessions, tasks } = decorateSessions(this.rows, this.taskGroups.groups());
     this.post({
       type: 'sessions.update',
-      sessions: this.rows,
+      sessions,
+      ...(tasks.length ? { tasks } : {}),
       ...(current ? { current } : {}),
       ...(project ? { project } : {}),
       ...(provider ? { currentProvider: provider } : {}),

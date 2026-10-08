@@ -41,6 +41,7 @@ import {
   type Route,
 } from './panelRouting';
 import type { ContextRequest } from './contextRequest';
+import { parseTaskKey, routeTaskOpen, taskKeyOf, type TaskGroups, type TaskKey, type TaskMeta } from './taskGroups';
 import type { SessionMemory } from './sessionMemory';
 import type { SessionsService } from './sessionsService';
 import type { UsageService } from './usage';
@@ -94,6 +95,8 @@ export interface ChatServices {
   sessions: SessionsService;
   account: AccountService;
   memory: SessionMemory;
+  /** Группы чатов по задачам Jira (roadmap 19). */
+  taskGroups: TaskGroups;
   /** Поиск `claude` (асинхронный, с прогревом). */
   engine: EngineLocator;
   /** Поиск `codex` (без прогрева: нужен только тому, кто выбрал Codex). */
@@ -226,8 +229,8 @@ export class ChatPanel {
   }
   private started = false;
   private lazy = false;
-  /** Внешний ключ (`openWithContext`): первая сессия вкладки запоминается под ним. */
-  private pendingKey: string | undefined;
+  /** Задача (`openWithContext`, «Привязать к задаче»): первая сессия вкладки входит в её группу. */
+  private pendingTask: { taskKey: TaskKey; meta: TaskMeta } | undefined;
   /** Вкладка графа агентов этой вкладки чата (roadmap 11, этап 2): одна на чат. */
   private readonly graph: ChatGraphSlot;
 
@@ -249,7 +252,8 @@ export class ChatPanel {
     return ChatPanel.panels.map((p) => ({
       sessionId: p.controller.sessionId,
       provider: p.provider,
-      pristine: p.controller.pristine,
+      // вкладка, ждущая задачу (контекст уже в поле ввода), — не пустая: ни чужой сессии, ни другой задаче её не отдаём
+      pristine: p.controller.pristine && !p.pendingTask,
       active: p.panel.active,
     }));
   }
@@ -319,10 +323,10 @@ export class ChatPanel {
   }
 
   /**
-   * Чат с контекстом снаружи (`agentura.openWithContext`, кнопка «Спросить ИИ» в Jiraffe): по ключу уже есть
-   * сессия — возобновить её, иначе новая вкладка с контекстом файлом в поле ввода. Сессия запоминается под ключом,
-   * когда движок пришлёт её id; ключ с сессией, которой нет в списке (так и не отправили), начинается заново.
-   * `prompt` — в поле ввода, если оно пустое.
+   * Чат с контекстом снаружи (`agentura.openWithContext`, «Открыть в Agentura» в Jiraffe). Есть задача (`task` или
+   * `sessionKey` вида `jiraffe:<инстанс>:<KEY>`) — чат входит в её группу: `session` = id возобновляет этот чат,
+   * `'new'` открывает новую вкладку, без поля — последний чат группы (если есть). Чат попадает в группу, когда
+   * движок пришлёт id сессии (`onSession`). Без задачи — всегда новая вкладка. `prompt` — в поле ввода, если оно пустое.
    */
   static async openWithContext(
     context: vscode.ExtensionContext,
@@ -330,19 +334,74 @@ export class ChatPanel {
     services: ChatServices,
     req: ContextRequest,
   ): Promise<void> {
-    const ref = req.sessionKey ? services.memory.keyed(req.sessionKey) : undefined;
-    if (ref && (await services.sessions.list()).some((r) => r.id === ref.id)) {
-      const panel = ChatPanel.resume(context, log, services, ref);
-      if (panel && req.prompt) panel.controller.prefill(req.prompt);
-      return;
+    const legacy = parseTaskKey(req.sessionKey);
+    const meta: TaskMeta | undefined =
+      req.task ??
+      (legacy ? { key: legacy.key, instanceId: legacy.instanceId, title: legacy.key, url: '' } : undefined);
+    const taskKey = meta ? taskKeyOf(meta.instanceId, meta.key) : undefined;
+    if (taskKey && meta) {
+      const route = routeTaskOpen(services.taskGroups.group(taskKey), await services.sessions.list(), req.session);
+      if (route.kind === 'resume') {
+        services.taskGroups.updateMeta(taskKey, meta);
+        const panel = ChatPanel.resume(context, log, services, route.ref);
+        if (panel && req.prompt) panel.controller.prefill(req.prompt);
+        return;
+      }
+      // вкладка этой задачи ещё не отправила ни одного сообщения (повторный клик, `'new'`) — она и есть новый чат
+      const waiting = ChatPanel.panels.find((p) => !p.controller.sessionId && p.pendingTask?.taskKey === taskKey);
+      if (waiting) {
+        waiting.panel.reveal();
+        if (req.prompt) waiting.controller.prefill(req.prompt);
+        return;
+      }
     }
     const panel = ChatPanel.apply(routeNew(ChatPanel.views()), context, log, services, {});
     if (!panel) return;
-    if (req.sessionKey) panel.pendingKey = req.sessionKey;
+    if (taskKey && meta) panel.bind(taskKey, meta);
     panel.controller.attachFiles([
       { name: req.name, path: req.name, kind: 'text', data: req.context, size: req.context.length },
     ]);
     if (req.prompt) panel.controller.prefill(req.prompt);
+  }
+
+  /**
+   * Привязать чат к задаче. Сессия уже есть — входит в группу сразу; иначе — когда движок пришлёт её id.
+   * Заголовок вкладки получает ключ задачи в обоих случаях.
+   */
+  bind(taskKey: TaskKey, meta: TaskMeta): void {
+    const id = this.controller.sessionId;
+    if (id) {
+      this.services.taskGroups.add(taskKey, meta, { provider: this.provider, id }, Date.now());
+      this.pendingTask = undefined;
+    } else {
+      this.pendingTask = { taskKey, meta };
+    }
+    this.controller.setTask(meta.key);
+    ChatPanel.sessionsChanged(this.services);
+  }
+
+  /** Ключ задачи вкладки (группа или ожидание первой сессии); нет — чат вне задач. */
+  get task(): string | undefined {
+    return this.controller.task;
+  }
+
+  /** Снять привязку: из группы, из ожидания и из заголовка. */
+  unbind(): void {
+    const id = this.controller.sessionId;
+    if (id) this.services.taskGroups.remove(id);
+    this.pendingTask = undefined;
+    this.controller.setTask(undefined);
+    ChatPanel.sessionsChanged(this.services);
+  }
+
+  /** Вкладка для команд «Привязать к задаче» / «Отвязать»: активная, иначе последняя активная. */
+  static target(): ChatPanel | undefined {
+    return ChatPanel.panels.find((p) => p.panel.active) ?? ChatPanel.lastActive;
+  }
+
+  /** Вкладка, в которой открыта сессия `id` (строка списка в боковой панели). */
+  static panelOf(id: string): ChatPanel | undefined {
+    return ChatPanel.panels.find((p) => p.controller.sessionId === id);
   }
 
   /** Кнопка `/status` боковой панели: выполнить во вкладке (активной или новой). */
@@ -564,10 +623,14 @@ export class ChatPanel {
         return row && row.title !== id ? row.title : undefined;
       },
       onSession: (id) => {
-        if (id && this.pendingKey) {
-          services.memory.setKeyed(this.pendingKey, { provider: this.provider, id });
-          this.pendingKey = undefined;
+        if (id && this.pendingTask) {
+          services.taskGroups.add(this.pendingTask.taskKey, this.pendingTask.meta, { provider: this.provider, id }, Date.now());
+          this.pendingTask = undefined;
         }
+        // новая сессия во вкладке (/clear, сбой возобновления) в группу не входит — ключ в заголовке только у ожидающей
+        this.controller.setTask(
+          id ? services.taskGroups.groupOf(id)?.group.task.key : this.pendingTask?.meta.key,
+        );
         this.graph.claimPending();
         ChatPanel.sessionsChanged(services);
       },
@@ -578,6 +641,9 @@ export class ChatPanel {
         services.memory.setEngineVersion(`claude ${v}`);
       },
     });
+
+    // возобновляемая сессия (клик в списке, Reload Window) из группы задачи — ключ задачи в заголовке сразу
+    if (open.resumeId) this.controller.setTask(services.taskGroups.groupOf(open.resumeId)?.group.task.key);
 
     this.graph = new ChatGraphSlot(
       {

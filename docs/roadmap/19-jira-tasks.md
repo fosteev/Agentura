@@ -1,10 +1,12 @@
 # 19 — Чаты по задачам Jira: группы, режим задачи, своё подключение и Jiraffe
 
-> **Статус:** черновик · 2026-10-08. Ветка `feature/task-groups` (от `feature/engine-limits`, 0.8.0 ещё не в main).
+> **Статус:** этап 1 принят 2026-10-08 (ветка `stage-1-task-groups` от `feature/task-groups`); этап 3 (Jiraffe) принят
+> отдельной приёмкой (`feature/agentura-tasks`, 30d982d); следующий — **2**. Ветка roadmap `feature/task-groups`
+> (от `feature/engine-limits`, 0.8.0 ещё не в main).
 > Прототип — `prototype/screens/tasks.html` (`#a|#b|#c|#d|#ask`) и `prototype/screens/task-mode.html`
 > (`#open|#comment|#changes|#rail|#jiraffe|#settings`); галерея v38, разделы «Режим задачи» и «Чаты по задачам Jira».
-> Исполнитель отмечает чекбоксы по ходу работы — по факту проверки. Ручные проверки — `19-jira-tasks.pending.md`
-> (создаёт приёмка этапа 9).
+> Исполнитель отмечает чекбоксы по ходу работы — по факту проверки. Ручные проверки и решения на
+> подтверждение — `19-jira-tasks.pending.md` (пополняется приёмкой каждого этапа).
 
 ## Цель
 
@@ -150,26 +152,89 @@ Jiraffe (`/Users/fost/Projects/jiraffe`, 0.7.0, ветка main, VS Code Marketp
 Группы вместо «ключ → одна сессия», расширенный `openWithContext`, команды для Jiraffe и ручной привязки.
 Без Jira-данных: метаданные задачи приходят из запроса.
 
-- [ ] `src/extension/taskGroups.ts`: `TaskKey`, `TaskMeta`, `parseTaskKey` (`jira:` и `jiraffe:`), `TaskGroups`
+- [x] `src/extension/taskGroups.ts`: `TaskKey`, `TaskMeta`, `parseTaskKey` (`jira:` и `jiraffe:`), `TaskGroups`
       над `MementoLike` (`groups()`, `groupOf(sessionId)`, `add(taskKey, meta, ref, openedAt)`, `remove(sessionId)`,
       `updateMeta`), миграция из `agentura.keyedSessions` (решение 2); тесты `taskGroups.test.ts`
-- [ ] `sessionMemory.ts`: `keyed/setKeyed` удалены, вызовы переведены на `TaskGroups`
-- [ ] `contextRequest.ts`: поля `task` и `session` (проверка недоверенного ввода, ограничения длины как у
+- [x] `sessionMemory.ts`: `keyed/setKeyed` удалены, вызовы переведены на `TaskGroups`
+- [x] `contextRequest.ts`: поля `task` и `session` (проверка недоверенного ввода, ограничения длины как у
       остальных полей); тесты в `contextRequest.test.ts`
-- [ ] `ChatPanel.openWithContext`: `session` = id → возобновить его; `'new'` → новая вкладка в группе; не задан →
+- [x] `ChatPanel.openWithContext`: `session` = id → возобновить его; `'new'` → новая вкладка в группе; не задан →
       последний чат группы (по `updatedAt`), если есть, иначе новый
-- [ ] команда `agentura.taskSessions` (служебная, без палитры) → `{id, provider, title, updatedAt, live}[]`
-- [ ] `SessionSummary` + `task?: { key; title; status?; statusCategory? }`; `sessions.update` несёт группы
+- [x] команда `agentura.taskSessions` (служебная, без палитры) → `{id, provider, title, updatedAt, live}[]`
+- [x] `SessionSummary` + `task?: { key; title; status?; statusCategory? }`; `sessions.update` несёт группы
       (`tasks: {taskKey, meta, sessionIds}[]`) — протокол и `protocol.test.ts`
-- [ ] команды «Agentura: Привязать вкладку к задаче…» (ввод ключа вида `NEWMFC-1482` или ссылки; инстанс —
+- [x] (код и парсер ввода проверены тестами; живой прогон — `19-jira-tasks.pending.md`) команды «Agentura: Привязать вкладку к задаче…» (ввод ключа вида `NEWMFC-1482` или ссылки; инстанс —
       из ссылки или выбор из известных групп/подключений; Jira не запрашивается) и «Отвязать от задачи»;
       nls ru/en
-- [ ] заголовок вкладки в режиме задачи «KEY · название» (`tabLabel`)
+- [x] заголовок вкладки в режиме задачи «KEY · название» (`tabLabel`)
 
 **Готово, когда:** `npm run check` зелёный; тест миграции `keyedSessions → taskGroups`; тест `openWithContext`
 с `session: 'new'` / id / без поля (юнит на маршрут); `agentura.taskSessions` возвращает чаты группы.
 
 **Сессия:** sonnet, high; первая, последовательно (всё дальше опирается на модель).
+
+**Решения (2026-10-08, по итогам сессии 1):**
+
+Раскладка файлов (`src/extension/`):
+- `taskGroups.ts` — модель и чистая логика без vscode: `TaskKey`, `TaskMeta`, `TaskGroup`, `taskKeyOf`, `parseTaskKey`,
+  `taskMeta` (проверка недоверенного ввода), класс `TaskGroups` (`groups() group(key) groupOf(id) add remove updateMeta
+  onChange`), `taskSessionRows`, `routeTaskOpen`, `decorateSessions`. Тесты — `taskGroups.test.ts`.
+- `taskLink.ts` — `parseIssueInput` (ключ / ссылка на задачу / ключ группы), `canonicalBaseUrl` и `instanceIdFromUrl`
+  (копия Jiraffe 0.7.0, id совпадает), `bareMeta`. Тесты — `taskLink.test.ts`.
+- `taskCommands.ts` — `registerTaskCommands(services)`: `agentura.bindTask`, `agentura.unbindTask` (необязательный аргумент —
+  id сессии из строки списка). `agentura.taskSessions` зарегистрирована в `extension.ts` рядом с `openWithContext`.
+- `ChatPanel`: `bind(taskKey, meta)`, `unbind()`, статические `target()` и `panelOf(id)`; `pendingKey` заменён на
+  `pendingTask`; `ChatServices.taskGroups`. `ChatController.setTask(key)` / `.task` — ключ в заголовке вкладки
+  (`tabTitle(..., taskKey?)` в `agent/status.ts`: «● KEY · название», обрезается только название).
+- `SidebarProvider` получает `taskGroups` (5-й параметр) и шлёт `sessions.update` с метками.
+
+Контракт (на него опираются этапы 2–5):
+- Хранилище `workspaceState['agentura.taskGroups']`: `Record<TaskKey, { task: TaskMeta; sessions: SessionRef[];
+  openedAt: Record<sessionId, number> }>`; `TaskKey = 'jira:<instanceId>:<KEY>'` (ключ в верхнем регистре, id — в нижнем).
+  `TaskMeta = { key; instanceId; title; status?; statusCategory?: 'new'|'indeterminate'|'done'; url }` — `url` всегда
+  строка (пустая, если неизвестна; только http/https). Группа без сессий не хранится; сессия — максимум в одной группе.
+- `TaskGroups.add(taskKey, meta, ref, openedAt)` идемпотентен: у уже состоящей в группе сессии `openedAt` не меняется.
+  `updateMeta`/`add` сливают метаданные: «голое» название (= ключ) и пустая `url` хорошее не затирают — этапу 2 можно
+  вызывать `updateMeta(taskKey, {title, status, statusCategory, url})` после каждого опроса. Подписка — `onChange(cb)`.
+- `agentura.openWithContext`: `{ name?, context, prompt?, sessionKey?, task?: TaskMeta, session?: string }`; `task`
+  проверяется `taskMeta` (key `[A-Za-z][A-Za-z0-9_]*-\d+`, instanceId `[a-z0-9-]{1,200}`, title ≤ 500, status ≤ 100,
+  url ≤ 2000 и http(s)). Нет `task`, но `sessionKey` вида `jiraffe:<инстанс>:<KEY>` (Jiraffe 0.7.0 / Agentura 0.8.0) —
+  задача берётся из него (название = ключ). `session`: `'new'` | id чата группы | нет (= последний чат группы по `updatedAt`
+  среди тех, что есть в списке сессий; иначе новая вкладка). Id не из группы трактуется как «не задан».
+- `agentura.taskSessions({instanceId, key})` → `{id, provider, title, updatedAt, live}[]`, новые сверху; только чаты из
+  списка сессий проекта (отправленные хотя бы раз); `live` = состояние `live|waiting`. Неверный аргумент — `[]`.
+- Протокол: `SessionSummary.task?: {key; title; status?; statusCategory?}`; `sessions.update.tasks?: TaskGroupSummary[]`
+  (`{taskKey, meta, sessionIds}`, id только из присланного списка, порядок как в списке; поле только в боковой панели,
+  у вкладки чата его нет; пустой массив не шлётся). Webview пока поле не читает — это этап 4.
+- Чат входит в группу, когда движок прислал id сессии (`onSession`); привязка уже начатой сессии — сразу. Вкладка при
+  открытии/возобновлении берёт ключ из группы (`groupOf`).
+
+Отступления и почему:
+- Миграция `keyedSessions`: переезжают только `jiraffe:*`; прочие ключи остаются в старом хранилище нетронутыми (ключ
+  удаляется, только если чужих нет). `keyed/setKeyed` удалены, поэтому `sessionKey` без распознаваемой задачи больше
+  не возобновляет сессию — единственный известный вызывающий (Jiraffe) шлёт ключ `jiraffe:*`.
+- `openedAt` у мигрированных сессий = 0 (время входа неизвестно); этап 2/5 должен трактовать 0 как «с начала».
+- `ListedRow`/`taskSessionRows` ищут сессию в списке по паре (id, provider) — различие Claude/Codex соблюдается.
+- Привязка с ключом без ссылки (`NEWMFC-1482`) возможна только к инстансу, уже известному по группам; своих подключений
+  и Jiraffe в этапе 1 нет, поэтому первый раз нужна ссылка. После этапа 2 — расширить `knownInstances` (`taskCommands.ts`)
+  подключениями и инстансами Jiraffe.
+- Для вкладки чата (`sessions.update` внутри `ChatPanel`) метки задач не добавлялись — не нужны до этапа 5.
+
+**Приёмка этапа 1 (2026-10-08):** контракт с Jiraffe 0.8.0 (30d982d) сверен — `task` и `session` важнее `sessionKey`
+(Jiraffe шлёт `sessionKey` всегда), `updatedAt` в мс, id ≤ 200 у обоих. Правки приёмки: вкладка задачи без
+отправленных сообщений переиспользуется повторным `openWithContext` той же задачи (и при `'new'`) и больше не считается
+пустой (`views().pristine`) — раньше клик по другой сессии или другой задаче забирал её вместе с `pendingTask` и
+файлом контекста; `/clear` во вкладке по задаче снимает ключ из заголовка сразу; `sessionKey`/`session` длиннее 200
+отбрасываются, а не режутся (обрезанный ключ — другая задача); `TaskGroups.add` не пишет группу с ключом не своей
+задачи и битый id, `readGroups` такие отбрасывает; «Отвязать» на непривязанном чате говорит «не привязан».
+Известные ограничения: удаления сессий в Agentura нет — ссылки на пропавшие сессии в группах не чистятся, а
+отфильтровываются при чтении (`taskSessionRows`, `decorateSessions`); `knownInstances` их учитывает (этап 4 — при
+желании чистить по `sessions.onChange`). Сессии сравниваются по id без провайдера (кроме `taskSessionRows`).
+`pendingTask` не переживает Reload Window: у вкладки без отправленных сообщений ключ из заголовка пропадает.
+
+Не проверено: команды `bindTask`/`unbindTask`, `taskSessions` и `openWithContext` в живом VS Code (склейка `ChatPanel`
+проверена только typecheck/lint; логика маршрута, парсеры и хранилище — юнит-тестами); восстановление ключа в заголовке
+после Reload Window; отображение в сайдбаре (этап 4). Проверки: `npm run check` (TZ=UTC) — 118 файлов, 1555 тестов, зелёный.
 
 ### 2. Источники Jira: своё подключение и Jiraffe (хост) — **sonnet, high**, после 1
 
@@ -349,6 +414,11 @@ test/fixtures/issue-dc.json. Зависимость ../l10n у Jiraffe заме�
 Шаги команды подключения — по образцу jiraffe src/commands/instances.ts:96 (addInstance).
 JiraffeSource работает с API из решения 6 — его ещё может не быть в установленном Jiraffe; это нормально, тест на
 фейковом exports.
+По реальному коду (после этапа 1): метаданные задачи после опроса — `TaskGroups.updateMeta(taskKey, {title, status,
+statusCategory, url})` (src/extension/taskGroups.ts; «голое» название и пустая url хорошее не затирают), подписка —
+`onChange`. openedAt = 0 у мигрированных сессий = «с начала» в eventsSince. «Agentura: Чат по задаче…» — через
+`ChatPanel.openWithContext(…, {name, context, task, session: 'new'})`; разбор ввода — `parseIssueInput` (taskLink.ts).
+Расширить `knownInstances` в src/extension/taskCommands.ts подключениями и инстансами Jiraffe.
 DoD: «Готово, когда» этапа 2. Проверка: npm run check.
 ```
 
@@ -376,6 +446,11 @@ DoD: «Готово, когда» этапа 3. Проверка: npm run lint &
 #c — section) и prototype/shared/tasks.css: перенести в media/*.css на токенах VS Code, как сделано для лимитов
 (media/hud.css). Эталон настройки-вида — agentura.sidebar.limits, места — «Чек-лист настройки-вида».
 Компоненты: src/webview/components/Sidebar.tsx, src/webview/sessionsView.ts; превью — SettingsPreview.tsx:581.
+По реальному коду (после этапа 1): данные — `sessions.update.tasks?: TaskGroupSummary[]` (`{taskKey, meta, sessionIds}`,
+id в порядке списка, поля нет — групп нет) и `SessionSummary.task?` (src/protocol.ts); шлёт только боковая панель
+(sidebarView.ts pushSessions, decorateSessions). Пункты меню строки — команды `agentura.bindTask` / `agentura.unbindTask`
+с аргументом id сессии (src/extension/taskCommands.ts). «＋» у группы — `agentura.openWithContext` нельзя без
+context; нужна команда «новый чат по задаче» (taskKey → новая вкладка с `bind`), добавить в этом этапе.
 DoD: «Готово, когда» этапа 4. Проверка: npm run check.
 ```
 
