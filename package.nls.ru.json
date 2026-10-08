@@ -4,6 +4,8 @@
   "command.newSession.title": "Новая сессия",
   "command.openLast.title": "Открыть последнюю сессию",
   "command.resumeSession.title": "Возобновить сессию",
+  "command.bindTask.title": "Привязать вкладку к задаче…",
+  "command.unbindTask.title": "Отвязать от задачи",
   "command.refreshUsage.title": "Обновить лимиты",
   "command.openSettings.title": "Настройки",
   "command.feedStyle.title": "Вид ленты…",

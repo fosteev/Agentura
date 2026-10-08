@@ -227,6 +227,8 @@ export type ToWebview =
       project?: string;
       /** Движок активной вкладки чата (`current` лимитов движков); нет вкладок — не задан. */
       currentProvider?: AgentProvider;
+      /** Группы задач (только боковая панель); нет — групп нет. */
+      tasks?: TaskGroupSummary[];
     }
   /**
    * Этап 6: история возобновлённой (или пересеянной после пересоздания webview) сессии. Webview
@@ -463,6 +465,23 @@ export interface SessionSummary {
   updatedAt: number;
   /** Контекст последнего запроса, токены — «131k» в строке списка. */
   contextTokens?: number;
+  /** Чат входит в группу задачи (`TaskGroups`): метка для списка сессий. */
+  task?: { key: string; title: string; status?: string; statusCategory?: 'new' | 'indeterminate' | 'done' };
+}
+
+/** Группа чатов по задаче в `sessions.update.tasks`: метаданные задачи и id её сессий (новые сверху, только из списка). */
+export interface TaskGroupSummary {
+  /** `jira:<instanceId>:<KEY>`. */
+  taskKey: string;
+  meta: {
+    key: string;
+    instanceId: string;
+    title: string;
+    status?: string;
+    statusCategory?: 'new' | 'indeterminate' | 'done';
+    url: string;
+  };
+  sessionIds: string[];
 }
 
 /** Строка квоты Antigravity: осталось % (0…100) и сброс в мс; `label` — `Gemini`, `Claude/GPT`. */

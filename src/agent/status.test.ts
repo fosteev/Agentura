@@ -103,5 +103,9 @@ describe('состояние чата', () => {
     const long = tabTitle('idle', 'а'.repeat(60), 'x');
     expect(long).toHaveLength(40);
     expect(long.endsWith('…')).toBe(true);
+    // чат по задаче: ключ перед названием, обрезается только название
+    expect(tabTitle('idle', 'Фикс', 'x', 'NEWMFC-1482')).toBe('NEWMFC-1482 · Фикс');
+    expect(tabTitle('working', undefined, 'Новая сессия', 'K-1')).toBe('● K-1 · Новая сессия');
+    expect(tabTitle('idle', 'а'.repeat(60), 'x', 'K-1')).toHaveLength(40 + 'K-1 · '.length);
   });
 });

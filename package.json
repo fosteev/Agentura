@@ -79,6 +79,16 @@
         "category": "Agentura"
       },
       {
+        "command": "agentura.bindTask",
+        "title": "%command.bindTask.title%",
+        "category": "Agentura"
+      },
+      {
+        "command": "agentura.unbindTask",
+        "title": "%command.unbindTask.title%",
+        "category": "Agentura"
+      },
+      {
         "command": "agentura.refreshUsage",
         "title": "%command.refreshUsage.title%",
         "category": "Agentura"
