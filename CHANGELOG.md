@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.0 — 2026-10-08
+
+### Added
+
+- **Chat with context from other extensions.** `agentura.openWithContext({ context, name?, prompt?, sessionKey? })`
+  opens a chat tab beside the editor with `context` attached as a text file in the input box and `prompt` typed into
+  an empty input. A session started this way is remembered under `sessionKey` (per workspace), so the next call
+  resumes it; a key whose session was never sent starts over. Jiraffe uses it for "Ask AI" on a Jira issue.
+
 ## 0.7.1 — 2026-10-07
 
 ### Changed
