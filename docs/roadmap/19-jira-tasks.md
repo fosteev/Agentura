@@ -1,7 +1,7 @@
 # 19 — Чаты по задачам Jira: группы, режим задачи, своё подключение и Jiraffe
 
 > **Статус:** этап 1 принят 2026-10-08 (ветка `stage-1-task-groups` от `feature/task-groups`); этап 3 (Jiraffe) принят
-> отдельной приёмкой (`feature/agentura-tasks`, 30d982d); этап 2 принят 2026-10-08 (ветка `stage-2-jira-sources`); этап 4 принят 2026-10-08 (ветка `stage-4-sidebar-tasks`); этап 5 принят 2026-10-08 (ветка `stage-5-task-tab`, вёрстка — ручная проверка в pending); этап 6 принят 2026-10-08 (ветка `stage-6-integrations`, вёрстка и живые действия — ручная проверка в pending); этап 7 принят 2026-10-08 (ветка `stage-7-task-tab-per-task`, вёрстка и живое переключение/Reload Window — ручная проверка в pending); этап 8 принят 2026-10-08 (ветка `stage-8-agent-jira-tools`; Jiraffe API v2 — jiraffe 489333d; живой прогон записи — в pending); следующий — **9**. Ветка roadmap `feature/task-groups`
+> отдельной приёмкой (`feature/agentura-tasks`, 30d982d); этап 2 принят 2026-10-08 (ветка `stage-2-jira-sources`); этап 4 принят 2026-10-08 (ветка `stage-4-sidebar-tasks`); этап 5 принят 2026-10-08 (ветка `stage-5-task-tab`, вёрстка — ручная проверка в pending); этап 6 принят 2026-10-08 (ветка `stage-6-integrations`, вёрстка и живые действия — ручная проверка в pending); этап 7 принят 2026-10-08 (ветка `stage-7-task-tab-per-task`, вёрстка и живое переключение/Reload Window — ручная проверка в pending); этап 8 принят 2026-10-08 (ветка `stage-8-agent-jira-tools`; Jiraffe API v2 — jiraffe 489333d; живой прогон записи — в pending); этап 9 (релиз 0.9.0) принят 2026-10-08 (ветка `stage-9-release`). **Все этапы приняты 2026-10-08.** Осталось: ручная проверка владельцем (pending «Проверить руками»), мерж `feature/task-groups` в main и релиз Jiraffe 0.8.0 / Agentura 0.9.0 — решение владельца. Ветка roadmap `feature/task-groups`
 > (от `feature/engine-limits`, 0.8.0 ещё не в main).
 > Прототип — `prototype/screens/tasks.html` (`#a|#b|#c|#d|#ask`) и `prototype/screens/task-mode.html`
 > (`#open|#comment|#changes|#rail|#jiraffe|#settings`); галерея v38, разделы «Режим задачи» и «Чаты по задачам Jira».
@@ -904,13 +904,13 @@ high параллельно.
 
 ### 9. Релиз 0.9.0 — **сам (Opus) или sonnet, medium**, после 8
 
-- [ ] `docs/features.md` — строка A16 «Чаты по задачам Jira»; `CHANGELOG.md` (английский); README — раздел и
+- [x] `docs/features.md` — строка A16 «Чаты по задачам Jira»; `CHANGELOG.md` (английский); README — раздел и
       скриншот
-- [ ] галерея «Режим задачи: настоящий webview» (`scripts/readme-shots/` + фикстура задачи), раздел в артефакте
-- [ ] `19-jira-tasks.pending.md` — ручные проверки (живой Jira DC и Cloud, Jiraffe 0.8.0 и без него, своё
+- [x] галерея «Режим задачи: настоящий webview» (`scripts/readme-shots/` + фикстура задачи), раздел в артефакте
+- [x] `19-jira-tasks.pending.md` — ручные проверки (живой Jira DC и Cloud, Jiraffe 0.8.0 и без него, своё
       подключение в двух воркспейсах, комментарий агента, комментарий человека во время хода, Reload Window; вкладка на задачу —
       переключение внутренних вкладок с идущим ходом и карточкой разрешения, «＋»/«×», Reload Window с несколькими чатами)
-- [ ] версия 0.9.0, `npm run package`, vsix без `.codex/` и `AGENTS.md`
+- [x] версия 0.9.0, `npm run package`, vsix без `.codex/` и `AGENTS.md`
 
 По реальному коду (после этапа 8): `zod` теперь внешний в `esbuild.mjs` и грузится `import('zod')` рядом с SDK — он в `dependencies`,
 проверить, что попал в vsix (`npx vsce ls | grep zod`), и что инструменты Jira работают из собранного vsix (не только из dev-хоста);
@@ -918,11 +918,30 @@ MCP-сервер называется `agentura_jira` (в README/CHANGELOG — �
 и не выпущен — релиз Jiraffe 0.8.0 до или вместе с Agentura 0.9.0; в CHANGELOG — запись агентом в Jira от имени пользователя, что
 спрашивается, а что нет. Ручные проверки этапа 8 — в pending («Этап 8»).
 
-- [ ] (решение владельца 2026-10-08) ворклог агента: `aiTokens` = сумма токенов этого чата (как считает Agentura), если
+- [x] (решение владельца 2026-10-08) ворклог агента: `aiTokens` = сумма токенов этого чата (как считает Agentura), если
       агент не передал своё число; Jiraffe — в `logWork`, своё подключение (без Tempo) — дописать «(AI Tokens: N)» в
       комментарий, как Jiraffe; тест
 
 **Готово, когда:** vsix собран, pending-файл есть.
+
+**Решения (2026-10-08, по итогам сессии 9):**
+
+- AI Tokens: `ChatController.tokens` = вход + выход + запись кэша `turn.result` основных ходов (без `agentId`); чтение кэша не
+  считается (повтор контекста каждый ход раздул бы число в разы) — **допущение**, не канон Jira/Tempo. Пересчитывается по истории
+  при возобновлении и пересеве, обнуляется на `/clear`. **Приёмка:** счёт вынесен в `TokenTally` и включает `usage.message`
+  идущего хода (ворклог пишется до его `turn.result`; иначе первый ход чата давал 0 и ворклог без поля); итог хода заменяет
+  накопленное. Вкладка задачи (этап 7): у каждого внутреннего чата свой `ChatPanel` → свой контроллер → число того чата, где
+  агент пишет ворклог. `AgentJiraTools` подставляет число, если агент не передал `aiTokens`
+  (инструмент `worklog` принимает его необязательным); 0 — поля нет. Jiraffe — `aiTokens` в `logWork`; своё подключение —
+  `appendAiTokens` → «(AI Tokens: N)» в конце комментария ворклога (копия Jiraffe).
+- Скриншоты: `node scripts/readme-shots/run.mjs tasks` (только кадры задач; без аргумента — все); кадры обеих тем в
+  `TASK_SHOTS_DIR`, `docs/images/jira-tasks.png` (сайдбар `groups` + вкладка «задача» на «изменениях», тёмная). В `lib.mjs` в
+  список CSS добавлен `tasks.css`. Фикстура — конец `data.mjs`.
+- README/README.ru: раздел «Jira tasks» перед Remote Control; имена команд — по `package.nls` («Chat for Issue…», «Bind to Issue…»).
+- vsix: `agentura-0.9.0.vsix` собран (3225 файлов, 6.75 МБ), `node_modules/zod` внутри, `.codex/` и `AGENTS.md` нет. Не публиковался,
+  в VS Code не ставился; запуск инструментов из vsix — в pending. `TZ=UTC npm run check`: 136 файлов, 1842 теста.
+- Приёмка: в CHANGELOG/README/README.ru — пункт «что уходит в модель» (приватность); дубли ручных проверок этапа 9 с этапом 7
+  сведены ссылками; в фикстуре `team.atlassian.net` → `example.atlassian.net`.
 
 ## Промты сессий
 

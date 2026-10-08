@@ -324,6 +324,13 @@ describe('JiraffeSource: запись (API v2, этап 8)', () => {
     ]);
   });
 
+  it('aiTokens уходит в logWork Jiraffe (Tempo ставит атрибут, без Tempo — в комментарий)', async () => {
+    const calls: unknown[][] = [];
+    const w = new JiraffeSource(v2(calls, {})).writer!;
+    await w.logWork('jf', 'A-1', { seconds: 60, date: '2026-10-05', comment: 'x', aiTokens: 4200 });
+    expect(calls).toEqual([['logWork', 'jf', 'A-1', { seconds: 60, started: '2026-10-05', comment: 'x', aiTokens: 4200 }]]);
+  });
+
   it('ворклог в Tempo — id не отдаётся (это не id ворклога Jira в ленте); отказ Jiraffe — как есть', async () => {
     const tempo = new JiraffeSource(v2([], { logWork: async () => ({ via: 'tempo', id: 't-1' }) })).writer!;
     expect(await tempo.logWork('jf', 'A-1', { seconds: 60, date: '2026-10-05', comment: 'x' })).toEqual({});
@@ -451,6 +458,14 @@ describe('OwnSource: запись (этап 8)', () => {
     expect(wl.timeSpentSeconds).toBe(3600);
     expect(wl.comment).toBe('сделал');
     expect(wl.started).toMatch(/^2026-10-05T12:00:00\.000[+-]\d{4}$/);
+  });
+
+  it('AI Tokens: без Tempo дописываются в комментарий ворклога, как у Jiraffe; без числа — комментарий как есть', async () => {
+    const { calls, w } = await setup();
+    await w.logWork('own', 'ABC-1', { seconds: 60, date: '2026-10-05', comment: 'сделал', aiTokens: 120000 });
+    await w.logWork('own', 'ABC-1', { seconds: 60, date: '2026-10-05', comment: '', aiTokens: 5 });
+    await expect(w.logWork('own', 'ABC-1', { seconds: 60, date: '2026-10-05', comment: '', aiTokens: -1 })).rejects.toThrow(/aiTokens/);
+    expect(calls.map((c) => (c.body as { comment?: string }).comment)).toEqual(['сделал (AI Tokens: 120000)', '(AI Tokens: 5)']);
   });
 
   it('переход не из списка или с обязательными полями — отказ без записи', async () => {

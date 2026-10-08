@@ -25,6 +25,8 @@ Personal project, not on the Marketplace. Install it from a `.vsix` (see [Instal
   in the native diff.
 - **Remote Control.** Keep driving a Claude session from claude.ai/code or the Claude mobile app: `rc` under the
   input box or `/rc`. See [Remote Control](#remote-control).
+- **Jira tasks.** Chats grouped by Jira issue, a task card and change feed beside the chat, and Claude can comment,
+  change status and log work on the issue. See [Jira tasks](#jira-tasks).
 - **Sidebar.** The project's sessions: search, resume, rename. Account and limits are shown above the list — for every
   installed engine (Claude, Codex, Antigravity), in one of five layouts.
 - **Right panel.**
@@ -154,6 +156,32 @@ What differs from Claude:
 - Conversation history is read from `agy`'s local storage (`~/.gemini/antigravity-cli`), an internal format that may
   change; if it does, history degrades to what was seen live. Conversations of the open folder appear in the sidebar
   and on the empty screen with an engine label (resume and rename work; without `agy` they are simply absent).
+
+## Jira tasks
+
+Chats on the same Jira issue are grouped under it in the sidebar (`agentura.tasks.sidebar`: `groups` or `section`).
+Start one with "Agentura: Chat for Issue…" (a key or a link), "Open in Agentura" in the
+[Jiraffe](https://github.com/fosteev/jiraffe) extension, or bind an existing tab with "Bind to Issue…".
+
+- **Source.** `agentura.jira.source`: `auto` (default), `jiraffe`, `own`, `off`. Own connections are made with
+  "Agentura: Connect Jira…" (Data Center or Cloud; the token goes to SecretStorage, per workspace). The Jiraffe
+  integration needs Jiraffe **0.8.0**. Everything is on the "Integrations" settings page.
+- **Task strip and "task" tab.** A strip with the issue above the feed, and a "task" tab in the right panel: the card
+  (description, comments, attachments, the task's chats) and "changes" (status, comments, worklogs; the agent's
+  comments are highlighted, a comment from a person made during a turn shows a "send to agent?" notice).
+  `agentura.tasks.card`: `panel`, `split`, `strip`.
+- **A tab per task.** `agentura.tasks.tab=task` keeps one editor tab per task with its chats as inner tabs.
+- **Agent tools (Claude).** The in-process MCP server `agentura_jira` gives `comment`, `transition` and `worklog` on
+  the chat's task, on your behalf. A short comment on that task is posted without asking; a status change, a worklog,
+  a long or secret-looking comment, or anything on another task goes through the permission card, in every mode.
+  `agentura.jira.agentTools` switches each tool off. The worklog carries this chat's token usage as AI Tokens (a Tempo
+  attribute through Jiraffe, "(AI Tokens: N)" in the comment otherwise): input, output and cache writes of the main
+  turns, without cache reads and subagents.
+- **What reaches the model.** The task's key and connection name; the issue card only when "Chat for Issue…" (or Jiraffe's
+  "Open in Agentura") puts it into the prompt box and you send it; a person's comment only when you move it to the chat. The card and the change
+  feed are polled by the extension and are not sent anywhere else.
+
+![Jira tasks: a task group in the sidebar, the strip and the "task" tab with the agent's comment](docs/images/jira-tasks.png)
 
 ## Remote Control
 

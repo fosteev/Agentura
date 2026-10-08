@@ -22,6 +22,8 @@ export interface WorkInput {
   seconds: number;
   date: string;
   comment: string;
+  /** Токены ИИ: Tempo — атрибут AI Tokens (Jiraffe), своё подключение — «(AI Tokens: N)» в конце комментария. */
+  aiTokens?: number;
 }
 
 /** Потолки записи — как у Jiraffe API v2 (комментарий 32 000, комментарий ворклога 30 000, ворклог до суток). */
@@ -61,8 +63,12 @@ function checkWork(w: WorkInput): WorkInput {
   if (!Number.isInteger(w.seconds) || w.seconds < 1 || w.seconds > MAX_WORK_SECONDS) throw new Error(`seconds must be an integer from 1 to ${MAX_WORK_SECONDS}`);
   if (!isIsoDate(w.date)) throw new Error(`invalid date "${String(w.date).slice(0, 20)}"`);
   if (typeof w.comment !== 'string' || w.comment.length > MAX_WORK_COMMENT) throw new Error(`worklog comment is longer than ${MAX_WORK_COMMENT} characters`);
+  if (w.aiTokens !== undefined && (!Number.isInteger(w.aiTokens) || w.aiTokens < 0)) throw new Error('aiTokens must be a non-negative integer');
   return w;
 }
+
+/** Без Tempo AI Tokens дописываются в конец комментария — как у Jiraffe (`appendAiTokens`). */
+export const appendAiTokens = (comment: string, tokens: number): string => `${comment ? `${comment} ` : ''}(AI Tokens: ${tokens})`;
 
 const CATEGORIES: readonly StatusCategory[] = ['new', 'indeterminate', 'done'];
 
@@ -126,8 +132,13 @@ export class JiraffeSource implements JiraSource {
         await api.transition(inst, normalizeIssueKey(key), id);
       },
       logWork: async (inst, key, w) => {
-        const { seconds, date, comment } = checkWork(w);
-        const r: unknown = await api.logWork(inst, normalizeIssueKey(key), { seconds, started: date, ...(comment ? { comment } : {}) });
+        const { seconds, date, comment, aiTokens } = checkWork(w);
+        const r: unknown = await api.logWork(inst, normalizeIssueKey(key), {
+          seconds,
+          started: date,
+          ...(comment ? { comment } : {}),
+          ...(aiTokens !== undefined ? { aiTokens } : {}),
+        });
         // id Tempo — не id ворклога Jira в ленте задачи: событие найдётся по виду
         return r && typeof r === 'object' && (r as { via?: unknown }).via === 'jira' ? idOf(r) : {};
       },
@@ -198,9 +209,9 @@ export class OwnSource implements JiraSource {
       },
       logWork: async (inst, key, w) => {
         const k = normalizeIssueKey(key);
-        const { seconds, date, comment } = checkWork(w);
+        const { seconds, date, comment, aiTokens } = checkWork(w);
         // своё подключение пишет стандартный worklog Jira (Tempo — только через Jiraffe; решение этапа 8)
-        return (await this.client(inst)).client.addWorklog(k, { started: startedWithOffset(date), timeSpentSec: seconds, comment });
+        return (await this.client(inst)).client.addWorklog(k, { started: startedWithOffset(date), timeSpentSec: seconds, comment: aiTokens !== undefined ? appendAiTokens(comment, aiTokens) : comment });
       },
     };
   }

@@ -173,10 +173,78 @@ jobs.push(async () => {
   await montage({ single: true, frames: [{ src: raw, crop: [0, 0, 2200, 704] }], out: join(OUT, 'settings-look.png') }, TMP);
 });
 
+// ---- 8. Jira tasks (roadmap 19, stage 9): `node scripts/readme-shots/run.mjs tasks` renders only these --------------
+// Frames of both themes go to TASK_SHOTS_DIR (task-real-<frame>-<theme>.png); the README picture is docs/images/jira-tasks.png.
+
+const SHOTS = process.env.TASK_SHOTS_DIR;
+if (SHOTS) mkdirSync(SHOTS, { recursive: true });
+const taskJobs = [];
+const taskMsgs = [data.taskState(), data.taskChatRows()];
+const seenOld = () => Date.now() - 60 * 60_000; // everything newer than this is "new" in the feed
+
+const taskSidebar = (theme, mode) => put(TMP, `${name('tsidebar')}.html`, surfaceHtml({
+  surface: 'sidebar', theme, bg: THEMES[theme].side,
+  messages: [
+    { type: 'sidebar.view', view: 'compact', context: true, time: true, top: 'compact', tasks: mode },
+    { type: 'account.info', ...data.account },
+    limitsMsg(),
+    { type: 'sessions.update', sessions: data.taskSessions, current: 's1', project: data.PROJECT, tasks: data.taskGroups },
+  ],
+}));
+
+const taskChat = (theme, panel, extra = []) => chatPage(theme, data.taskTurn(), panel, { extra: [...taskMsgs, ...extra] });
+const out = (frame, theme) => (SHOTS ? join(SHOTS, `task-real-${frame}-${theme}.png`) : join(TMP, `task-real-${frame}-${theme}.png`));
+const single = (src, dest) => montage({ single: true, frames: [{ src }], out: dest }, TMP);
+
+for (const theme of ['dark', 'light']) {
+  for (const mode of ['groups', 'section']) {
+    taskJobs.push(async () => {
+      const page = put(TMP, `${name('tside')}.html`, splitHtml({ theme, w: 300, h: 760, panes: [{ file: taskSidebar(theme, mode), w: 300 }] }));
+      await single(await shot(page, png('tside'), 300, 760), out(`sidebar-${mode}`, theme));
+    });
+  }
+  for (const view of ['card', 'changes']) {
+    taskJobs.push(async () => {
+      const panel = { ...WIDE, tab: 'task', taskView: view, taskSeen: seenOld(), taskSeenKey: data.TASK_KEY };
+      await single(await shot(taskChat(theme, panel), png('tchat'), 1100, 760), out(`chat-${view}`, theme));
+    });
+  }
+  taskJobs.push(async () => {
+    const panel = { ...WIDE, tab: 'task', taskView: 'changes', taskSeen: seenOld(), taskSeenKey: data.TASK_KEY };
+    const chat = taskChat(theme, panel, [data.tabChats()]);
+    await single(await shot(chat, png('ttab'), 1100, 760), out('tab', theme));
+  });
+  taskJobs.push(async () => {
+    const values = {
+      defaultPermissionMode: 'manual', allowBypassPermissions: false, defaultModel: '', defaultEffort: 'high',
+      contextThresholds: [120_000, 150_000], usagePollMinutes: 15, 'limits.readKeychain': true, claudeExecutable: '',
+      'sessionList.view': 'compact', 'sessionList.context': true, 'sessionList.time': true, 'sidebar.top': 'detailed',
+      'feed.style': 'journal', 'composer.layout': 'classic', 'agents.view': 'list', 'git.layout': 'stack', 'feed.fontSize': 13, 'ui.fontSize': 13,
+      'font.interface': '', 'font.panels': '', 'font.code': '', language: 'auto',
+      'tasks.sidebar': 'groups', 'tasks.card': 'panel', 'tasks.tab': 'chat', 'jira.source': 'auto', 'tasks.refresh': '30s',
+      'tasks.humanChanges': true, 'jira.agentTools': { comment: true, transition: true, worklog: true },
+    };
+    const page = put(TMP, `${name('tsettings')}.html`, surfaceHtml({
+      surface: 'settings', theme, state: { settingsSection: 'integrations' },
+      messages: [{ type: 'settings.state', values, overridden: [] }, { type: 'integrations.state', state: data.integrations }],
+    }));
+    await single(await shot(page, png('tsettings'), 1100, 760), out('integrations', theme));
+  });
+}
+
+// README picture: sidebar with the task group + chat with the "changes" feed (dark), like the hero
+taskJobs.push(async () => {
+  const side = taskSidebar('dark', 'groups');
+  const panel = { ...WIDE, tab: 'task', taskView: 'changes', taskSeen: seenOld(), taskSeenKey: data.TASK_KEY };
+  const chat = taskChat('dark', panel);
+  const page = put(TMP, `${name('tshero')}.html`, splitHtml({ theme: 'dark', w: 1324, h: 760, panes: [{ file: side, w: 300 }, { file: chat, w: 1023 }] }));
+  await single(await shot(page, png('tshero'), 1324, 760), join(OUT, 'jira-tasks.png'));
+});
+
 // ---- go --------------------------------------------------------------------------------------------------------
 
 try {
-  await pool(jobs, 4);
+  await pool(process.argv[2] === 'tasks' ? taskJobs : [...jobs, ...taskJobs], 4);
   console.log(`done: ${OUT}`);
 } finally {
   if (!process.env.KEEP_TMP) rmSync(TMP, { recursive: true, force: true });

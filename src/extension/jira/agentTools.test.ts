@@ -14,7 +14,7 @@ const TRANSITIONS: TransitionInfo[] = [
   { id: '31', name: 'Resolve', to: { name: 'Done', category: 'done' }, requiresFields: true },
 ];
 
-function setup(opts: { kind?: 'own' | 'jiraffe'; writes?: boolean; settings?: AgentToolsSetting; task?: string | undefined } = {}) {
+function setup(opts: { kind?: 'own' | 'jiraffe'; writes?: boolean; settings?: AgentToolsSetting; task?: string | undefined; tokens?: number } = {}) {
   const calls: unknown[][] = [];
   const writer: JiraWriter = {
     addComment: vi.fn(async (...a: unknown[]) => {
@@ -45,6 +45,7 @@ function setup(opts: { kind?: 'own' | 'jiraffe'; writes?: boolean; settings?: Ag
     settings: () => settings,
     afterWrite,
     today: () => '2026-10-08',
+    ...('tokens' in opts ? { aiTokens: () => opts.tokens } : {}),
   });
   return {
     tools,
@@ -123,6 +124,18 @@ describe('AgentJiraTools.run', () => {
     expect(fields.isError).toBe(true);
     expect(fields.text).toMatch(/requires screen fields/);
     expect(s.calls).toHaveLength(2);
+  });
+
+  it('worklog: aiTokens — число агента важнее, иначе токены чата; нет расхода — поля нет; мусор — отказ', async () => {
+    const s = setup({ tokens: 120_000 });
+    await s.tools.run('worklog', { minutes: 10 });
+    await s.tools.run('worklog', { minutes: 10, aiTokens: 777 });
+    expect((await s.tools.run('worklog', { minutes: 10, aiTokens: -5 })).isError).toBe(true);
+    expect((await s.tools.run('worklog', { minutes: 10, aiTokens: 1.5 })).isError).toBe(true);
+    expect(s.calls.map((c) => (c[3] as { aiTokens?: number }).aiTokens)).toEqual([120_000, 777]);
+    const none = setup({ tokens: 0 });
+    await none.tools.run('worklog', { minutes: 10 });
+    expect(none.calls[0]![3]).not.toHaveProperty('aiTokens');
   });
 
   it('worklog: минуты → секунды, дата по умолчанию — сегодня, будущее и мусор — отказ', async () => {

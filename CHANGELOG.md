@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.9.0 — 2026-10-08
+
+### Added
+
+- **Chats by Jira task.** Chats on the same Jira issue are grouped under it. `agentura.tasks.sidebar` picks the
+  sidebar layout: `groups` (default — chats nested in the session list under the task key) or `section` (a "Tasks"
+  section above "Sessions", a key tag on the session row). "Agentura: Chat for Issue…" starts a chat from a key or a
+  link; "Bind to Issue…" / "Unbind from Issue" bind and unbind an existing one; "+" on a group starts one more
+  chat on the task.
+- **Two Jira sources.** Connections made in Agentura ("Agentura: Connect Jira…", Jira Data Center and Cloud, the token
+  lives in SecretStorage per workspace) or the [Jiraffe](https://github.com/fosteev/jiraffe) extension, which needs
+  **0.8.0** for the integration (older versions are ignored and Agentura falls back to its own connections).
+  `agentura.jira.source`: `auto` (default), `jiraffe`, `own`, `off`.
+- **Task strip and "task" tab.** A chat on a task gets a strip above the feed (key, status, title, link) and a "task"
+  tab in the right panel: the card (description, comments, attachments, the task's chats) and "changes" (status and
+  field changes, comments, worklogs; what the agent wrote is highlighted, a comment from a person made while the agent
+  was working shows a notice with "to chat"). `agentura.tasks.card`: `panel` (default), `split` (Jiraffe's card beside
+  the chat, Jiraffe source only) or `strip`. `agentura.tasks.refresh` and `agentura.tasks.humanChanges` tune polling
+  and the notices.
+- **A tab per task.** `agentura.tasks.tab=task` opens one editor tab per task with its chats as inner tabs
+  (`chat` — a tab per chat — stays the default).
+- **Integrations settings page.** Source, Jiraffe status, the list of own connections (connect, test, remove),
+  refresh, human changes and the agent tools in one place.
+- **Jira tools for Claude.** In a chat on a task the agent can write to it on your behalf through the in-process MCP
+  server `agentura_jira`: `comment`, `transition`, `worklog`, switched per tool with `agentura.jira.agentTools`. A
+  short comment on the chat's own task is posted without asking; a long one, one that looks like a secret, more than
+  three in ten minutes, a comment on another task, plan mode, every status change and every worklog go through the
+  usual permission card (also in bypass and auto modes). Codex and Antigravity do not get these tools.
+- **AI Tokens in worklogs.** A worklog the agent writes carries this chat's token usage so far (input, output and
+  cache writes of the main turns, the current turn included; cache reads and subagents are not counted) unless the
+  agent passes its own number: Tempo through Jiraffe gets the "AI Tokens" attribute, a plain Jira worklog gets
+  "(AI Tokens: N)" appended to its comment.
+- **What reaches the model.** The issue key and connection name of a chat's task go to Claude with the Jira tools;
+  the issue card (description, comments) only as the file "Chat for Issue…" (or Jiraffe's "Open in Agentura")
+  puts into the prompt box, a person's
+  comment only when you move it to the chat, and whatever the agent's own Jira tool calls return. Polling for the
+  card and the change feed stays in the extension.
+
 ## 0.8.0 — 2026-10-08
 
 ### Added
