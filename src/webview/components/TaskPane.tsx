@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { AgentProvider } from '../../agent/types';
 import type { TaskChatRow, TaskEvent, TaskStateMessage } from '../../shared/task';
+import type { TabChatsMessage } from '../../shared/taskTab';
 import { ENGINE_MARK, ENGINE_MARK_CLASS } from '../engineLimitsView';
 import { pillClass } from '../sessionsView';
 import { ui } from '../strings';
@@ -350,6 +351,44 @@ export function TaskStrip({ state }: { state: TaskStateMessage & { taskKey: stri
           {link}
         </button>
       )}
+    </div>
+  );
+}
+
+/**
+ * Внутренние вкладки вкладки на задачу (`tasks.tab = task`, этап 7, `tasks.html#b`/`#d`): чаты задачи под полоской,
+ * «×» закрывает чат, «＋» — новый чат по задаче. Точка — статус чата (у фонового «ждёт ответа» видно сразу).
+ */
+export function ChatTabs({ state }: { state: TabChatsMessage }) {
+  const t = ui.task;
+  return (
+    <div class="tk-ctabs" role="tablist" aria-label={t.tabsAria}>
+      {state.chats.map((c) => {
+        const label = c.title || t.tabUntitled;
+        const status = c.status === 'idle' ? undefined : t.tabStatus[c.status];
+        return (
+          <span key={c.id} class={c.active ? 'ctab on' : 'ctab'} data-status={c.status}>
+            <button
+              role="tab"
+              class="cn"
+              aria-selected={c.active}
+              data-tip={status ? `${label} · ${status}` : label}
+              onClick={() => !c.active && send({ type: 'tab.select', id: c.id })}
+            >
+              {status && <span class={`dot ${c.status}`} aria-label={status} />}
+              <Mark provider={c.provider} />
+              <span class="n">{label}</span>
+            </button>
+            <button class="x" aria-label={t.tabClose} data-tip={t.tabClose} onClick={() => send({ type: 'tab.close', id: c.id })}>
+              ×
+            </button>
+          </span>
+        );
+      })}
+      <button class="plus" aria-label={t.tabNew} data-tip={t.tabNew} onClick={() => send({ type: 'tab.new' })}>
+        ＋
+      </button>
+      <span class="rt">{t.tabCount(state.chats.length)}</span>
     </div>
   );
 }

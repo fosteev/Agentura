@@ -22,6 +22,7 @@ import { isAgentGraphView, type AgentGraphView } from './shared/agentsGraph';
 import type { GitNotice, GitRequest } from './shared/git';
 import type { IntegrationsState } from './shared/integrations';
 import type { TaskChatsMessage, TaskRequest, TaskStateMessage } from './shared/task';
+import type { TabChatsMessage, TabRequest } from './shared/taskTab';
 import type {
   EngineCheck,
   AgentsView,
@@ -297,7 +298,9 @@ export type ToWebview =
    */
   | TaskStateMessage
   /** Чаты группы задачи вкладки для блока «Чаты по задаче» (этап 5). */
-  | TaskChatsMessage;
+  | TaskChatsMessage
+  /** Вкладка на задачу (`tasks.tab = task`, этап 7): внутренние вкладки чатов и состояние для сериализатора. */
+  | TabChatsMessage;
 
 /**
  * Webview → extension. Этап 3 добавил `files.find`, `attach.pick`, `sessions.show`, `diff.open` и
@@ -421,7 +424,9 @@ export type FromWebview =
   /** Вкладка «git» (roadmap 12): `git.watch|stage|unstage|discard|commit|sync|branch|open|openFile|message`. */
   | GitRequest
   /** Вкладка задачи (roadmap 19, этап 2): ↻, комментарий в поле ввода, открыть задачу/вложение. */
-  | TaskRequest;
+  | TaskRequest
+  /** Внутренние вкладки вкладки задачи (этап 7): показать, закрыть, «＋». */
+  | TabRequest;
 
 /** Картинка из диалога «+»: исходный файл или причина, почему не прочитан. */
 export interface PickedImage {
@@ -584,6 +589,9 @@ const FROM_WEBVIEW_TYPES: Record<FromWebview['type'], true> = {
   'task.openExternal': true,
   'task.openChat': true,
   'task.connect': true,
+  'tab.select': true,
+  'tab.close': true,
+  'tab.new': true,
 };
 
 /** `error.code` карточки «claude не найден»: webview рисует инструкцию и «Открыть настройки». */
@@ -628,6 +636,8 @@ const FIELD_CHECKS: Partial<Record<FromWebview['type'], (m: Record<string, unkno
   'integrations.test': (m) => str(m.instanceId) && m.instanceId.length > 0 && m.instanceId.length <= 200,
   'integrations.disconnect': (m) => str(m.instanceId) && m.instanceId.length > 0 && m.instanceId.length <= 200,
   'task.connect': () => true,
+  'tab.select': (m) => str(m.id) && m.id.length > 0 && m.id.length <= 100,
+  'tab.close': (m) => str(m.id) && m.id.length > 0 && m.id.length <= 100,
   'task.openChat': (m) => str(m.sessionId) && m.sessionId.length > 0 && m.sessionId.length <= 200,
   'task.toComposer': (m) => str(m.commentId) && m.commentId.length > 0 && m.commentId.length <= 200,
   'task.openExternal': (m) => m.attachmentId === undefined || (str(m.attachmentId) && m.attachmentId.length <= 200),

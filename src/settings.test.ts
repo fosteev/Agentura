@@ -95,6 +95,9 @@ describe('sessionList', () => {
     expect(validateSetting('tasks.sidebar', 'tree').ok).toBe(false);
     expect(validateSetting('tasks.card', 'split')).toEqual({ ok: true, value: 'split' });
     expect(validateSetting('tasks.card', 'tab').ok).toBe(false);
+    expect(validateSetting('tasks.tab', 'task')).toEqual({ ok: true, value: 'task' });
+    expect(validateSetting('tasks.tab', 'chat')).toEqual({ ok: true, value: 'chat' });
+    expect(validateSetting('tasks.tab', 'panel').ok).toBe(false);
     expect(validateSetting('jira.source', 'own')).toEqual({ ok: true, value: 'own' });
     expect(validateSetting('jira.source', 'cloud').ok).toBe(false);
     expect(validateSetting('tasks.refresh', 'manual')).toEqual({ ok: true, value: 'manual' });
@@ -216,6 +219,7 @@ describe('readSettings', () => {
         'sidebar.limits': 'grid',
         'tasks.sidebar': 'tree',
         'tasks.card': 'tab',
+        'tasks.tab': 'split',
         'jira.source': 'x',
         'tasks.refresh': '1s',
         'feed.style': 'grid',
@@ -231,6 +235,7 @@ describe('readSettings', () => {
       'sidebar.limits': 'active',
       'tasks.sidebar': 'groups',
       'tasks.card': 'panel',
+      'tasks.tab': 'chat',
       'jira.source': 'auto',
       'tasks.refresh': '30s',
       'tasks.humanChanges': true,

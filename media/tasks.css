@@ -65,10 +65,10 @@
 .tk-strip .pill.wip, .tkp .pill.wip { --c: var(--info); }
 .tk-strip .pill.done, .tkp .pill.done { --c: var(--ok); }
 .tk-strip .pill.open, .tkp .pill.open { --c: var(--fg-mute); }
-.tkp .mk { display: inline-grid; place-items: center; width: 14px; height: 14px; border-radius: 3px; font: 700 9px/1 var(--mono); color: #fff; flex: none; font-style: normal; }
-.tkp .mk.claude { background: #c96442; }
-.tkp .mk.codex { background: #6b6bd6; }
-.tkp .mk.agy { background: #2f7de1; }
+.tkp .mk, .tk-ctabs .mk { display: inline-grid; place-items: center; width: 14px; height: 14px; border-radius: 3px; font: 700 9px/1 var(--mono); color: #fff; flex: none; font-style: normal; }
+.tkp .mk.claude, .tk-ctabs .mk.claude { background: #c96442; }
+.tkp .mk.codex, .tk-ctabs .mk.codex { background: #6b6bd6; }
+.tkp .mk.agy, .tk-ctabs .mk.agy { background: #2f7de1; }
 
 /* полоска над лентой: строка между шапкой (и плашкой лимита) и телом чата */
 .webview:has(> .tk-strip) { grid-template-rows: auto auto 1fr auto; }
@@ -77,6 +77,27 @@
 .tk-strip .ttl { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tk-strip .lnk { color: var(--link); white-space: nowrap; }
 .tk-strip .lnk:hover { text-decoration: underline; }
+
+/* внутренние вкладки вкладки на задачу (`tasks.tab = task`, этап 7; эталон — tasks.html#b, #d): ряд под полоской */
+.webview:has(> .tk-ctabs) { grid-template-rows: auto auto 1fr auto; }
+.webview:has(> .banner):has(> .tk-ctabs),
+.webview:has(> .tk-strip):has(> .tk-ctabs) { grid-template-rows: auto auto auto 1fr auto; }
+.webview:has(> .banner):has(> .tk-strip):has(> .tk-ctabs) { grid-template-rows: auto auto auto auto 1fr auto; }
+.tk-ctabs { display: flex; align-items: stretch; height: 30px; padding: 0 8px; min-width: 0; border-bottom: 1px solid var(--line); font-family: var(--font); font-size: 12.5px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.tk-ctabs .ctab { display: flex; align-items: center; min-width: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+.tk-ctabs .ctab.on { border-bottom-color: var(--fg); }
+.tk-ctabs .ctab .cn { display: flex; gap: 6px; align-items: center; height: 100%; max-width: 220px; min-width: 0; padding: 0 2px 0 10px; color: var(--fg-mute); }
+.tk-ctabs .ctab.on .cn { color: var(--fg); }
+.tk-ctabs .ctab .n { overflow: hidden; text-overflow: ellipsis; }
+.tk-ctabs .ctab .x { padding: 0 8px 0 4px; color: var(--fg-faint); visibility: hidden; }
+.tk-ctabs .ctab:is(.on, :hover, :focus-within) .x { visibility: visible; }
+.tk-ctabs .ctab .x:hover { color: var(--fg); }
+.tk-ctabs .dot { width: 6px; height: 6px; border-radius: 50%; flex: none; background: var(--info); }
+.tk-ctabs .dot.waiting { background: var(--warn); }
+.tk-ctabs .dot:is(.error, .limited) { background: var(--err, var(--full)); }
+.tk-ctabs .plus { align-self: center; margin-left: 2px; padding: 0 6px; font-size: 16px; color: var(--fg-mute); }
+.tk-ctabs .plus:hover { color: var(--fg); }
+.tk-ctabs .rt { margin-left: auto; padding-left: 8px; align-self: center; color: var(--fg-mute); font: 11px var(--mono); white-space: nowrap; }
 
 /* вкладка «задача»: колонка на всю высоту панели, тело скроллится само, «Чаты по задаче» закреплены внизу */
 html:is([data-width="900"],[data-width="full"],[data-width="vscode"]) .pane.side[data-active="task"] #pane-task:not([hidden]) { display: flex !important; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }

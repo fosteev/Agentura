@@ -70,6 +70,7 @@ import {
 } from './chatState';
 import type { AgentsView, ComposerLayout, FeedStyle, GitLayout, TaskCardMode } from '../settings';
 import type { TaskChatRow, TaskStateMessage } from '../shared/task';
+import type { TabChatsMessage } from '../shared/taskTab';
 import type { GitOp, GitSnapshot } from '../shared/git';
 import { pushHistory } from './composer';
 import { applyHud, contextMax, initialHud, resetHud, type HudState } from './hudState';
@@ -77,7 +78,7 @@ import { cacheView, contextFullAt, contextView, kilo, limitsView } from './hudVi
 import { limitBlock, type LimitBlock } from './limitView';
 import { ui } from './strings';
 import { shortModel } from './toolView';
-import { forgetSession, persistSession, send } from './vscode';
+import { forgetSession, persistSession, saveTaskTab, send, setTabChat } from './vscode';
 
 export const chat = signal<ChatState>(initialState());
 /** Движок вкладки и его возможности (`chat.info`); нет полей в сообщении — Claude. Переживают `session.reset`. */
@@ -140,6 +141,36 @@ export const taskCardMode = signal<TaskCardMode>('panel');
 export const taskState = signal<TaskStateMessage | undefined>(undefined);
 /** Чаты группы задачи вкладки (`task.chats`) для блока «Чаты по задаче». */
 export const taskChats = signal<TaskChatRow[]>([]);
+/** Вкладка на задачу (`tasks.tab = task`, этап 7): её чаты внутренними вкладками; нет — обычная вкладка чата. */
+export const tabChats = signal<TabChatsMessage | undefined>(undefined);
+/** Id показанного чата вкладки задачи: поле ввода помнит черновик по нему. */
+export const activeTabChat = computed<string | undefined>(() => tabChats.value?.chats.find((c) => c.active)?.id);
+
+/** Черновики полей ввода фоновых чатов вкладки задачи (только в памяти webview). */
+interface ChatDraft {
+  text?: string;
+  extra: Attachment[];
+  images: DraftImage[];
+  files: DraftFile[];
+  dismissed: ReadonlySet<string>;
+}
+const chatDrafts = new Map<string, ChatDraft>();
+/** Чипы показанного чата, которые вернуть после его пересева (`switchTabChat`). */
+let restoreExtra: Attachment[] | undefined;
+
+/** Текст поля ввода чата `id` уходит в фон / возвращается (`Composer` монтируется заново на каждый чат). */
+export function stashComposerText(id: string, text: string): void {
+  const d = chatDrafts.get(id);
+  if (d) d.text = text;
+  else chatDrafts.set(id, { text, extra: [], images: [], files: [], dismissed: new Set() });
+}
+
+export function takeComposerText(id: string): string {
+  const d = chatDrafts.get(id);
+  const text = d?.text ?? '';
+  if (d) d.text = undefined;
+  return text;
+}
 export const history = signal<string[]>([]);
 
 /** Вкладка «git» (roadmap 12): последний снимок хоста; `undefined` — хост ещё не прислал («git загружается…»). */
@@ -308,7 +339,8 @@ export function handleHostMessage(m: ToWebview): void {
       // хост шлёт историю строго после всех событий прежней сессии: брошенных «хвостов» больше не будет
       abandonedSessionId = undefined;
       replyTarget.value = undefined;
-      extra.value = [];
+      extra.value = restoreExtra ?? [];
+      restoreExtra = undefined;
       const now = Date.now();
       chat.value = seedHistory(chat.value, m, m.events, now);
       selectedAgent.value = undefined;
@@ -428,8 +460,21 @@ export function handleHostMessage(m: ToWebview): void {
       chat.value = resetSession(chat.value);
       hudState.value = resetHud(hudState.value);
       selectedAgent.value = undefined;
-      extra.value = [];
+      extra.value = restoreExtra ?? [];
+      restoreExtra = undefined;
       break;
+    case 'tab.chats': {
+      const prev = activeTabChat.value;
+      const next = m.chats.find((c) => c.active)?.id;
+      // `persist.active` — только у показанного чата с сессией: ему хост пересеет историю (`session.history`)
+      if (prev !== undefined && next !== prev) switchTabChat(prev, next, m.persist.active !== undefined);
+      setTabChat(next);
+      // черновики закрытых чатов больше не нужны
+      for (const id of chatDrafts.keys()) if (!m.chats.some((c) => c.id === id)) chatDrafts.delete(id);
+      tabChats.value = m;
+      saveTaskTab(m.persist);
+      break;
+    }
     case 'git.state': {
       gitSnapshot.value = m.snapshot;
       // репозиторий исчез — его черновик и ошибка больше не нужны
@@ -485,6 +530,41 @@ export function handleHostMessage(m: ToWebview): void {
     default:
       break;
   }
+}
+
+/**
+ * Вкладка задачи показала другой чат (этап 7): сессионное состояние прежнего уходит (черновик поля ввода — в
+ * `chatDrafts`), ленту, приборы и возможности движка нового хост пересеет следом (`ready` → `reseed`). Состояние
+ * вкладки (панель, git, задача, лимиты, контекст редактора) остаётся — оно общее у чатов вкладки.
+ */
+function switchTabChat(prev: string, next: string | undefined, seeded: boolean): void {
+  const old = chatDrafts.get(prev);
+  chatDrafts.set(prev, {
+    ...(old?.text !== undefined ? { text: old.text } : {}),
+    extra: extra.value,
+    images: draftImages.value,
+    files: draftFiles.value,
+    dismissed: dismissed.value,
+  });
+  const d = next !== undefined ? chatDrafts.get(next) : undefined;
+  extra.value = d?.extra ?? [];
+  draftImages.value = d?.images ?? [];
+  draftFiles.value = d?.files ?? [];
+  dismissed.value = d?.dismissed ?? new Set();
+  // пересев (`session.history` / `session.reset`) сбрасывает чипы — черновик чата вернётся после него
+  restoreExtra = seeded && extra.value.length ? extra.value : undefined;
+  // полоска и блок «Чаты по задаче» — от показанного чата (у чата без задачи хост их не пришлёт)
+  taskState.value = undefined;
+  taskChats.value = [];
+  // события прежнего чата хост больше не шлёт — фильтр брошенной сессии здесь только мешал бы возврату к ней
+  abandonedSessionId = undefined;
+  replyTarget.value = undefined;
+  chat.value = resetSession(chat.value);
+  hudState.value = resetHud(hudState.value);
+  selectedAgent.value = undefined;
+  sessionAttach.value = { pdfPages: 0, chars: 0 };
+  capabilities.value = { models: [], commands: [] };
+  prefill.value = undefined;
 }
 
 export function dispatchEvent(event: AgentEvent, now = Date.now()): void {

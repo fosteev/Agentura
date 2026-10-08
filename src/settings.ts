@@ -55,6 +55,13 @@ export const TASK_CARD_MODES = ['panel', 'split', 'strip'] as const;
 export type TaskCardMode = (typeof TASK_CARD_MODES)[number];
 export const DEFAULT_TASK_CARD: TaskCardMode = 'panel';
 /**
+ * Вкладки редактора для чатов по задаче (`tasks.tab`, roadmap 19, вариант Б): `chat` — вкладка на чат (как без задач),
+ * `task` — вкладка на задачу, её чаты — внутренними вкладками под полоской задачи.
+ */
+export const TASK_TAB_MODES = ['chat', 'task'] as const;
+export type TaskTabMode = (typeof TASK_TAB_MODES)[number];
+export const DEFAULT_TASK_TAB: TaskTabMode = 'chat';
+/**
  * Источник Jira (`jira.source`, roadmap 19): `auto` — Jiraffe, если установлен и отдаёт API, иначе свои подключения
  * Agentura (если есть); `jiraffe` / `own` — только он; `off` — Jira не используется (группы в сайдбаре остаются).
  */
@@ -146,6 +153,7 @@ export type SettingKey =
   | 'sidebar.limits'
   | 'tasks.sidebar'
   | 'tasks.card'
+  | 'tasks.tab'
   | 'jira.source'
   | 'tasks.refresh'
   | 'tasks.humanChanges'
@@ -181,6 +189,7 @@ export const SETTING_KEYS: readonly SettingKey[] = [
   'sidebar.limits',
   'tasks.sidebar',
   'tasks.card',
+  'tasks.tab',
   'jira.source',
   'tasks.refresh',
   'tasks.humanChanges',
@@ -234,6 +243,7 @@ export interface SettingsValues {
   'sidebar.limits': SidebarLimitsMode;
   'tasks.sidebar': TaskSidebarMode;
   'tasks.card': TaskCardMode;
+  'tasks.tab': TaskTabMode;
   'jira.source': JiraSourceSetting;
   'tasks.refresh': TaskRefreshMode;
   'tasks.humanChanges': boolean;
@@ -287,6 +297,10 @@ export function isTaskSidebarMode(v: unknown): v is TaskSidebarMode {
 
 export function isTaskCardMode(v: unknown): v is TaskCardMode {
   return typeof v === 'string' && (TASK_CARD_MODES as readonly string[]).includes(v);
+}
+
+export function isTaskTabMode(v: unknown): v is TaskTabMode {
+  return typeof v === 'string' && (TASK_TAB_MODES as readonly string[]).includes(v);
 }
 
 export function isSidebarTopMode(v: unknown): v is SidebarTopMode {
@@ -480,6 +494,8 @@ export function validateSetting(key: SettingKey, value: unknown, lang: ErrLang =
       return isTaskCardMode(value)
         ? { ok: true, value }
         : bad(t.allowed(TASK_CARD_MODES.join(', ')));
+    case 'tasks.tab':
+      return isTaskTabMode(value) ? { ok: true, value } : bad(t.allowed(TASK_TAB_MODES.join(', ')));
     case 'jira.source':
       return isJiraSource(value) ? { ok: true, value } : bad(t.allowed(JIRA_SOURCES.join(', ')));
     case 'tasks.refresh':
@@ -516,6 +532,7 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
   const limits = cfg.get<unknown>('sidebar.limits');
   const taskSb = cfg.get<unknown>('tasks.sidebar');
   const taskCard = cfg.get<unknown>('tasks.card');
+  const taskTab = cfg.get<unknown>('tasks.tab');
   const jiraSource = cfg.get<unknown>('jira.source');
   const taskRefresh = cfg.get<unknown>('tasks.refresh');
   const feed = cfg.get<unknown>('feed.style');
@@ -555,6 +572,7 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
     'sidebar.limits': isSidebarLimitsMode(limits) ? limits : DEFAULT_SIDEBAR_LIMITS,
     'tasks.sidebar': isTaskSidebarMode(taskSb) ? taskSb : DEFAULT_TASK_SIDEBAR,
     'tasks.card': isTaskCardMode(taskCard) ? taskCard : DEFAULT_TASK_CARD,
+    'tasks.tab': isTaskTabMode(taskTab) ? taskTab : DEFAULT_TASK_TAB,
     'jira.source': isJiraSource(jiraSource) ? jiraSource : DEFAULT_JIRA_SOURCE,
     'tasks.refresh': isTaskRefresh(taskRefresh) ? taskRefresh : DEFAULT_TASK_REFRESH,
     'tasks.humanChanges': cfg.get<unknown>('tasks.humanChanges') !== false,

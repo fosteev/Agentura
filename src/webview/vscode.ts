@@ -1,4 +1,5 @@
 import type { AgentProvider } from '../agent/types';
+import type { TaskTabState } from '../shared/taskTab';
 import { postToHost, type FromWebview, type ToWebview, type VsCodeApiLike } from '../protocol';
 
 declare function acquireVsCodeApi(): VsCodeApiLike;
@@ -13,8 +14,16 @@ export function host(): VsCodeApiLike {
   return api;
 }
 
+/** Показанный чат вкладки задачи (этап 7): им помечается каждое сообщение хосту (`tab`), см. `TabSlots.receive`. */
+let tabChat: string | undefined;
+
+export function setTabChat(id: string | undefined): void {
+  tabChat = id;
+}
+
 export function send(message: FromWebview): void {
-  postToHost(host(), message);
+  // сообщение, отправленное до того, как webview узнал о переключении чата хостом, не должно уйти новому чату
+  postToHost(host(), tabChat === undefined ? message : ({ ...message, tab: tabChat } as unknown as FromWebview));
 }
 
 /** Состояние правой панели вкладки чата (широкий режим): свои значения у каждой вкладки. */
@@ -57,6 +66,8 @@ export interface WebviewState {
   settingsSection?: SettingsSection;
   /** Вкладка графа агентов: выбранные ход и агент (`sessionId` — сессия, которую граф показывал). */
   graph?: GraphViewState;
+  /** Вкладка на задачу (`tasks.tab = task`, roadmap 19, этап 7): её чаты — по ним сериализатор вернёт их все. */
+  taskTab?: TaskTabState;
 }
 
 /** Выбор во вкладке графа агентов: переживает скрытие вкладки и перезагрузку окна. */
@@ -106,7 +117,13 @@ export function persistSession(sessionId: string, provider?: AgentProvider): voi
  */
 export function forgetSession(): void {
   const st = readState();
-  writeState(st.panel ? { panel: st.panel } : {});
+  // список чатов вкладки задачи принадлежит вкладке (его ведёт хост), а не брошенной сессии
+  writeState({ ...(st.panel ? { panel: st.panel } : {}), ...(st.taskTab ? { taskTab: st.taskTab } : {}) });
+}
+
+/** Чаты вкладки задачи от хоста (`tab.chats.persist`): сериализатор вернёт их после перезагрузки окна. */
+export function saveTaskTab(taskTab: TaskTabState): void {
+  writeState({ ...readState(), taskTab });
 }
 
 /**

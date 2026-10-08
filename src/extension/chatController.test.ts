@@ -1765,6 +1765,63 @@ describe('ChatController: сессии (этап 6)', () => {
     ]);
   });
 
+  it('вкладка задачи (этап 7): фоновый чат — ход идёт, статус «ждёт ответа» виден, при показе всё пересевается', async () => {
+    const { controller, sessions, posted } = setupResume();
+    controller.start();
+    await controller.handle({ type: 'ready' });
+    await tick();
+    const s = sessions[0]!;
+    s.id = 'bg-1';
+    s.emit({
+      type: 'session.init',
+      sessionId: 'bg-1',
+      model: 'sonnet',
+      cwd: '/p',
+      permissionMode: 'default',
+      tools: [],
+      slashCommands: [],
+      skills: [],
+      agents: [],
+      apiKeySource: 'none',
+      engineVersion: '2.1.285',
+    });
+    s.emit({ type: 'session.title', title: 'фоновый' });
+    // чат ушёл в фон: всё, что он шлёт, вкладка задачи глушит
+    posted.length = 0;
+    s.emit({ type: 'turn.start', at: 100 });
+    expect(controller.chatStatus).toBe('working');
+    s.emit({ type: 'permission.request', toolUseId: 'perm-1', toolName: 'Bash', input: {}, canAlwaysAllow: false });
+    expect(controller.chatStatus).toBe('waiting');
+    expect(controller.chatTitle).toBe('фоновый');
+    await tick();
+    posted.length = 0;
+    // чат снова показан: синтетический ready
+    await controller.handle({ type: 'ready' });
+    await tick();
+    await tick();
+    const kinds = posted.map((m) =>
+      m.type === 'agent.event' ? `event:${m.event.type}` : m.type,
+    );
+    expect(kinds).toContain('session.history');
+    expect(kinds).toContain('event:turn.start');
+    expect(kinds).toContain('event:permission.request');
+    expect(kinds).toContain('event:session.title');
+    expect(kinds).toContain('capabilities');
+  });
+
+  it('новый чат без сессии при повторном ready получает возможности движка (меню моделей не пустое)', async () => {
+    const { controller, posted } = setupResume();
+    controller.start();
+    await controller.handle({ type: 'ready' });
+    await tick();
+    posted.length = 0;
+    await controller.handle({ type: 'ready' });
+    await tick();
+    await tick();
+    expect(posted.some((m) => m.type === 'capabilities')).toBe(true);
+    expect(posted.some((m) => m.type === 'session.history')).toBe(false);
+  });
+
   it('ready в первый раз у новой сессии ничего не пересевает', async () => {
     const { controller, posted } = setupResume();
     controller.start();

@@ -12,7 +12,6 @@ import type { AgyStateStore } from '../agent/antigravity/sessionIndex';
 import type { AgentAdapter, AgentProvider, SessionRef } from '../agent/types';
 import { readOAuthToken, type LimitsSource } from '../data/limits';
 import type { LiveSessions, TranscriptCache } from '../data/sessions';
-import { postToWebview } from '../protocol';
 import {
   DEFAULT_AGENTS_VIEW,
   DEFAULT_FEED_STYLE,
@@ -57,7 +56,11 @@ import type { GitService } from './git/gitService';
 import { isGitRequest } from '../shared/git';
 import type { Logger } from './logger';
 import { hostStrings } from '../shared/l10n';
-import { attachMessaging, currentLanguage, renderWebview, userFontsDir, webviewOptions } from './webviewHost';
+import { currentLanguage, userFontsDir, webviewOptions } from './webviewHost';
+import { panelSurface, type ChatSurface } from './chatSurface';
+import { TaskTabPanel } from './taskTabPanel';
+import type { SlotInfo } from './tabSlots';
+import { readTaskTabState, restoredTabChats, type TaskTabState } from '../shared/taskTab';
 import { WorkspaceFiles } from './workspaceFiles';
 import { writeImageTemp } from './imageFiles';
 import { fileName } from '../shared/files';
@@ -215,6 +218,16 @@ interface OpenOptions {
   panel?: vscode.WebviewPanel;
   /** Колонка для новой/показываемой вкладки (сплит `tasks.card = split`: чат рядом с карточкой Jiraffe). */
   column?: vscode.ViewColumn;
+  /**
+   * Чат задачи при `tasks.tab = task` (этап 7): новый чат идёт внутренней вкладкой во вкладку этой задачи (её нет —
+   * создаётся). Нет — своя вкладка редактора, как до этапа 7.
+   */
+  task?: TaskKey;
+}
+
+/** `agentura.tasks.tab = task`: чаты задачи — внутренними вкладками одной вкладки на задачу. */
+function taskTabMode(): boolean {
+  return readSettings(vscode.workspace.getConfiguration('agentura'))['tasks.tab'] === 'task';
 }
 
 /** Открытый документ с несохранёнными изменениями по пути файла (сравнение — `samePath`: `fsPath`, Windows). */
@@ -253,14 +266,14 @@ export class ChatPanel {
   /** Id сессии активной (или последней активной) вкладки — строка `cur` боковой панели. */
   static currentSessionId(): string | undefined {
     return (
-      ChatPanel.panels.find((p) => p.panel.active)?.controller.sessionId ??
+      ChatPanel.panels.find((p) => p.surface.active)?.controller.sessionId ??
       ChatPanel.lastActive?.controller.sessionId
     );
   }
 
   /** Движок активной (или последней активной) вкладки — «текущий» для лимитов боковой панели. */
   static currentProvider(): AgentProvider | undefined {
-    const p = ChatPanel.panels.find((x) => x.panel.active) ?? ChatPanel.lastActive;
+    const p = ChatPanel.panels.find((x) => x.surface.active) ?? ChatPanel.lastActive;
     return p?.provider;
   }
 
@@ -270,7 +283,10 @@ export class ChatPanel {
       provider: p.provider,
       // вкладка, ждущая задачу (контекст уже в поле ввода), — не пустая: ни чужой сессии, ни другой задаче её не отдаём
       pristine: p.controller.pristine && !p.pendingTask,
-      active: p.panel.active,
+      active: p.surface.active,
+      ...(p.surface.shown ? {} : { background: true }),
+      // чат вкладки задачи: пустым его занимает только чат той же задачи (`routeResume`/`routeNew` с `tab`)
+      ...(p.surface.taskTab ? { tab: p.surface.taskTab } : {}),
     }));
   }
 
@@ -292,17 +308,23 @@ export class ChatPanel {
     if (route.kind === 'new') {
       const folder = ChatPanel.folder();
       if (!folder) return undefined;
-      const column = open.column ?? ChatPanel.panels.at(-1)?.panel.viewColumn ?? vscode.ViewColumn.Beside;
+      const column = open.column ?? ChatPanel.panels.at(-1)?.surface.viewColumn ?? vscode.ViewColumn.Beside;
+      if (open.task && !open.panel && taskTabMode()) {
+        const tab = TaskTabPanel.forTask(open.task) ?? TaskTabPanel.create(context, log, open.task, column);
+        const chat = ChatPanel.inTab(tab, context, log, services, folder, open);
+        chat.surface.reveal(open.column);
+        return chat;
+      }
       const panel =
         open.panel ??
         vscode.window.createWebviewPanel(CHAT_VIEW_TYPE, 'Agentura', column, {
           ...webviewOptions(context.extensionUri, userFontsDir(context)),
           retainContextWhenHidden: true,
         });
-      return new ChatPanel(panel, context, log, services, folder, open);
+      return new ChatPanel(panelSurface(panel, context, log), context, log, services, folder, open);
     }
     const target = ChatPanel.panels[route.index]!;
-    target.panel.reveal(open.column);
+    target.surface.reveal(open.column);
     if (route.kind === 'reuse' && open.resumeId) {
       void target.controller.resume(open.resumeId, true, open.provider ?? 'claude');
     }
@@ -323,6 +345,37 @@ export class ChatPanel {
     ChatPanel.apply(routeNew(ChatPanel.views()), context, log, services, {});
   }
 
+  /** Чат внутренней вкладкой вкладки задачи `tab` (не показан: показывает вызывающий). */
+  private static inTab(
+    tab: TaskTabPanel,
+    context: vscode.ExtensionContext,
+    log: Logger,
+    services: ChatServices,
+    folder: vscode.WorkspaceFolder,
+    open: OpenOptions,
+  ): ChatPanel {
+    // поверхность нужна конструктору, а сведения о чате — поверхности: чат появляется после неё
+    const ref: { chat?: ChatPanel } = {};
+    const surface = tab.addSurface(() => ref.chat?.info());
+    ref.chat = new ChatPanel(surface, context, log, services, folder, open);
+    return ref.chat;
+  }
+
+  /** Для внутренней вкладки и состояния сериализатора вкладки задачи. */
+  private info(): SlotInfo {
+    return {
+      sessionId: this.controller.sessionId,
+      provider: this.provider,
+      title: this.controller.chatTitle,
+      status: this.controller.chatStatus,
+    };
+  }
+
+  /** Ключ задачи, во вкладку которой идёт чат сессии `id` при `tasks.tab = task`; иначе `undefined`. */
+  private static taskTabOf(services: ChatServices, id: string): TaskKey | undefined {
+    return taskTabMode() ? services.taskGroups.groupOf(id)?.taskKey : undefined;
+  }
+
   /** Возобновить сессию: открытую — показать, пустую вкладку — занять, иначе новая вкладка. */
   static resume(
     context: vscode.ExtensionContext,
@@ -335,11 +388,14 @@ export class ChatPanel {
     // без провайдера — `claude` (старые вызовы: боковая панель, команда, память воркспейса)
     const ref: SessionRef = typeof session === 'string' ? { provider: 'claude', id: session } : session;
     const fromIndex = from ? ChatPanel.panels.indexOf(from) : undefined;
-    const route = routeResume(ChatPanel.views(), ref, fromIndex);
+    // `tasks.tab = task`: чат задачи — во вкладку задачи (пустой чат занимается только там же)
+    const task = ChatPanel.taskTabOf(services, ref.id);
+    const route = routeResume(ChatPanel.views(), ref, fromIndex, task);
     return ChatPanel.apply(route, context, log, services, {
       resumeId: ref.id,
       provider: ref.provider,
       ...(column ? { column } : {}),
+      ...(task ? { task } : {}),
     });
   }
 
@@ -373,12 +429,17 @@ export class ChatPanel {
       // вкладка этой задачи ещё не отправила ни одного сообщения (повторный клик, `'new'`) — она и есть новый чат
       const waiting = ChatPanel.panels.find((p) => !p.controller.sessionId && p.pendingTask?.taskKey === taskKey);
       if (waiting) {
-        waiting.panel.reveal(column);
+        waiting.surface.reveal(column);
         if (req.prompt) waiting.controller.prefill(req.prompt);
         return;
       }
     }
-    const panel = ChatPanel.apply(routeNew(ChatPanel.views()), context, log, services, column ? { column } : {});
+    // `tasks.tab = task`: новый чат задачи — внутренней вкладкой её вкладки
+    const tab = taskKey && taskTabMode() ? taskKey : undefined;
+    const panel = ChatPanel.apply(routeNew(ChatPanel.views(), tab), context, log, services, {
+      ...(column ? { column } : {}),
+      ...(tab ? { task: tab } : {}),
+    });
     if (!panel) return;
     if (taskKey && meta) panel.bind(taskKey, meta);
     panel.controller.attachFiles([
@@ -443,7 +504,7 @@ export class ChatPanel {
 
   /** Вкладка для команд «Привязать к задаче» / «Отвязать»: активная, иначе последняя активная. */
   static target(): ChatPanel | undefined {
-    return ChatPanel.panels.find((p) => p.panel.active) ?? ChatPanel.lastActive;
+    return ChatPanel.panels.find((p) => p.surface.active) ?? ChatPanel.lastActive;
   }
 
   /** Вкладка, в которой открыта сессия `id` (строка списка в боковой панели). */
@@ -464,6 +525,12 @@ export class ChatPanel {
   ): vscode.WebviewPanelSerializer {
     return {
       deserializeWebviewPanel: async (panel, state: unknown) => {
+        // вкладка задачи (`tasks.tab = task`): все её чаты, видимый — сразу, остальные — когда их покажут
+        const tabState = readTaskTabState(state);
+        if (tabState) {
+          ChatPanel.restoreTaskTab(panel, tabState, context, log, services);
+          return;
+        }
         const ref = restoredSessionId(
           state,
           ChatPanel.panels.map((p) =>
@@ -481,28 +548,64 @@ export class ChatPanel {
     };
   }
 
+  /**
+   * Вкладка задачи после «Reload Window»: её чаты из состояния webview (без открытых в других вкладках), видимый —
+   * с движком, если вкладка видна, остальные — лениво (история читается сразу, процесс — при показе). Чатов не
+   * осталось — один новый чат по задаче.
+   */
+  private static restoreTaskTab(
+    panel: vscode.WebviewPanel,
+    state: TaskTabState,
+    context: vscode.ExtensionContext,
+    log: Logger,
+    services: ChatServices,
+  ): void {
+    const folder = ChatPanel.folder();
+    if (!folder) {
+      panel.dispose();
+      return;
+    }
+    const claimed = ChatPanel.panels.map((p) =>
+      p.controller.sessionId ? { provider: p.provider, id: p.controller.sessionId } : undefined,
+    );
+    const { refs, active } = restoredTabChats(state, claimed);
+    const tab = TaskTabPanel.create(context, log, state.taskKey, vscode.ViewColumn.Active, panel);
+    const visible = panel.visible;
+    const chats = refs.map((ref, i) =>
+      ChatPanel.inTab(tab, context, log, services, folder, {
+        resumeId: ref.id,
+        provider: ref.provider,
+        lazy: !(visible && i === active),
+      }),
+    );
+    if (!chats.length) {
+      const meta = services.taskGroups.group(state.taskKey)?.task;
+      const chat = ChatPanel.inTab(tab, context, log, services, folder, { lazy: !visible });
+      if (meta) chat.bind(state.taskKey, meta);
+      chats.push(chat);
+    }
+    chats[Math.min(active, chats.length - 1)]!.surface.select();
+  }
+
   /** Сериализатор вкладки графа агентов: к вкладке чата той же сессии или закрыть (`graphSerializer`). */
   static graphSerializer(context: vscode.ExtensionContext, log: Logger): vscode.WebviewPanelSerializer {
     return graphSerializer(context, log, () => ChatPanel.panels.map((p) => p.graph));
   }
 
   private constructor(
-    private readonly panel: vscode.WebviewPanel,
+    /** Webview чата: своя вкладка редактора или внутренняя вкладка вкладки задачи (`chatSurface.ts`). */
+    private readonly surface: ChatSurface,
     private readonly context: vscode.ExtensionContext,
     private readonly log: Logger,
     private readonly services: ChatServices,
     folder: vscode.WorkspaceFolder,
     open: OpenOptions,
   ) {
-    const version = String(context.extension.packageJSON.version);
+    // до этапа 7 здесь была `WebviewPanel`; поверхность отвечает теми же именами (post/title/visible/…)
+    const panel = surface;
     const files = new WorkspaceFiles(folder.uri);
     const editorColumn = (): vscode.ViewColumn =>
       panel.viewColumn === vscode.ViewColumn.One ? vscode.ViewColumn.Two : vscode.ViewColumn.One;
-    panel.webview.options = webviewOptions(context.extensionUri, userFontsDir(context));
-    panel.iconPath = {
-      light: vscode.Uri.joinPath(context.extensionUri, 'media', 'icon-light.svg'),
-      dark: vscode.Uri.joinPath(context.extensionUri, 'media', 'icon-dark.svg'),
-    };
     this.controller = new ChatController({
       lang: currentLanguage(),
       adapter: services.adapter,
@@ -523,12 +626,15 @@ export class ChatPanel {
           )
           .catch((e: unknown) => log.warn(`agentura.defaultProvider не записан: ${String(e)}`));
         // движок вкладки сменился (контроллер ставит его сразу после): боковая панель перечитывает `currentProvider`
-        queueMicrotask(() => ChatPanel.changed.fire());
+        queueMicrotask(() => {
+          ChatPanel.changed.fire();
+          panel.changed();
+        });
       },
       cwd: folder.uri.fsPath,
       project: folder.name,
-      post: (m) => postToWebview(panel.webview, m),
-      setTitle: (t) => (panel.title = t),
+      post: (m) => panel.post(m),
+      setTitle: (t) => panel.setTitle(t),
       log,
       settings: () => {
         const cfg = vscode.workspace.getConfiguration('agentura');
@@ -688,6 +794,7 @@ export class ChatPanel {
         this.syncTask();
         this.graph.claimPending();
         ChatPanel.sessionsChanged(services);
+        panel.changed();
       },
       onEvent: (e) => this.taskTab.onAgentEvent(e),
       openGraph: (agentId) => this.graph.show(agentId),
@@ -706,7 +813,7 @@ export class ChatPanel {
       pending: () => this.pendingTask?.taskKey,
       visible: () => panel.visible,
       turns: () => this.controller.turns(),
-      post: (m) => postToWebview(panel.webview, m),
+      post: (m) => panel.post(m),
       prefill: (text) => this.controller.prefill(text),
       openUrl: (u) => void vscode.env.openExternal(vscode.Uri.parse(u)),
       connect: () => void vscode.commands.executeCommand('agentura.jira.connect'),
@@ -721,7 +828,7 @@ export class ChatPanel {
     this.graph = new ChatGraphSlot(
       {
         sessionId: () => this.controller.sessionId,
-        post: (m) => postToWebview(panel.webview, m),
+        post: (m) => panel.post(m),
         // действия графа — тому же контроллеру, что и сообщения webview этой вкладки
         handle: (m) => this.controller.handle(m),
       },
@@ -729,11 +836,10 @@ export class ChatPanel {
     );
     ChatPanel.panels.push(this);
     ChatPanel.lastActive = this;
-    panel.webview.html = renderWebview(panel.webview, context.extensionUri, 'chat', 'Agentura', currentLanguage());
     // вкладка «git»: снимок на каждое изменение репозиториев рабочей папки (cwd панели)
-    const git = services.git.attach(folder.uri.fsPath, (m) => postToWebview(panel.webview, m));
+    const git = services.git.attach(folder.uri.fsPath, (m) => panel.post(m));
     this.disposables.push(
-      attachMessaging(panel.webview, 'chat', version, log, (m) => {
+      panel.onMessage((m) => {
         // действия вкладки «git» — сервису, сессия движка для них не нужна
         if (isGitRequest(m)) {
           void git.handle(m).catch((e) => log.error(`${m.type}: ${String(e)}`));
@@ -771,20 +877,20 @@ export class ChatPanel {
       // автоопрос лимитов (раз в `usagePollMinutes`) доходит и до открытого чата
       {
         dispose: services.usage.onUpdate((snap) =>
-          postToWebview(panel.webview, { type: 'limits.update', ...snap }),
+          panel.post({ type: 'limits.update', ...snap }),
         ),
       },
       // свежая квота agy доходит до открытых чатов (на движке agy её рисует HUD)
       {
         dispose: services.agyQuota.onUpdate((snap) =>
-          postToWebview(panel.webview, { type: 'quota.update', rows: snap.rows, updatedAt: snap.updatedAt }),
+          panel.post({ type: 'quota.update', rows: snap.rows, updatedAt: snap.updatedAt }),
         ),
       },
       // список сессий — и во вкладку: попап «sessions» и экран empty
       {
         dispose: services.sessions.onChange((rows) => {
           const id = this.controller.sessionId;
-          postToWebview(panel.webview, {
+          panel.post({
             type: 'sessions.update',
             sessions: rows.slice(0, CHAT_SESSIONS),
             ...(id ? { current: id } : {}),
@@ -795,10 +901,12 @@ export class ChatPanel {
           void this.pushTaskChats();
         }),
       },
-      panel.onDidChangeViewState((e) => {
-        if (e.webviewPanel.active) ChatPanel.lastActive = this;
+      panel.onDidChangeViewState(() => {
+        if (panel.active) ChatPanel.lastActive = this;
         // восстановленная фоновая вкладка: движок стартует, когда её впервые открыли
-        if (e.webviewPanel.visible) this.startEngine();
+        if (panel.visible) this.startEngine();
+        // чат вкладки задачи ушёл в фон: его git-клиент перестаёт следить (webview шлёт `git.watch` показанного)
+        else if (panel.taskTab) void git.handle({ type: 'git.watch', on: false }).catch(() => undefined);
         this.syncTask();
         ChatPanel.sessionsChanged(services);
       }),
@@ -809,7 +917,7 @@ export class ChatPanel {
       new EditorContextTracker(files, (ctx) => this.controller.postEditorContext(ctx)),
       { dispose: () => this.controller.dispose() },
     );
-    panel.onDidDispose(() => this.dispose(), null, this.disposables);
+    this.disposables.push(panel.onDidDispose(() => this.dispose()));
     this.graph.claimPending();
     if (open.lazy) {
       // историю читаем сразу (дёшево), процесс движка — когда вкладка станет видимой
@@ -851,14 +959,15 @@ export class ChatPanel {
     const json = JSON.stringify(msg);
     if (!force && json === this.lastChats) return;
     this.lastChats = json;
-    postToWebview(this.panel.webview, msg);
+    this.surface.post(msg);
   }
 
   /** Состав или фокус вкладок изменился: память воркспейса и строка `cur` боковой панели. */
   private static sessionsChanged(services: ChatServices): void {
+    // чаты вкладки задачи возвращает её состояние (`taskTab`): в запасе для вкладки без состояния их быть не должно
     const refs = ChatPanel.panels.flatMap((p): SessionRef[] => {
       const id = p.controller.sessionId;
-      return id === undefined ? [] : [{ provider: p.provider, id }];
+      return id === undefined || p.surface.taskTab ? [] : [{ provider: p.provider, id }];
     });
     services.memory.setOpenSessions(refs);
     ChatPanel.changed.fire();

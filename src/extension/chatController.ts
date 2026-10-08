@@ -378,6 +378,16 @@ export class ChatController {
     this.newSession(true);
   }
 
+  /** Статус чата — бейдж внутренней вкладки вкладки задачи (roadmap 19, этап 7). */
+  get chatStatus(): ChatStatus {
+    return this.status;
+  }
+
+  /** Название сессии (нет — «новый чат») — подпись внутренней вкладки. */
+  get chatTitle(): string | undefined {
+    return this.title;
+  }
+
   /** Вкладка не тронута: новая сессия без сообщений — её можно занять под другую сессию. */
   get pristine(): boolean {
     return !this.touched && this.resumeId === undefined;
@@ -502,7 +512,14 @@ export class ChatController {
    */
   private async reseed(): Promise<void> {
     const id = this.sessionId;
-    if (!id) return;
+    if (!id) {
+      // новый чат без сообщений: пересеивать нечего, но меню моделей и команд webview получает заново
+      // (возврат к нему во вкладке задачи, «Reload Webviews» пустой вкладки)
+      void this.ensureSession()
+        .then((s) => this.postCapabilities(s))
+        .catch(() => undefined);
+      return;
+    }
     let history = this.resumed?.history;
     // события, пришедшие во время чтения, — после истории (иначе она их сотрёт); с хвостом текущего ответа.
     // Прошлый пересев ещё читает — его накопленное переходит к этому, а сам он ничего не пошлёт.

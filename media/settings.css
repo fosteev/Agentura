@@ -390,6 +390,7 @@ html[data-width='380'] .num.wide {
 .set > .cards:has(.pv-agents),
 .set > .cards:has(.pv-git),
 .set > .cards:has(.pv-taskcard),
+.set > .cards:has(.pv-tasktab),
 .set > .cards:has(.pv-composer) {
   grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
 }
@@ -712,6 +713,87 @@ html[data-width='380'] .num.wide {
   font-size: 10px;
   gap: 5px;
   padding: 0 6px;
+}
+
+/* превью tasks.tab: ряд вкладок редактора, полоска задачи, у «вкладки на задачу» — её внутренние вкладки */
+.pv-tasktab {
+  display: flex;
+  flex-direction: column;
+  height: 110px;
+  background: var(--bg);
+  font-family: var(--font);
+}
+.pv-tasktab .ttp-tabs {
+  display: flex;
+  flex: none;
+  height: 20px;
+  background: var(--bg-side);
+  border-bottom: 1px solid var(--line);
+  font-size: 9px;
+  color: var(--fg-mute);
+  overflow: hidden;
+}
+.pv-tasktab .ttp-tabs span {
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  max-width: 45%;
+  border-right: 1px solid var(--line);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.pv-tasktab .ttp-tabs .on {
+  background: var(--bg);
+  color: var(--fg);
+  box-shadow: inset 0 1px 0 var(--accent, var(--fg));
+  flex: none;
+}
+.pv-tasktab .ttp-chat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.pv-tasktab .tk-strip {
+  height: 22px;
+  font-size: 10px;
+  gap: 5px;
+  padding: 0 6px;
+}
+.pv-tasktab .tk-ctabs {
+  height: 20px;
+  font-size: 9.5px;
+  padding: 0 4px;
+}
+.pv-tasktab .tk-ctabs .cn {
+  padding-left: 6px;
+  gap: 4px;
+  max-width: 120px;
+}
+.pv-tasktab .tk-ctabs .mk {
+  width: 10px;
+  height: 10px;
+  font-size: 7px;
+}
+.pv-tasktab .tk-ctabs .rt {
+  font-size: 9px;
+}
+.pv-tasktab .ttp-feed {
+  display: grid;
+  gap: 5px;
+  align-content: start;
+  padding: 8px;
+}
+.pv-tasktab .ttp-feed i {
+  display: block;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line-strong);
+}
+.pv-tasktab .ttp-feed i:nth-child(3n) {
+  width: 60%;
 }
 
 /* Страница «Интеграции» (roadmap 19, этап 6): список своих подключений Jira и неактивные инструменты агента */

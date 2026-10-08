@@ -17,6 +17,8 @@ import {
   DEFAULT_TASK_SIDEBAR,
   TASK_CARD_MODES,
   DEFAULT_TASK_CARD,
+  TASK_TAB_MODES,
+  DEFAULT_TASK_TAB,
 } from './settings';
 
 const root = join(__dirname, '..');
@@ -151,6 +153,26 @@ describe('agentura.tasks.card', () => {
 
   it('команда выбора вида объявлена', () => {
     expect(pkg.contributes.commands.map((c) => c.command)).toContain('agentura.taskCard');
+  });
+});
+
+describe('agentura.tasks.tab', () => {
+  const pkg = read('package.json') as {
+    contributes: {
+      configuration: { properties: Record<string, { enum?: string[]; enumDescriptions?: string[]; default?: string }> };
+      commands: { command: string }[];
+    };
+  };
+  const prop = pkg.contributes.configuration.properties['agentura.tasks.tab']!;
+
+  it('enum и значение по умолчанию совпадают с настройкой в коде, у каждого значения есть описание', () => {
+    expect(prop.enum).toEqual([...TASK_TAB_MODES]);
+    expect(prop.default).toBe(DEFAULT_TASK_TAB);
+    expect(prop.enumDescriptions).toHaveLength(TASK_TAB_MODES.length);
+  });
+
+  it('команда выбора вида объявлена', () => {
+    expect(pkg.contributes.commands.map((c) => c.command)).toContain('agentura.taskTab');
   });
 });
 

@@ -53,6 +53,7 @@ const values: SettingsValues = {
   'sidebar.limits': 'active',
   'tasks.sidebar': 'groups',
   'tasks.card': 'panel',
+  'tasks.tab': 'chat',
   'jira.source': 'auto',
   'tasks.refresh': '30s',
   'tasks.humanChanges': true,
@@ -144,6 +145,7 @@ describe('вкладка настроек', () => {
       'agentura.agents.view',
       'agentura.git.layout',
       'agentura.tasks.card',
+      'agentura.tasks.tab',
       'agentura.feed.fontSize',
       'agentura.ui.fontSize',
       'agentura.font.interface',
@@ -361,6 +363,27 @@ describe('вкладка настроек', () => {
     expect(row.querySelector('[aria-checked="true"]')?.getAttribute('data-value')).toBe('panel');
     split.click();
     expect(sets().at(-1)).toEqual({ type: 'settings.set', key: 'tasks.card', value: 'split' });
+  });
+
+  it('вкладки чатов по задаче: два превью (вкладка на чат / на задачу с внутренними вкладками), выбор пишет настройку', async () => {
+    const host = mount(Settings);
+    state();
+    await flush();
+    const row = host.querySelector('[data-key="agentura.tasks.tab"]')!;
+    const cards = [...row.querySelectorAll<HTMLElement>('[role="radio"]')];
+    expect(cards.map((c) => c.dataset.value)).toEqual(['chat', 'task']);
+    const [perChat, perTask] = cards as [HTMLElement, HTMLElement];
+    for (const card of cards) {
+      expect(card.querySelector('.pv-tasktab[inert][aria-hidden="true"]')).not.toBeNull();
+      expect(card.querySelector('.tk-strip .tkey')!.textContent).toBe('NEWMFC-1482');
+    }
+    expect(perChat.querySelector('.tk-ctabs')).toBeNull();
+    expect(perChat.querySelector('.ttp-tabs .on')!.textContent).toContain('NEWMFC-1482 · ');
+    expect(perTask.querySelector('.ttp-tabs .on')!.textContent).toBe('NEWMFC-1482');
+    expect(perTask.querySelectorAll('.tk-ctabs .ctab')).toHaveLength(2);
+    expect(row.querySelector('[aria-checked="true"]')?.getAttribute('data-value')).toBe('chat');
+    perTask.click();
+    expect(sets().at(-1)).toEqual({ type: 'settings.set', key: 'tasks.tab', value: 'task' });
   });
 
   it('шрифт карточками: каждая своим шрифтом, наведение примеряет на образец, клик пишет', async () => {
