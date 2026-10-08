@@ -1,7 +1,7 @@
 # 19 — Чаты по задачам Jira: группы, режим задачи, своё подключение и Jiraffe
 
 > **Статус:** этап 1 принят 2026-10-08 (ветка `stage-1-task-groups` от `feature/task-groups`); этап 3 (Jiraffe) принят
-> отдельной приёмкой (`feature/agentura-tasks`, 30d982d); этап 2 принят 2026-10-08 (ветка `stage-2-jira-sources`); этап 4 принят 2026-10-08 (ветка `stage-4-sidebar-tasks`); этап 5 принят 2026-10-08 (ветка `stage-5-task-tab`, вёрстка — ручная проверка в pending); следующий — **6**. Ветка roadmap `feature/task-groups`
+> отдельной приёмкой (`feature/agentura-tasks`, 30d982d); этап 2 принят 2026-10-08 (ветка `stage-2-jira-sources`); этап 4 принят 2026-10-08 (ветка `stage-4-sidebar-tasks`); этап 5 принят 2026-10-08 (ветка `stage-5-task-tab`, вёрстка — ручная проверка в pending); этап 6 принят 2026-10-08 (ветка `stage-6-integrations`, вёрстка и живые действия — ручная проверка в pending); следующий — **7**. Ветка roadmap `feature/task-groups`
 > (от `feature/engine-limits`, 0.8.0 ещё не в main).
 > Прототип — `prototype/screens/tasks.html` (`#a|#b|#c|#d|#ask`) и `prototype/screens/task-mode.html`
 > (`#open|#comment|#changes|#rail|#jiraffe|#settings`); галерея v38, разделы «Режим задачи» и «Чаты по задачам Jira».
@@ -565,7 +565,7 @@ Jiraffe через `extensions.getExtension('fosteev.jiraffe').activate()` — �
 
 Контракт (на него опираются этапы 6–8):
 - Вкладка «задача» есть у чата, когда пришёл `task.state` с `taskKey` и `taskPanelShown(tasks.card, state)`: `panel` — всегда; `strip` — никогда; `split` —
-  только если `state.source !== 'jiraffe'` (при Jiraffe карточка слева, вкладки справа нет — как в `tasks.html#c`). Полоска — всегда, пока есть `taskKey`.
+  **изменено в этапе 6 (решение владельца): вкладка есть и при Jiraffe, по умолчанию открыта на «изменениях»** (было: только если `state.source !== 'jiraffe'`). Полоска — всегда, пока есть `taskKey`.
 - «Новое»: `PanelState.taskSeen` — `max(at)` событий и комментариев карточки на первой успешной загрузке (`fetchedAt > 0`) и далее при каждом
   открытии вкладки «изменения» (панель видна + вид «изменения»); пока отметки нет — «нового» нет. Бейдж = события новее `taskSeen`; подсветка кромкой и
   «новое · …» — новее отметки на момент открытия ленты (`baseline`), поэтому после открытия бейдж гаснет, а кромка остаётся, пока лента открыта. Комментарии
@@ -612,18 +612,41 @@ Jiraffe через `extensions.getExtension('fosteev.jiraffe').activate()` — �
 
 ### 6. Страница настроек «Интеграции» — **sonnet, high**, после 5
 
-- [ ] шестая страница `integrations` в `Settings.tsx` по решению 14 (`task-mode.html#settings`); стрелки ↑↓ и
-      узкий сплит — как у остальных страниц
-- [ ] сообщения: список своих подключений, «подключить» / «проверить» / «удалить» → команды этапа 2
-- [ ] `settingsDom.test.ts`: страница рисуется для «Jiraffe есть», «Jiraffe нет, 2 своих», «ничего»
+- [x] шестая страница `integrations` в `Settings.tsx` по решению 14 (`task-mode.html#settings`); стрелки ↑↓ — DOM-тест; узкий сплит — общие правила `.st-nav` (глазами — пользователь)
+- [x] сообщения: список своих подключений, «подключить» / «проверить» / «удалить» → команды этапа 2 (DOM-тест на сообщения, `SettingsController` — на проксирование в deps)
+- [x] `settingsDom.test.ts`: страница рисуется для «Jiraffe есть», «Jiraffe нет, 2 своих», «ничего»
 
-- [ ] (решение владельца 2026-10-08, долг этапа 5) `tasks.card = split` с Jiraffe: вкладка «задача» показывается
+- [x] (решение владельца 2026-10-08, долг этапа 5) `tasks.card = split` с Jiraffe: вкладка «задача» показывается
       (убрать ветку `split` в `taskPanelShown`) и по умолчанию открыта на «изменениях» (карточка и так слева);
       описание превью `split` в настройках поправить; DOM-тест
 
-**Готово, когда:** `npm run check` зелёный.
+**Готово, когда:** `npm run check` зелёный (`TZ=UTC npm run check` — 129 файлов, 1745 тестов, зелёный). Вёрстка и цвета страницы — пользователь.
 
 **Сессия:** sonnet, high; после 5.
+
+**Решения (2026-10-08, по итогам сессии 6):**
+
+Раскладка файлов:
+- `src/settings.ts` — ключи `jira.source`, `tasks.refresh`, `tasks.humanChanges` в `SettingKey`/`SETTING_KEYS`/`SettingsValues`/`validateSetting`/`readSettings` (константы и guard'ы были с этапа 2).
+- `src/shared/integrations.ts` — `IntegrationsState { jiraffe: {state, version?, instances[]}, own[], active? }`; `protocol.ts` — `integrations.state` (хост → страница) и `integrations.connect|test{instanceId}|disconnect{instanceId}|installJiraffe` (страница → хост, поля проверяются в `FIELD_CHECKS`).
+- `src/extension/jira/integrationsState.ts` — чистая сборка состояния из `JiraSources`; в `JiraSources` добавлены `jiraffeInstances()` (имена инстансов Jiraffe для строки статуса) и `activeKind()` (какой источник работает сейчас).
+- `settingsController.ts` — необязательная зависимость `integrations` (`state/connect/test/disconnect/installJiraffe`); `pushState()` дополнительно шлёт `integrations.state`, есть `pushIntegrations()`. `settingsPanel.ts` — `SettingsPanel.show(context, log, jira)` собирает зависимость: версия Jiraffe из `vscode.extensions.getExtension('fosteev.jiraffe').packageJSON.version`, действия — команды `agentura.jira.connect|test|disconnect` (с `instanceId`), «поставить» — `extension.open` с `fosteev.jiraffe`; подписка на `sources.onDidChange` обновляет страницу сразу после подключения/отключения/смены источника. `extension.ts` передаёт `jira`.
+- Webview: `vscode.ts` — раздел `integrations` между `look` и `engine`; `settingsStore.ts` — сигнал `integrations`, `integrationsAction`; `Settings.tsx` — `InfoRow` (строка `.set` без настройки) и `IntegrationsRows`; `strings.ts`/`strings.en.ts` — `ui.settings.integrations`, `sections.integrations`; `media/settings.css` и `prototype/shared/settings.css` — `.cn` (список подключений), `.cbs` (неактивные флажки); `prototype/screens/settings.html` — страница `integrations` (6 строк `.set`), без неё `settingsDom` не сходится по числу `.set`.
+- Долг этапа 5: `taskView.ts` — `taskPanelShown` теперь `mode !== 'strip'`, новая `taskDefaultView(mode, state)` (`split` + источник Jiraffe → `changes`, иначе `card`); `Chat.tsx` берёт вид из `panel.taskView ?? taskDefaultView(...)` (и для бейджа вкладки); явный выбор человека (`PanelState.taskView`) главнее. Превью `split` в настройках теперь рисует и правую панель (вкладка «изменения» активна), описания (`strings*.ts`, `package.nls*.json`, `shared/l10n.ts`) — «…вкладка «задача» открыта на изменениях».
+
+Страница (порядок строк): источник (`jira.source`, `<select>`, под ним «Сейчас работает: …») → Jiraffe (статус: `ready` «✓ Jiraffe X установлен · N инстансов: имена», `inactive`, `no-api`, `absent` + кнопка «поставить») → свои подключения (список «имя · адрес · тип · проверить · удалить», кнопка «подключить») → `tasks.refresh` → `tasks.humanChanges` → `jira.agentTools` (три отключённых флажка и «пока недоступно», настройки в `package.json` нет — этап 8). Результат «проверить» — уведомление VS Code самой команды (отдельной строки результата на странице нет).
+
+Отступления и почему:
+- Прототип `task-mode.html#settings` старый (`agentura.jiraffe.enabled/taskPanel/refresh/showHumanChanges/tools`); сделано по решению 14: вместо тумблера «Интеграция с Jiraffe» — настройка `jira.source`, а «Открывать панель «задача»» заменяет `tasks.card` (страница «Внешний вид»).
+- Строки Jiraffe и «Свои подключения» — не настройки, а `.set` без `data-key`: чтобы не вводить второй вид строк и не расходиться со стилями.
+- `jira.agentTools` не заведена как настройка (в `package.json` её нет, это этап 8): показан неактивный блок; `manifest.test` её не знает.
+- Узкий сплит и стрелки ↑↓ отдельного кода не требуют: страница — ещё один раздел `SETTINGS_SECTIONS`.
+
+Скоуп (владельцу): перенесён в `19-jira-tasks.pending.md` («Решения на подтверждение», строки «этап 6»).
+
+Приёмка (2026-10-08): хост принимает `integrations.test|disconnect` только с id из своих подключений (`SettingsController.ownInstance`) — команды этапа 2 на незнакомый id не отказывают, а берут единственное подключение или спрашивают. Отказы команд страницы пишутся в журнал. Известное (второй проход, не чинили): при `auto`, если Jiraffe готов, но в наборе воркспейса 0 инстансов, «Сейчас работает: Jiraffe», хотя задачи своих подключений идут запасным путём `forInstance` (решение 3, так устроен `current()`); версия Jiraffe не входит в сигнатуру `notifyIfChanged` — после обновления Jiraffe без перезагрузки окна страница покажет старую версию до следующего изменения.
+
+Не проверено: вёрстка и цвета страницы в VS Code (обе темы, узкий режим) — только DOM-тесты и сборка; живые «подключить/проверить/удалить» из страницы и `extension.open` (в тестах — только сообщения и проксирование в deps); обновление страницы по `sources.onDidChange` в живом окне. Проверки: `TZ=UTC npm run check` — 129 файлов, 1745 тестов, зелёный.
 
 ### 7. Вкладка на задачу (вариант Б) — **opus, high**, после 6
 
@@ -834,8 +857,10 @@ src/webview/toolView.ts:44 toolView, :40 shortName; копия клиента sr
 любой 3xx — ошибка (тело записи и `Authorization` никуда не пересылаются); токен — через `scrub` в текстах ошибок.
 После этапа 5: вкладка «задача» — `src/webview/components/TaskPane.tsx` (лента — вид `changes`, строки `.tk-evt` по `TaskEvent.id`); какая вкладка
 панели открыта, решает webview (`PanelState.tab`/`taskView` в `src/webview/vscode.ts`, `updatePanel` в `Chat.tsx`) — «в задаче →» это клик внутри webview,
-сообщение хосту не нужно. Вкладки нет при `tasks.card = strip` и при `split` с Jiraffe (`taskPanelShown`, `src/webview/taskView.ts`) — там «в задаче →»
-открывает задачу как полоска (`task.openExternal`). «Новое» считается по `event.at` (`PanelState.taskSeen`), у ворклога `at` = `started` — свежий ворклог
+сообщение хосту не нужно. Вкладки нет только при `tasks.card = strip` (`taskPanelShown`, `src/webview/taskView.ts`; после этапа 6 `split` с Jiraffe вкладку тоже показывает) — там «в задаче →»
+открывает задачу как полоска (`task.openExternal`).
+Страница «Интеграции» (этап 6): строка `agentura.jira.agentTools` сейчас — неактивная `InfoRow` с тремя отключёнными флажками (`IntegrationsRows` в `Settings.tsx`);
+в этапе 8 добавить настройку по чек-листу (`SettingKey`/`package.json`/nls) и заменить заглушку на `Row` с рабочими флажками (комментарий / статус / ворклог). «Новое» считается по `event.at` (`PanelState.taskSeen`), у ворклога `at` = `started` — свежий ворклог
 задним числом бейджа не даст.
 SDK — проверить createSdkMcpServer/tool в установленной версии @anthropic-ai/claude-agent-sdk (node_modules, d.ts),
 не по памяти. Jiraffe API v2 делает параллельная сессия 8b — в Agentura опираться на контракт: addComment(inst, key,

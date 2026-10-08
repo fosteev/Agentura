@@ -32,6 +32,7 @@
         <button role="tab" data-section="limits">Контекст и лимиты</button>
         <button role="tab" data-section="sidebar">Боковая панель</button>
         <button role="tab" data-section="look">Внешний вид</button>
+        <button role="tab" data-section="integrations">Интеграции</button>
         <button role="tab" data-section="engine">Движок</button>
       </div>
       <div class="src">Хранится в настройках VS Code, раздел «Пользователь». Меняется сразу, без перезапуска.<a href="#">открыть settings.json</a></div>
@@ -210,6 +211,51 @@
         <span class="ds">По умолчанию — как в VS Code. Применяется после перезагрузки окна.</span>
         <span class="key">agentura.language</span>
         <span class="ctl"><span class="dd">как в VS Code</span></span>
+      </div>
+      </section>
+
+      <section class="st-page" id="integrations" hidden>
+      <h2>Интеграции</h2>
+      <div class="set">
+        <span class="nm">Источник задач Jira<span class="new">новая</span></span>
+        <span class="ds">Откуда Agentura берёт задачи для полоски и вкладки «задача». Авто: Jiraffe, если он установлен и отдаёт API, иначе свои подключения. «Выкл» — задачи не запрашиваются; группы в списке сессий остаются.</span>
+        <span class="key">agentura.jira.source</span>
+        <span class="ctl"><span class="dd">авто</span></span>
+        <div class="ok">Сейчас работает: Jiraffe</div>
+      </div>
+      <div class="set">
+        <span class="nm">Jiraffe</span>
+        <span class="ds">Расширение Jira для VS Code. Берём из него инстансы и токены воркспейса; в карточке задачи появляется «Открыть в Agentura».</span>
+        <span class="key">fosteev.jiraffe</span>
+        <span class="ctl"></span>
+        <div class="ok">✓ Jiraffe 0.8.0 установлен <span class="dim">· 2 инстанса: jira.sccloud.ru, jira.pilot-gps.com</span></div>
+      </div>
+      <div class="set">
+        <span class="nm">Свои подключения</span>
+        <span class="ds">Jira, подключённая прямо в Agentura, без Jiraffe: адрес и токен только для этого воркспейса, токен хранится в SecretStorage VS Code.</span>
+        <span class="key">agentura.jira.connect</span>
+        <span class="ctl"><button class="btn">подключить</button></span>
+        <div class="cn">
+          <div class="r"><span class="n">pilot</span><span class="u">https://jira.pilot-gps.com</span><span class="k">Server / DC</span><button class="btn">проверить</button><button class="btn">удалить</button></div>
+        </div>
+      </div>
+      <div class="set">
+        <span class="nm">Обновлять задачу<span class="new">новая</span></span>
+        <span class="ds">Как часто читать задачу из Jira, пока открыт чат по ней. Вручную — кнопка ↻ во вкладке «задача»; после хода агента задача перечитывается в обоих режимах.</span>
+        <span class="key">agentura.tasks.refresh</span>
+        <span class="ctl"><span class="dd">каждые 30 с</span></span>
+      </div>
+      <div class="set">
+        <span class="nm">Показывать изменения от людей<span class="new">новая</span></span>
+        <span class="ds">Комментарии, статусы и ворклоги, сделанные не агентом, попадают в «изменения» и в плашку «отправить агенту?».</span>
+        <span class="key">agentura.tasks.humanChanges</span>
+        <span class="ctl"><span class="tg on" role="switch"></span></span>
+      </div>
+      <div class="set">
+        <span class="nm">Инструменты Jira для агента</span>
+        <span class="ds">Что агент сможет делать в задаче от вашего имени. Пока недоступно: запись в Jira появится в следующем обновлении.</span>
+        <span class="key">agentura.jira.agentTools</span>
+        <span class="ctl"><div class="cbs"><label class="off"><input type="checkbox" disabled>комментарий</label><label class="off"><input type="checkbox" disabled>статус <em>спрашивать разрешение</em></label><label class="off"><input type="checkbox" disabled>ворклог <em>спрашивать разрешение</em></label><em class="soon">пока недоступно</em></div></span>
       </div>
       </section>
 

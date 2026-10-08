@@ -10,6 +10,7 @@ import {
   issueKeyOf,
   latestSeen,
   sizeLabel,
+  taskDefaultView,
   taskPanelShown,
   unseenCount,
   visibleEvents,
@@ -33,14 +34,22 @@ const st = (o: Partial<TaskStateMessage> = {}): TaskStateMessage => ({
 });
 
 describe('taskPanelShown', () => {
-  it('panel — у любого чата по задаче; strip — никогда; split — когда источник не Jiraffe', () => {
+  it('panel и split — у любого чата по задаче; strip — никогда', () => {
     expect(taskPanelShown('panel', st())).toBe(true);
     expect(taskPanelShown('strip', st())).toBe(false);
-    expect(taskPanelShown('split', st({ source: 'jiraffe' }))).toBe(false);
+    expect(taskPanelShown('split', st({ source: 'jiraffe' }))).toBe(true);
     expect(taskPanelShown('split', st({ source: 'own' }))).toBe(true);
     expect(taskPanelShown('split', st({ source: 'none' }))).toBe(true);
     expect(taskPanelShown('panel', undefined)).toBe(false);
     expect(taskPanelShown('panel', st({ taskKey: undefined as unknown as string }))).toBe(false);
+  });
+});
+
+describe('taskDefaultView', () => {
+  it('split с Jiraffe — «изменения», остальное — «карточка»', () => {
+    expect(taskDefaultView('split', st({ source: 'jiraffe' }))).toBe('changes');
+    expect(taskDefaultView('split', st({ source: 'own' }))).toBe('card');
+    expect(taskDefaultView('panel', st({ source: 'jiraffe' }))).toBe('card');
   });
 });
 

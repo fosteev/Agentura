@@ -146,6 +146,9 @@ export type SettingKey =
   | 'sidebar.limits'
   | 'tasks.sidebar'
   | 'tasks.card'
+  | 'jira.source'
+  | 'tasks.refresh'
+  | 'tasks.humanChanges'
   | 'feed.style'
   | 'composer.layout'
   | 'agents.view'
@@ -178,6 +181,9 @@ export const SETTING_KEYS: readonly SettingKey[] = [
   'sidebar.limits',
   'tasks.sidebar',
   'tasks.card',
+  'jira.source',
+  'tasks.refresh',
+  'tasks.humanChanges',
   'feed.style',
   'composer.layout',
   'agents.view',
@@ -228,6 +234,9 @@ export interface SettingsValues {
   'sidebar.limits': SidebarLimitsMode;
   'tasks.sidebar': TaskSidebarMode;
   'tasks.card': TaskCardMode;
+  'jira.source': JiraSourceSetting;
+  'tasks.refresh': TaskRefreshMode;
+  'tasks.humanChanges': boolean;
   'feed.style': FeedStyle;
   'composer.layout': ComposerLayout;
   'agents.view': AgentsView;
@@ -425,6 +434,7 @@ export function validateSetting(key: SettingKey, value: unknown, lang: ErrLang =
     case 'limits.readKeychain':
     case 'sessionList.context':
     case 'sessionList.time':
+    case 'tasks.humanChanges':
       return typeof value === 'boolean' ? { ok: true, value } : bad(t.yesNo);
     case 'defaultModel':
     case 'remoteControlNamePrefix':
@@ -470,6 +480,10 @@ export function validateSetting(key: SettingKey, value: unknown, lang: ErrLang =
       return isTaskCardMode(value)
         ? { ok: true, value }
         : bad(t.allowed(TASK_CARD_MODES.join(', ')));
+    case 'jira.source':
+      return isJiraSource(value) ? { ok: true, value } : bad(t.allowed(JIRA_SOURCES.join(', ')));
+    case 'tasks.refresh':
+      return isTaskRefresh(value) ? { ok: true, value } : bad(t.allowed(TASK_REFRESH_MODES.join(', ')));
     case 'feed.style':
       return isFeedStyle(value) ? { ok: true, value } : bad(t.allowed(FEED_STYLES.join(', ')));
     case 'composer.layout':
@@ -502,6 +516,8 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
   const limits = cfg.get<unknown>('sidebar.limits');
   const taskSb = cfg.get<unknown>('tasks.sidebar');
   const taskCard = cfg.get<unknown>('tasks.card');
+  const jiraSource = cfg.get<unknown>('jira.source');
+  const taskRefresh = cfg.get<unknown>('tasks.refresh');
   const feed = cfg.get<unknown>('feed.style');
   const cl = cfg.get<unknown>('composer.layout');
   const agv = cfg.get<unknown>('agents.view');
@@ -539,6 +555,9 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
     'sidebar.limits': isSidebarLimitsMode(limits) ? limits : DEFAULT_SIDEBAR_LIMITS,
     'tasks.sidebar': isTaskSidebarMode(taskSb) ? taskSb : DEFAULT_TASK_SIDEBAR,
     'tasks.card': isTaskCardMode(taskCard) ? taskCard : DEFAULT_TASK_CARD,
+    'jira.source': isJiraSource(jiraSource) ? jiraSource : DEFAULT_JIRA_SOURCE,
+    'tasks.refresh': isTaskRefresh(taskRefresh) ? taskRefresh : DEFAULT_TASK_REFRESH,
+    'tasks.humanChanges': cfg.get<unknown>('tasks.humanChanges') !== false,
     'feed.style': isFeedStyle(feed) ? feed : DEFAULT_FEED_STYLE,
     'composer.layout': isComposerLayout(cl) ? cl : DEFAULT_COMPOSER_LAYOUT,
     'agents.view': isAgentsView(agv) ? agv : DEFAULT_AGENTS_VIEW,

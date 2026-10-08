@@ -4,6 +4,9 @@ import { resolveExecutable } from '../agent/claude/executable';
 import { CODEX_NOT_FOUND, resolveCodexExecutable } from '../agent/codex/executable';
 import { postToWebview } from '../protocol';
 import { hostStrings } from '../shared/l10n';
+import type { JiraRuntime } from './jira/setup';
+import { JIRAFFE_ID } from './jira/setup';
+import { integrationsState } from './jira/integrationsState';
 import type { Logger } from './logger';
 import { SettingsController } from './settingsController';
 import { attachMessaging, currentLanguage, renderWebview, userFontsDir, webviewOptions } from './webviewHost';
@@ -14,7 +17,7 @@ export const SETTINGS_VIEW_TYPE = 'agentura.settings';
 export class SettingsPanel {
   private static current: SettingsPanel | undefined;
 
-  static show(context: vscode.ExtensionContext, log: Logger): void {
+  static show(context: vscode.ExtensionContext, log: Logger, jira?: JiraRuntime): void {
     if (SettingsPanel.current) {
       SettingsPanel.current.panel.reveal();
       return;
@@ -25,7 +28,7 @@ export class SettingsPanel {
       vscode.ViewColumn.Active,
       webviewOptions(context.extensionUri, userFontsDir(context)),
     );
-    SettingsPanel.current = new SettingsPanel(panel, context, log);
+    SettingsPanel.current = new SettingsPanel(panel, context, log, jira);
   }
 
   private readonly disposables: vscode.Disposable[] = [];
@@ -34,8 +37,12 @@ export class SettingsPanel {
     private readonly panel: vscode.WebviewPanel,
     context: vscode.ExtensionContext,
     log: Logger,
+    jira?: JiraRuntime,
   ) {
     const { webview } = panel;
+    // команды страницы «Интеграции»: отказ (сбой хранилища, нет `extension.open` в форке) — в журнал, а не в unhandled rejection
+    const run = (cmd: string, ...args: unknown[]): void =>
+      void vscode.commands.executeCommand(cmd, ...args).then(undefined, (e: unknown) => log.error(`${cmd}: ${String(e)}`));
     const controller = new SettingsController({
       config: () => vscode.workspace.getConfiguration('agentura'),
       globalTarget: vscode.ConfigurationTarget.Global,
@@ -70,6 +77,21 @@ export class SettingsPanel {
       addFont: (kind) => void vscode.commands.executeCommand('agentura.addGoogleFont', kind),
       removeFont: (family) => void vscode.commands.executeCommand('agentura.removeGoogleFont', family),
       lang: currentLanguage,
+      ...(jira
+        ? {
+            integrations: {
+              state: () =>
+                integrationsState(
+                  jira.sources,
+                  vscode.extensions.getExtension(JIRAFFE_ID)?.packageJSON?.version as unknown,
+                ),
+              connect: () => run('agentura.jira.connect'),
+              test: (id) => run('agentura.jira.test', id),
+              disconnect: (id) => run('agentura.jira.disconnect', id),
+              installJiraffe: () => run('extension.open', JIRAFFE_ID),
+            },
+          }
+        : {}),
     });
     webview.html = renderWebview(
       webview,
@@ -86,6 +108,8 @@ export class SettingsPanel {
         log,
         (m) => void controller.handle(m).catch((e) => log.error(`${m.type}: ${String(e)}`)),
       ),
+      // подключения и Jiraffe поменялись (в т.ч. из команд и палитры) — страница «Интеграции» обновляется сразу
+      ...(jira ? [{ dispose: jira.sources.onDidChange(() => controller.pushIntegrations()) }] : []),
       // правка в settings.json (или в UI VS Code) сразу видна во вкладке
       vscode.workspace.onDidChangeConfiguration((e) => {
         if (e.affectsConfiguration('agentura')) controller.pushState();

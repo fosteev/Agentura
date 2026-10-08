@@ -8,7 +8,9 @@ import {
   MIN_POLL_MINUTES,
   SESSION_LIST_MODES,
   SIDEBAR_LIMITS_MODES,
+  JIRA_SOURCES,
   TASK_CARD_MODES,
+  TASK_REFRESH_MODES,
   TASK_SIDEBAR_MODES,
   SIDEBAR_TOP_MODES,
   COMPOSER_LAYOUTS,
@@ -21,6 +23,7 @@ import {
   thresholdsError,
   validateSetting,
   type SettingKey,
+  type SettingsValues,
 } from '../../settings';
 import {
   addFont,
@@ -30,6 +33,8 @@ import {
   codexCheck,
   engineCheck,
   errors,
+  integrations,
+  integrationsAction,
   overridden,
   removeFont,
   reveal,
@@ -193,6 +198,151 @@ function TextField({
         if (e.key === 'Enter') send((e.currentTarget as HTMLInputElement).value);
       }}
     />
+  );
+}
+
+/** Строка страницы, которой нет среди настроек (Jiraffe, свои подключения): та же вёрстка `.set`, но без `data-key`. */
+function InfoRow({
+  name,
+  desc,
+  keyText,
+  children,
+  below,
+}: {
+  name: string;
+  desc: string;
+  keyText: string;
+  children?: ComponentChildren;
+  below?: ComponentChildren;
+}) {
+  return (
+    <div class="set">
+      <span class="nm">{name}</span>
+      <span class="ds">{desc}</span>
+      <span class="key">{keyText}</span>
+      <span class="ctl">{children}</span>
+      {below}
+    </div>
+  );
+}
+
+/** Страница «Интеграции» (roadmap 19, этап 6, решение 14): источник Jira, Jiraffe, свои подключения, обновление и инструменты агента. */
+function IntegrationsRows({ v }: { v: SettingsValues }) {
+  const I = T.integrations;
+  const st = integrations.value;
+  const sources: [string, string][] = JIRA_SOURCES.map((s) => [s, I.source.options[s] ?? s]);
+  const refresh: [string, string][] = TASK_REFRESH_MODES.map((m) => [m, I.refresh.options[m] ?? m]);
+  const jf = st?.jiraffe;
+  const ver = jf?.version ?? '';
+  const jiraffeLine = () => {
+    if (!jf) return null;
+    if (jf.state === 'absent')
+      return (
+        <div class="ok bad" role="status">
+          {I.jiraffe.absent}
+        </div>
+      );
+    if (jf.state === 'no-api')
+      return (
+        <div class="ok bad" role="status">
+          {I.jiraffe.noApi(ver)}
+        </div>
+      );
+    if (jf.state === 'inactive')
+      return (
+        <div class="ok" role="status">
+          <span class="dim">{I.jiraffe.inactive(ver)}</span>
+        </div>
+      );
+    return (
+      <div class="ok" role="status">
+        {I.jiraffe.ready(ver)}
+        <span class="dim">
+          {' · '}
+          {jf.instances.length
+            ? `${I.jiraffe.instances(jf.instances.length)}: ${jf.instances.map((i) => i.name).join(', ')}`
+            : I.jiraffe.noInstances}
+        </span>
+      </div>
+    );
+  };
+  const activeLine = st
+    ? st.active === 'jiraffe'
+      ? I.source.activeJiraffe
+      : st.active === 'own'
+        ? I.source.activeOwn
+        : I.source.activeNone
+    : null;
+  return (
+    <>
+      <Row
+        name={I.source.name}
+        isNew
+        desc={I.source.desc}
+        k="jira.source"
+        below={
+          activeLine ? (
+            <div class={st?.active ? 'ok' : 'ok bad'} role="status">
+              {activeLine}
+            </div>
+          ) : null
+        }
+      >
+        <Select k="jira.source" value={v['jira.source']} options={sources} />
+      </Row>
+      <InfoRow name={I.jiraffe.name} desc={I.jiraffe.desc} keyText="fosteev.jiraffe" below={jiraffeLine()}>
+        {jf?.state === 'absent' && (
+          <button type="button" class="btn" onClick={() => integrationsAction.installJiraffe()}>
+            {I.jiraffe.install}
+          </button>
+        )}
+      </InfoRow>
+      <InfoRow
+        name={I.own.name}
+        desc={I.own.desc}
+        keyText="agentura.jira.connect"
+        below={
+          <div class="cn" role="list" aria-label={I.own.aria}>
+            {st && st.own.length === 0 && <div class="empty">{I.own.empty}</div>}
+            {st?.own.map((i) => (
+              <div class="r" role="listitem" key={i.id} data-instance={i.id}>
+                <span class="n">{i.name}</span>
+                <span class="u">{i.baseUrl}</span>
+                <span class="k">{I.own.kind[i.kind] ?? i.kind}</span>
+                <button type="button" class="btn" onClick={() => integrationsAction.test(i.id)}>
+                  {I.own.test}
+                </button>
+                <button type="button" class="btn" onClick={() => integrationsAction.disconnect(i.id)}>
+                  {I.own.remove}
+                </button>
+              </div>
+            ))}
+          </div>
+        }
+      >
+        <button type="button" class="btn" onClick={() => integrationsAction.connect()}>
+          {I.own.connect}
+        </button>
+      </InfoRow>
+      <Row name={I.refresh.name} isNew desc={I.refresh.desc} k="tasks.refresh">
+        <Select k="tasks.refresh" value={v['tasks.refresh']} options={refresh} />
+      </Row>
+      <Row name={I.humanChanges.name} isNew desc={I.humanChanges.desc} k="tasks.humanChanges">
+        <Toggle k="tasks.humanChanges" value={v['tasks.humanChanges']} />
+      </Row>
+      <InfoRow name={I.agentTools.name} desc={I.agentTools.desc} keyText="agentura.jira.agentTools">
+        <div class="cbs" aria-disabled="true">
+          {(['comment', 'transition', 'worklog'] as const).map((t) => (
+            <label key={t} class="off">
+              <input type="checkbox" disabled checked={false} aria-label={I.agentTools[t]} />
+              {I.agentTools[t]}
+              {t !== 'comment' && <em> {I.agentTools.ask}</em>}
+            </label>
+          ))}
+          <em class="soon">{I.agentTools.soon}</em>
+        </div>
+      </InfoRow>
+    </>
   );
 }
 
@@ -963,6 +1113,8 @@ export function Settings() {
               </Row>
             </>,
           )}
+
+          {page('integrations', <IntegrationsRows v={v} />)}
 
           {page(
             'engine',

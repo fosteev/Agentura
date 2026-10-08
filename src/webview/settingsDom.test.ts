@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { h, render } from 'preact';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SettingsValues } from '../settings';
+import type { IntegrationsState } from '../shared/integrations';
 import { Settings } from './components/Settings';
 import { Sidebar } from './components/Sidebar';
 import {
@@ -12,6 +13,7 @@ import {
   engineCheck,
   errors,
   handleSettingsMessage,
+  integrations,
   overridden,
   settingsValues,
 } from './settingsStore';
@@ -51,6 +53,9 @@ const values: SettingsValues = {
   'sidebar.limits': 'active',
   'tasks.sidebar': 'groups',
   'tasks.card': 'panel',
+  'jira.source': 'auto',
+  'tasks.refresh': '30s',
+  'tasks.humanChanges': true,
   'feed.style': 'journal',
   'composer.layout': 'classic',
   'agents.view': 'list',
@@ -84,6 +89,7 @@ beforeEach(() => {
     (m) => void posted.push(m as Record<string, unknown>),
   );
   settingsValues.value = undefined;
+  integrations.value = undefined;
   overridden.value = [];
   errors.value = {};
   engineCheck.value = { pending: false };
@@ -113,6 +119,7 @@ describe('вкладка настроек', () => {
       'limits',
       'sidebar',
       'look',
+      'integrations',
       'engine',
     ]);
     expect([...host.querySelectorAll('.set .key')].map((e) => e.textContent)).toEqual([
@@ -143,6 +150,12 @@ describe('вкладка настроек', () => {
       'agentura.font.panels',
       'agentura.font.code',
       'agentura.language',
+      'agentura.jira.source',
+      'fosteev.jiraffe',
+      'agentura.jira.connect',
+      'agentura.tasks.refresh',
+      'agentura.tasks.humanChanges',
+      'agentura.jira.agentTools',
       'agentura.defaultProvider',
       'agentura.claudeExecutable · только эта машина',
       'agentura.codexExecutable · только эта машина',
@@ -205,6 +218,9 @@ describe('вкладка настроек', () => {
     expect(tab('look').classList.contains('on')).toBe(true);
     expect(tab('session').tabIndex).toBe(-1);
     tab('look').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    await flush();
+    expect(visible()).toEqual(['integrations']);
+    tab('integrations').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
     await flush();
     expect(visible()).toEqual(['engine']);
     expect(document.activeElement).toBe(tab('engine'));
@@ -591,5 +607,104 @@ describe('вкладка настроек', () => {
     await flush();
     expect(host.querySelector('.set[data-key$="defaultModel"] .note')).not.toBeNull();
     expect(host.querySelector('.set[data-key$="defaultEffort"] .note')).toBeNull();
+  });
+});
+
+describe('страница «Интеграции»', () => {
+  const inst = (id: string, kind: 'dc' | 'cloud' = 'dc') => ({ id, name: id.toUpperCase(), baseUrl: `https://${id}.example`, kind });
+  const page = (st: IntegrationsState | undefined) => {
+    const host = mount(Settings);
+    state();
+    if (st) handleSettingsMessage({ type: 'integrations.state', state: st });
+    return host;
+  };
+  const pageEl = (host: HTMLElement) => host.querySelector<HTMLElement>('#integrations')!;
+
+  it('Jiraffe есть: версия, инстансы по именам; свои подключения пусты', async () => {
+    const host = page({ jiraffe: { state: 'ready', version: '0.8.0', instances: [inst('a'), inst('b')] }, own: [], active: 'jiraffe' });
+    await flush();
+    const p = pageEl(host);
+    expect(p.textContent).toContain('Jiraffe 0.8.0 установлен');
+    expect(p.textContent).toContain('2 инстанса: A, B');
+    expect(p.textContent).toContain('Сейчас работает: Jiraffe');
+    expect(p.textContent).toContain('Подключений нет.');
+    expect(p.querySelector('.set[data-key$="jira.source"] select')).not.toBeNull();
+    expect(p.querySelector('.set .btn')?.textContent).toBe('подключить'); // «поставить» только без Jiraffe
+    expect(p.textContent).not.toContain('поставить');
+  });
+
+  it('Jiraffe нет, два своих: «поставить», список, проверить / удалить / подключить шлют сообщения', async () => {
+    const host = page({ jiraffe: { state: 'absent', instances: [] }, own: [inst('a'), inst('b', 'cloud')], active: 'own' });
+    await flush();
+    const p = pageEl(host);
+    expect(p.textContent).toContain('не установлен');
+    expect(p.textContent).toContain('Сейчас работает: свои подключения');
+    const rows = [...p.querySelectorAll<HTMLElement>('.cn .r')];
+    expect(rows.map((r) => r.dataset.instance)).toEqual(['a', 'b']);
+    expect(rows[1]!.textContent).toContain('Cloud');
+    const btn = (el: ParentNode, text: string) =>
+      [...el.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent === text)!;
+    btn(rows[0]!, 'проверить').click();
+    btn(rows[1]!, 'удалить').click();
+    btn(p, 'подключить').click();
+    btn(p, 'поставить').click();
+    expect(posted.filter((m) => String(m.type).startsWith('integrations.'))).toEqual([
+      { type: 'integrations.test', instanceId: 'a' },
+      { type: 'integrations.disconnect', instanceId: 'b' },
+      { type: 'integrations.connect' },
+      { type: 'integrations.installJiraffe' },
+    ]);
+  });
+
+  it('ничего нет; старый Jiraffe без API; Jiraffe не используется', async () => {
+    const host = page({ jiraffe: { state: 'absent', instances: [] }, own: [] });
+    await flush();
+    const p = pageEl(host);
+    expect(p.textContent).toContain('Сейчас источника нет');
+    expect(p.textContent).toContain('Подключений нет.');
+    handleSettingsMessage({ type: 'integrations.state', state: { jiraffe: { state: 'no-api', version: '0.7.0', instances: [] }, own: [] } });
+    await flush();
+    expect(p.textContent).toContain('не отдаёт API');
+    handleSettingsMessage({ type: 'integrations.state', state: { jiraffe: { state: 'inactive', version: '0.8.0', instances: [] }, own: [inst('a')], active: 'own' } });
+    await flush();
+    expect(p.textContent).toContain('сейчас не используется');
+  });
+
+  it('источник, обновление и «изменения от людей» пишут через settings.set; инструменты агента неактивны', async () => {
+    const host = page({ jiraffe: { state: 'absent', instances: [] }, own: [] });
+    await flush();
+    const p = pageEl(host);
+    const sel = p.querySelector<HTMLSelectElement>('.set[data-key$="jira.source"] select')!;
+    sel.value = 'own';
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+    const rf = p.querySelector<HTMLSelectElement>('.set[data-key$="tasks.refresh"] select')!;
+    rf.value = 'manual';
+    rf.dispatchEvent(new Event('change', { bubbles: true }));
+    p.querySelector<HTMLElement>('.set[data-key$="tasks.humanChanges"] .tg')!.click();
+    expect(sets()).toEqual([
+      { type: 'settings.set', key: 'jira.source', value: 'own' },
+      { type: 'settings.set', key: 'tasks.refresh', value: 'manual' },
+      { type: 'settings.set', key: 'tasks.humanChanges', value: false },
+    ]);
+    const boxes = [...p.querySelectorAll<HTMLInputElement>('.cbs input')];
+    expect(boxes).toHaveLength(3);
+    expect(boxes.every((b) => b.disabled)).toBe(true);
+  });
+
+  it('шестая страница в навигации; стрелки ↑↓ проходят по кругу через неё', async () => {
+    const host = mount(Settings);
+    state();
+    await flush();
+    const ids = [...host.querySelectorAll<HTMLElement>('.st-tabs [role="tab"]')].map((t) => t.dataset.section);
+    expect(ids).toEqual(['session', 'limits', 'sidebar', 'look', 'integrations', 'engine']);
+    const tab = (id: string) => host.querySelector<HTMLButtonElement>(`[data-section="${id}"]`)!;
+    tab('look').click();
+    await flush();
+    tab('look').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    await flush();
+    expect(tab('integrations').getAttribute('aria-selected')).toBe('true');
+    tab('integrations').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+    await flush();
+    expect(tab('look').getAttribute('aria-selected')).toBe('true');
   });
 });

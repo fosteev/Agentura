@@ -183,7 +183,7 @@ describe('полоска и вкладка «задача»', () => {
     expect(q(host, '.tk-txt').classList.contains('clamp')).toBe(false);
   });
 
-  it('tasks.card: strip — только полоска; split с Jiraffe — без вкладки, без Jiraffe — как panel', async () => {
+  it('tasks.card: strip — только полоска; split с Jiraffe — вкладка на «изменениях», без Jiraffe — как panel', async () => {
     const host = mount();
     post(state());
     taskCardMode.value = 'strip';
@@ -192,10 +192,12 @@ describe('полоска и вкладка «задача»', () => {
     expect(taskTab(host)).toBeUndefined();
     taskCardMode.value = 'split';
     await flush();
-    expect(taskTab(host)).toBeUndefined(); // карточка Jiraffe открыта слева
+    expect(taskTab(host)).toBeDefined(); // карточка Jiraffe слева, справа — вкладка «задача»
+    expect(q(host, '.tk-seg [aria-pressed="true"], .tk-seg [aria-checked="true"], .tk-seg .on')?.textContent).toMatch(/измен/i);
     post(state({ source: 'own' }));
     await flush();
     expect(taskTab(host)).toBeDefined();
+    expect(q(host, '.tk-seg [aria-pressed="true"], .tk-seg [aria-checked="true"], .tk-seg .on')?.textContent).not.toMatch(/измен/i);
     // chat.info несёт значение настройки
     taskCardMode.value = 'panel';
     handleHostMessage({

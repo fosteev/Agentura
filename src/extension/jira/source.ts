@@ -174,6 +174,16 @@ export class JiraSources {
     };
   }
 
+  /** Инстансы Jiraffe (имена для страницы настроек); пусто, если API нет. */
+  jiraffeInstances(): JiraInstanceRef[] {
+    return this.jiraffe?.instances() ?? [];
+  }
+
+  /** Какой источник работает сейчас. */
+  activeKind(): 'jiraffe' | 'own' | undefined {
+    return this.current()?.kind;
+  }
+
   ownInstances(): JiraInstanceRef[] {
     return this.deps.own.instances();
   }

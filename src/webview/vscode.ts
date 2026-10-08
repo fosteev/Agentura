@@ -66,7 +66,7 @@ export interface GraphViewState {
 }
 
 /** Разделы вкладки настроек (страницы, порядок в навигации). */
-export const SETTINGS_SECTIONS = ['session', 'limits', 'sidebar', 'look', 'engine'] as const;
+export const SETTINGS_SECTIONS = ['session', 'limits', 'sidebar', 'look', 'integrations', 'engine'] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 
 /** Свёрнутые секции боковой панели (нет поля — развёрнута). */

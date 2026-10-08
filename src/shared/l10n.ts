@@ -113,7 +113,7 @@ const ru = {
   } as Record<string, [string, string]>,
   taskCardViews: {
     panel: ['Панель', 'вкладка «задача» в правой панели чата'],
-    split: ['Сплит', 'карточка Jiraffe слева, чат справа (только с Jiraffe, иначе как «Панель»)'],
+    split: ['Сплит', 'карточка Jiraffe слева, чат справа с вкладкой «задача» на изменениях (только с Jiraffe, иначе как «Панель»)'],
     strip: ['Полоска', 'только полоска над лентой, без вкладки'],
   } as Record<string, [string, string]>,
   composerLayouts: {
@@ -334,7 +334,7 @@ const en: HostUi = {
   } as Record<string, [string, string]>,
   taskCardViews: {
     panel: ['Panel', 'a "task" tab in the chat right panel'],
-    split: ['Split', "Jiraffe's card on the left, the chat on the right (Jiraffe only, otherwise as Panel)"],
+    split: ['Split', "Jiraffe's card on the left, the chat and a “task” tab on changes on the right (Jiraffe only, otherwise as Panel)"],
     strip: ['Strip', 'only the strip above the feed, no tab'],
   } as Record<string, [string, string]>,
   composerLayouts: {

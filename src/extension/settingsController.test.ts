@@ -194,4 +194,42 @@ describe('SettingsController', () => {
     c.pushState();
     expect(posted[0]).toMatchObject({ values: { usagePollMinutes: 30 } });
   });
+
+  it('integrations: ready и запись настройки шлют состояние, сообщения страницы идут в deps', async () => {
+    const calls: string[] = [];
+    const inst = (id: string) => ({ id, name: id, baseUrl: `https://${id}.example`, kind: 'dc' as const });
+    const state = { jiraffe: { state: 'absent' as const, instances: [] }, own: [inst('a'), inst('b')] };
+    const { c, posted } = setup(
+      {},
+      {
+        integrations: {
+          state: () => state,
+          connect: () => void calls.push('connect'),
+          test: (id) => void calls.push(`test:${id}`),
+          disconnect: (id) => void calls.push(`disconnect:${id}`),
+          installJiraffe: () => void calls.push('install'),
+        },
+      },
+    );
+    await c.handle({ type: 'ready' });
+    expect(posted.map((m) => m.type)).toEqual(['settings.state', 'integrations.state']);
+    await c.handle({ type: 'integrations.connect' });
+    await c.handle({ type: 'integrations.test', instanceId: 'a' });
+    await c.handle({ type: 'integrations.disconnect', instanceId: 'b' });
+    await c.handle({ type: 'integrations.installJiraffe' });
+    // незнакомый id (не из своих подключений) — команды не зовутся: иначе они взяли бы единственное подключение
+    await c.handle({ type: 'integrations.test', instanceId: 'zzz' });
+    await c.handle({ type: 'integrations.disconnect', instanceId: 'zzz' });
+    expect(calls).toEqual(['connect', 'test:a', 'disconnect:b', 'install']);
+    posted.length = 0;
+    await c.handle({ type: 'settings.set', key: 'jira.source', value: 'own' });
+    expect(posted.map((m) => m.type)).toEqual(['settings.state', 'integrations.state']);
+  });
+
+  it('без integrations (старый хост) страница ничего не получает, сообщения не падают', async () => {
+    const { c, posted } = setup();
+    await c.handle({ type: 'ready' });
+    await c.handle({ type: 'integrations.connect' });
+    expect(posted.map((m) => m.type)).toEqual(['settings.state']);
+  });
 });

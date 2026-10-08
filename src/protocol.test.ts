@@ -21,6 +21,10 @@ describe('protocol', () => {
     expect(isFromWebview({ type: 'remote.set', on: 'yes' })).toBe(false);
     expect(isFromWebview({ type: 'remote.set' })).toBe(false);
     expect(isFromWebview({ type: 'remote.set', sessionId: 5, on: true })).toBe(false);
+    expect(isFromWebview({ type: 'integrations.connect' })).toBe(true);
+    expect(isFromWebview({ type: 'integrations.test', instanceId: 'jira-x' })).toBe(true);
+    expect(isFromWebview({ type: 'integrations.test' })).toBe(false);
+    expect(isFromWebview({ type: 'integrations.disconnect', instanceId: '' })).toBe(false);
     expect(isFromWebview({ type: 'unknown' })).toBe(false);
     expect(isFromWebview({ type: 'toString' })).toBe(false);
     expect(isFromWebview(null)).toBe(false);

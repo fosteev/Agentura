@@ -47,7 +47,7 @@ import { useStickToBottom } from '../useStickToBottom';
 import { AgentsPane, ChangesPane, type AgentsPaneModel } from './SidePanes';
 import { GitPane } from './GitPane';
 import { TaskPane, TaskStrip } from './TaskPane';
-import { isTaskChat, latestSeen, taskPanelShown, unseenCount, visibleEvents } from '../taskView';
+import { isTaskChat, latestSeen, taskDefaultView, taskPanelShown, unseenCount, visibleEvents } from '../taskView';
 import { agentPathSet, gitBadge } from '../gitView';
 import { agentsViewPane, defaultScope } from '../agentViews';
 import type { FeedRow } from '../chatState';
@@ -277,6 +277,7 @@ export function Chat() {
   // вкладка «задача» (чат по задаче, roadmap 19): доступна и в пустой сессии — карточку видно до первого сообщения
   const ts = taskState.value;
   const taskOn = taskPanelShown(taskCardMode.value, ts);
+  const taskSeg = panel.taskView ?? taskDefaultView(taskCardMode.value, ts);
   const t: Tab =
     tab.value === 'task'
       ? taskOn
@@ -381,7 +382,7 @@ export function Chat() {
   // вкладка «задача» видна (широкая — активна в несвёрнутой панели, узкая — открыта в шапке); открыта лента — бейджа нет:
   // отметка «видел» сдвигается эффектом `TaskPane` после кадра, бейдж не должен мелькнуть на этот кадр
   const taskShown = taskOn && (wide.value ? panelTab === 'task' && !panelOff : t === 'task');
-  const taskBdg = taskOn && !(taskShown && panel.taskView === 'changes') ? unseenCount(visibleEvents(ts), seen) : 0;
+  const taskBdg = taskOn && !(taskShown && taskSeg === 'changes') ? unseenCount(visibleEvents(ts), seen) : 0;
   // относительные времена вкладки («обновлено …», «N мин назад») идут и в простое, когда общий тик стоит
   useEffect(() => {
     if (!taskShown) return;
@@ -683,7 +684,7 @@ export function Chat() {
               hidden={wide.value ? panelTab !== 'task' : t !== 'task'}
               visible={taskShown}
               labelledBy={wide.value ? 'ptab-task' : 'tab-task'}
-              seg={panel.taskView ?? 'card'}
+              seg={taskSeg}
               seen={seen}
               humanDone={humanDone}
               onSeg={(v) => updatePanel({ taskView: v })}
