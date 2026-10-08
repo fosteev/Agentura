@@ -266,18 +266,57 @@ Jiraffe (`/Users/fost/Projects/jiraffe`, 0.7.0, ветка main, VS Code Marketp
 
 ### 3. Jiraffe: API v1 и «Открыть в Agentura» (репо jiraffe) — **sonnet, high**, параллельно с 2
 
-- [ ] `src/api.ts`: `JiraffeApi` ровно по решению 6; `activate()` возвращает его; `openIssue` открывает карточку
+- [x] `src/api.ts`: `JiraffeApi` ровно по решению 6; `activate()` возвращает его; `openIssue` открывает карточку
       инстанса (`beside` → `ViewColumn.Beside`); тест на форму API
-- [ ] `askAi` → «Открыть в Agentura»: передаёт `task` (`key, instanceId, title, status, statusCategory, url`),
+- [x] `askAi` → «Открыть в Agentura»: передаёт `task` (`key, instanceId, title, status, statusCategory, url`),
       `session`; сохраняет `sessionKey` для старой Agentura
-- [ ] кнопка «Открыть в Agentura ▾» и меню по решению 7 (данные — `executeCommand('agentura.taskSessions', …)`,
+- [x] кнопка «Открыть в Agentura ▾» и меню по решению 7 (данные — `executeCommand('agentura.taskSessions', …)`,
       ошибка/нет команды — старое поведение); строки l10n ru/en, `README`, `README.ru.md`, `CHANGELOG`
-- [ ] версия 0.8.0 в `package.json`
+- [x] версия 0.8.0 в `package.json`
 
 **Готово, когда:** `npm run lint && npm test && npm run build` зелёные в `/Users/fost/Projects/jiraffe`;
 тест меню: 0 чатов → без меню, 2 чата → «Продолжить» первым.
 
 **Сессия:** sonnet, high; параллельно с 2 (разные репо, контракт зафиксирован).
+
+**Решения (2026-10-08, по итогам сессии 3):**
+
+- **Контракт API v1 (Jiraffe `src/api.ts`, коммит в `feature/agentura-tasks`)** — ровно решение 6, лишних полей нет.
+  - `instances()` — только `{id, name, baseUrl, kind}` инстансов из scope воркспейса (`jiraffe.instances`);
+    email, caps, токены не отдаются.
+  - `issue(instanceId, key)`, `myself(instanceId)`, `openIssue(instanceId, key, beside?)` — инстанс должен быть
+    в scope воркспейса, иначе reject `Jiraffe: unknown instance "<id>"`; ключ тримится и приводится к верхнему
+    регистру, не `^[A-Za-z][A-Za-z0-9_]*-\d+$` → reject `Jiraffe: invalid issue key`. Нет токена → reject
+    (`token not found…`), без диалогов.
+  - `issue()` возвращает `IssueDetail` уже санитизированным (`sanitizeDetail`: `descriptionHtml` и `bodyHtml`
+    комментариев через `sanitizeJiraHtml` — схемы http/https/mailto, картинки своего инстанса → `span.img-ph`
+    с `data-src`, чужие → ссылка). Agentura всё равно гонит HTML через `htmlToText` (решение 5).
+  - `myself()`: Cloud → `{accountId, displayName}`, DC → `{name, displayName}`; email не отдаётся. Для «автор =
+    я» (решение 10) Agentura сравнивает с `UserRef.id` автора: Cloud — `accountId`, DC — `name`.
+  - `openIssue` — Promise резолвится сразу после открытия/фокуса вкладки (загрузка карточки асинхронно);
+    `beside: true`: новая вкладка — в соседней колонке; уже видимая карточка остаётся на месте, скрытая (под другой
+    вкладкой) — переезжает рядом.
+  - Тексты ошибок обрезают чужой ввод (ключ/instanceId) до 50 символов.
+  - Доступ: API получает любое установленное расширение (`await getExtension('fosteev.jiraffe').activate()`); в
+    недоверенном воркспейсе Jiraffe не активируется — API нет (`untrustedWorkspaces.supported: false`). Agentura
+    обязана обрабатывать `exports === undefined`. Оговорка — в README/README.ru/CHANGELOG.
+  - `onDidChangeInstances` срабатывает на добавление/удаление инстанса и на смену scope воркспейса.
+- **Payload `agentura.openWithContext` от Jiraffe 0.8.0:** `{ name: '<KEY>.md', context, prompt: '<url> ',
+  sessionKey: 'jiraffe:<instanceId>:<KEY>', task: { key, instanceId, title, status, statusCategory:
+  'new'|'indeterminate'|'done', url }, session?: '<sessionId>' | 'new' }`. `session` есть только если
+  `agentura.taskSessions` ответила массивом; Agentura при наличии `session` (или `task`) должна предпочесть его
+  `sessionKey`: `'new'` — новый чат в группе задачи, id — открыть этот чат. Agentura 0.8.0 лишние поля
+  игнорирует (проверено по `contextRequest.ts` 0.8.0) — работает как раньше.
+- **Меню:** Jiraffe активирует Agentura, зовёт `executeCommand('agentura.taskSessions', {instanceId, key})`.
+  Ответ — недоверенный: не массив → старое поведение; элементы без строкового `id` или с `id` > 200 символов
+  пропускаются; `title` режется до 200, `provider` до 40, `$(` в подписи экранируется (не рисует codicon); `updatedAt` — число или ISO-строка, иначе 0; сортировка
+  по `updatedAt` по убыванию, не больше 50. 0 чатов → сразу `session: 'new'` без меню. Иначе нативный QuickPick
+  (не меню в вебвью): «Продолжить: <title>» (самый свежий), остальные чаты (описание — `provider · выполняется`,
+  деталь — дата), разделитель, «＋ Новый чат по задаче». Закрыли меню (Esc) — ничего не открывается.
+- **Нет `agentura.taskSessions` / команда бросила / вернула не массив** (Agentura 0.8.0) → payload без `session`,
+  поведение 0.8.0 (одна сессия на `sessionKey`); `task` всё равно передаётся.
+- **Контракт для этапа 2 (Agentura):** `agentura.taskSessions` возвращает `{id, provider, title, updatedAt: number
+  (ms epoch), live: boolean}[]`; ключ группы строится из `task.instanceId` + `task.key` по решению 1.
 
 ### 4. Боковая панель: группы и секция «Задачи» — **sonnet, high**, после 1
 
