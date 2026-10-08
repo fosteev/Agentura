@@ -71,7 +71,9 @@ const ru = {
   chatForTaskFailed: (key: string, err: string) =>
     `Agentura: не удалось загрузить ${key} (${err}); чат открыт без данных задачи.`,
   chatForTaskNoSource: (key: string) =>
-    `Agentura: Jira не подключена — чат по ${key} открыт без данных задачи (карточка появится после подключения).`,
+    `Agentura: Jira не подключена — чат по ${key} не открыт. Подключите Jira или установите Jiraffe.`,
+  chatForTaskConnect: 'Подключить Jira…',
+  chatForTaskJiraffe: 'Установить Jiraffe',
   taskBound: (key: string) => `Agentura: чат привязан к ${key}.`,
   taskUnbound: 'Agentura: чат отвязан от задачи.',
   taskNotBound: 'Agentura: чат не привязан к задаче.',
@@ -279,7 +281,9 @@ const en: HostUi = {
   chatForTaskProgress: (key) => `Agentura: loading ${key}…`,
   chatForTaskFailed: (key, err) => `Agentura: could not load ${key} (${err}); the chat is open without the issue data.`,
   chatForTaskNoSource: (key) =>
-    `Agentura: Jira is not connected — the chat for ${key} is open without the issue data (the card appears once connected).`,
+    `Agentura: Jira is not connected — the chat for ${key} was not opened. Connect Jira or install Jiraffe.`,
+  chatForTaskConnect: 'Connect Jira…',
+  chatForTaskJiraffe: 'Install Jiraffe',
   taskBound: (key: string) => `Agentura: chat bound to ${key}.`,
   taskUnbound: 'Agentura: chat unbound from the issue.',
   taskNotBound: 'Agentura: the chat is not bound to an issue.',

@@ -152,7 +152,16 @@ export function registerTaskCommands(
         void vscode.window.showWarningMessage(t().chatForTaskFailed(key, e instanceof Error ? e.message : String(e)));
       }
     } else {
-      void vscode.window.showInformationMessage(t().chatForTaskNoSource(key));
+      // без источника чат не открываем — предлагаем подключить (решение владельца 2026-10-08)
+      const pick = await vscode.window.showWarningMessage(
+        t().chatForTaskNoSource(key),
+        t().chatForTaskConnect,
+        t().chatForTaskJiraffe,
+      );
+      if (pick === t().chatForTaskConnect) void vscode.commands.executeCommand('agentura.jira.connect');
+      else if (pick === t().chatForTaskJiraffe)
+        void vscode.commands.executeCommand('workbench.extensions.search', '@id:fosteev.jiraffe');
+      return;
     }
     if (!body) body = `# ${key}\n\n${meta.url ? `- URL: ${meta.url}\n` : ''}\n(Issue data is not loaded: no Jira source.)\n`;
     await ChatPanel.openWithContext(context, log, services, { name: `${key}.md`, context: body, task: meta, session: 'new' });

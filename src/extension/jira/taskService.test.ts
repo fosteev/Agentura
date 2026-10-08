@@ -129,7 +129,7 @@ describe('TaskService', () => {
     expect(h.timers).toHaveLength(0);
   });
 
-  it('manual: один раз при открытии, таймера и nudge нет; ↻ работает', async () => {
+  it('manual: один раз при открытии, таймера нет; nudge после хода и ↻ работают', async () => {
     const h = harness({ refresh: 'manual' });
     const { tv } = h.view();
     h.svc.attach(TASK, tv);
@@ -139,9 +139,11 @@ describe('TaskService', () => {
     h.advance(MIN_GAP_MS + 1);
     h.svc.nudge(TASK);
     await h.flush();
-    expect(h.calls.issue).toBe(1);
-    await h.svc.refresh(TASK);
     expect(h.calls.issue).toBe(2);
+    expect(h.timers).toHaveLength(0);
+    h.advance(MIN_GAP_MS + 1);
+    await h.svc.refresh(TASK);
+    expect(h.calls.issue).toBe(3);
   });
 
   it('nudge после хода грузит сразу, но не чаще раза в 5 с; невидимая вкладка — не грузит', async () => {

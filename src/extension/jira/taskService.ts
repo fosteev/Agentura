@@ -128,10 +128,10 @@ export class TaskService {
     return e ? this.load(e) : Promise.resolve();
   }
 
-  /** После хода и после результата инструмента с ключом задачи. В режиме `manual` ничего не делает. */
+  /** После хода и после результата инструмента с ключом задачи; `manual` выключает только таймер (решение владельца 2026-10-08). */
   nudge(taskKey: TaskKey): void {
     const e = this.entries.get(taskKey);
-    if (!e || this.deps.settings().refresh === 'manual' || !this.anyVisible(e) || !this.autoAllowed(e)) return;
+    if (!e || !this.anyVisible(e) || !this.autoAllowed(e)) return;
     void this.load(e);
   }
 
