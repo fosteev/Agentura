@@ -13,6 +13,7 @@ import { PreviewPanels } from './previewPanels';
 import { AccountService } from './account';
 import { SessionMemory } from './sessionMemory';
 import { TaskGroups, parseTaskKey, taskSessionRows } from './taskGroups';
+import { createJira } from './jira/setup';
 import { registerTaskCommands } from './taskCommands';
 import { SessionsService } from './sessionsService';
 import { showDebugState } from './debugPanel';
@@ -65,6 +66,8 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
   const transcripts = new TranscriptCache();
   const memory = new SessionMemory(context.workspaceState);
   const taskGroups = new TaskGroups(context.workspaceState);
+  const jira = createJira(context, taskGroups);
+  context.subscriptions.push(...jira.disposables);
 
   // шрифты, скачанные из Google Fonts: папка данных расширения; сеть — только по команде
   const userFonts = new UserFonts({
@@ -133,6 +136,8 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     account,
     memory,
     taskGroups,
+    tasks: jira.tasks,
+    jira: jira.sources,
     engine,
     codexEngine,
     antigravityEngine,
@@ -348,7 +353,7 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
       if (!parsed) return [];
       return taskSessionRows(taskGroups.group(parsed.taskKey), await sessions.list());
     }),
-    ...registerTaskCommands(services),
+    ...registerTaskCommands(context, log, services),
     vscode.commands.registerCommand('agentura.showStatus', () =>
       ChatPanel.runStatus(context, log, services),
     ),

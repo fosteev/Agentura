@@ -345,3 +345,35 @@ export function decorateSessions(
   });
   return { sessions, tasks };
 }
+
+/** Задача вкладки: в группе (`member`) или ждёт первую сессию (`pending`). */
+export interface TabTask {
+  taskKey: TaskKey;
+  meta: TaskMeta;
+}
+
+export interface TabTaskState {
+  pending?: TabTask;
+  member?: TabTask;
+}
+
+/**
+ * Что делает вкладка с задачей, когда её сессия меняется (`onSession`):
+ * - пришёл id — ожидающая задача берёт сессию в группу (`join`), иначе вкладка узнаёт свою группу;
+ * - `/clear` (`clear`) — новая сессия остаётся в группе той же задачи (решение владельца 2026-10-08): задача из группы
+ *   переходит в ожидание, ключ в заголовке не снимается;
+ * - сбой возобновления (id нет, не `/clear`) — группу не наследуем: заменяющая сессия вне группы, ожидание сохраняется.
+ */
+export function nextTabTask(
+  prev: TabTaskState,
+  ev: { id?: string; clear?: boolean },
+  groupOf: (sessionId: string) => { taskKey: TaskKey; group: TaskGroup } | undefined,
+): TabTaskState & { join?: TabTask } {
+  if (ev.id) {
+    if (prev.pending) return { member: prev.pending, join: prev.pending };
+    const g = groupOf(ev.id);
+    return g ? { member: { taskKey: g.taskKey, meta: g.group.task } } : {};
+  }
+  if (ev.clear && prev.member) return { pending: prev.member };
+  return prev.pending ? { pending: prev.pending } : {};
+}

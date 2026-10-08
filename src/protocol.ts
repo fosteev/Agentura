@@ -20,6 +20,7 @@ import type { ImageProblem } from './shared/images';
 import type { FileProblem } from './shared/files';
 import { isAgentGraphView, type AgentGraphView } from './shared/agentsGraph';
 import type { GitNotice, GitRequest } from './shared/git';
+import type { TaskRequest, TaskStateMessage } from './shared/task';
 import type {
   EngineCheck,
   AgentsView,
@@ -280,7 +281,12 @@ export type ToWebview =
    * Вкладка «git» (roadmap 12): `git.state` — снимок на каждое изменение и на `ready`, `git.error` — отказ
    * действия, `git.commit.result` — итог коммита по каждому репозиторию, `git.message.result` — ✦ сообщение.
    */
-  | GitNotice;
+  | GitNotice
+  /**
+   * Карточка и лента изменений задачи Jira вкладки (roadmap 19, этап 2): на `ready`, после каждой загрузки и при смене
+   * привязки. Нет `taskKey` — вкладка вне задачи. Webview читает это в этапе 5.
+   */
+  | TaskStateMessage;
 
 /**
  * Webview → extension. Этап 3 добавил `files.find`, `attach.pick`, `sessions.show`, `diff.open` и
@@ -395,7 +401,9 @@ export type FromWebview =
   /** ✕ у скачанного шрифта. */
   | { type: 'fonts.remove'; family: string }
   /** Вкладка «git» (roadmap 12): `git.watch|stage|unstage|discard|commit|sync|branch|open|openFile|message`. */
-  | GitRequest;
+  | GitRequest
+  /** Вкладка задачи (roadmap 19, этап 2): ↻, комментарий в поле ввода, открыть задачу/вложение. */
+  | TaskRequest;
 
 /** Картинка из диалога «+»: исходный файл или причина, почему не прочитан. */
 export interface PickedImage {
@@ -548,6 +556,9 @@ const FROM_WEBVIEW_TYPES: Record<FromWebview['type'], true> = {
   'git.openFile': true,
   'git.openRepository': true,
   'git.message': true,
+  'task.refresh': true,
+  'task.toComposer': true,
+  'task.openExternal': true,
 };
 
 /** `error.code` карточки «claude не найден»: webview рисует инструкцию и «Открыть настройки». */
@@ -588,6 +599,8 @@ const FIELD_CHECKS: Partial<Record<FromWebview['type'], (m: Record<string, unkno
   'git.openFile': (m) => str(m.root) && str(m.path),
   'git.openRepository': () => true,
   'git.message': (m) => strings(m.roots),
+  'task.toComposer': (m) => str(m.commentId) && m.commentId.length > 0 && m.commentId.length <= 200,
+  'task.openExternal': (m) => m.attachmentId === undefined || (str(m.attachmentId) && m.attachmentId.length <= 200),
 };
 
 /** Проверка входящего от webview сообщения: снаружи приходит `unknown`. */

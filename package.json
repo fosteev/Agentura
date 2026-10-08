@@ -89,6 +89,26 @@
         "category": "Agentura"
       },
       {
+        "command": "agentura.chatForTask",
+        "title": "%command.chatForTask.title%",
+        "category": "Agentura"
+      },
+      {
+        "command": "agentura.jira.connect",
+        "title": "%command.jira.connect.title%",
+        "category": "Agentura"
+      },
+      {
+        "command": "agentura.jira.disconnect",
+        "title": "%command.jira.disconnect.title%",
+        "category": "Agentura"
+      },
+      {
+        "command": "agentura.jira.test",
+        "title": "%command.jira.test.title%",
+        "category": "Agentura"
+      },
+      {
         "command": "agentura.refreshUsage",
         "title": "%command.refreshUsage.title%",
         "category": "Agentura"
@@ -460,6 +480,41 @@
           "type": "boolean",
           "default": true,
           "description": "%config.limits.readKeychain.description%"
+        },
+        "agentura.jira.source": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "jiraffe",
+            "own",
+            "off"
+          ],
+          "enumDescriptions": [
+            "%config.jira.source.enum.auto%",
+            "%config.jira.source.enum.jiraffe%",
+            "%config.jira.source.enum.own%",
+            "%config.jira.source.enum.off%"
+          ],
+          "default": "auto",
+          "description": "%config.jira.source.description%"
+        },
+        "agentura.tasks.refresh": {
+          "type": "string",
+          "enum": [
+            "30s",
+            "manual"
+          ],
+          "enumDescriptions": [
+            "%config.tasks.refresh.enum.30s%",
+            "%config.tasks.refresh.enum.manual%"
+          ],
+          "default": "30s",
+          "description": "%config.tasks.refresh.description%"
+        },
+        "agentura.tasks.humanChanges": {
+          "type": "boolean",
+          "default": true,
+          "description": "%config.tasks.humanChanges.description%"
         }
       }
     }
