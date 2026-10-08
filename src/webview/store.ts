@@ -68,7 +68,8 @@ import {
   type ChatState,
   type QuestionCard,
 } from './chatState';
-import type { AgentsView, ComposerLayout, FeedStyle, GitLayout } from '../settings';
+import type { AgentsView, ComposerLayout, FeedStyle, GitLayout, TaskCardMode } from '../settings';
+import type { TaskChatRow, TaskStateMessage } from '../shared/task';
 import type { GitOp, GitSnapshot } from '../shared/git';
 import { pushHistory } from './composer';
 import { applyHud, contextMax, initialHud, resetHud, type HudState } from './hudState';
@@ -133,6 +134,12 @@ export const composerLayout = signal<ComposerLayout>('classic');
 export const agentsView = signal<AgentsView>('list');
 /** Раскладка вкладки «git» при нескольких репо (`agentura.git.layout`, `chat.info`): `data-git` на корне чата. */
 export const gitLayout = signal<GitLayout>('stack');
+/** Где карточка задачи (`agentura.tasks.card`, `chat.info`): `strip` — без вкладки «задача» в панели. */
+export const taskCardMode = signal<TaskCardMode>('panel');
+/** Карточка и лента изменений задачи вкладки (`task.state`, roadmap 19); нет `taskKey` — вкладка вне задачи. */
+export const taskState = signal<TaskStateMessage | undefined>(undefined);
+/** Чаты группы задачи вкладки (`task.chats`) для блока «Чаты по задаче». */
+export const taskChats = signal<TaskChatRow[]>([]);
 export const history = signal<string[]>([]);
 
 /** Вкладка «git» (roadmap 12): последний снимок хоста; `undefined` — хост ещё не прислал («git загружается…»). */
@@ -343,6 +350,7 @@ export function handleHostMessage(m: ToWebview): void {
       composerLayout.value = m.composerLayout ?? 'classic';
       agentsView.value = m.agentsView ?? 'list';
       gitLayout.value = m.gitLayout ?? 'stack';
+      taskCardMode.value = m.taskCard ?? 'panel';
       // нет compact (Codex) — нет и порогов автосжатия: шкала без зон и засечек, «полный» — только само окно
       if (!features.value.compact) {
         hudState.value = { ...hudState.value, thresholds: [] };
@@ -465,6 +473,14 @@ export function handleHostMessage(m: ToWebview): void {
     case 'git.message.result':
       for (const key of settleGenerating((roots) => sameRoots(roots, m.roots)))
         setGitDraft(key, { summary: m.summary, desc: m.desc });
+      break;
+    case 'task.state':
+      // нет ключа — вкладка вне задачи: карточку и чаты сбрасываем
+      taskState.value = m.taskKey ? m : undefined;
+      if (!m.taskKey) taskChats.value = [];
+      break;
+    case 'task.chats':
+      taskChats.value = m.taskKey ? m.chats : [];
       break;
     default:
       break;

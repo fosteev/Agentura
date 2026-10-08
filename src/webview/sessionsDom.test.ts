@@ -520,6 +520,29 @@ describe('боковая панель (sessions.html)', () => {
       await flush();
     });
 
+    it('groups: внутри «Без задачи» — прежнее деление по дням (долг этапа 4, решение владельца)', async () => {
+      const host = mount(Sidebar);
+      await flush();
+      view({ tasks: 'groups' });
+      const free = [
+        session({ id: 'f1', title: 'свободный сегодня', updatedAt: NOW - 2000 }),
+        session({ id: 'f2', title: 'свободный сегодня 2', updatedAt: NOW - 3000 }),
+        session({ id: 'f3', title: 'свободный давно', updatedAt: NOW - 5 * 86_400_000 }),
+      ];
+      sidebarMessages({ type: 'sessions.update', sessions: [rows[0]!, ...free], tasks: [tasks[1]!].map((t) => ({ ...t, sessionIds: ['a'] })) });
+      await flush();
+      const none = host.querySelector('.tgp.none')!;
+      const kids = [...none.children].map((c) => (c.classList.contains('day') ? `day:${c.textContent}` : c.classList.contains('s') ? 's' : 'head'));
+      expect(kids[0]).toBe('head');
+      expect(kids.filter((k) => k.startsWith('day:'))).toHaveLength(2);
+      expect(kids.indexOf('s')).toBeGreaterThan(kids.findIndex((k) => k.startsWith('day:')));
+      expect(none.querySelectorAll('.s')).toHaveLength(3);
+      // заголовок дня стоит перед своими строками: первый день — две строки, второй — одна
+      const days = [...none.querySelectorAll('.day')];
+      expect(days[0]!.nextElementSibling!.classList.contains('s')).toBe(true);
+      expect(days[0]!.textContent).not.toBe(days[1]!.textContent);
+    });
+
     it('без групп список прежний (по дням, без «Без задачи»), даже при tasks.sidebar = groups', async () => {
       const host = mount(Sidebar);
       await flush();

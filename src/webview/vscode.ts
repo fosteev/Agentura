@@ -24,7 +24,7 @@ export interface PanelState {
   /** Свёрнута в полосу. */
   off?: boolean;
   /** Активная вкладка панели. */
-  tab?: 'changes' | 'git' | 'agents';
+  tab?: 'changes' | 'git' | 'agents' | 'task';
   /** Вкладка «git»: файлы деревом (иначе списком путей). */
   gitTree?: boolean;
   /** Вкладка «git»: выбранный репозиторий (`root`) в раскладке «выбор сверху». */
@@ -33,6 +33,12 @@ export interface PanelState {
   gitAgent?: boolean;
   /** Охват вкладки «изменения»: вся сессия или последний ход. */
   changes?: 'session' | 'turn';
+  /** Вкладка «задача»: карточка или лента изменений (нет — карточка). */
+  taskView?: 'card' | 'changes';
+  /** Вкладка «задача»: время (мс) самого позднего события, которое человек уже видел; новее — «новое». */
+  taskSeen?: number;
+  /** Ключ задачи, для которой записано `taskSeen` (другая задача — отсчёт заново). */
+  taskSeenKey?: string;
   /** Охват вкладки «агенты» по видам (список охвата не имеет): последний ход или вся сессия. */
   agScope?: Partial<Record<'tree' | 'lanes' | 'cards', 'turn' | 'session'>>;
 }
@@ -117,6 +123,10 @@ export function readPanel(): PanelState {
   if (p.tab === 'turn' || p.tab === 'changes') out.tab = 'changes';
   else if (p.tab === 'git') out.tab = 'git';
   else if (p.tab === 'agents') out.tab = 'agents';
+  else if (p.tab === 'task') out.tab = 'task';
+  if (p.taskView === 'card' || p.taskView === 'changes') out.taskView = p.taskView;
+  if (typeof p.taskSeen === 'number' && Number.isFinite(p.taskSeen) && p.taskSeen >= 0) out.taskSeen = p.taskSeen;
+  if (typeof p.taskSeenKey === 'string' && p.taskSeenKey) out.taskSeenKey = p.taskSeenKey;
   if (typeof p.gitTree === 'boolean') out.gitTree = p.gitTree;
   if (typeof p.gitRepo === 'string' && p.gitRepo) out.gitRepo = p.gitRepo;
   if (typeof p.gitAgent === 'boolean') out.gitAgent = p.gitAgent;

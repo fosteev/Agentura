@@ -20,7 +20,7 @@ import type { ImageProblem } from './shared/images';
 import type { FileProblem } from './shared/files';
 import { isAgentGraphView, type AgentGraphView } from './shared/agentsGraph';
 import type { GitNotice, GitRequest } from './shared/git';
-import type { TaskRequest, TaskStateMessage } from './shared/task';
+import type { TaskChatsMessage, TaskRequest, TaskStateMessage } from './shared/task';
 import type {
   EngineCheck,
   AgentsView,
@@ -30,6 +30,7 @@ import type {
   SessionListMode,
   SettingKey,
   SidebarLimitsMode,
+  TaskCardMode,
   TaskSidebarMode,
   SidebarTopMode,
   SettingsValues,
@@ -184,6 +185,8 @@ export type ToWebview =
       provider?: AgentProvider;
       /** Что движок умеет: UI прячет остальное. Нет — Claude, все `true`. */
       features?: ProviderFeatures;
+      /** Где карточка задачи в чате по задаче (`agentura.tasks.card`, roadmap 19); нет — `panel`. */
+      taskCard?: TaskCardMode;
     }
   | { type: 'capabilities'; sessionId: string; models: ModelOption[]; commands: CommandOption[] }
   | ({ type: 'editor.context' } & EditorContext)
@@ -287,9 +290,11 @@ export type ToWebview =
   | GitNotice
   /**
    * Карточка и лента изменений задачи Jira вкладки (roadmap 19, этап 2): на `ready`, после каждой загрузки и при смене
-   * привязки. Нет `taskKey` — вкладка вне задачи. Webview читает это в этапе 5.
+   * привязки. Нет `taskKey` — вкладка вне задачи.
    */
-  | TaskStateMessage;
+  | TaskStateMessage
+  /** Чаты группы задачи вкладки для блока «Чаты по задаче» (этап 5). */
+  | TaskChatsMessage;
 
 /**
  * Webview → extension. Этап 3 добавил `files.find`, `attach.pick`, `sessions.show`, `diff.open` и
@@ -565,6 +570,8 @@ const FROM_WEBVIEW_TYPES: Record<FromWebview['type'], true> = {
   'task.refresh': true,
   'task.toComposer': true,
   'task.openExternal': true,
+  'task.openChat': true,
+  'task.connect': true,
 };
 
 /** `error.code` карточки «claude не найден»: webview рисует инструкцию и «Открыть настройки». */
@@ -606,6 +613,8 @@ const FIELD_CHECKS: Partial<Record<FromWebview['type'], (m: Record<string, unkno
   'git.openRepository': () => true,
   'git.message': (m) => strings(m.roots),
   'task.newChat': (m) => str(m.taskKey) && m.taskKey.length > 0 && m.taskKey.length <= 400,
+  'task.connect': () => true,
+  'task.openChat': (m) => str(m.sessionId) && m.sessionId.length > 0 && m.sessionId.length <= 200,
   'task.toComposer': (m) => str(m.commentId) && m.commentId.length > 0 && m.commentId.length <= 200,
   'task.openExternal': (m) => m.attachmentId === undefined || (str(m.attachmentId) && m.attachmentId.length <= 200),
 };

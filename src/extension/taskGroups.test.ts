@@ -7,6 +7,7 @@ import {
   nextTabTask,
   parseTaskKey,
   routeTaskOpen,
+  taskChatRows,
   taskKeyOf,
   taskMeta,
   taskSessionRows,
@@ -246,5 +247,21 @@ describe('nextTabTask (/clear во вкладке задачи)', () => {
       member: { taskKey: task.taskKey, meta: task.meta },
     });
     expect(nextTabTask({}, { id: 's2' }, none)).toEqual({});
+  });
+});
+
+describe('taskChatRows (блок «Чаты по задаче» вкладки)', () => {
+  it('только чаты группы из списка сессий, новые сверху, текущий отмечен; нет группы — пусто', () => {
+    const g = new TaskGroups(memento());
+    g.add(K1, meta(), { provider: 'claude', id: 's1' }, 1);
+    g.add(K1, meta(), { provider: 'codex', id: 's2' }, 2);
+    g.add(K1, meta(), { provider: 'claude', id: 'gone' }, 3);
+    const rows = [row('s1', 100), row('s2', 200), row('other', 300)];
+    const out = taskChatRows(g.group(K1), rows, 's1');
+    expect(out.map((r) => [r.id, r.current])).toEqual([
+      ['s2', false],
+      ['s1', true],
+    ]);
+    expect(taskChatRows(undefined, rows, 's1')).toEqual([]);
   });
 });

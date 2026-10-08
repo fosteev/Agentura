@@ -389,6 +389,7 @@ html[data-width='380'] .num.wide {
 .set > .cards:has(.pv-feed),
 .set > .cards:has(.pv-agents),
 .set > .cards:has(.pv-git),
+.set > .cards:has(.pv-taskcard),
 .set > .cards:has(.pv-composer) {
   grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
 }
@@ -625,4 +626,87 @@ html[data-width='380'] .num.wide {
   max-width: 340px;
   height: 200px;
   max-height: none;
+}
+
+/* превью tasks.card: схема окна редактора — полоска задачи, условные блоки ленты, вкладок и карточки Jiraffe */
+.pv-taskcard {
+  display: flex;
+  height: 110px;
+  position: relative;
+  background: var(--bg);
+  font-family: var(--font);
+}
+.pv-taskcard > * {
+  min-width: 0;
+}
+.pv-taskcard .tcp-chat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.pv-taskcard .tcp-card {
+  flex: 0 0 38%;
+  border-right: 1px solid var(--line);
+  padding: 6px 8px;
+  background: var(--bg-side);
+}
+.pv-taskcard .tcp-card > b {
+  display: inline-grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  margin-bottom: 4px;
+  border-radius: 3px;
+  background: #e8a317;
+  color: #fff;
+  font: 700 9px/1 var(--mono);
+}
+.pv-taskcard .tcp-side {
+  flex: 0 0 34%;
+  border-left: 1px solid var(--line);
+  background: var(--bg-side);
+  display: flex;
+  flex-direction: column;
+}
+.pv-taskcard .tcp-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--line);
+  font-size: 9px;
+  color: var(--fg-mute);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.pv-taskcard .tcp-tabs .on {
+  color: var(--fg);
+  box-shadow: 0 1px 0 var(--fg);
+}
+.pv-taskcard .tcp-feed {
+  display: grid;
+  gap: 5px;
+  align-content: start;
+  padding: 8px;
+}
+.pv-taskcard .tcp-feed i {
+  display: block;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line-strong);
+}
+.pv-taskcard .tcp-feed i:nth-child(3n) {
+  width: 60%;
+}
+.pv-taskcard .tcp-note {
+  position: absolute;
+  right: 4px;
+  bottom: 2px;
+  font-size: 9px;
+  color: var(--fg-mute);
+}
+.pv-taskcard .tk-strip {
+  height: 22px;
+  font-size: 10px;
+  gap: 5px;
+  padding: 0 6px;
 }

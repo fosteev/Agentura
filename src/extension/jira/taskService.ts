@@ -337,6 +337,13 @@ export class TaskService {
         error = { code: 'unknown-instance', message: this.deps.messages.unknownInstance(parsed.instanceId) };
       }
     }
+    // до первого ответа `e.source` ещё 'none': берём источник, который будет опрашивать, — иначе вкладка при
+    // `tasks.card = split` с Jiraffe на время первой загрузки показывает вкладку «задача» (этап 5)
+    let source = e.source;
+    if (source === 'none' && !e.snap && !error) {
+      const parsed = parseTaskKey(e.taskKey);
+      source = (parsed && this.deps.sources.forInstance(parsed.instanceId)?.kind) || 'none';
+    }
     const now = this.now();
     v.post({
       type: 'task.state',
@@ -345,7 +352,8 @@ export class TaskService {
       events: e.snap ? eventsSince(e.snap, v.openedAt(), v.turns(), { now, humanChanges }) : [],
       ...(error ? { error } : {}),
       fetchedAt: e.fetchedAt,
-      source: e.source,
+      source,
+      humanChanges,
     });
   }
 }

@@ -1,3 +1,5 @@
+import type { AgentProvider } from '../agent/types';
+
 /**
  * Карточка задачи Jira и лента её изменений для вкладки чата (roadmap 19, этап 2). Без `vscode`: типы общие для хоста
  * (`extension/jira/*`) и webview (этап 5). Тексты — обычные строки (описание и комментарии уже прогнаны через `htmlToText`),
@@ -101,6 +103,28 @@ export interface TaskStateMessage {
   /** Мс эпохи последней удачной загрузки; 0 — не было. */
   fetchedAt: number;
   source: TaskSourceKind;
+  /** `agentura.tasks.humanChanges`: `false` — ленту и плашку «пока агент работал» не показывать. Нет — `true`. */
+  humanChanges?: boolean;
+}
+
+/** Строка блока «Чаты по задаче» вкладки (этап 5): чат группы, к которой привязана вкладка. */
+export interface TaskChatRow {
+  id: string;
+  /** Нет — Claude. */
+  provider?: AgentProvider;
+  title: string;
+  /** Мс эпохи последней активности. */
+  updatedAt: number;
+  state: 'idle' | 'live' | 'waiting' | 'error' | 'limit';
+  /** Чат этой вкладки. */
+  current: boolean;
+}
+
+/** Хост → вкладка: чаты группы задачи вкладки (новые сверху). Нет `taskKey` — вкладка вне задачи. */
+export interface TaskChatsMessage {
+  type: 'task.chats';
+  taskKey?: string;
+  chats: TaskChatRow[];
 }
 
 /** Вкладка → хост. Задача — та, к которой привязана вкладка. */
@@ -109,7 +133,11 @@ export type TaskRequest =
   /** Вставить текст комментария (`TaskEvent.commentId` / `TaskComment.id`) в поле ввода; не отправляет. */
   | { type: 'task.toComposer'; commentId: string }
   /** Открыть задачу («в Jiraffe ↗» при источнике Jiraffe, иначе в браузере) или вложение `attachmentId` в браузере. */
-  | { type: 'task.openExternal'; attachmentId?: string };
+  | { type: 'task.openExternal'; attachmentId?: string }
+  /** Открыть чат из блока «Чаты по задаче» (должен быть в группе задачи вкладки — хост проверяет). */
+  | { type: 'task.openChat'; sessionId: string }
+  /** Нет подключения/токен не подошёл: открыть «Agentura: Подключить Jira…». */
+  | { type: 'task.connect' };
 
 export function isTaskRequest<T extends { type: string }>(m: T): m is T & TaskRequest {
   return m.type.startsWith('task.');

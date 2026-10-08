@@ -1,7 +1,8 @@
 import type { ComponentChildren } from 'preact';
 import type { FeedRow } from '../chatState';
 import type { SessionSummary, TaskGroupSummary } from '../../protocol';
-import type { AgentsView, ComposerLayout, FeedStyle, GitLayout } from '../../settings';
+import type { AgentsView, ComposerLayout, FeedStyle, GitLayout, TaskCardMode } from '../../settings';
+import type { TaskStateMessage } from '../../shared/task';
 import type { GitFileStatus, GitFileView, GitRepoView, GitSnapshot } from '../../shared/git';
 import { agentMapView } from '../agentsView';
 import { agentGraphView, agentsViewPane, defaultScope } from '../agentViews';
@@ -13,6 +14,7 @@ import { Log } from './Log';
 import { SidebarView, type SidebarData, type SidebarLook } from './Sidebar';
 import { AgentsPane } from './SidePanes';
 import { GitPane } from './GitPane';
+import { TaskStrip } from './TaskPane';
 
 /**
  * Миниатюры вида во вкладке настроек: настоящие `Log` и `SidebarView` на фикстуре, уменьшенные CSS-`zoom`.
@@ -744,6 +746,70 @@ export function ChoiceCards<V extends string>({
           </div>
         );
       })}
+    </div>
+  );
+}
+
+
+/** Фикстура для превью `tasks.card`: первая задача из образца, статус «в работе». */
+function taskCardFixture(): TaskStateMessage & { taskKey: string } {
+  const [key, title, status] = TEXT.tasks[0] as [string, string, string];
+  return {
+    type: 'task.state',
+    taskKey: `jira:demo:${key}`,
+    card: {
+      key,
+      instanceId: 'demo',
+      instanceName: 'demo',
+      title,
+      type: 'Task',
+      status,
+      statusCategory: 'indeterminate',
+      url: '',
+      updatedAt: 0,
+      description: '',
+      attachments: [],
+      comments: [],
+    },
+    events: [],
+    fetchedAt: 1,
+    source: 'jiraffe',
+  };
+}
+
+/**
+ * Где карточка задачи в чате по задаче (`tasks.card`, roadmap 19): схема окна редактора — настоящая полоска
+ * `TaskStrip` и условные блоки (лента, вкладки панели, карточка Jiraffe). Сплит без Jiraffe работает как панель — пометка.
+ */
+export function TaskCardPreview({ mode }: { mode: TaskCardMode }) {
+  const st = taskCardFixture();
+  const lines = (n: number) => Array.from({ length: n }, () => <i />);
+  const chat = (
+    <div class="tcp-chat">
+      <TaskStrip state={st} />
+      <div class="tcp-feed">{lines(5)}</div>
+    </div>
+  );
+  return (
+    <div class={`pv pv-taskcard pv-tc-${mode}`} inert aria-hidden="true">
+      {mode === 'split' && (
+        <div class="tcp-card">
+          <b>J</b>
+          <div class="tcp-feed">{lines(6)}</div>
+        </div>
+      )}
+      {chat}
+      {mode === 'panel' && (
+        <div class="tcp-side">
+          <div class="tcp-tabs">
+            <span>{ui.tabs.changes}</span>
+            <span>{ui.tabs.git}</span>
+            <span class="on">{ui.tabs.task}</span>
+          </div>
+          <div class="tcp-feed">{lines(5)}</div>
+        </div>
+      )}
+      {mode === 'split' && <small class="tcp-note">{ui.settings.tasksCard.onlyJiraffe}</small>}
     </div>
   );
 }

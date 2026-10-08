@@ -15,6 +15,8 @@ import {
   SIDEBAR_LIMITS_MODES,
   TASK_SIDEBAR_MODES,
   DEFAULT_TASK_SIDEBAR,
+  TASK_CARD_MODES,
+  DEFAULT_TASK_CARD,
 } from './settings';
 
 const root = join(__dirname, '..');
@@ -129,6 +131,26 @@ describe('agentura.sidebar.limits', () => {
 
   it('команда выбора вида объявлена', () => {
     expect(pkg.contributes.commands.map((c) => c.command)).toContain('agentura.sidebarLimits');
+  });
+});
+
+describe('agentura.tasks.card', () => {
+  const pkg = read('package.json') as {
+    contributes: {
+      configuration: { properties: Record<string, { enum?: string[]; enumDescriptions?: string[]; default?: string }> };
+      commands: { command: string }[];
+    };
+  };
+  const prop = pkg.contributes.configuration.properties['agentura.tasks.card']!;
+
+  it('enum и значение по умолчанию совпадают с настройкой в коде, у каждого значения есть описание', () => {
+    expect(prop.enum).toEqual([...TASK_CARD_MODES]);
+    expect(prop.default).toBe(DEFAULT_TASK_CARD);
+    expect(prop.enumDescriptions).toHaveLength(TASK_CARD_MODES.length);
+  });
+
+  it('команда выбора вида объявлена', () => {
+    expect(pkg.contributes.commands.map((c) => c.command)).toContain('agentura.taskCard');
   });
 });
 

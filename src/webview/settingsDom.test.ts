@@ -50,6 +50,7 @@ const values: SettingsValues = {
   'sidebar.top': 'detailed',
   'sidebar.limits': 'active',
   'tasks.sidebar': 'groups',
+  'tasks.card': 'panel',
   'feed.style': 'journal',
   'composer.layout': 'classic',
   'agents.view': 'list',
@@ -135,6 +136,7 @@ describe('вкладка настроек', () => {
       'agentura.composer.layout',
       'agentura.agents.view',
       'agentura.git.layout',
+      'agentura.tasks.card',
       'agentura.feed.fontSize',
       'agentura.ui.fontSize',
       'agentura.font.interface',
@@ -321,6 +323,28 @@ describe('вкладка настроек', () => {
     expect(row.querySelector('[aria-checked="true"]')?.getAttribute('data-value')).toBe('groups');
     section.click();
     expect(sets().at(-1)).toEqual({ type: 'settings.set', key: 'tasks.sidebar', value: 'section' });
+  });
+
+  it('карточка задачи в чате: три превью (панель / сплит с пометкой «только с Jiraffe» / полоска), выбор пишет настройку', async () => {
+    const host = mount(Settings);
+    state();
+    await flush();
+    const row = host.querySelector('[data-key="agentura.tasks.card"]')!;
+    const cards = [...row.querySelectorAll<HTMLElement>('[role="radio"]')];
+    expect(cards.map((c) => c.dataset.value)).toEqual(['panel', 'split', 'strip']);
+    for (const card of cards) {
+      expect(card.querySelector('.pv-taskcard[inert][aria-hidden="true"]')).not.toBeNull();
+      expect(card.querySelector('.tk-strip .tkey')!.textContent).toBe('NEWMFC-1482');
+    }
+    const [panel, split, strip] = cards as [HTMLElement, HTMLElement, HTMLElement];
+    expect(panel.querySelector('.tcp-side .on')!.textContent).toBe('задача');
+    expect(panel.querySelector('.tcp-card')).toBeNull();
+    expect(split.querySelector('.tcp-card')).not.toBeNull();
+    expect(split.querySelector('.tcp-note')!.textContent).toBe('только с Jiraffe');
+    expect(strip.querySelector('.tcp-side')).toBeNull();
+    expect(row.querySelector('[aria-checked="true"]')?.getAttribute('data-value')).toBe('panel');
+    split.click();
+    expect(sets().at(-1)).toEqual({ type: 'settings.set', key: 'tasks.card', value: 'split' });
   });
 
   it('шрифт карточками: каждая своим шрифтом, наведение примеряет на образец, клик пишет', async () => {

@@ -47,7 +47,7 @@ import {
   sessionProblem,
   type SessionAttach,
 } from '../shared/files';
-import { resolveDefaultEffort, resolveDefaultMode, type AgentsView, type ComposerLayout, type FeedStyle, type GitLayout } from '../settings';
+import { resolveDefaultEffort, resolveDefaultMode, type AgentsView, type ComposerLayout, type FeedStyle, type GitLayout, type TaskCardMode } from '../settings';
 import { hostStrings, type Lang } from '../shared/l10n';
 import { appliedSides, previewOf, proposedSides, type EditSides } from './editDiff';
 import {
@@ -99,6 +99,8 @@ export interface ChatDeps {
     agentsView?: AgentsView | undefined;
     /** `agentura.git.layout`: раскладка вкладки «git» при нескольких репо, уходит в `chat.info`. */
     gitLayout?: GitLayout | undefined;
+    /** `agentura.tasks.card`: где карточка задачи в чате по задаче, уходит в `chat.info`. */
+    taskCard?: TaskCardMode | undefined;
     /** `agentura.defaultPermissionMode` как в настройке (`manual` | …): применяется к новым сессиям. */
     defaultPermissionMode?: string | undefined;
     /** `agentura.defaultEffort` (пусто — выбор движка): применяется к новым сессиям. */
@@ -265,6 +267,7 @@ export class ChatController {
       ...(s.composerLayout ? { composerLayout: s.composerLayout } : {}),
       ...(s.agentsView ? { agentsView: s.agentsView } : {}),
       ...(s.gitLayout ? { gitLayout: s.gitLayout } : {}),
+      ...(s.taskCard ? { taskCard: s.taskCard } : {}),
       provider: this.engineProvider,
       features: providerFeatures(this.engineProvider),
     });

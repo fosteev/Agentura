@@ -47,6 +47,14 @@ export const TASK_SIDEBAR_MODES = ['groups', 'section'] as const;
 export type TaskSidebarMode = (typeof TASK_SIDEBAR_MODES)[number];
 export const DEFAULT_TASK_SIDEBAR: TaskSidebarMode = 'groups';
 /**
+ * Где карточка задачи в чате по задаче (`tasks.card`, roadmap 19): `panel` — вкладка «задача» правой панели чата,
+ * `split` — карточка Jiraffe слева, чат справа (только при источнике Jiraffe, иначе работает как `panel`), `strip` —
+ * только полоска над лентой.
+ */
+export const TASK_CARD_MODES = ['panel', 'split', 'strip'] as const;
+export type TaskCardMode = (typeof TASK_CARD_MODES)[number];
+export const DEFAULT_TASK_CARD: TaskCardMode = 'panel';
+/**
  * Источник Jira (`jira.source`, roadmap 19): `auto` — Jiraffe, если установлен и отдаёт API, иначе свои подключения
  * Agentura (если есть); `jiraffe` / `own` — только он; `off` — Jira не используется (группы в сайдбаре остаются).
  */
@@ -137,6 +145,7 @@ export type SettingKey =
   | 'sidebar.top'
   | 'sidebar.limits'
   | 'tasks.sidebar'
+  | 'tasks.card'
   | 'feed.style'
   | 'composer.layout'
   | 'agents.view'
@@ -168,6 +177,7 @@ export const SETTING_KEYS: readonly SettingKey[] = [
   'sidebar.top',
   'sidebar.limits',
   'tasks.sidebar',
+  'tasks.card',
   'feed.style',
   'composer.layout',
   'agents.view',
@@ -217,6 +227,7 @@ export interface SettingsValues {
   'sidebar.top': SidebarTopMode;
   'sidebar.limits': SidebarLimitsMode;
   'tasks.sidebar': TaskSidebarMode;
+  'tasks.card': TaskCardMode;
   'feed.style': FeedStyle;
   'composer.layout': ComposerLayout;
   'agents.view': AgentsView;
@@ -263,6 +274,10 @@ export function isSidebarLimitsMode(v: unknown): v is SidebarLimitsMode {
 
 export function isTaskSidebarMode(v: unknown): v is TaskSidebarMode {
   return typeof v === 'string' && (TASK_SIDEBAR_MODES as readonly string[]).includes(v);
+}
+
+export function isTaskCardMode(v: unknown): v is TaskCardMode {
+  return typeof v === 'string' && (TASK_CARD_MODES as readonly string[]).includes(v);
 }
 
 export function isSidebarTopMode(v: unknown): v is SidebarTopMode {
@@ -451,6 +466,10 @@ export function validateSetting(key: SettingKey, value: unknown, lang: ErrLang =
       return isTaskSidebarMode(value)
         ? { ok: true, value }
         : bad(t.allowed(TASK_SIDEBAR_MODES.join(', ')));
+    case 'tasks.card':
+      return isTaskCardMode(value)
+        ? { ok: true, value }
+        : bad(t.allowed(TASK_CARD_MODES.join(', ')));
     case 'feed.style':
       return isFeedStyle(value) ? { ok: true, value } : bad(t.allowed(FEED_STYLES.join(', ')));
     case 'composer.layout':
@@ -482,6 +501,7 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
   const top = cfg.get<unknown>('sidebar.top');
   const limits = cfg.get<unknown>('sidebar.limits');
   const taskSb = cfg.get<unknown>('tasks.sidebar');
+  const taskCard = cfg.get<unknown>('tasks.card');
   const feed = cfg.get<unknown>('feed.style');
   const cl = cfg.get<unknown>('composer.layout');
   const agv = cfg.get<unknown>('agents.view');
@@ -518,6 +538,7 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
     'sidebar.top': isSidebarTopMode(top) ? top : DEFAULT_SIDEBAR_TOP,
     'sidebar.limits': isSidebarLimitsMode(limits) ? limits : DEFAULT_SIDEBAR_LIMITS,
     'tasks.sidebar': isTaskSidebarMode(taskSb) ? taskSb : DEFAULT_TASK_SIDEBAR,
+    'tasks.card': isTaskCardMode(taskCard) ? taskCard : DEFAULT_TASK_CARD,
     'feed.style': isFeedStyle(feed) ? feed : DEFAULT_FEED_STYLE,
     'composer.layout': isComposerLayout(cl) ? cl : DEFAULT_COMPOSER_LAYOUT,
     'agents.view': isAgentsView(agv) ? agv : DEFAULT_AGENTS_VIEW,

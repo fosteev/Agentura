@@ -39,6 +39,7 @@ function setup(over: { sessionId?: string; pending?: string; source?: JiraSource
     post: (m: TaskStateMessage) => void posted.push(m),
     prefill: vi.fn(),
     openUrl: vi.fn(),
+    connect: vi.fn(),
     now: () => 9000,
   } satisfies TaskTabDeps;
   return { tab: new TaskTab(deps), deps, service, state, views, posted };
@@ -136,6 +137,15 @@ describe('TaskTab', () => {
     c.tab.handle({ type: 'task.openExternal' });
     await new Promise((r) => setTimeout(r, 0));
     expect(c.deps.openUrl).toHaveBeenCalledWith('https://x.test/browse/ABC-1');
+  });
+
+  it('task.connect открывает подключение Jira; taskKey — задача вкладки', () => {
+    const { tab, deps } = setup({ sessionId: 's1' });
+    expect(tab.taskKey).toBeUndefined();
+    tab.sync();
+    expect(tab.taskKey).toBe(TASK);
+    tab.handle({ type: 'task.connect' });
+    expect(deps.connect).toHaveBeenCalledTimes(1);
   });
 
   it('запросы без задачи игнорируются', () => {

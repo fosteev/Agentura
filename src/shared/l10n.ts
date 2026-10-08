@@ -81,6 +81,7 @@ const ru = {
   composerLayoutPlaceholder: 'Раскладка поля ввода',
   sidebarLimitsPlaceholder: 'Вид лимитов всех движков в боковой панели',
   taskSidebarPlaceholder: 'Где в боковой панели задачи Jira',
+  taskCardPlaceholder: 'Где карточка задачи Jira в чате по задаче',
   agentsViewPlaceholder: 'Вид карты агентов',
   gitLayoutPlaceholder: 'Раскладка вкладки git при нескольких репозиториях',
   feedStyleCurrent: 'сейчас',
@@ -109,6 +110,11 @@ const ru = {
   taskSidebarViews: {
     groups: ['Группы', 'чаты вложены в список под ключом задачи'],
     section: ['Секция', 'секция «Задачи» над «Сессиями», в строке сессии метка ключа'],
+  } as Record<string, [string, string]>,
+  taskCardViews: {
+    panel: ['Панель', 'вкладка «задача» в правой панели чата'],
+    split: ['Сплит', 'карточка Jiraffe слева, чат справа (только с Jiraffe, иначе как «Панель»)'],
+    strip: ['Полоска', 'только полоска над лентой, без вкладки'],
   } as Record<string, [string, string]>,
   composerLayouts: {
     classic: ['Классика', 'как раньше: полоса блоков, поле, ряд настроек и приборы'],
@@ -296,6 +302,7 @@ const en: HostUi = {
   composerLayoutPlaceholder: 'Composer layout',
   sidebarLimitsPlaceholder: 'Limits view for all engines in the sidebar',
   taskSidebarPlaceholder: 'Where Jira tasks go in the sidebar',
+  taskCardPlaceholder: 'Where the Jira task card goes in a task chat',
   agentsViewPlaceholder: 'Agents map view',
   gitLayoutPlaceholder: 'Git tab layout for several repositories',
   feedStyleCurrent: 'current',
@@ -324,6 +331,11 @@ const en: HostUi = {
   taskSidebarViews: {
     groups: ['Groups', 'chats nested in the list under the task key'],
     section: ['Section', 'a "Tasks" section above "Sessions", a key tag on the session row'],
+  } as Record<string, [string, string]>,
+  taskCardViews: {
+    panel: ['Panel', 'a "task" tab in the chat right panel'],
+    split: ['Split', "Jiraffe's card on the left, the chat on the right (Jiraffe only, otherwise as Panel)"],
+    strip: ['Strip', 'only the strip above the feed, no tab'],
   } as Record<string, [string, string]>,
   composerLayouts: {
     classic: ['Classic', 'as before: block strip, field, settings row and gauges'],

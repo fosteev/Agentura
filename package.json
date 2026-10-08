@@ -140,6 +140,11 @@
         "category": "Agentura"
       },
       {
+        "command": "agentura.taskCard",
+        "title": "%command.taskCard.title%",
+        "category": "Agentura"
+      },
+      {
         "command": "agentura.agentsView",
         "title": "%command.agentsView.title%",
         "category": "Agentura"
@@ -389,6 +394,21 @@
           ],
           "default": "groups",
           "description": "%config.tasks.sidebar.description%"
+        },
+        "agentura.tasks.card": {
+          "type": "string",
+          "enum": [
+            "panel",
+            "split",
+            "strip"
+          ],
+          "enumDescriptions": [
+            "%config.tasks.card.enum.panel%",
+            "%config.tasks.card.enum.split%",
+            "%config.tasks.card.enum.strip%"
+          ],
+          "default": "panel",
+          "description": "%config.tasks.card.description%"
         },
         "agentura.feed.style": {
           "type": "string",

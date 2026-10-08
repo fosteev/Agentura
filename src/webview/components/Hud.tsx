@@ -5,7 +5,7 @@ import { costLabel, foreignProvider, mixedProviders, providerName, tokensLabel, 
 import { ui } from '../strings';
 import { TabBar, type TabItem } from './TabBar';
 
-export type Tab = 'chat' | 'changes' | 'git' | 'agents';
+export type Tab = 'chat' | 'changes' | 'git' | 'agents' | 'task';
 
 export function Hud({
   project,
@@ -14,6 +14,7 @@ export function Hud({
   onTab,
   sidePanesEnabled,
   agentsTab = true,
+  taskTab = false,
   badges,
   sessions,
   currentId,
@@ -31,11 +32,15 @@ export function Hud({
   sidePanesEnabled: boolean;
   /** Вкладка «агенты» есть только у движка с субагентами (`features.subagents`). */
   agentsTab?: boolean;
+  /** Вкладка «задача» есть у чата по задаче (`tasks.card` ≠ `strip`; при `split` — только если источник не Jiraffe). */
+  taskTab?: boolean;
   /** Бейджи вкладок: число файлов сессии (`live` — идёт правка) и агенты хода `идут / всего` (A6). */
   badges: {
     changes?: { count: number; live: boolean };
     git?: { count: number };
     agents?: { text: string; live: boolean };
+    /** Событий задачи, которых человек ещё не видел. */
+    task?: number;
   };
   /** Сессии проекта, коротко (`sessions.update`) — попап `sessions`. */
   sessions: SessionSummary[];
@@ -93,7 +98,12 @@ export function Hud({
       ...(badges.agents ? { badge: badges.agents } : {}),
     },
   ];
-  const tabs = agentsTab ? allTabs : allTabs.filter((i) => i.key !== 'agents');
+  const taskItem: TabItem<Tab> = {
+    key: 'task',
+    label: ui.tabs.task,
+    ...(badges.task ? { badge: { text: String(badges.task), live: true } } : {}),
+  };
+  const tabs = [...(agentsTab ? allTabs : allTabs.filter((i) => i.key !== 'agents')), ...(taskTab ? [taskItem] : [])];
   return (
     <header class="hud" aria-label={ui.hud.aria}>
       <TabBar

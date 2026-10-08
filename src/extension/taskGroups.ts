@@ -1,6 +1,7 @@
 import type { SessionRef } from '../agent/types';
 import { isProvider } from '../settings';
 import type { SessionSummary, TaskGroupSummary } from '../protocol';
+import type { TaskChatRow } from '../shared/task';
 import type { MementoLike } from './sessionMemory';
 
 /** Ключ группы: `jira:<instanceId>:<KEY>`. Старый `jiraffe:<instanceId>:<KEY>` принимается как синоним (`parseTaskKey`). */
@@ -311,6 +312,32 @@ export function routeTaskOpen(
   const list = taskSessionRows(group, rows);
   const pick = (session ? list.find((r) => r.id === session) : undefined) ?? list[0];
   return pick ? { kind: 'resume', ref: { provider: pick.provider, id: pick.id } } : { kind: 'new' };
+}
+
+/**
+ * Чаты группы для блока «Чаты по задаче» вкладки: только те, что есть в списке сессий (удалённые транскрипты не
+ * показываем), новые сверху; `current` — сессия вкладки.
+ */
+export function taskChatRows(
+  group: TaskGroup | undefined,
+  rows: readonly SessionSummary[],
+  current: string | undefined,
+): TaskChatRow[] {
+  if (!group) return [];
+  const out: TaskChatRow[] = [];
+  for (const ref of group.sessions) {
+    const r = rows.find((x) => x.id === ref.id);
+    if (!r) continue;
+    out.push({
+      id: r.id,
+      ...(r.provider ? { provider: r.provider } : {}),
+      title: r.title,
+      updatedAt: r.updatedAt,
+      state: r.state,
+      current: r.id === current,
+    });
+  }
+  return out.sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
 /** Метки задач для списка сессий: `SessionSummary.task` и `sessions.update.tasks`. */
