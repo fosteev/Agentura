@@ -49,8 +49,9 @@ import { Log, type TaskEventRef } from './Log';
 import { useStickToBottom } from '../useStickToBottom';
 import { AgentsPane, ChangesPane, type AgentsPaneModel } from './SidePanes';
 import { GitPane } from './GitPane';
-import { ChatTabs, TaskPane, TaskStrip } from './TaskPane';
-import { isTaskChat, latestSeen, taskDefaultView, taskPanelShown, unseenCount, visibleEvents } from '../taskView';
+import { ChatTabs, TaskStrip, type ChatActivity } from './TaskPane';
+import { TaskView } from './TaskView';
+import { isTaskChat, latestSeen, taskDefaultView, taskPanelShown, unseenCount, visibleEvents, waitingWhat } from '../taskView';
 import { agentPathSet, gitBadge } from '../gitView';
 import { agentsViewPane, defaultScope } from '../agentViews';
 import type { FeedRow } from '../chatState';
@@ -131,19 +132,6 @@ const ICON_GIT = (
     <circle cx="4.5" cy="12.5" r="1.6" />
     <circle cx="11.5" cy="5.5" r="1.6" />
     <path d="M4.5 5.1v5.8M11.5 7.1c0 2.4-2 3-7 3.8" />
-  </svg>
-);
-const ICON_TASK = (
-  <svg
-    class="ico"
-    viewBox="0 0 16 16"
-    fill="none"
-    stroke="currentColor"
-    stroke-width="1.2"
-    aria-hidden="true"
-  >
-    <rect x="2.5" y="2.5" width="11" height="11" rx="2" />
-    <path d="M5.5 8.2l1.7 1.7 3.3-3.6" />
   </svg>
 );
 const ICON_AGENTS = (
@@ -280,17 +268,10 @@ export function Chat() {
   // вкладка «задача» (чат по задаче, roadmap 19): доступна и в пустой сессии — карточку видно до первого сообщения
   const ts = taskState.value;
   const taskOn = taskPanelShown(taskCardMode.value, ts);
-  const taskSeg = panel.taskView ?? taskDefaultView(taskCardMode.value, ts);
-  const t: Tab =
-    tab.value === 'task'
-      ? taskOn
-        ? 'task'
-        : 'chat'
-      : empty
-        ? 'chat'
-        : !subagents && tab.value === 'agents'
-          ? 'changes'
-          : tab.value;
+  const taskSub = panel.taskView ?? taskDefaultView(taskCardMode.value, ts);
+  // вкладки «чат | задача» полосы задачи (roadmap 20, решение 1): «задача» занимает всю вкладку, правая панель и поле ввода прячутся
+  const view: 'chat' | 'task' = taskOn && panel.view === 'task' ? 'task' : 'chat';
+  const t: Tab = empty ? 'chat' : !subagents && tab.value === 'agents' ? 'changes' : tab.value;
   const now = tick.value;
   // что человек уже видел в ленте задачи: пока данных не было, «нового» нет; первая загрузка считается просмотренной
   const taskKey = ts?.taskKey;
@@ -379,27 +360,39 @@ export function Chat() {
       return;
     }
     taskFocus.value = { ...ref, since: Date.now() };
-    if (wide.value) updatePanel({ tab: 'task', off: false, taskView: 'changes' });
-    else {
-      updatePanel({ taskView: 'changes' });
-      tab.value = 'task';
-    }
+    showView('task', { taskView: 'changes' });
   };
   // вкладки панели: в пустой сессии недоступны, активна «изменения»
-  const panelTab: NonNullable<PanelState['tab']> =
-    panel.tab === 'task'
-      ? taskOn
-        ? 'task'
-        : 'changes'
-      : empty
-        ? 'changes'
-        : !subagents && panel.tab === 'agents'
-          ? 'changes'
-          : (panel.tab ?? 'changes');
-  // вкладка «задача» видна (широкая — активна в несвёрнутой панели, узкая — открыта в шапке); открыта лента — бейджа нет:
-  // отметка «видел» сдвигается эффектом `TaskPane` после кадра, бейдж не должен мелькнуть на этот кадр
-  const taskShown = taskOn && (wide.value ? panelTab === 'task' && !panelOff : t === 'task');
-  const taskBdg = taskOn && !(taskShown && taskSeg === 'changes') ? unseenCount(visibleEvents(ts), seen) : 0;
+  const panelTab: NonNullable<PanelState['tab']> = empty
+    ? 'changes'
+    : !subagents && panel.tab === 'agents'
+      ? 'changes'
+      : (panel.tab ?? 'changes');
+  // вкладка «задача» открыта; открыта лента изменений — бейджа нет: отметка «видел» сдвигается эффектом `TaskView`
+  // после кадра, бейдж не должен мелькнуть на этот кадр
+  const taskShown = view === 'task';
+  const taskBdg = taskOn && !(taskShown && taskSub === 'changes') ? unseenCount(visibleEvents(ts), seen) : 0;
+  // сколько записей в ленте было, когда ушли на «задачу»: «N новых» на вкладке «чат» считается от этого
+  const rowsMark = useRef(0);
+  const showView = (v: 'chat' | 'task', extra: PanelState = {}) => {
+    if (v === 'task' && view !== 'task') rowsMark.current = s.rows.length;
+    updatePanel({ view: v, ...extra });
+  };
+  // «↳ в чат» (решение 8): вставить в поле ввода и перейти на «чат» с фокусом в поле
+  const toChat = (commentId?: string) => {
+    send(commentId ? { type: 'task.toComposer', commentId } : { type: 'task.toComposer' });
+    if (commentId) setHumanDone((d) => new Set(d).add(commentId));
+    showView('chat');
+    setTimeout(() => document.querySelector<HTMLElement>('.compose .typed')?.focus(), 50);
+  };
+  // агент ждёт ответа (разрешение / вопрос / план) или идёт ход — для вкладки «чат» полосы (решение 9)
+  const waitingText = s.status === 'waiting' ? (waitingWhat(s) ?? ui.task.waitAsk) : undefined;
+  const activity: ChatActivity = {
+    working,
+    waiting: waitingText !== undefined,
+    fresh: Math.max(0, s.rows.length - rowsMark.current),
+    ...(s.turnStartedAt ? { run: ui.task.runLabel(formatDuration(now - s.turnStartedAt)) } : {}),
+  };
   // относительные времена вкладки («обновлено …», «N мин назад») идут и в простое, когда общий тик стоит
   useEffect(() => {
     if (!taskShown) return;
@@ -407,7 +400,7 @@ export function Chat() {
     const id = setInterval(() => (tick.value = Date.now()), 15_000);
     return () => clearInterval(id);
   }, [taskShown]);
-  const panelAll: readonly TabItem<'changes' | 'git' | 'agents' | 'task'>[] = [
+  const panelAll: readonly TabItem<'changes' | 'git' | 'agents'>[] = [
     {
       key: 'changes',
       label: ui.tabs.changes,
@@ -426,15 +419,8 @@ export function Chat() {
       disabled: empty,
       ...(agentsBdg ? { badge: agentsBdg } : {}),
     },
-    {
-      key: 'task',
-      label: ui.tabs.task,
-      ...(taskBdg ? { badge: { text: String(taskBdg), live: true } } : {}),
-    },
   ];
-  const panelItems = panelAll.filter(
-    (i) => (i.key !== 'agents' || subagents) && (i.key !== 'task' || taskOn),
-  );
+  const panelItems = panelAll.filter((i) => i.key !== 'agents' || subagents);
 
   // вкладка «git» видна: широкая — активна и панель не свёрнута, узкая — открыта вкладка шапки
   const gitShown = wide.value ? panelTab === 'git' && !panelOff : t === 'git';
@@ -446,25 +432,26 @@ export function Chat() {
       data-feed={feedStyle.value}
       data-agents={agentsView.value}
       data-git={gitLayout.value}
+      data-view={view}
     >
       <Hud
         project={s.project}
         title={s.title}
         tab={t}
-        onTab={(k) => (tab.value = k)}
+        onTab={(k) => {
+          tab.value = k;
+          // вкладка шапки узкого режима ведёт в чат: «задача» его закрывает
+          if (view === 'task') showView('chat');
+        }}
         sidePanesEnabled={!empty}
         agentsTab={subagents}
-        taskTab={taskOn}
         badges={
           empty
-            ? taskBdg
-              ? { task: taskBdg }
-              : {}
+            ? {}
             : {
                 ...(changesBdg ? { changes: changesBdg } : {}),
                 ...(gitBdg ? { git: gitBdg } : {}),
                 ...(agentsBdg ? { agents: agentsBdg } : {}),
-                ...(taskBdg ? { task: taskBdg } : {}),
               }
         }
         sessions={recent.value}
@@ -499,12 +486,21 @@ export function Chat() {
           </span>
         </div>
       )}
-      {isTaskChat(ts) && <TaskStrip state={ts} />}
+      {isTaskChat(ts) && (
+        <TaskStrip
+          state={ts}
+          view={view}
+          onView={(v) => showView(v)}
+          unseen={taskBdg}
+          activity={activity}
+        />
+      )}
       {tabChats.value && <ChatTabs state={tabChats.value} />}
       <div
         class="body"
         ref={bodyRef}
         data-side={wide.value && panelOff ? 'off' : undefined}
+        data-view={view}
         style={{ '--side-w': `${panelW}px` }}
       >
         <main
@@ -694,23 +690,6 @@ export function Chat() {
             onTranscript={openAgentTranscript}
             onGraph={() => openGraph(selectedAgent.value)}
           />
-          {taskOn && (
-            <TaskPane
-              state={ts}
-              chats={taskChats.value}
-              provider={s.engine}
-              now={now}
-              hidden={wide.value ? panelTab !== 'task' : t !== 'task'}
-              visible={taskShown}
-              labelledBy={wide.value ? 'ptab-task' : 'tab-task'}
-              seg={taskSeg}
-              seen={seen}
-              humanDone={humanDone}
-              onSeg={(v) => updatePanel({ taskView: v })}
-              onSeen={(at) => updatePanel({ taskSeen: at, taskSeenKey: taskKey })}
-              onHumanDone={(id) => setHumanDone((d) => new Set(d).add(id))}
-            />
-          )}
         </aside>
         <nav class="rail" aria-label={ui.panel.railAria}>
           <button
@@ -744,16 +723,6 @@ export function Chat() {
               )}
             </button>
           )}
-          {taskOn && (
-            <button
-              data-tip={taskBdg ? ui.task.badgeTitle(taskBdg) : ui.tabs.task}
-              aria-label={ui.panel.openTab(ui.tabs.task)}
-              onClick={() => updatePanel({ tab: 'task', off: false })}
-            >
-              {ICON_TASK}
-              {taskBdg > 0 && <span class="b live">{taskBdg}</span>}
-            </button>
-          )}
           <button
             class="show"
             data-tip={ui.panel.show}
@@ -763,6 +732,23 @@ export function Chat() {
             {ICON_SHOW}
           </button>
         </nav>
+        {taskOn && (
+          <TaskView
+            state={ts}
+            chats={taskChats.value}
+            provider={s.engine}
+            now={now}
+            hidden={view !== 'task'}
+            sub={taskSub}
+            seen={seen}
+            humanDone={humanDone}
+            waiting={waitingText}
+            onSub={(v) => updatePanel({ taskView: v })}
+            onSeen={(at) => updatePanel({ taskSeen: at, taskSeenKey: taskKey })}
+            onToChat={toChat}
+            onBackToChat={() => showView('chat')}
+          />
+        )}
       </div>
       <Composer key={activeTabChat.value ?? ''} />
     </div>

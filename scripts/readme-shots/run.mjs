@@ -203,14 +203,15 @@ for (const theme of ['dark', 'light']) {
       await single(await shot(page, png('tside'), 300, 760), out(`sidebar-${mode}`, theme));
     });
   }
-  for (const view of ['card', 'changes']) {
+  // roadmap 20: the card is the "task" view of the chat tab (view: 'task'), the sub-tab is taskView
+  for (const [frame, view, sub] of [['chat', 'chat', 'comments'], ['card', 'task', 'comments'], ['changes', 'task', 'changes']]) {
     taskJobs.push(async () => {
-      const panel = { ...WIDE, tab: 'task', taskView: view, taskSeen: seenOld(), taskSeenKey: data.TASK_KEY };
-      await single(await shot(taskChat(theme, panel), png('tchat'), 1100, 760), out(`chat-${view}`, theme));
+      const panel = { ...WIDE, tab: 'changes', view, taskView: sub, taskSeen: seenOld(), taskSeenKey: data.TASK_KEY };
+      await single(await shot(taskChat(theme, panel), png('tchat'), 1100, 760), out(`chat-${frame}`, theme));
     });
   }
   taskJobs.push(async () => {
-    const panel = { ...WIDE, tab: 'task', taskView: 'changes', taskSeen: seenOld(), taskSeenKey: data.TASK_KEY };
+    const panel = { ...WIDE, tab: 'changes', view: 'chat', taskView: 'changes', taskSeen: seenOld(), taskSeenKey: data.TASK_KEY };
     const chat = taskChat(theme, panel, [data.tabChats()]);
     await single(await shot(chat, png('ttab'), 1100, 760), out('tab', theme));
   });
@@ -221,7 +222,7 @@ for (const theme of ['dark', 'light']) {
       'sessionList.view': 'compact', 'sessionList.context': true, 'sessionList.time': true, 'sidebar.top': 'detailed',
       'feed.style': 'journal', 'composer.layout': 'classic', 'agents.view': 'list', 'git.layout': 'stack', 'feed.fontSize': 13, 'ui.fontSize': 13,
       'font.interface': '', 'font.panels': '', 'font.code': '', language: 'auto',
-      'tasks.sidebar': 'groups', 'tasks.card': 'panel', 'tasks.tab': 'chat', 'jira.source': 'auto', 'tasks.refresh': '30s',
+      'tasks.sidebar': 'groups', 'tasks.card': 'tab', 'tasks.tab': 'chat', 'jira.source': 'auto', 'tasks.refresh': '30s',
       'tasks.humanChanges': true, 'jira.agentTools': { comment: true, transition: true, worklog: true },
     };
     const page = put(TMP, `${name('tsettings')}.html`, surfaceHtml({
@@ -235,7 +236,7 @@ for (const theme of ['dark', 'light']) {
 // README picture: sidebar with the task group + chat with the "changes" feed (dark), like the hero
 taskJobs.push(async () => {
   const side = taskSidebar('dark', 'groups');
-  const panel = { ...WIDE, tab: 'task', taskView: 'changes', taskSeen: seenOld(), taskSeenKey: data.TASK_KEY };
+  const panel = { ...WIDE, tab: 'changes', view: 'task', taskView: 'comments', taskSeen: seenOld(), taskSeenKey: data.TASK_KEY };
   const chat = taskChat('dark', panel);
   const page = put(TMP, `${name('tshero')}.html`, splitHtml({ theme: 'dark', w: 1324, h: 760, panes: [{ file: side, w: 300 }, { file: chat, w: 1023 }] }));
   await single(await shot(page, png('tshero'), 1324, 760), join(OUT, 'jira-tasks.png'));

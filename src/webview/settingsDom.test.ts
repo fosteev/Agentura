@@ -356,7 +356,9 @@ describe('вкладка настроек', () => {
       expect(card.querySelector('.tk-strip .tkey')!.textContent).toBe('NEWMFC-1482');
     }
     const [tab, split] = cards as [HTMLElement, HTMLElement];
-    expect(tab.querySelector('.tcp-side .on')!.textContent).toBe('задача');
+    // «задача» — вкладка полосы рядом с «чатом», в правой панели её нет
+    expect([...tab.querySelectorAll('.tk-strip .vtab')].map((b) => b.textContent)).toEqual(['чат', 'задача']);
+    expect([...tab.querySelectorAll('.tcp-side .tcp-tabs span')].map((b) => b.textContent)).toEqual(['изменения', 'git', 'агенты']);
     expect(tab.querySelector('.tcp-card')).toBeNull();
     expect(split.querySelector('.tcp-card')).not.toBeNull();
     expect(split.querySelector('.tcp-note')!.textContent).toBe('только с Jiraffe');

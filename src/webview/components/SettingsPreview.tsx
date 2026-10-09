@@ -787,6 +787,14 @@ function taskCardFixture(): TaskStateMessage & { taskKey: string } {
   };
 }
 
+/** Полоска задачи в превью: открыт «чат», ход не идёт, ничего нового. */
+const STRIP_IDLE = {
+  view: 'chat' as const,
+  onView: () => {},
+  unseen: 0,
+  activity: { working: false, waiting: false, fresh: 0 },
+};
+
 /**
  * Где карточка задачи в чате по задаче (`tasks.card`, roadmap 19): схема окна редактора — настоящая полоска
  * `TaskStrip` и условные блоки (лента, вкладки панели, карточка Jiraffe). Сплит без Jiraffe работает как панель — пометка.
@@ -796,7 +804,7 @@ export function TaskCardPreview({ mode }: { mode: TaskCardMode }) {
   const lines = (n: number) => Array.from({ length: n }, () => <i />);
   const chat = (
     <div class="tcp-chat">
-      <TaskStrip state={st} />
+      <TaskStrip state={st} {...STRIP_IDLE} />
       <div class="tcp-feed">{lines(5)}</div>
     </div>
   );
@@ -809,12 +817,12 @@ export function TaskCardPreview({ mode }: { mode: TaskCardMode }) {
         </div>
       )}
       {chat}
-      {/* вкладка «задача» есть в обоих режимах (roadmap 20, решение 10); схему под полосу задачи перерисует этап 2 */}
+      {/* вкладка «задача» есть в обоих режимах (roadmap 20, решение 10) — в полосе задачи, не в правой панели */}
       <div class="tcp-side">
         <div class="tcp-tabs">
-          <span class={mode === 'split' ? 'on' : undefined}>{ui.tabs.changes}</span>
+          <span class="on">{ui.tabs.changes}</span>
           <span>{ui.tabs.git}</span>
-          <span class={mode === 'tab' ? 'on' : undefined}>{ui.tabs.task}</span>
+          <span>{ui.tabs.agents}</span>
         </div>
         <div class="tcp-feed">{lines(5)}</div>
       </div>
@@ -852,7 +860,7 @@ export function TaskTabPreview({ mode }: { mode: TaskTabMode }) {
         ))}
       </div>
       <div class="ttp-chat">
-        <TaskStrip state={st} />
+        <TaskStrip state={st} {...STRIP_IDLE} />
         {mode === 'task' && <ChatTabs state={inner} />}
         <div class="ttp-feed">{lines(4)}</div>
       </div>

@@ -26,6 +26,10 @@ export function send(message: FromWebview): void {
   postToHost(host(), tabChat === undefined ? message : ({ ...message, tab: tabChat } as unknown as FromWebview));
 }
 
+/** Подвкладки карточки задачи (roadmap 20, решение 4). */
+export const TASK_SUBS = ['comments', 'history', 'worklog', 'changes'] as const;
+export type TaskSub = (typeof TASK_SUBS)[number];
+
 /** Состояние правой панели вкладки чата (широкий режим): свои значения у каждой вкладки. */
 export interface PanelState {
   /** Ширина, px. */
@@ -33,7 +37,9 @@ export interface PanelState {
   /** Свёрнута в полосу. */
   off?: boolean;
   /** Активная вкладка панели. */
-  tab?: 'changes' | 'git' | 'agents' | 'task';
+  tab?: 'changes' | 'git' | 'agents';
+  /** Вкладка чата по задаче (roadmap 20): «чат» или «задача» (карточка на всю вкладку; панель и поле ввода прячутся). */
+  view?: 'chat' | 'task';
   /** Вкладка «git»: файлы деревом (иначе списком путей). */
   gitTree?: boolean;
   /** Вкладка «git»: выбранный репозиторий (`root`) в раскладке «выбор сверху». */
@@ -42,8 +48,8 @@ export interface PanelState {
   gitAgent?: boolean;
   /** Охват вкладки «изменения»: вся сессия или последний ход. */
   changes?: 'session' | 'turn';
-  /** Вкладка «задача»: карточка или лента изменений (нет — карточка). */
-  taskView?: 'card' | 'changes';
+  /** Подвкладка карточки задачи (нет — комментарии). */
+  taskView?: TaskSub;
   /** Вкладка «задача»: время (мс) самого позднего события, которое человек уже видел; новее — «новое». */
   taskSeen?: number;
   /** Ключ задачи, для которой записано `taskSeen` (другая задача — отсчёт заново). */
@@ -140,8 +146,12 @@ export function readPanel(): PanelState {
   if (p.tab === 'turn' || p.tab === 'changes') out.tab = 'changes';
   else if (p.tab === 'git') out.tab = 'git';
   else if (p.tab === 'agents') out.tab = 'agents';
-  else if (p.tab === 'task') out.tab = 'task';
-  if (p.taskView === 'card' || p.taskView === 'changes') out.taskView = p.taskView;
+  // вкладка «задача» ушла из правой панели (roadmap 20, решение 2): сохранённое 'task' открывает «изменения»
+  else if (p.tab === 'task') out.tab = 'changes';
+  if (p.view === 'chat' || p.view === 'task') out.view = p.view;
+  // 'card' — прежний вид «карточка»: теперь это комментарии
+  if (p.taskView === 'card') out.taskView = 'comments';
+  else if (TASK_SUBS.includes(p.taskView as TaskSub)) out.taskView = p.taskView as TaskSub;
   if (typeof p.taskSeen === 'number' && Number.isFinite(p.taskSeen) && p.taskSeen >= 0) out.taskSeen = p.taskSeen;
   if (typeof p.taskSeenKey === 'string' && p.taskSeenKey) out.taskSeenKey = p.taskSeenKey;
   if (typeof p.gitTree === 'boolean') out.gitTree = p.gitTree;

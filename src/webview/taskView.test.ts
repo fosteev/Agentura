@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { ChatState } from './chatState';
 import type { TaskEvent, TaskStateMessage } from '../shared/task';
 import {
   agoLabel,
@@ -8,8 +9,14 @@ import {
   humanPrompts,
   initials,
   issueKeyOf,
+  actionErrorText,
+  fileExt,
   latestSeen,
+  parseDuration,
   sizeLabel,
+  timeProgress,
+  todayIso,
+  waitingWhat,
   taskDefaultView,
   taskPanelShown,
   unseenCount,
@@ -45,10 +52,10 @@ describe('taskPanelShown', () => {
 });
 
 describe('taskDefaultView', () => {
-  it('split с Jiraffe — «изменения», остальное — «карточка»', () => {
+  it('split с Jiraffe — «изменения», остальное — «комментарии»', () => {
     expect(taskDefaultView('split', st({ source: 'jiraffe' }))).toBe('changes');
-    expect(taskDefaultView('split', st({ source: 'own' }))).toBe('card');
-    expect(taskDefaultView('tab', st({ source: 'jiraffe' }))).toBe('card');
+    expect(taskDefaultView('split', st({ source: 'own' }))).toBe('comments');
+    expect(taskDefaultView('tab', st({ source: 'jiraffe' }))).toBe('comments');
   });
 });
 
@@ -116,5 +123,49 @@ describe('мелочи', () => {
     expect(agoLabel(now - 5 * 60_000, now)).toBe('5 мин назад');
     expect(agoLabel(now - 3 * 3_600_000, now)).toBe('3 ч назад');
     expect(agoLabel(now - 2 * 86_400_000 - 1, now)).toBe('2 дн назад');
+  });
+});
+
+describe('parseDuration', () => {
+  it('1h 30m, 45m, 2h, 1.5h, 1,5h → секунды; мусор, без единицы, меньше минуты и больше суток — undefined', () => {
+    expect(parseDuration('1h 30m')).toBe(5400);
+    expect(parseDuration('45m')).toBe(2700);
+    expect(parseDuration(' 2H ')).toBe(7200);
+    expect(parseDuration('1.5h')).toBe(5400);
+    expect(parseDuration('1,5h')).toBe(5400);
+    expect(parseDuration('24h')).toBe(86_400);
+    for (const bad of ['', 'abc', '90', '1h 1h', '25h', '0m', '1d', '1h30', '-1h']) expect(parseDuration(bad), bad).toBeUndefined();
+  });
+});
+
+describe('мелочи вкладки «задача»', () => {
+  it('todayIso — местная дата YYYY-MM-DD', () => {
+    expect(todayIso(new Date(2026, 9, 8, 23, 59))).toBe('2026-10-08');
+    expect(todayIso(new Date(2026, 0, 3))).toBe('2026-01-03');
+  });
+  it('timeProgress: доля от оценки, не больше 100; оценки нет — undefined', () => {
+    expect(timeProgress({ originalSec: 21_600, spentSec: 7200 })).toBe(33);
+    expect(timeProgress({ originalSec: 3600, spentSec: 7200 })).toBe(100);
+    expect(timeProgress({ spentSec: 7200 })).toBeUndefined();
+  });
+  it('fileExt: расширение крупно, иначе FILE', () => {
+    expect(fileExt('terminal.log')).toBe('LOG');
+    expect(fileExt('Makefile')).toBe('FILE');
+    expect(fileExt('.env')).toBe('FILE');
+    expect(fileExt('a.verylongext')).toBe('FILE');
+  });
+  it('actionErrorText: no-writer — подсказка, остальное — текст источника', () => {
+    expect(actionErrorText('no-writer')).toContain('обновите Jiraffe');
+    expect(actionErrorText('Jira: 400')).toBe('Не вышло: Jira: 400');
+  });
+  it('waitingWhat: разрешение, вопрос, план; без ожидания — undefined', () => {
+    const base = { rows: [], nextId: 1 } as unknown as ChatState;
+    expect(waitingWhat(base)).toBeUndefined();
+    const perm = { id: 1, kind: 'perm', toolUseId: 'p', toolName: 'Bash', input: { command: 'git push' }, description: 'git push' };
+    expect(waitingWhat({ ...base, rows: [perm] } as unknown as ChatState)).toBe('git push');
+    const ask = { id: 2, kind: 'question', toolUseId: 'q', questions: [{ question: 'Какую ветку?', options: [] }], picks: {}, custom: {}, state: 'pending' };
+    expect(waitingWhat({ ...base, rows: [ask] } as unknown as ChatState)).toBe('Какую ветку?');
+    const plan = { id: 3, kind: 'plan', toolUseId: 'pl', plan: 'x', state: 'pending' };
+    expect(waitingWhat({ ...base, rows: [plan] } as unknown as ChatState)).toBe('решение по плану');
   });
 });

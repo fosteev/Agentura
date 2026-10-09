@@ -69,7 +69,7 @@ import {
   type QuestionCard,
 } from './chatState';
 import type { AgentsView, ComposerLayout, FeedStyle, GitLayout, TaskCardMode } from '../settings';
-import type { TaskChatRow, TaskEventKind, TaskStateMessage } from '../shared/task';
+import type { TaskActionMessage, TaskChatRow, TaskEventKind, TaskStateMessage, TaskTransitionsMessage } from '../shared/task';
 import type { TabChatsMessage } from '../shared/taskTab';
 import type { GitOp, GitSnapshot } from '../shared/git';
 import { pushHistory } from './composer';
@@ -144,6 +144,10 @@ export const taskState = signal<TaskStateMessage | undefined>(undefined);
  * появится (`id` — точное, иначе самое свежее «моё» этого вида не раньше `since − 2 мин`). Найдено — сбрасывается.
  */
 export const taskFocus = signal<{ kind: TaskEventKind; id?: string; since: number } | undefined>(undefined);
+/** Последний ответ хоста на `task.transitions` (меню «<статус> ▾» вкладки «задача»). */
+export const taskTransitions = signal<TaskTransitionsMessage | undefined>(undefined);
+/** Последний итог записи от имени пользователя (`task.action`); новый объект на каждое сообщение — вкладка ловит по ссылке. */
+export const taskAction = signal<TaskActionMessage | undefined>(undefined);
 /** Чаты группы задачи вкладки (`task.chats`) для блока «Чаты по задаче». */
 export const taskChats = signal<TaskChatRow[]>([]);
 /** Вкладка на задачу (`tasks.tab = task`, этап 7): её чаты внутренними вкладками; нет — обычная вкладка чата. */
@@ -530,6 +534,12 @@ export function handleHostMessage(m: ToWebview): void {
       if (taskState.value?.taskKey !== m.taskKey) taskFocus.value = undefined;
       taskState.value = m.taskKey ? m : undefined;
       if (!m.taskKey) taskChats.value = [];
+      break;
+    case 'task.transitions':
+      taskTransitions.value = m;
+      break;
+    case 'task.action':
+      taskAction.value = { ...m };
       break;
     case 'task.chats':
       taskChats.value = m.taskKey ? m.chats : [];

@@ -233,13 +233,22 @@ export function taskCard() {
     type: 'Bug', status: 'In Progress', statusCategory: 'indeterminate', assignee: 'You', priority: 'High', url: taskUrl('QUE-214'),
     updatedAt: now - 3 * MIN,
     description: 'After the socket reconnects the queue board shows 0 for a second or two and then the real number. Looks like the counter is reset in onOpen before the first snapshot arrives.\nSeen on the lobby board, 2.4.1.',
+    descriptionHtml: '<p>After the socket reconnects the queue board shows <b>0</b> for a second or two and then the real number. Looks like the counter is reset in <code>onOpen</code> before the first snapshot arrives.</p><p>Seen on the lobby board, 2.4.1.</p><ol><li>Open the board and wait for a number.</li><li>Drop the Wi-Fi for 5 seconds.</li><li>The board shows 0 after it comes back.</li></ol>',
+    reporter: 'Maria K.', created: now - 30 * HOUR, due: '', labels: ['board', 'websocket'], components: ['queue-board'], fixVersions: ['2.5.0'],
+    time: { originalSec: 6 * 3600, spentSec: 2 * 3600, remainingSec: 4 * 3600 },
+    history: [
+      { at: now - 40 * MIN, author: 'You', items: [{ field: 'status', from: 'To Do', to: 'In Progress' }] },
+      { at: now - 28 * HOUR, author: 'Maria K.', items: [{ field: 'priority', from: 'Medium', to: 'High' }] },
+    ],
+    worklogs: [{ id: 'w1', author: 'You', mine: true, at: now - 3 * HOUR, seconds: 7200, comment: 'Traced the reset to onOpen' }],
+    canWrite: true,
     attachments: [
       { id: 'a1', filename: 'board-blink.mp4', size: 2_400_000, mimeType: 'video/mp4', url: 'https://x/a1' },
       { id: 'a2', filename: 'console.log', size: 38_000, mimeType: 'text/plain', url: 'https://x/a2' },
     ],
     comments: [
-      { id: 'c1', author: 'Maria K.', mine: false, at: now - 5 * HOUR, text: 'Reproduced on the lobby board, it happens on every Wi-Fi drop.' },
-      { id: 'c2', author: 'You', mine: true, at: now - 4 * MIN, text: 'Fixed: the counter keeps the last snapshot on reconnect, retries back off exponentially. Tests: 14 passed.' },
+      { id: 'c1', author: 'Maria K.', mine: false, at: now - 5 * HOUR, text: 'Reproduced on the lobby board, it happens on every Wi-Fi drop.', html: '<p>Reproduced on the lobby board, it happens on every Wi-Fi drop.</p>' },
+      { id: 'c2', author: 'You', mine: true, at: now - 4 * MIN, text: 'Fixed: the counter keeps the last snapshot on reconnect, retries back off exponentially. Tests: 14 passed.', html: '<p>Fixed: the counter keeps the last snapshot on reconnect, retries back off exponentially. Tests: 14 passed.</p>' },
     ],
   };
 }
