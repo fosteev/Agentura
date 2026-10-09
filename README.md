@@ -14,8 +14,9 @@ engine as Claude Code, through your installed `claude` and its login. Codex CLI 
 
 Personal project, not on the Marketplace. Install it from a `.vsix` (see [Install](#install)).
 
-> **New in 0.9 — Jira tasks.** Chats grouped by Jira issue; a "task" tab beside the chat with the issue card and a
-> live change feed (the agent's comment shows up right away); one tab per task with its chats inside; Jira connected
+> **New in 0.10 — a "task" tab beside the chat.** A chat on a Jira issue gets "chat | task" tabs: the full issue card
+> (description, fields, comments, history, worklogs) and the live change feed, and you can change status, comment and
+> log work right there. Since 0.9: chats grouped by Jira issue; one tab per task with its chats inside; Jira connected
 > in Agentura or through [Jiraffe](https://github.com/fosteev/jiraffe) 0.8; and Claude can comment, change status and
 > log work on the issue, asking before anything but a short comment. See [Jira tasks](#jira-tasks).
 
@@ -30,7 +31,7 @@ Personal project, not on the Marketplace. Install it from a `.vsix` (see [Instal
   in the native diff.
 - **Remote Control.** Keep driving a Claude session from claude.ai/code or the Claude mobile app: `rc` under the
   input box or `/rc`. See [Remote Control](#remote-control).
-- **Jira tasks.** Chats grouped by Jira issue, a task card and change feed beside the chat, and Claude can comment,
+- **Jira tasks.** Chats grouped by Jira issue, a "task" tab with the full card and change feed beside the chat, and Claude can comment,
   change status and log work on the issue. See [Jira tasks](#jira-tasks).
 - **Sidebar.** The project's sessions: search, resume, rename. Account and limits are shown above the list — for every
   installed engine (Claude, Codex, Antigravity), in one of five layouts.
@@ -171,10 +172,13 @@ Start one with "Agentura: Chat for Issue…" (a key or a link), "Open in Agentur
 - **Source.** `agentura.jira.source`: `auto` (default), `jiraffe`, `own`, `off`. Own connections are made with
   "Agentura: Connect Jira…" (Data Center or Cloud; the token goes to SecretStorage, per workspace). The Jiraffe
   integration needs Jiraffe **0.8.0**. Everything is on the "Integrations" settings page.
-- **Task strip and "task" tab.** A strip with the issue above the feed, and a "task" tab in the right panel: the card
-  (description, comments, attachments, the task's chats) and "changes" (status, comments, worklogs; the agent's
-  comments are highlighted, a comment from a person made during a turn shows a "send to agent?" notice).
-  `agentura.tasks.card`: `panel`, `split`, `strip`.
+- **Task strip and "chat | task" tabs.** A strip with the issue above the feed carries the tabs. "Task" shows the
+  whole card: description, attachments, fields, time and the task's chats, with sub-tabs Comments, History, Worklog
+  and Changes (status, comments, worklogs; the agent's comments are highlighted, a comment from a person made during a
+  turn shows a "send to agent?" notice). Status, a comment and a worklog are written from the card on your behalf,
+  without a confirmation dialog; "to chat" attaches the task as a file. While "task" is open, "chat" shows a spinner
+  or a dot when the agent works or waits for you. `agentura.tasks.card`: `tab` (default) or `split` (Jiraffe's card
+  beside the chat, Jiraffe source only); the old `panel` and `strip` read as `tab`.
 - **A tab per task.** `agentura.tasks.tab=task` keeps one editor tab per task with its chats as inner tabs.
 - **Agent tools (Claude).** The in-process MCP server `agentura_jira` gives `comment`, `transition` and `worklog` on
   the chat's task, on your behalf. A short comment on that task is posted without asking; a status change, a worklog,
@@ -186,7 +190,7 @@ Start one with "Agentura: Chat for Issue…" (a key or a link), "Open in Agentur
   "Open in Agentura") puts it into the prompt box and you send it; a person's comment only when you move it to the chat. The card and the change
   feed are polled by the extension and are not sent anywhere else.
 
-![Jira tasks: a task group in the sidebar, the strip and the "task" tab with the agent's comment](docs/images/jira-tasks.png)
+![Jira tasks: a task group in the sidebar, the "chat | task" tabs with the full issue card](docs/images/jira-tasks.png)
 
 ## Remote Control
 

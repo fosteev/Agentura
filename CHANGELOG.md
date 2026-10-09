@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.10.0 — 2026-10-09
+
+### Added
+
+- **"Chat | task" tabs.** A chat on a Jira issue gets tabs in the task strip. "Task" is the full issue card in the
+  width of the chat tab (the chat keeps its scroll and draft): description and comments as sanitized HTML, fields, time,
+  attachments as file tiles and the task's chats, with sub-tabs Comments, History, Worklog and Changes. Links open
+  in the browser (http, https, mailto only).
+- **Writing from the card.** Change status (transitions that need extra fields are disabled), post a comment
+  (Ctrl/Cmd+Enter) or log work, on your behalf and without a confirmation dialog; needs your own connection or
+  Jiraffe with API v2. "To chat" attaches the task as a `<KEY>.md` file.
+- **Indicators on "chat".** While "task" is open, the chat tab shows a spinner with the number of new feed entries
+  when a turn is running, and a dot with a toast when the agent waits for a permission, answer or plan.
+
+### Changed
+
+- `agentura.tasks.card` is now `tab` (default) or `split`; the old `panel` and `strip` read as `tab`. The right
+  panel no longer has a "task" tab.
+
 ## 0.9.0 — 2026-10-08
 
 ### Added

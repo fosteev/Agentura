@@ -165,10 +165,10 @@ Agentura (Preact + `@preact/signals`):
 
 ### 3. Релиз 0.10.0 — **sonnet, medium**, после 2
 
-- [ ] Скриншоты README (`run.mjs tasks`): кадры «чат» с вкладками и «задача» широкая; обновить README/README.ru
+- [x] Скриншоты README (`run.mjs tasks`): кадры «чат» с вкладками и «задача» широкая; обновить README/README.ru
       (раздел про задачи Jira — одна-две фразы и картинки).
-- [ ] `CHANGELOG.md` (англ.), версия 0.10.0 в `package.json`, `npm run package` → `agentura-0.10.0.vsix`.
-- [ ] В `19-jira-tasks.md` у решений 9–10 пометка «заменено roadmap 20».
+- [x] `CHANGELOG.md` (англ.), версия 0.10.0 в `package.json`, `npm run package` → `agentura-0.10.0.vsix`.
+- [x] В `19-jira-tasks.md` у решений 9–10 пометка «заменено roadmap 20».
 
 **Готово, когда:** `npm run check` зелёный, vsix собран, README показывает новую вкладку.
 
