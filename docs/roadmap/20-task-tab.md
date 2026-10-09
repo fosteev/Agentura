@@ -223,6 +223,8 @@ DOMPurify — Cards.tsx:448; вёрстка — prototype/screens/task-tab.html 
 Сессия 3 — релиз 0.10.0 · Модель: sonnet, effort: medium · после сессии 2
 <общая шапка>
 Задача: этап 3 roadmap 20 — скриншоты README, CHANGELOG (англ.), версия 0.10.0, vsix, пометка в roadmap 19.
+Картинку README `docs/images/jira-tasks.png` перегенерирует `node scripts/readme-shots/run.mjs tasks` (кадр — вкладка
+«задача», уже настроен в run.mjs); её и текст README/README.ru про задачи Jira обновить под вкладки «чат | задача».
 Эталон — коммит 2ec5ca9 (релиз 0.9.0) и 600b534 (README). DoD: «Готово, когда» этапа 3.
 ```
 
