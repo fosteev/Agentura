@@ -20,6 +20,18 @@ import type { ImageProblem } from './shared/images';
 import type { FileProblem } from './shared/files';
 import { isAgentGraphView, type AgentGraphView } from './shared/agentsGraph';
 import type { GitNotice, GitRequest } from './shared/git';
+import type { IntegrationsState } from './shared/integrations';
+import {
+  isIsoDate,
+  isOpenableLink,
+  TASK_LIMITS,
+  type TaskActionMessage,
+  type TaskChatsMessage,
+  type TaskRequest,
+  type TaskStateMessage,
+  type TaskTransitionsMessage,
+} from './shared/task';
+import type { TabChatsMessage, TabRequest } from './shared/taskTab';
 import type {
   EngineCheck,
   AgentsView,
@@ -28,6 +40,9 @@ import type {
   ComposerLayout,
   SessionListMode,
   SettingKey,
+  SidebarLimitsMode,
+  TaskCardMode,
+  TaskSidebarMode,
   SidebarTopMode,
   SettingsValues,
 } from './settings';
@@ -105,6 +120,8 @@ export const AGENT_EVENT_TYPES = [
   'agent.end',
   'limit.update',
   'mode.changed',
+  'remote.state', // roadmap 17: мост Remote Control (connecting/on/off/error, ссылка claude.ai)
+  'remote.prompt', // roadmap 17: промпт с claude.ai или телефона
   'session.closed', // этап 2 (приёмка): движок завершился / сессия закрыта — последнее событие потока
   'error',
 ] as const satisfies readonly AgentEvent['type'][];
@@ -145,6 +162,8 @@ export type ToWebview =
     }
   /** Вкладка настроек (этап 3 roadmap 0.2): значения `agentura.*` и ключи, перекрытые настройками рабочей папки. */
   | { type: 'settings.state'; values: SettingsValues; overridden: SettingKey[] }
+  /** Страница «Интеграции» (roadmap 19, этап 6): Jiraffe и свои подключения Jira. */
+  | { type: 'integrations.state'; state: IntegrationsState }
   /** Отказ записи настройки (проверка не прошла или запись не удалась) — текст у поля. */
   | { type: 'settings.error'; key: SettingKey; message: string }
   /** Ответ на «проверить» у пути к claude. */
@@ -179,6 +198,8 @@ export type ToWebview =
       provider?: AgentProvider;
       /** Что движок умеет: UI прячет остальное. Нет — Claude, все `true`. */
       features?: ProviderFeatures;
+      /** Где карточка задачи в чате по задаче (`agentura.tasks.card`, roadmap 19); нет — `panel`. */
+      taskCard?: TaskCardMode;
     }
   | { type: 'capabilities'; sessionId: string; models: ModelOption[]; commands: CommandOption[] }
   | ({ type: 'editor.context' } & EditorContext)
@@ -194,6 +215,8 @@ export type ToWebview =
    * или причина отказа. Картинки из тех же источников приходят `image.picked`.
    */
   | { type: 'file.picked'; items: PickedFile[] }
+  /** Текст в пустое поле ввода (`agentura.openWithContext`): набранное не затирается. */
+  | { type: 'composer.prefill'; text: string }
   /** Начата новая сессия (команда, `/clear`, `new`): очистить ленту. */
   | { type: 'session.reset' }
   /**
@@ -215,7 +238,16 @@ export type ToWebview =
    * Список сессий проекта (этап 6). Боковая панель получает все, вкладка чата — короткий хвост для
    * попапа и экрана empty; `current` — сессия активной вкладки (строка `cur` в списке), `project` — имя папки.
    */
-  | { type: 'sessions.update'; sessions: SessionSummary[]; current?: string; project?: string }
+  | {
+      type: 'sessions.update';
+      sessions: SessionSummary[];
+      current?: string;
+      project?: string;
+      /** Движок активной вкладки чата (`current` лимитов движков); нет вкладок — не задан. */
+      currentProvider?: AgentProvider;
+      /** Группы задач (только боковая панель); нет — групп нет. */
+      tasks?: TaskGroupSummary[];
+    }
   /**
    * Этап 6: история возобновлённой (или пересеянной после пересоздания webview) сессии. Webview
    * сбрасывает ленту и приборы, снимает фильтр брошенной сессии и прогоняет `events` тем же
@@ -241,6 +273,10 @@ export type ToWebview =
       time: boolean;
       /** Вид верха панели (`agentura.sidebar.top`). */
       top: SidebarTopMode;
+      /** Вид лимитов всех движков при ≥ 2 установленных (`agentura.sidebar.limits`). */
+      limits: SidebarLimitsMode;
+      /** Где задачи Jira: группы в списке или секция (`agentura.tasks.sidebar`, roadmap 19). */
+      tasks?: TaskSidebarMode;
     }
   /** Этап 6: аккаунт для боковой панели. */
   | ({ type: 'account.info' } & AccountSummary)
@@ -253,13 +289,30 @@ export type ToWebview =
       updatedAt: number;
       error?: string;
     }
+  /**
+   * Лимиты Codex и Antigravity для боковой панели (roadmap 18). Claude едет прежними `limits.update` и
+   * `account.info`. Движок без исполняемого файла приходит с `state: 'missing'` (не показывается).
+   */
+  | { type: 'engines.limits'; engines: EngineLimitsSummary[] }
   /** Квота Antigravity (`agy -p "/usage"`): строки по семействам моделей; пусто — не показываем. */
   | { type: 'quota.update'; rows: QuotaRow[]; updatedAt: number }
   /**
    * Вкладка «git» (roadmap 12): `git.state` — снимок на каждое изменение и на `ready`, `git.error` — отказ
    * действия, `git.commit.result` — итог коммита по каждому репозиторию, `git.message.result` — ✦ сообщение.
    */
-  | GitNotice;
+  | GitNotice
+  /**
+   * Карточка и лента изменений задачи Jira вкладки (roadmap 19, этап 2): на `ready`, после каждой загрузки и при смене
+   * привязки. Нет `taskKey` — вкладка вне задачи.
+   */
+  | TaskStateMessage
+  /** Ответы вкладке «задача» (roadmap 20): переходы статуса и итог записи от имени пользователя. */
+  | TaskTransitionsMessage
+  | TaskActionMessage
+  /** Чаты группы задачи вкладки для блока «Чаты по задаче» (этап 5). */
+  | TaskChatsMessage
+  /** Вкладка на задачу (`tasks.tab = task`, этап 7): внутренние вкладки чатов и состояние для сериализатора. */
+  | TabChatsMessage;
 
 /**
  * Webview → extension. Этап 3 добавил `files.find`, `attach.pick`, `sessions.show`, `diff.open` и
@@ -329,6 +382,8 @@ export type FromWebview =
   | { type: 'mode.set'; sessionId: string; mode: PermissionMode }
   | { type: 'model.set'; sessionId: string; model: string }
   | { type: 'effort.set'; sessionId: string; effort: string }
+  /** Roadmap 17: Remote Control вкладки — кнопка «rc», `/rc`, `/remote-control`. Только Claude. */
+  | { type: 'remote.set'; sessionId?: string; on: boolean }
   | { type: 'compact'; sessionId: string }
   | { type: 'agent.stop'; sessionId: string; taskId: string }
   /**
@@ -341,9 +396,13 @@ export type FromWebview =
   /** Чат: снимок карты агентов для его вкладки графа — только пока граф открыт (`agents.graph`). */
   | { type: 'agents.snapshot'; sessionId: string; graph: AgentGraphView }
   | { type: 'session.new' }
+  /** «＋» у группы задачи в боковой панели: новый чат по задаче (`agentura.chatForTask`); `taskKey` — `jira:<инстанс>:<KEY>`. */
+  | { type: 'task.newChat'; taskKey: string }
   /** Выбор движка в пустой вкладке (до первого сообщения); хост запоминает его как дефолт новых чатов. */
   | { type: 'engine.set'; provider: AgentProvider }
   | { type: 'limits.refresh' }
+  /** «войти» у движка без входа (боковая панель, лимиты движков): хост открывает терминал с командой входа. */
+  | { type: 'engine.login'; engine: 'codex' | 'antigravity' }
   | { type: 'session.resume'; sessionId: string; provider?: AgentProvider }
   /** Этап 6: переименование по двойному клику в списке (B9). */
   | { type: 'session.rename'; sessionId: string; title: string }
@@ -363,6 +422,11 @@ export type FromWebview =
   | { type: 'settings.set'; key: SettingKey; value: unknown }
   /** «проверить»: найти claude по этому пути (пусто — системный) и показать версию и источник. */
   | { type: 'settings.checkEngine'; path: string; /** Чей путь проверять; нет — claude. */ engine?: AgentProvider }
+  /** Страница «Интеграции»: команды этапа 2 (`agentura.jira.connect|test|disconnect`) и «поставить» Jiraffe. */
+  | { type: 'integrations.connect' }
+  | { type: 'integrations.test'; instanceId: string }
+  | { type: 'integrations.disconnect'; instanceId: string }
+  | { type: 'integrations.installJiraffe' }
   /** «в настройках VS Code» / «settings.json». */
   | { type: 'settings.reveal'; target: 'ui' | 'json' }
   /** «Добавить из Google Fonts…» под карточками: выбор семейства для интерфейса, кода или панелей (все семейства). */
@@ -370,7 +434,11 @@ export type FromWebview =
   /** ✕ у скачанного шрифта. */
   | { type: 'fonts.remove'; family: string }
   /** Вкладка «git» (roadmap 12): `git.watch|stage|unstage|discard|commit|sync|branch|open|openFile|message`. */
-  | GitRequest;
+  | GitRequest
+  /** Вкладка задачи (roadmap 19, этап 2): ↻, комментарий в поле ввода, открыть задачу/вложение. */
+  | TaskRequest
+  /** Внутренние вкладки вкладки задачи (этап 7): показать, закрыть, «＋». */
+  | TabRequest;
 
 /** Картинка из диалога «+»: исходный файл или причина, почему не прочитан. */
 export interface PickedImage {
@@ -406,6 +474,26 @@ export interface AccountSummary {
   engine?: string;
 }
 
+export type EngineLimitsState = 'ok' | 'signedOut' | 'missing' | 'error' | 'loading';
+export interface EngineWindowSummary {
+  kind: 'fiveHour' | 'weekly' | 'model';
+  /** У `model` — имя от источника (`Gemini`, `Claude/GPT`, имя доп. лимита Codex); у остальных — нет. */
+  name?: string;
+  /** Израсходовано, 0…100 (у agy — 100 − остаток). */
+  percent: number;
+  resetsAt?: number; // мс
+}
+export interface EngineLimitsSummary {
+  engine: 'codex' | 'antigravity';
+  state: EngineLimitsState;
+  email?: string;
+  plan?: string; // `Plus`, `Pro` — planType с заглавной
+  version?: string; // `codex 0.160.0` / `agy 1.4` — если уже известна локатору, иначе нет
+  windows: EngineWindowSummary[];
+  updatedAt: number;
+  error?: string;
+}
+
 export interface SessionSummary {
   id: string;
   title: string;
@@ -420,6 +508,23 @@ export interface SessionSummary {
   updatedAt: number;
   /** Контекст последнего запроса, токены — «131k» в строке списка. */
   contextTokens?: number;
+  /** Чат входит в группу задачи (`TaskGroups`): метка для списка сессий. */
+  task?: { key: string; title: string; status?: string; statusCategory?: 'new' | 'indeterminate' | 'done' };
+}
+
+/** Группа чатов по задаче в `sessions.update.tasks`: метаданные задачи и id её сессий (новые сверху, только из списка). */
+export interface TaskGroupSummary {
+  /** `jira:<instanceId>:<KEY>`. */
+  taskKey: string;
+  meta: {
+    key: string;
+    instanceId: string;
+    title: string;
+    status?: string;
+    statusCategory?: 'new' | 'indeterminate' | 'done';
+    url: string;
+  };
+  sessionIds: string[];
 }
 
 /** Строка квоты Antigravity: осталось % (0…100) и сброс в мс; `label` — `Gemini`, `Claude/GPT`. */
@@ -454,14 +559,17 @@ const FROM_WEBVIEW_TYPES: Record<FromWebview['type'], true> = {
   'mode.set': true,
   'model.set': true,
   'effort.set': true,
+  'remote.set': true,
   'compact': true,
   'agent.stop': true,
   'agent.transcript': true,
   'agents.openGraph': true,
   'agents.snapshot': true,
   'session.new': true,
+  'task.newChat': true,
   'engine.set': true,
   'limits.refresh': true,
+  'engine.login': true,
   'session.resume': true,
   'session.rename': true,
   'turn.retry': true,
@@ -471,6 +579,10 @@ const FROM_WEBVIEW_TYPES: Record<FromWebview['type'], true> = {
   'settings.set': true,
   'settings.checkEngine': true,
   'settings.reveal': true,
+  'integrations.connect': true,
+  'integrations.test': true,
+  'integrations.disconnect': true,
+  'integrations.installJiraffe': true,
   'fonts.add': true,
   'fonts.remove': true,
   'git.watch': true,
@@ -484,6 +596,19 @@ const FROM_WEBVIEW_TYPES: Record<FromWebview['type'], true> = {
   'git.openFile': true,
   'git.openRepository': true,
   'git.message': true,
+  'task.refresh': true,
+  'task.toComposer': true,
+  'task.openExternal': true,
+  'task.openChat': true,
+  'task.connect': true,
+  'task.transitions': true,
+  'task.transition': true,
+  'task.comment': true,
+  'task.logWork': true,
+  'task.openLink': true,
+  'tab.select': true,
+  'tab.close': true,
+  'tab.new': true,
 };
 
 /** `error.code` карточки «claude не найден»: webview рисует инструкцию и «Открыть настройки». */
@@ -502,9 +627,11 @@ const gitFiles = (m: Record<string, unknown>): boolean => str(m.root) && strings
  */
 const FIELD_CHECKS: Partial<Record<FromWebview['type'], (m: Record<string, unknown>) => boolean>> = {
   'engine.set': (m) => m.provider === 'claude' || m.provider === 'codex' || m.provider === 'antigravity',
+  'engine.login': (m) => m.engine === 'codex' || m.engine === 'antigravity',
   'agy.retry': (m) => m.mode === 'acceptEdits' || m.mode === 'bypassPermissions',
   'agents.openGraph': (m) => m.agentId === undefined || typeof m.agentId === 'string',
   'agents.snapshot': (m) => typeof m.sessionId === 'string' && isAgentGraphView(m.graph),
+  'remote.set': (m) => bool(m.on) && (m.sessionId === undefined || str(m.sessionId)),
   'agent.stop': (m) => typeof m.sessionId === 'string' && typeof m.taskId === 'string',
   'agent.transcript': (m) =>
     typeof m.sessionId === 'string' && typeof m.agentId === 'string' && typeof m.taskId === 'string',
@@ -522,6 +649,27 @@ const FIELD_CHECKS: Partial<Record<FromWebview['type'], (m: Record<string, unkno
   'git.openFile': (m) => str(m.root) && str(m.path),
   'git.openRepository': () => true,
   'git.message': (m) => strings(m.roots),
+  'task.newChat': (m) => str(m.taskKey) && m.taskKey.length > 0 && m.taskKey.length <= 400,
+  'integrations.test': (m) => str(m.instanceId) && m.instanceId.length > 0 && m.instanceId.length <= 200,
+  'integrations.disconnect': (m) => str(m.instanceId) && m.instanceId.length > 0 && m.instanceId.length <= 200,
+  'task.connect': () => true,
+  'tab.select': (m) => str(m.id) && m.id.length > 0 && m.id.length <= 100,
+  'tab.close': (m) => str(m.id) && m.id.length > 0 && m.id.length <= 100,
+  'task.openChat': (m) => str(m.sessionId) && m.sessionId.length > 0 && m.sessionId.length <= 200,
+  'task.toComposer': (m) => m.commentId === undefined || (str(m.commentId) && m.commentId.length > 0 && m.commentId.length <= 200),
+  // вкладка «задача» (roadmap 20): запись от имени пользователя — длины и форма здесь, `writer` проверяет ещё раз
+  'task.transitions': () => true,
+  'task.transition': (m) => str(m.transitionId) && m.transitionId.length > 0 && m.transitionId.length <= 50,
+  'task.comment': (m) => str(m.body) && m.body.trim().length > 0 && m.body.length <= TASK_LIMITS.comment,
+  'task.logWork': (m) =>
+    Number.isInteger(m.seconds) &&
+    (m.seconds as number) >= 1 &&
+    (m.seconds as number) <= TASK_LIMITS.workSeconds &&
+    isIsoDate(m.date) &&
+    str(m.comment) &&
+    m.comment.length <= TASK_LIMITS.workComment,
+  'task.openLink': (m) => isOpenableLink(m.url),
+  'task.openExternal': (m) => m.attachmentId === undefined || (str(m.attachmentId) && m.attachmentId.length <= 200),
 };
 
 /** Проверка входящего от webview сообщения: снаружи приходит `unknown`. */

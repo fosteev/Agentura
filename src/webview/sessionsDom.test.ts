@@ -227,6 +227,7 @@ describe('боковая панель (sessions.html)', () => {
       context: true,
       time: false,
       top: 'detailed',
+      limits: 'active',
     });
     sidebarMessages({
       type: 'sessions.update',
@@ -258,6 +259,7 @@ describe('боковая панель (sessions.html)', () => {
       context: true,
       time: true,
       top: 'compact',
+      limits: 'active',
     });
     sidebarMessages({
       type: 'account.info',
@@ -290,6 +292,7 @@ describe('боковая панель (sessions.html)', () => {
       context: true,
       time: true,
       top: 'dense',
+      limits: 'active',
     });
     await flush();
     expect(bar.dataset.top).toBe('dense');
@@ -381,6 +384,278 @@ describe('боковая панель (sessions.html)', () => {
     const row = host.querySelector('.lim .row')!;
     expect(row.querySelector('.n')!.textContent).toBe('0 %');
     expect(row.querySelector('small')).toBeNull();
+  });
+
+  describe('задачи Jira (roadmap 19, этап 4)', () => {
+    const view = (over: Record<string, unknown>) =>
+      sidebarMessages({
+        type: 'sidebar.view',
+        view: 'compact',
+        context: true,
+        time: true,
+        top: 'detailed',
+        limits: 'active',
+        ...over,
+      } as ToWebview);
+    const meta = (key: string, title: string, status?: string, cat?: 'new' | 'indeterminate' | 'done') => ({
+      key,
+      instanceId: 'x',
+      title,
+      url: '',
+      ...(status ? { status } : {}),
+      ...(cat ? { statusCategory: cat } : {}),
+    });
+    const rows = [
+      session({ id: 'a', title: 'почему не печатает', updatedAt: NOW - 1000, task: { key: 'NEWMFC-1', title: 'Печать', status: 'В работе' } }),
+      session({ id: 'b', title: 'свободный чат', updatedAt: NOW - 2000 }),
+      session({ id: 'c', title: 'восстановление очереди', provider: 'codex', updatedAt: NOW - 3000, task: { key: 'NEWMFC-1', title: 'Печать', status: 'В работе' } }),
+      session({ id: 'd', title: 'дубль пуша', updatedAt: NOW - 90_000_000, task: { key: 'GARM-8', title: 'Дубль' } }),
+    ];
+    const tasks = [
+      { taskKey: 'jira:x:GARM-8', meta: meta('GARM-8', 'Пуш о тревоге дублируется'), sessionIds: ['d'] },
+      { taskKey: 'jira:x:NEWMFC-1', meta: meta('NEWMFC-1', 'Талон не печатается', 'В работе', 'indeterminate'), sessionIds: ['a', 'c'] },
+    ];
+    afterEach(() => {
+      view({ tasks: 'groups' });
+      sidebarMessages({ type: 'sessions.update', sessions: [] });
+    });
+
+    it('groups: заголовок группы (ключ, пилюля, число чатов, ＋, название), чаты вложены, «Без задачи» в конце; свежая группа выше', async () => {
+      const host = mount(Sidebar);
+      await flush();
+      view({ tasks: 'groups' });
+      sidebarMessages({ type: 'sessions.update', sessions: rows, tasks, current: 'c' });
+      await flush();
+      const bar = host.querySelector('.sidebar') as HTMLElement;
+      expect(bar.dataset.tasks).toBe('groups');
+      const groups = [...host.querySelectorAll('.list > .tgp')];
+      expect(groups.map((g) => g.getAttribute('data-task'))).toEqual(['jira:x:NEWMFC-1', 'jira:x:GARM-8', null]);
+      const first = groups[0]!;
+      const head = first.querySelector('.tg-h')!;
+      expect(head.querySelector('.tkey')!.textContent).toBe('NEWMFC-1');
+      expect(head.querySelector('.pill.wip')!.textContent).toBe('В работе');
+      expect(head.querySelector('.cn')!.textContent).toBe('2');
+      expect(head.querySelector('.tt')!.textContent).toBe('Талон не печатается');
+      expect(head.querySelector('button.hit')!.getAttribute('aria-expanded')).toBe('true');
+      // «＋» — соседняя кнопка, не вложена в кнопку сворачивания (иначе скринридер её не видит)
+      expect(head.querySelector('.hit .plus')).toBeNull();
+      expect(head.querySelector(':scope > button.plus')).not.toBeNull();
+      expect(first.classList.contains('sel')).toBe(true); // в группе открыта текущая вкладка
+      expect([...first.querySelectorAll('.s')].map((r) => r.querySelector('.t')!.textContent!.replace(/[CX]?(?=почему|восст)/, '').slice(0, 9))).toEqual(['почему не', 'восстанов']);
+      expect(first.querySelectorAll('.s.nest')).toHaveLength(2);
+      expect(first.querySelector('.s.cur')).not.toBeNull();
+      // GARM-8: статуса нет — пилюли нет
+      expect(groups[1]!.querySelector('.pill')).toBeNull();
+      // «Без задачи»: заголовок без ключа, внутри свободный чат; дней в списке с группами нет
+      const free = groups[2]!;
+      expect(free.querySelector('.tg-h.nokey b')!.textContent).toBe('Без задачи');
+      expect(free.querySelectorAll('.s')).toHaveLength(1);
+      expect(host.querySelector('.list > .day')).toBeNull();
+      // в mixed-списке (есть Codex) у вложенного чата метка движка
+      expect(first.querySelector('.s .t .mk.codex')!.textContent).toBe('X');
+    });
+
+    it('groups: «＋» — новый чат по задаче и не сворачивает группу; кнопка заголовка сворачивает, состояние пишется в state webview', async () => {
+      const save = vi.spyOn(vscode, 'saveTaskFold').mockImplementation(() => undefined);
+      const host = mount(Sidebar);
+      await flush();
+      view({ tasks: 'groups' });
+      sidebarMessages({ type: 'sessions.update', sessions: rows, tasks });
+      await flush();
+      const g = () => host.querySelector('.tgp[data-task="jira:x:NEWMFC-1"]')!;
+      (g().querySelector('.tg-h .plus') as HTMLElement).click();
+      await flush();
+      expect(posted).toEqual([{ type: 'task.newChat', taskKey: 'jira:x:NEWMFC-1' }]);
+      expect(g().querySelectorAll('.s')).toHaveLength(2);
+      expect(save).not.toHaveBeenCalled();
+      const hit = () => g().querySelector('.tg-h button.hit') as HTMLButtonElement;
+      expect(hit().type).toBe('button'); // настоящая кнопка: Enter/Space и фокус — от браузера
+      hit().click();
+      await flush();
+      expect(g().querySelectorAll('.s')).toHaveLength(0);
+      expect(hit().getAttribute('aria-expanded')).toBe('false');
+      expect(hit().getAttribute('aria-label')).toBe('Развернуть задачу NEWMFC-1');
+      expect(save).toHaveBeenLastCalledWith(['jira:x:NEWMFC-1']);
+      hit().click();
+      await flush();
+      expect(g().querySelectorAll('.s')).toHaveLength(2);
+      expect(save).toHaveBeenLastCalledWith([]);
+      // «Без задачи»: имя кнопки — её текст, без aria-label
+      const free = host.querySelector('.tgp.none button.hit')!;
+      expect(free.getAttribute('aria-label')).toBeNull();
+      expect(free.getAttribute('aria-expanded')).toBe('true');
+    });
+
+    it('groups: поиск по ключу задачи показывает все её чаты, по названию чата — только его; найденное видно в свёрнутой группе', async () => {
+      const host = mount(Sidebar);
+      await flush();
+      view({ tasks: 'groups' });
+      sidebarMessages({ type: 'sessions.update', sessions: rows, tasks });
+      await flush();
+      const search = host.querySelector('.tools input') as HTMLInputElement;
+      expect(search.placeholder).toContain('ключу задачи');
+      const hit = () => host.querySelector('.tgp[data-task="jira:x:NEWMFC-1"] .tg-h .hit') as HTMLElement;
+      hit().click(); // свернули
+      search.value = 'newmfc';
+      search.dispatchEvent(new Event('input', { bubbles: true }));
+      await flush();
+      expect([...host.querySelectorAll('.list > .tgp')].map((g) => g.getAttribute('data-task'))).toEqual(['jira:x:NEWMFC-1']);
+      expect(host.querySelectorAll('.tgp .s')).toHaveLength(2);
+      hit().click(); // во время поиска сворачивание не действует
+      await flush();
+      expect(host.querySelectorAll('.tgp .s')).toHaveLength(2);
+      search.value = 'восстановление';
+      search.dispatchEvent(new Event('input', { bubbles: true }));
+      await flush();
+      expect(host.querySelectorAll('.tgp .s')).toHaveLength(1);
+      search.value = 'нетакого';
+      search.dispatchEvent(new Event('input', { bubbles: true }));
+      await flush();
+      expect(host.querySelector('.list .day')!.textContent).toBe('Ничего не найдено.');
+      search.value = '';
+      search.dispatchEvent(new Event('input', { bubbles: true }));
+      await flush();
+      expect(host.querySelectorAll('.tgp[data-task="jira:x:NEWMFC-1"] .s')).toHaveLength(0); // как было до поиска
+      hit().click(); // развернули обратно
+      await flush();
+    });
+
+    it('groups: внутри «Без задачи» — прежнее деление по дням (долг этапа 4, решение владельца)', async () => {
+      const host = mount(Sidebar);
+      await flush();
+      view({ tasks: 'groups' });
+      const free = [
+        session({ id: 'f1', title: 'свободный сегодня', updatedAt: NOW - 2000 }),
+        session({ id: 'f2', title: 'свободный сегодня 2', updatedAt: NOW - 3000 }),
+        session({ id: 'f3', title: 'свободный давно', updatedAt: NOW - 5 * 86_400_000 }),
+      ];
+      sidebarMessages({ type: 'sessions.update', sessions: [rows[0]!, ...free], tasks: [tasks[1]!].map((t) => ({ ...t, sessionIds: ['a'] })) });
+      await flush();
+      const none = host.querySelector('.tgp.none')!;
+      const kids = [...none.children].map((c) => (c.classList.contains('day') ? `day:${c.textContent}` : c.classList.contains('s') ? 's' : 'head'));
+      expect(kids[0]).toBe('head');
+      expect(kids.filter((k) => k.startsWith('day:'))).toHaveLength(2);
+      expect(kids.indexOf('s')).toBeGreaterThan(kids.findIndex((k) => k.startsWith('day:')));
+      expect(none.querySelectorAll('.s')).toHaveLength(3);
+      // заголовок дня стоит перед своими строками: первый день — две строки, второй — одна
+      const days = [...none.querySelectorAll('.day')];
+      expect(days[0]!.nextElementSibling!.classList.contains('s')).toBe(true);
+      expect(days[0]!.textContent).not.toBe(days[1]!.textContent);
+    });
+
+    it('без групп список прежний (по дням, без «Без задачи»), даже при tasks.sidebar = groups', async () => {
+      const host = mount(Sidebar);
+      await flush();
+      view({ tasks: 'groups' });
+      sidebarMessages({ type: 'sessions.update', sessions: [rows[1]!] });
+      await flush();
+      expect(host.querySelector('.tgp')).toBeNull();
+      expect(host.querySelector('.list .day')).not.toBeNull();
+      expect((host.querySelector('.sidebar') as HTMLElement).dataset.tasks).toBeUndefined();
+      expect(host.querySelector('.tools input')!.getAttribute('placeholder')).toBe('Поиск по названию');
+    });
+
+    it('section: группы без чатов в списке — ни секции, ни data-tasks, ни метки ключа (вид как до задач)', async () => {
+      const host = mount(Sidebar);
+      await flush();
+      view({ tasks: 'section' });
+      sidebarMessages({ type: 'sessions.update', sessions: [rows[1]!], tasks: tasks.map((t) => ({ ...t, sessionIds: ['gone'] })) });
+      await flush();
+      expect(host.querySelector('.sec.tasks')).toBeNull();
+      expect((host.querySelector('.sidebar') as HTMLElement).dataset.tasks).toBeUndefined();
+      expect(host.querySelector('.s .tag')).toBeNull();
+      expect(host.querySelector('.list .day')).not.toBeNull();
+    });
+
+    it('section: секция «Задачи» над «Сессиями» — карточки, движки, ＋; в строке сессии метка ключа; клик по карточке — последний чат', async () => {
+      const host = mount(Sidebar);
+      await flush();
+      view({ tasks: 'section' });
+      sidebarMessages({ type: 'sessions.update', sessions: rows, tasks, current: 'd' });
+      await flush();
+      const bar = host.querySelector('.sidebar') as HTMLElement;
+      expect(bar.dataset.tasks).toBe('section');
+      const secs = [...bar.querySelectorAll(':scope > section.sec')];
+      const at = (h: string) => secs.findIndex((x) => x.querySelector('h3')!.textContent!.includes(h));
+      expect(at('Задачи')).toBeGreaterThan(-1);
+      expect(at('Задачи')).toBeLessThan(at('Сессии'));
+      const cards = [...host.querySelectorAll('.sec.tasks .tk')];
+      expect(cards.map((c) => c.querySelector('.tkey')!.textContent)).toEqual(['NEWMFC-1', 'GARM-8']);
+      expect(host.querySelector('.sec.tasks h3 .count')!.textContent).toBe('· 2');
+      const c0 = cards[0]!;
+      expect(c0.querySelector('.pill.wip')!.textContent).toBe('В работе');
+      expect([...c0.querySelectorAll('.ri .mk')].map((m) => m.textContent)).toEqual(['C', 'X']);
+      expect(c0.querySelector('.ri')!.textContent).toContain('2 чата');
+      expect(c0.querySelector('.tt')!.textContent).toBe('Талон не печатается');
+      expect(c0.querySelector('.sub')!.textContent).toContain('последний чат:');
+      expect(cards[1]!.classList.contains('sel')).toBe(true); // текущий чат — в GARM-8
+      // сессии — плоским списком по дням, у привязанных справа метка ключа
+      expect(host.querySelector('.list .tgp')).toBeNull();
+      const tagged = [...host.querySelectorAll('.list .s')].map((r) => r.querySelector('.tag')?.textContent ?? '');
+      expect(tagged).toEqual(['NEWMFC-1', '', 'NEWMFC-1', 'GARM-8']);
+      expect(host.querySelector('.list .s.tagged')).not.toBeNull();
+      // клик по карточке — возобновить самый свежий чат; ＋ — новый чат и без возобновления
+      expect(c0.getAttribute('role')).toBeNull();
+      (c0.querySelector('button.hit') as HTMLElement).click();
+      expect(posted.at(-1)).toEqual({ type: 'session.resume', sessionId: 'a' });
+      (c0.querySelector('.plus') as HTMLElement).click();
+      expect(posted.at(-1)).toEqual({ type: 'task.newChat', taskKey: 'jira:x:NEWMFC-1' });
+      expect(posted.filter((m) => m.type === 'session.resume')).toHaveLength(1);
+    });
+
+    it('section: поиск находит чаты и по ключу задачи; карточка считает все чаты задачи, не только совпавшие', async () => {
+      const host = mount(Sidebar);
+      await flush();
+      view({ tasks: 'section' });
+      sidebarMessages({ type: 'sessions.update', sessions: rows, tasks });
+      await flush();
+      const search = host.querySelector('.tools input') as HTMLInputElement;
+      search.value = 'garm-8';
+      search.dispatchEvent(new Event('input', { bubbles: true }));
+      await flush();
+      expect([...host.querySelectorAll('.list .s .tag')].map((t) => t.textContent)).toEqual(['GARM-8']);
+      search.value = 'восстановление';
+      search.dispatchEvent(new Event('input', { bubbles: true }));
+      await flush();
+      const card = host.querySelector('.sec.tasks .tk[data-task="jira:x:NEWMFC-1"]')!;
+      expect(card.querySelector('.ri')!.textContent).toContain('2 чата');
+      (card.querySelector('button.hit') as HTMLElement).click();
+      expect(posted.at(-1)).toEqual({ type: 'session.resume', sessionId: 'a' });
+      search.value = '';
+      search.dispatchEvent(new Event('input', { bubbles: true }));
+      await flush();
+    });
+
+    it('все три вида списка и три вида верха рисуют группы', async () => {
+      const host = mount(Sidebar);
+      await flush();
+      for (const list of ['detailed', 'compact', 'dense']) {
+        for (const top of ['detailed', 'compact', 'dense']) {
+          view({ tasks: 'groups', view: list, top });
+          sidebarMessages({ type: 'sessions.update', sessions: rows, tasks });
+          await flush();
+          const bar = host.querySelector('.sidebar') as HTMLElement;
+          expect([bar.dataset.list, bar.dataset.top]).toEqual([list, top]);
+          expect(host.querySelectorAll('.list .tgp')).toHaveLength(3);
+          expect(host.querySelectorAll('.list .tgp .s')).toHaveLength(4);
+        }
+      }
+      view({ view: 'compact', top: 'detailed' });
+    });
+
+    it('строка сессии несёт контекст меню VS Code: sessionId и признак привязки к задаче', async () => {
+      const host = mount(Sidebar);
+      await flush();
+      view({ tasks: 'groups' });
+      sidebarMessages({ type: 'sessions.update', sessions: rows, tasks });
+      await flush();
+      const ctx = (id: string) => {
+        const row = [...host.querySelectorAll<HTMLElement>('.s')].find((r) => r.textContent!.includes(id))!;
+        return JSON.parse(row.getAttribute('data-vscode-context')!) as Record<string, unknown>;
+      };
+      expect(ctx('свободный')).toMatchObject({ webviewSection: 'session', sessionId: 'b', sessionBound: false });
+      expect(ctx('почему')).toMatchObject({ sessionId: 'a', sessionBound: true });
+    });
   });
 });
 

@@ -20,6 +20,8 @@ export function Hud({
   onResume,
   onAllSessions,
   onNew,
+  remote,
+  onRemote,
 }: {
   project: string;
   title?: string;
@@ -41,6 +43,9 @@ export function Hud({
   onResume: (id: string) => void;
   onAllSessions: () => void;
   onNew: () => void;
+  /** Remote Control включён (`remote.state` = on): метка «● remote», её title — ссылка. */
+  remote?: { url?: string | undefined } | undefined;
+  onRemote?: ((url: string) => void) | undefined;
 }) {
   const [open, setOpen] = useState(false);
   const pop = useRef<HTMLSpanElement>(null);
@@ -104,6 +109,15 @@ export function Hud({
         {project} · <b>{title || ui.hud.untitled}</b>
       </span>
       <span class="acts" ref={pop} onKeyDown={menuKeys}>
+        {remote && (
+          <button
+            class="rcb"
+            data-tip={remote.url ?? ui.remote.badgeTitle}
+            onClick={() => remote.url && onRemote?.(remote.url)}
+          >
+            {ui.remote.badge}
+          </button>
+        )}
         <button
           data-tip={ui.hud.sessionsTitle}
           style={open ? { color: 'var(--fg)' } : undefined}

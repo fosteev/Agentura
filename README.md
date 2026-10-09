@@ -14,6 +14,12 @@ engine as Claude Code, through your installed `claude` and its login. Codex CLI 
 
 Personal project, not on the Marketplace. Install it from a `.vsix` (see [Install](#install)).
 
+> **New in 0.10 — a "task" tab beside the chat.** A chat on a Jira issue gets "chat | task" tabs: the full issue card
+> (description, fields, comments, history, worklogs) and the live change feed, and you can change status, comment and
+> log work right there. Since 0.9: chats grouped by Jira issue; one tab per task with its chats inside; Jira connected
+> in Agentura or through [Jiraffe](https://github.com/fosteev/jiraffe) 0.8; and Claude can comment, change status and
+> log work on the issue, asking before anything but a short comment. See [Jira tasks](#jira-tasks).
+
 ## Features
 
 - **Two engines.** Claude (default) or Codex, picked per tab in the "agent" menu under the input box.
@@ -23,7 +29,12 @@ Personal project, not on the Marketplace. Install it from a `.vsix` (see [Instal
   rate, 5-hour and 7-day limits.
 - **Permissions.** Tool approval, agent questions and plan review (`ExitPlanMode`) are cards in the feed. Edits open
   in the native diff.
-- **Sidebar.** The project's sessions: search, resume, rename. Account and limits are shown above the list.
+- **Remote Control.** Keep driving a Claude session from claude.ai/code or the Claude mobile app: `rc` under the
+  input box or `/rc`. See [Remote Control](#remote-control).
+- **Jira tasks.** Chats grouped by Jira issue, a "task" tab with the full card and change feed beside the chat, and Claude can comment,
+  change status and log work on the issue. See [Jira tasks](#jira-tasks).
+- **Sidebar.** The project's sessions: search, resume, rename. Account and limits are shown above the list — for every
+  installed engine (Claude, Codex, Antigravity), in one of five layouts.
 - **Right panel.**
   - `changes` lists files the session touched.
   - `git` is a working tree view where you stage, commit and push. Files the agent edited are marked.
@@ -70,7 +81,9 @@ The ✦ button asks Sonnet to write the commit message from the staged diff.
 
 ### Sidebar and settings
 
-`agentura.sessionList.view`: `detailed`, `compact`, `dense`. All settings are also on a settings tab (⚙ in the sidebar),
+`agentura.sessionList.view`: `detailed`, `compact`, `dense`. With more than one engine installed,
+`agentura.sidebar.limits` lays out their limits: `active` (default — the current tab's engine expanded), `stack`,
+`switch`, `table`, `header`. All settings are also on a settings tab (⚙ in the sidebar),
 with live previews.
 
 ![Session list views](docs/images/session-list.png)
@@ -89,7 +102,7 @@ The extension does not ship the engine binary (200+ MB). It finds the system `cl
 `~/.claude/local` or Homebrew (on Windows it looks for `claude.exe`). To point it somewhere else, set `agentura.claudeExecutable`.
 
 ```
-code --install-extension agentura-0.5.0.vsix
+code --install-extension agentura-0.7.1.vsix
 ```
 
 To build from source:
@@ -97,7 +110,7 @@ To build from source:
 ```
 npm ci
 npm run check      # types, lint, unit tests, build
-npm run package    # agentura-0.5.0.vsix
+npm run package    # agentura-0.7.1.vsix
 ```
 
 ## Codex
@@ -108,7 +121,7 @@ tab and talks to it over stdio, the same way it runs `claude`. Approval policy a
 `~/.codex/config.toml`; Agentura does not override them.
 
 Supported: streaming replies, Stop, the model and effort pickers, command, file-change and permission approvals,
-agent questions, images in a message, tool rows and the `changes` tab, the context size next to the input box (after the
+agent questions, images in a message, tool rows, the `changes` and `agents` tabs (subagent graph, status, and summary), the context size next to the input box (after the
 first turn: until Codex reports its window, there is no gauge), and session history: the sidebar lists the recent
 Codex threads of the project folder, up to 500 (including ones started in the Codex CLI),
 and you can resume and rename them. When `codex` is installed, the sidebar starts a short `codex app-server` to read
@@ -116,12 +129,12 @@ that list (at most every 30 seconds); a thread started in the CLI shows up on th
 
 Not in this version (hidden in the interface, not faked):
 
-- Permission modes, plan review, `/compact` and the agents tab. Codex has no equivalents in the app-server protocol
-  Agentura uses.
-- Cost, cache and subscription limits: Codex does not report them. The context gauge has no thresholds or
-  auto-compact marks for the same reason.
+- Permission modes, plan review and `/compact`. Codex has no equivalents in the app-server protocol Agentura uses.
+- Cost and cache: Codex does not report them. The context gauge has no thresholds or auto-compact marks for the
+  same reason. Subscription limits (5-hour and weekly, from `account/rateLimits/read`) are shown in the sidebar.
 - File attachments (text and PDF). Images are sent.
 - Restored Codex history has no per-turn token counts, and a thread row in the sidebar shows no turns or cost.
+- A Codex subagent has no separate transcript: app-server does not provide it in the parent stream.
 - "Always" on a command approval writes a permanent rule to `~/.codex/rules`; the card says so.
 - An edit shows in the `changes` tab and the diff as the changed fragment, not as a whole-file before/after.
 
@@ -135,8 +148,8 @@ A chat tab can also run on Google's Antigravity CLI (`agy`): pick it in the engi
 
 You need `agy` installed and signed in (run `agy` once in a terminal). Agentura finds it in `PATH`, `~/.local/bin` or
 Homebrew; `agentura.antigravityExecutable` points elsewhere (⚙ → "Engine" has a check button). The weekly quota
-(`agy -p "/usage"`, at most once per 10 minutes) shows by the input box instead of the Claude limits; if the output
-can't be parsed, nothing is shown.
+(`agy -p "/usage"`, at most once per 10 minutes) shows by the input box instead of the Claude limits and in the sidebar;
+if the output can't be parsed, nothing is shown.
 
 What differs from Claude:
 
@@ -150,6 +163,53 @@ What differs from Claude:
   change; if it does, history degrades to what was seen live. Conversations of the open folder appear in the sidebar
   and on the empty screen with an engine label (resume and rename work; without `agy` they are simply absent).
 
+## Jira tasks
+
+Chats on the same Jira issue are grouped under it in the sidebar (`agentura.tasks.sidebar`: `groups` or `section`).
+Start one with "Agentura: Chat for Issue…" (a key or a link), "Open in Agentura" in the
+[Jiraffe](https://github.com/fosteev/jiraffe) extension, or bind an existing tab with "Bind to Issue…".
+
+- **Source.** `agentura.jira.source`: `auto` (default), `jiraffe`, `own`, `off`. Own connections are made with
+  "Agentura: Connect Jira…" (Data Center or Cloud; the token goes to SecretStorage, per workspace). The Jiraffe
+  integration needs Jiraffe **0.8.0**. Everything is on the "Integrations" settings page.
+- **Task strip and "chat | task" tabs.** A strip with the issue above the feed carries the tabs. "Task" shows the
+  whole card: description, attachments, fields, time and the task's chats, with sub-tabs Comments, History, Worklog
+  and Changes (status, comments, worklogs; the agent's comments are highlighted, a comment from a person made during a
+  turn shows a "send to agent?" notice). Status, a comment and a worklog are written from the card on your behalf,
+  without a confirmation dialog; "to chat" attaches the task as a file. While "task" is open, "chat" shows a spinner
+  or a dot when the agent works or waits for you. `agentura.tasks.card`: `tab` (default) or `split` (Jiraffe's card
+  beside the chat, Jiraffe source only); the old `panel` and `strip` read as `tab`.
+- **A tab per task.** `agentura.tasks.tab=task` keeps one editor tab per task with its chats as inner tabs.
+- **Agent tools (Claude).** The in-process MCP server `agentura_jira` gives `comment`, `transition` and `worklog` on
+  the chat's task, on your behalf. A short comment on that task is posted without asking; a status change, a worklog,
+  a long or secret-looking comment, or anything on another task goes through the permission card, in every mode.
+  `agentura.jira.agentTools` switches each tool off. The worklog carries this chat's token usage as AI Tokens (a Tempo
+  attribute through Jiraffe, "(AI Tokens: N)" in the comment otherwise): input, output and cache writes of the main
+  turns, without cache reads and subagents.
+- **What reaches the model.** The task's key and connection name; the issue card only when "Chat for Issue…" (or Jiraffe's
+  "Open in Agentura") puts it into the prompt box and you send it; a person's comment only when you move it to the chat. The card and the change
+  feed are polled by the extension and are not sent anywhere else.
+
+![Jira tasks: a task group in the sidebar, the "chat | task" tabs with the full issue card](docs/images/jira-tasks.png)
+
+## Remote Control
+
+A Claude tab can be mirrored to claude.ai: the session shows up in claude.ai/code and in the Claude mobile app, and you
+can continue it from there. Turn it on with `rc` under the input box (or `/rc`, `/remote-control`); the `rc` menu has a
+QR code for the phone, the link and a copy button. `agentura.remoteControl` turns it on for every Claude tab, and the
+`rc` choice in a tab overrides it for that tab (it survives `/clear`).
+
+- Turns still run on this machine: files, commands and approvals happen here. From claude.ai you can send messages,
+  answer approval cards, agent questions and plans (whoever answers first wins), stop a turn, and change the model or
+  permission mode (`bypassPermissions` only with `agentura.allowBypassPermissions`).
+- Messages typed there are marked "from phone" / "from claude.ai" in the feed.
+- It uses the Claude Code login (`~/.claude/.credentials.json` or the macOS Keychain), read when you turn it on,
+  regardless of `agentura.limits.readKeychain`.
+- Closing the tab disconnects; the session stays in the claude.ai list. Each time you turn it on, a new claude.ai
+  session is created and earlier turns of the tab are not copied there.
+- The engine's own `--remote-control` does not work in the headless mode Agentura uses, so the bridge is built on the
+  Agent SDK's alpha `bridge` API. It may break on an SDK update.
+
 ## Settings
 
 Everything is under `agentura.*`. You can change it in the Settings UI or on the settings tab. These settings are read from
@@ -162,6 +222,8 @@ user settings only, so a cloned repository can't change them through its `.vscod
 | `agentura.antigravityExecutable`  | empty    | Path to `agy`; empty means auto-detect           |
 | `agentura.defaultProvider`        | `claude` | Engine for new tabs: `claude`, `codex` or `antigravity`        |
 | `agentura.allowBypassPermissions` | `false`  | Allow the `bypassPermissions` mode (Claude only) |
+| `agentura.remoteControl`          | `false`  | Remote Control for every Claude tab              |
+| `agentura.remoteControlNamePrefix`| empty    | Session name prefix on claude.ai; empty means the machine name |
 
 If `agentura.defaultPermissionMode` is set to `bypassPermissions` while bypass is not allowed, new sessions start in
 `manual` mode.
@@ -176,6 +238,8 @@ If `agentura.defaultPermissionMode` is set to `bypassPermissions` while bypass i
   drift after a CLI update.
 - **Codex** support is new and was tried on macOS arm64 only. The model list comes from your Codex account
   (`model/list` when the session starts).
+- **Remote Control** uses the Agent SDK's alpha `bridge` API and was tried against SDK 0.3.285 only. Approval
+  requests opened before it was turned on are not sent to claude.ai.
 - **Cost** is an estimate. Your subscription bill is the source of truth.
 - **Each chat tab runs its own `claude` (or `codex app-server`) process.**
 - **Subagents** have no separate cost or token counts because the engine does not report them. Prompt and summary sizes are

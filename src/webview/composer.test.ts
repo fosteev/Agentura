@@ -88,6 +88,14 @@ describe('собственные команды по возможностям д
       'clear',
       'status',
     ]);
+    expect(ownCommands({ modes: true, compact: true, remote: true })).toEqual([
+      'plan',
+      'compact',
+      'clear',
+      'status',
+      'rc',
+      'remote-control',
+    ]);
     expect(ownCommands({ modes: false, compact: false })).toEqual(['clear', 'status']);
     expect(ownCommands({ modes: false, compact: true })).toEqual(['compact', 'clear', 'status']);
   });

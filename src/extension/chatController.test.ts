@@ -80,6 +80,10 @@ class FakeSession implements AgentSession {
   async contextUsage() {
     return undefined;
   }
+  remotes: boolean[] = [];
+  async setRemote(on: boolean) {
+    this.remotes.push(on);
+  }
   async capabilities(): Promise<SessionCapabilities> {
     return { models: [{ value: 'opus', displayName: 'Opus' }], commands: [] };
   }
@@ -647,6 +651,54 @@ describe('ChatController', () => {
     await controller.handle({ type: 'effort.set', sessionId: '', effort: 'nope' });
     const s = sessions[0]!;
     expect([s.interrupts, s.modes, s.compacts]).toEqual([1, ['plan'], 1]);
+  });
+
+  it('remote.set доходит до сессии; выключение без сессии движок не поднимает', async () => {
+    const { controller, sessions } = setup();
+    await controller.handle({ type: 'remote.set', on: false });
+    expect(sessions).toHaveLength(0);
+    await controller.handle({ type: 'remote.set', sessionId: '', on: true });
+    await controller.handle({ type: 'remote.set', on: false });
+    expect(sessions[0]!.remotes).toEqual([true, false]);
+  });
+
+  it('выбор rc во вкладке переживает новую сессию (/clear) и перекрывает настройку', async () => {
+    const { controller, sessions, deps } = setup();
+    controller.start();
+    await tick();
+    await controller.handle({ type: 'remote.set', on: true });
+    await controller.handle({ type: 'session.new' });
+    await controller.handle({ type: 'send', sessionId: '', text: 'hi' });
+    await tick();
+    expect(sessions).toHaveLength(2);
+    expect(sessions[1]!.remotes).toEqual([true]);
+    // выключили руками — настройка «вкл» новую сессию вкладки больше не включает
+    deps.settings = () => ({ allowBypass: false, remoteControl: true });
+    await controller.handle({ type: 'remote.set', on: false });
+    await controller.handle({ type: 'session.new' });
+    await controller.handle({ type: 'send', sessionId: '', text: 'hi' });
+    await tick();
+    expect(sessions[2]!.remotes).toEqual([]);
+  });
+
+  it('agentura.remoteControl: новая сессия Claude включает Remote Control сама', async () => {
+    const { controller, sessions, deps } = setup();
+    deps.settings = () => ({ allowBypass: false, remoteControl: true });
+    controller.start();
+    await tick();
+    expect(sessions[0]!.remotes).toEqual([true]);
+  });
+
+  it('remote.state уходит в webview как событие агента', async () => {
+    const { controller, sessions, posted } = setup();
+    controller.start();
+    await tick();
+    sessions[0]!.emit({ type: 'remote.state', state: 'on', url: 'https://claude.ai/code/cse_1' });
+    expect(posted).toContainEqual({
+      type: 'agent.event',
+      sessionId: 'sess-1',
+      event: { type: 'remote.state', state: 'on', url: 'https://claude.ai/code/cse_1' },
+    });
   });
 
   it('files.find → files.result с тем же requestId', async () => {
@@ -1713,6 +1765,63 @@ describe('ChatController: сессии (этап 6)', () => {
     ]);
   });
 
+  it('вкладка задачи (этап 7): фоновый чат — ход идёт, статус «ждёт ответа» виден, при показе всё пересевается', async () => {
+    const { controller, sessions, posted } = setupResume();
+    controller.start();
+    await controller.handle({ type: 'ready' });
+    await tick();
+    const s = sessions[0]!;
+    s.id = 'bg-1';
+    s.emit({
+      type: 'session.init',
+      sessionId: 'bg-1',
+      model: 'sonnet',
+      cwd: '/p',
+      permissionMode: 'default',
+      tools: [],
+      slashCommands: [],
+      skills: [],
+      agents: [],
+      apiKeySource: 'none',
+      engineVersion: '2.1.285',
+    });
+    s.emit({ type: 'session.title', title: 'фоновый' });
+    // чат ушёл в фон: всё, что он шлёт, вкладка задачи глушит
+    posted.length = 0;
+    s.emit({ type: 'turn.start', at: 100 });
+    expect(controller.chatStatus).toBe('working');
+    s.emit({ type: 'permission.request', toolUseId: 'perm-1', toolName: 'Bash', input: {}, canAlwaysAllow: false });
+    expect(controller.chatStatus).toBe('waiting');
+    expect(controller.chatTitle).toBe('фоновый');
+    await tick();
+    posted.length = 0;
+    // чат снова показан: синтетический ready
+    await controller.handle({ type: 'ready' });
+    await tick();
+    await tick();
+    const kinds = posted.map((m) =>
+      m.type === 'agent.event' ? `event:${m.event.type}` : m.type,
+    );
+    expect(kinds).toContain('session.history');
+    expect(kinds).toContain('event:turn.start');
+    expect(kinds).toContain('event:permission.request');
+    expect(kinds).toContain('event:session.title');
+    expect(kinds).toContain('capabilities');
+  });
+
+  it('новый чат без сессии при повторном ready получает возможности движка (меню моделей не пустое)', async () => {
+    const { controller, posted } = setupResume();
+    controller.start();
+    await controller.handle({ type: 'ready' });
+    await tick();
+    posted.length = 0;
+    await controller.handle({ type: 'ready' });
+    await tick();
+    await tick();
+    expect(posted.some((m) => m.type === 'capabilities')).toBe(true);
+    expect(posted.some((m) => m.type === 'session.history')).toBe(false);
+  });
+
   it('ready в первый раз у новой сессии ничего не пересевает', async () => {
     const { controller, posted } = setupResume();
     controller.start();
@@ -2636,5 +2745,85 @@ describe('граф агентов во вкладке редактора (roadma
     toGraph.length = 0;
     await controller.handle({ type: 'agents.snapshot', sessionId: 'sess-1', graph: graph(1) });
     expect(toGraph).toHaveLength(0);
+  });
+
+  it('ходы для ленты задачи: старт/итог главного агента пишутся в журнал, субагент — нет, /clear обнуляет', async () => {
+    const { controller, sessions, deps } = setup();
+    const events: string[] = [];
+    const sessionCalls: [string | undefined, string | undefined][] = [];
+    deps.onEvent = (e) => events.push(e.type);
+    deps.onSession = (id, why) => void sessionCalls.push([id, why]);
+    controller.start();
+    await tick();
+    const s = sessions[0]!;
+    const result = {
+      type: 'turn.result' as const,
+      ok: true,
+      subtype: 'success',
+      interrupted: false,
+      durationMs: 1,
+      apiDurationMs: 1,
+      numTurns: 1,
+      totalCostUsd: 0,
+      permissionDenials: [],
+      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    };
+    s.emit({ type: 'turn.start', at: 1000, prompt: 'x' });
+    s.emit({ type: 'turn.start', at: 1500, prompt: 'sub', agentId: 'a1' });
+    expect(controller.turns()).toEqual([{ start: 1000 }]);
+    s.emit(result);
+    const [span] = controller.turns();
+    expect(span!.start).toBe(1000);
+    expect(span!.end).toBeGreaterThanOrEqual(1000);
+    expect(events).toEqual(['turn.start', 'turn.start', 'turn.result']);
+    // обрыв сессии закрывает идущий ход: иначе он «покрывал» бы всё до now
+    s.emit({ type: 'turn.start', at: 2000, prompt: 'y' });
+    s.emit({ type: 'session.closed', reason: 'error', message: 'boom' });
+    expect(controller.turns()[1]!.end).toBeGreaterThanOrEqual(2000);
+    controller.newSession(true);
+    expect(controller.turns()).toEqual([]);
+    // /clear сообщает вкладке причину: новая сессия остаётся в группе задачи
+    expect(sessionCalls).toContainEqual([undefined, 'clear']);
+  });
+  it('tokens: сумма входа, выхода и записи кэша основных ходов (без чтения кэша и субагентов); /clear обнуляет', async () => {
+    const { controller, sessions } = setup();
+    controller.start();
+    await tick();
+    const s = sessions[0]!;
+    const result = (usage: { input: number; output: number; cacheRead: number; cacheWrite: number }, agentId?: string) => ({
+      type: 'turn.result' as const,
+      ok: true,
+      subtype: 'success',
+      interrupted: false,
+      durationMs: 1,
+      apiDurationMs: 1,
+      numTurns: 1,
+      totalCostUsd: 0,
+      permissionDenials: [],
+      usage,
+      ...(agentId ? { agentId } : {}),
+    });
+    expect(controller.tokens).toBe(0);
+    s.emit(result({ input: 100, output: 50, cacheRead: 9000, cacheWrite: 20 }));
+    s.emit(result({ input: 10, output: 5, cacheRead: 0, cacheWrite: 0 }, 'a1'));
+    s.emit(result({ input: 1, output: 2, cacheRead: 1, cacheWrite: 3 }));
+    expect(controller.tokens).toBe(176);
+    // идущий ход: ворклог пишется до его итога — сообщения хода уже в числе; итог хода их заменяет
+    const msg = (input: number, agentId?: string) => ({
+      type: 'usage.message' as const,
+      messageId: `m${input}`,
+      model: 'm',
+      usage: { input, output: 0, cacheRead: 500, cacheWrite: 0 },
+      final: true,
+      ...(agentId ? { agentId } : {}),
+    });
+    s.emit(msg(40));
+    s.emit(msg(7, 'a1'));
+    s.emit(msg(60));
+    expect(controller.tokens).toBe(276);
+    s.emit(result({ input: 100, output: 4, cacheRead: 1000, cacheWrite: 0 }));
+    expect(controller.tokens).toBe(280);
+    controller.newSession(true);
+    expect(controller.tokens).toBe(0);
   });
 });

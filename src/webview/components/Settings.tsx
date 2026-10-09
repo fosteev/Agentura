@@ -7,6 +7,12 @@ import {
   MAX_POLL_MINUTES,
   MIN_POLL_MINUTES,
   SESSION_LIST_MODES,
+  SIDEBAR_LIMITS_MODES,
+  JIRA_SOURCES,
+  TASK_CARD_MODES,
+  TASK_TAB_MODES,
+  TASK_REFRESH_MODES,
+  TASK_SIDEBAR_MODES,
   SIDEBAR_TOP_MODES,
   COMPOSER_LAYOUTS,
   FEED_STYLES,
@@ -18,6 +24,7 @@ import {
   thresholdsError,
   validateSetting,
   type SettingKey,
+  type SettingsValues,
 } from '../../settings';
 import {
   addFont,
@@ -27,6 +34,8 @@ import {
   codexCheck,
   engineCheck,
   errors,
+  integrations,
+  integrationsAction,
   overridden,
   removeFont,
   reveal,
@@ -34,8 +43,18 @@ import {
   settingsValues,
 } from '../settingsStore';
 import { ui, uiLang } from '../strings';
-import { AgentsPreview, ChoiceCards, ComposerPreview, FeedPreview, GitPreview, SidebarPreview } from './SettingsPreview';
+import {
+  AgentsPreview,
+  ChoiceCards,
+  ComposerPreview,
+  FeedPreview,
+  GitPreview,
+  SidebarPreview,
+  TaskCardPreview,
+  TaskTabPreview,
+} from './SettingsPreview';
 import { fontStack } from '../appearance';
+import { JIRA_TOOLS, type AgentToolsSetting } from '../../shared/jiraTools';
 import { codeFonts, installedFonts, uiFonts, userFonts } from '../fonts';
 import {
   SETTINGS_SECTIONS,
@@ -182,6 +201,169 @@ function TextField({
         if (e.key === 'Enter') send((e.currentTarget as HTMLInputElement).value);
       }}
     />
+  );
+}
+
+/** Строка страницы, которой нет среди настроек (Jiraffe, свои подключения): та же вёрстка `.set`, но без `data-key`. */
+function InfoRow({
+  name,
+  desc,
+  keyText,
+  children,
+  below,
+}: {
+  name: string;
+  desc: string;
+  keyText: string;
+  children?: ComponentChildren;
+  below?: ComponentChildren;
+}) {
+  return (
+    <div class="set">
+      <span class="nm">{name}</span>
+      <span class="ds">{desc}</span>
+      <span class="key">{keyText}</span>
+      <span class="ctl">{children}</span>
+      {below}
+    </div>
+  );
+}
+
+/**
+ * Инструменты Jira для агента (этап 8): три флажка пишут `agentura.jira.agentTools` целиком. Источник не пишет в Jira
+ * (нет источника, Jiraffe без API v2) — флажки неактивны и причина рядом (решение 14).
+ */
+function AgentToolsBoxes({ value, writes }: { value: AgentToolsSetting; writes: boolean }) {
+  const A = T.integrations.agentTools;
+  void errors.value['jira.agentTools']; // отказ записи — перерисовать флажки по значению из настроек
+  return (
+    <div class="cbs" aria-disabled={writes ? undefined : 'true'}>
+      {JIRA_TOOLS.map((t) => (
+        <label key={t} class={writes ? undefined : 'off'}>
+          <input
+            type="checkbox"
+            disabled={!writes}
+            checked={value[t]}
+            aria-label={A[t]}
+            onChange={(e) => commit('jira.agentTools', { ...value, [t]: (e.currentTarget as HTMLInputElement).checked })}
+          />
+          {A[t]}
+          {t !== 'comment' && <em> {A.ask}</em>}
+        </label>
+      ))}
+      {!writes && <em class="soon">{A.noWrite}</em>}
+    </div>
+  );
+}
+
+/** Страница «Интеграции» (roadmap 19, этап 6, решение 14): источник Jira, Jiraffe, свои подключения, обновление и инструменты агента. */
+function IntegrationsRows({ v }: { v: SettingsValues }) {
+  const I = T.integrations;
+  const st = integrations.value;
+  const sources: [string, string][] = JIRA_SOURCES.map((s) => [s, I.source.options[s] ?? s]);
+  const refresh: [string, string][] = TASK_REFRESH_MODES.map((m) => [m, I.refresh.options[m] ?? m]);
+  const jf = st?.jiraffe;
+  const ver = jf?.version ?? '';
+  const jiraffeLine = () => {
+    if (!jf) return null;
+    if (jf.state === 'absent')
+      return (
+        <div class="ok bad" role="status">
+          {I.jiraffe.absent}
+        </div>
+      );
+    if (jf.state === 'no-api')
+      return (
+        <div class="ok bad" role="status">
+          {I.jiraffe.noApi(ver)}
+        </div>
+      );
+    if (jf.state === 'inactive')
+      return (
+        <div class="ok" role="status">
+          <span class="dim">{I.jiraffe.inactive(ver)}</span>
+        </div>
+      );
+    return (
+      <div class="ok" role="status">
+        {I.jiraffe.ready(ver)}
+        <span class="dim">
+          {' · '}
+          {jf.instances.length
+            ? `${I.jiraffe.instances(jf.instances.length)}: ${jf.instances.map((i) => i.name).join(', ')}`
+            : I.jiraffe.noInstances}
+        </span>
+      </div>
+    );
+  };
+  const activeLine = st
+    ? st.active === 'jiraffe'
+      ? I.source.activeJiraffe
+      : st.active === 'own'
+        ? I.source.activeOwn
+        : I.source.activeNone
+    : null;
+  return (
+    <>
+      <Row
+        name={I.source.name}
+        isNew
+        desc={I.source.desc}
+        k="jira.source"
+        below={
+          activeLine ? (
+            <div class={st?.active ? 'ok' : 'ok bad'} role="status">
+              {activeLine}
+            </div>
+          ) : null
+        }
+      >
+        <Select k="jira.source" value={v['jira.source']} options={sources} />
+      </Row>
+      <InfoRow name={I.jiraffe.name} desc={I.jiraffe.desc} keyText="fosteev.jiraffe" below={jiraffeLine()}>
+        {jf?.state === 'absent' && (
+          <button type="button" class="btn" onClick={() => integrationsAction.installJiraffe()}>
+            {I.jiraffe.install}
+          </button>
+        )}
+      </InfoRow>
+      <InfoRow
+        name={I.own.name}
+        desc={I.own.desc}
+        keyText="agentura.jira.connect"
+        below={
+          <div class="cn" role="list" aria-label={I.own.aria}>
+            {st && st.own.length === 0 && <div class="empty">{I.own.empty}</div>}
+            {st?.own.map((i) => (
+              <div class="r" role="listitem" key={i.id} data-instance={i.id}>
+                <span class="n">{i.name}</span>
+                <span class="u">{i.baseUrl}</span>
+                <span class="k">{I.own.kind[i.kind] ?? i.kind}</span>
+                <button type="button" class="btn" onClick={() => integrationsAction.test(i.id)}>
+                  {I.own.test}
+                </button>
+                <button type="button" class="btn" onClick={() => integrationsAction.disconnect(i.id)}>
+                  {I.own.remove}
+                </button>
+              </div>
+            ))}
+          </div>
+        }
+      >
+        <button type="button" class="btn" onClick={() => integrationsAction.connect()}>
+          {I.own.connect}
+        </button>
+      </InfoRow>
+      <Row name={I.refresh.name} isNew desc={I.refresh.desc} k="tasks.refresh">
+        <Select k="tasks.refresh" value={v['tasks.refresh']} options={refresh} />
+      </Row>
+      <Row name={I.humanChanges.name} isNew desc={I.humanChanges.desc} k="tasks.humanChanges">
+        <Toggle k="tasks.humanChanges" value={v['tasks.humanChanges']} />
+      </Row>
+      <Row name={I.agentTools.name} isNew desc={I.agentTools.desc} k="jira.agentTools">
+        <AgentToolsBoxes value={v['jira.agentTools']} writes={st?.writes === true} />
+      </Row>
+    </>
   );
 }
 
@@ -404,7 +586,8 @@ function EngineRow({ value, engine = 'claude' }: { value: string; engine?: Engin
   const [draft, setDraft] = useDraft(value);
   const k = ENGINE_KEY[engine];
   const text = engine === 'codex' ? T.exeCodex : engine === 'antigravity' ? T.exeAgy : T.exe;
-  const c = (engine === 'codex' ? codexCheck : engine === 'antigravity' ? agyCheck : engineCheck).value;
+  const c = (engine === 'codex' ? codexCheck : engine === 'antigravity' ? agyCheck : engineCheck)
+    .value;
   const r = c.result;
   const save = (text: string) => {
     if (text.trim() !== value) commit(k, text);
@@ -425,7 +608,12 @@ function EngineRow({ value, engine = 'claude' }: { value: string; engine?: Engin
           if (e.key === 'Enter') save((e.currentTarget as HTMLInputElement).value);
         }}
       />
-      <button type="button" class="btn" disabled={c.pending} onClick={() => checkEngine(draft, engine)}>
+      <button
+        type="button"
+        class="btn"
+        disabled={c.pending}
+        onClick={() => checkEngine(draft, engine)}
+      >
         {c.pending ? T.exe.checking : T.exe.check}
       </button>
     </Row>
@@ -633,6 +821,27 @@ export function Settings() {
               <Row name={T.effort.name} isNew desc={T.effort.desc} k="defaultEffort">
                 <Select k="defaultEffort" value={v.defaultEffort} options={efforts} />
               </Row>
+              <Row
+                name={T.remoteControl.name}
+                isNew
+                desc={T.remoteControl.desc}
+                k="remoteControl"
+                keyNote={T.remoteControl.keyNote}
+              >
+                <Toggle k="remoteControl" value={v.remoteControl} />
+              </Row>
+              <Row
+                name={T.remoteControlNamePrefix.name}
+                desc={T.remoteControlNamePrefix.desc}
+                k="remoteControlNamePrefix"
+              >
+                <TextField
+                  k="remoteControlNamePrefix"
+                  value={v.remoteControlNamePrefix}
+                  placeholder={T.remoteControlNamePrefix.placeholder}
+                  wide
+                />
+              </Row>
             </>,
           )}
 
@@ -677,6 +886,42 @@ export function Settings() {
                     options={cardOptions(SIDEBAR_TOP_MODES, T.sidebarTop.options)}
                     preview={(top) => <SidebarPreview look={{ ...look, top }} part="top" />}
                     onPick={(top) => commit('sidebar.top', top)}
+                  />
+                }
+              >
+                {null}
+              </Row>
+              <Row
+                name={T.sidebarLimits.name}
+                isNew
+                desc={T.sidebarLimits.desc}
+                k="sidebar.limits"
+                below={
+                  <ChoiceCards
+                    label={T.sidebarLimits.name}
+                    value={v['sidebar.limits']}
+                    options={cardOptions(SIDEBAR_LIMITS_MODES, T.sidebarLimits.options)}
+                    preview={(limits) => (
+                      <SidebarPreview look={{ ...look, top: 'detailed', limits }} part="limits" />
+                    )}
+                    onPick={(limits) => commit('sidebar.limits', limits)}
+                  />
+                }
+              >
+                {null}
+              </Row>
+              <Row
+                name={T.tasksSidebar.name}
+                isNew
+                desc={T.tasksSidebar.desc}
+                k="tasks.sidebar"
+                below={
+                  <ChoiceCards
+                    label={T.tasksSidebar.name}
+                    value={v['tasks.sidebar']}
+                    options={cardOptions(TASK_SIDEBAR_MODES, T.tasksSidebar.options)}
+                    preview={(tasks) => <SidebarPreview look={{ ...look, tasks }} part="tasks" />}
+                    onPick={(tasks) => commit('tasks.sidebar', tasks)}
                   />
                 }
               >
@@ -785,6 +1030,40 @@ export function Settings() {
                 {null}
               </Row>
               <Row
+                name={T.tasksCard.name}
+                isNew
+                desc={T.tasksCard.desc}
+                k="tasks.card"
+                below={
+                  <ChoiceCards
+                    label={T.tasksCard.name}
+                    value={v['tasks.card']}
+                    options={cardOptions(TASK_CARD_MODES, T.tasksCard.options)}
+                    preview={(mode) => <TaskCardPreview mode={mode} />}
+                    onPick={(mode) => commit('tasks.card', mode)}
+                  />
+                }
+              >
+                {null}
+              </Row>
+              <Row
+                name={T.tasksTab.name}
+                isNew
+                desc={T.tasksTab.desc}
+                k="tasks.tab"
+                below={
+                  <ChoiceCards
+                    label={T.tasksTab.name}
+                    value={v['tasks.tab']}
+                    options={cardOptions(TASK_TAB_MODES, T.tasksTab.options)}
+                    preview={(mode) => <TaskTabPreview mode={mode} />}
+                    onPick={(mode) => commit('tasks.tab', mode)}
+                  />
+                }
+              >
+                {null}
+              </Row>
+              <Row
                 name={T.feedFontSize.name}
                 isNew
                 desc={T.feedFontSize.desc}
@@ -872,6 +1151,8 @@ export function Settings() {
               </Row>
             </>,
           )}
+
+          {page('integrations', <IntegrationsRows v={v} />)}
 
           {page(
             'engine',

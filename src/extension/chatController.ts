@@ -9,6 +9,7 @@ import type {
   EffortLevel,
   PermissionMode,
   RetryPoint,
+  TaskTools,
 } from '../agent/types';
 import {
   nextStatus,
@@ -47,7 +48,7 @@ import {
   sessionProblem,
   type SessionAttach,
 } from '../shared/files';
-import { resolveDefaultEffort, resolveDefaultMode, type AgentsView, type ComposerLayout, type FeedStyle, type GitLayout } from '../settings';
+import { resolveDefaultEffort, resolveDefaultMode, type AgentsView, type ComposerLayout, type FeedStyle, type GitLayout, type TaskCardMode } from '../settings';
 import { hostStrings, type Lang } from '../shared/l10n';
 import { appliedSides, previewOf, proposedSides, type EditSides } from './editDiff';
 import {
@@ -59,6 +60,7 @@ import {
 } from '../shared/prompt';
 import type { LiveSessions } from '../data/sessions';
 import { mergeReplay, StreamTail } from './reseedReplay';
+import { TurnLog, type TurnSpan } from './jira/taskEvents';
 
 /** Всё, что контроллеру нужно от VS Code, — через этот интерфейс: сам контроллер vscode не импортирует. */
 class EngineMissingError extends Error {}
@@ -98,10 +100,14 @@ export interface ChatDeps {
     agentsView?: AgentsView | undefined;
     /** `agentura.git.layout`: раскладка вкладки «git» при нескольких репо, уходит в `chat.info`. */
     gitLayout?: GitLayout | undefined;
+    /** `agentura.tasks.card`: где карточка задачи в чате по задаче, уходит в `chat.info`. */
+    taskCard?: TaskCardMode | undefined;
     /** `agentura.defaultPermissionMode` как в настройке (`manual` | …): применяется к новым сессиям. */
     defaultPermissionMode?: string | undefined;
     /** `agentura.defaultEffort` (пусто — выбор движка): применяется к новым сессиям. */
     defaultEffort?: string | undefined;
+    /** `agentura.remoteControl`: Remote Control для каждой новой и восстановленной вкладки Claude (roadmap 17). */
+    remoteControl?: boolean | undefined;
   };
   /** Лимиты подписки (этап 4): `refresh` ограничен кулдауном сервиса, ответ уходит в webview. */
   usage?: { refresh(): Promise<{ windows: LimitWindow[]; updatedAt: number; error?: string }> };
@@ -155,8 +161,15 @@ export interface ChatDeps {
   openSession?(id: string, provider: AgentProvider): void;
   /** Название сессии по id (строка списка) — заголовок вкладки и webview после `resume`. */
   titleOf?(id: string, provider: AgentProvider): Promise<string | undefined>;
-  /** Вкладка сменила сессию (`undefined` — пока нет): реестр открытых сессий и строка `cur` списка. */
-  onSession?(id: string | undefined): void;
+  /**
+   * Вкладка сменила сессию (`undefined` — пока нет): реестр открытых сессий и строка `cur` списка. `why: 'clear'` — новая
+   * сессия по `/clear` или кнопке «новая сессия» во вкладке (а не сбой возобновления): вкладка задачи остаётся в её группе.
+   */
+  onSession?(id: string | undefined, why?: 'clear'): void;
+  /** Инструменты задачи Jira для агента (этап 8): уходят в опции сессии Claude. */
+  taskTools?: TaskTools;
+  /** Каждое событие движка главного агента и субагентов (после обновления статуса): итог хода, результат инструмента. */
+  onEvent?(e: AgentEvent): void;
   /** Версия движка из `session.init` — секция «Аккаунт» боковой панели. */
   onEngineVersion?(version: string): void;
   /** Показать канал журнала расширения (карточка ошибки, этап 7). */
@@ -257,6 +270,7 @@ export class ChatController {
       ...(s.composerLayout ? { composerLayout: s.composerLayout } : {}),
       ...(s.agentsView ? { agentsView: s.agentsView } : {}),
       ...(s.gitLayout ? { gitLayout: s.gitLayout } : {}),
+      ...(s.taskCard ? { taskCard: s.taskCard } : {}),
       provider: this.engineProvider,
       features: providerFeatures(this.engineProvider),
     });
@@ -276,12 +290,25 @@ export class ChatController {
   private reseedSeq = 0;
   /** Команда боковой панели, пришедшая до готовности webview. */
   private queuedCommand: 'status' | undefined;
+  /** Вложения и текст поля ввода (`agentura.openWithContext`), пришедшие до готовности webview. */
+  private queuedPosts: ToWebview[] = [];
   // Снимок для пересева: то, что webview пропустил бы, окажись он пересоздан при живом хосте.
   private lastInit: Extract<AgentEvent, { type: 'session.init' }> | undefined;
   /** Режим и effort новой сессии из настроек: webview получает их снова, если готов позже создания сессии. */
   private defaults: Extract<ToWebview, { type: 'session.defaults' }> | undefined;
   private lastContext: Extract<AgentEvent, { type: 'context.usage' }> | undefined;
+  /** Последнее состояние моста Remote Control: кнопка «rc» после пересева webview. */
+  private lastRemote: Extract<AgentEvent, { type: 'remote.state' }> | undefined;
+  /**
+   * Выбор Remote Control во вкладке (кнопка «rc», `/rc`): переживает `/clear` и смену сессии вкладки.
+   * Нет — по настройке `agentura.remoteControl`.
+   */
+  private remoteWanted: boolean | undefined;
   private turnStartedAt: number | undefined;
+  /** Ходы сессии (время): по ним лента задачи отличает «изменил этот чат» (roadmap 19). */
+  private readonly turnLog = new TurnLog();
+  /** Токены чата для «AI Tokens» ворклога: история при возобновлении/пересеве + ходы этой сессии. */
+  private readonly tokenTally = new TokenTally();
   /** С прошлого итога приходил `turn.start` — иначе итог закрывает самое старое сообщение очереди. */
   private turnSeen = false;
   private readonly pendingRequests = new Map<string, AgentEvent>();
@@ -354,6 +381,16 @@ export class ChatController {
     void this.refreshLimits();
     // пустая сессия прежнего движка (процесс поднят при открытии вкладки) закрывается, поднимается новая
     this.newSession(true);
+  }
+
+  /** Статус чата — бейдж внутренней вкладки вкладки задачи (roadmap 19, этап 7). */
+  get chatStatus(): ChatStatus {
+    return this.status;
+  }
+
+  /** Название сессии (нет — «новый чат») — подпись внутренней вкладки. */
+  get chatTitle(): string | undefined {
+    return this.title;
   }
 
   /** Вкладка не тронута: новая сессия без сообщений — её можно занять под другую сессию. */
@@ -440,6 +477,7 @@ export class ChatController {
     deps.setTitle(this.tabLabel());
     deps.onSession?.(id);
     for (const e of history.events) this.trackEdit(e);
+    this.tokenTally.reset(history.events);
     // webview уже прислал `ready`, пока читали историю, — шлём сразу; иначе она уйдёт на его `ready`
     if (this.readyCount > 0) this.postHistory();
     else this.seedPending = true;
@@ -480,7 +518,14 @@ export class ChatController {
    */
   private async reseed(): Promise<void> {
     const id = this.sessionId;
-    if (!id) return;
+    if (!id) {
+      // новый чат без сообщений: пересеивать нечего, но меню моделей и команд webview получает заново
+      // (возврат к нему во вкладке задачи, «Reload Webviews» пустой вкладки)
+      void this.ensureSession()
+        .then((s) => this.postCapabilities(s))
+        .catch(() => undefined);
+      return;
+    }
     let history = this.resumed?.history;
     // события, пришедшие во время чтения, — после истории (иначе она их сотрёт); с хвостом текущего ответа.
     // Прошлый пересев ещё читает — его накопленное переходит к этому, а сам он ничего не пошлёт.
@@ -514,11 +559,13 @@ export class ChatController {
       buffer.map((b) => b.event),
     );
     if (history) {
+      this.tokenTally.reset(merged.history);
       this.postHistory({ ...history, events: merged.history }, this.resumed?.title ?? this.title);
     } else this.deps.post({ type: 'session.reset' });
     this.postAttach();
     if (this.lastInit) this.forward(id, this.lastInit);
     if (this.lastContext) this.forward(id, this.lastContext);
+    if (this.lastRemote) this.forward(id, this.lastRemote);
     if (this.title) this.forward(id, { type: 'session.title', title: this.title });
     if (this.inTurn && this.turnStartedAt !== undefined) {
       this.forward(id, { type: 'turn.start', at: this.turnStartedAt });
@@ -538,8 +585,46 @@ export class ChatController {
     else this.queuedCommand = name;
   }
 
+  /** Положить файлы в поле ввода (контекст снаружи): сразу или когда webview будет готов. */
+  attachFiles(items: PickedFile[]): void {
+    this.postWhenReady({ type: 'file.picked', items });
+  }
+
+  /** Текст в поле ввода, если оно пустое (контекст снаружи). */
+  prefill(text: string): void {
+    this.postWhenReady({ type: 'composer.prefill', text });
+  }
+
+  private postWhenReady(m: ToWebview): void {
+    if (this.readyCount > 0) this.deps.post(m);
+    else this.queuedPosts.push(m);
+  }
+
   private tabLabel(): string {
-    return tabTitle(this.status, this.title, hostStrings(this.deps.lang ?? 'ru').untitledTab);
+    return tabTitle(this.status, this.title, hostStrings(this.deps.lang ?? 'ru').untitledTab, this.taskKey);
+  }
+
+  /** Ключ задачи Jira, к которой привязан чат: попадает в заголовок вкладки; `undefined` — чат вне групп. */
+  private taskKey: string | undefined;
+
+  setTask(key: string | undefined): void {
+    if (this.taskKey === key) return;
+    this.taskKey = key;
+    this.deps.setTitle(this.tabLabel());
+  }
+
+  get task(): string | undefined {
+    return this.taskKey;
+  }
+
+  /** Токены чата для «AI Tokens» ворклога (`TokenTally`): 0 — расход неизвестен. */
+  get tokens(): number {
+    return this.tokenTally.total;
+  }
+
+  /** Ходы текущей сессии вкладки (мс); после `/clear` журнал начинается заново. */
+  turns(): TurnSpan[] {
+    return this.turnLog.turns();
   }
 
   /** Название сессии сменили снаружи (переименование в списке). */
@@ -588,6 +673,8 @@ export class ChatController {
       deps.post({ type: 'chat.command', name: this.queuedCommand });
       this.queuedCommand = undefined;
     }
+    for (const m of this.queuedPosts) deps.post(m);
+    this.queuedPosts = [];
   }
 
   postEditorContext(ctx: Omit<Extract<ToWebview, { type: 'editor.context' }>, 'type'>): void {
@@ -610,7 +697,9 @@ export class ChatController {
     this.resumed = undefined;
     this.seedPending = false;
     this.touched = false;
-    this.deps.onSession?.(undefined);
+    this.turnLog.clear();
+    this.tokenTally.reset();
+    this.deps.onSession?.(undefined, 'clear');
     this.status = 'idle';
     this.title = undefined;
     this.deps.setTitle(this.tabLabel());
@@ -752,6 +841,11 @@ export class ChatController {
       default:
         break;
     }
+    // выключить Remote Control у вкладки без сессии — нечего: движок ради этого не поднимаем
+    if (m.type === 'remote.set' && !m.on && !this.session) {
+      this.remoteWanted = false;
+      return;
+    }
     const session = await this.ensureSession();
     if (!session) {
       if (m.type === 'send' && !this.disposed) {
@@ -817,6 +911,15 @@ export class ChatController {
           return;
         case 'compact':
           session.compact();
+          return;
+        // Remote Control (roadmap 17): только Claude — у других движков `setRemote` нет
+        case 'remote.set':
+          this.remoteWanted = m.on;
+          if (!session.setRemote) {
+            this.log.warn(`remote.set: у движка ${this.engineProvider} Remote Control нет`);
+            return;
+          }
+          await session.setRemote(m.on);
           return;
         case 'agent.stop':
           await session.stopTask(m.taskId);
@@ -1337,6 +1440,8 @@ export class ChatController {
         cwd: deps.cwd,
         // режимов Claude у Codex нет: его политику задаёт конфиг, а не эти настройки
         allowBypassPermissions: hasModes && s.allowBypass,
+        // инструменты задачи Jira (roadmap 19, этап 8, решение 13) — только Claude; есть ли они сейчас, решает сам набор
+        ...(claude && deps.taskTools ? { taskTools: deps.taskTools } : {}),
       };
       const open = (): Promise<AgentSession> =>
         resume
@@ -1399,6 +1504,8 @@ export class ChatController {
         this.current = session;
         this.unsubscribe = session.events.on((e) => this.onEvent(session, e));
         this.log.info('Сессия агента создана');
+        // Remote Control по настройке — новой и восстановленной вкладке Claude; ошибку покажет `remote.state`
+        if (claude && (this.remoteWanted ?? s.remoteControl) && session.setRemote) void session.setRemote(true);
         return session;
       });
       this.session.catch((e: unknown) => {
@@ -1437,6 +1544,13 @@ export class ChatController {
     if (this.status !== prev || e.type === 'session.title') {
       this.deps.setTitle(this.tabLabel());
     }
+    if (!e.agentId) {
+      if (e.type === 'turn.start') this.turnLog.start(e.at);
+      // ход кончается и обрывом сессии: иначе открытый ход «покрывает» всё до now (ложные duringTurn / «из этого чата»)
+      else if (e.type === 'turn.result' || e.type === 'session.closed') this.turnLog.end(Date.now());
+    }
+    this.tokenTally.note(e);
+    this.deps.onEvent?.(e);
 
     switch (e.type) {
       case 'permission.request':
@@ -1486,6 +1600,10 @@ export class ChatController {
         break;
       case 'context.usage':
         if (e.source === 'engine' && !e.agentId) this.lastContext = e;
+        break;
+      case 'remote.state':
+        this.lastRemote = e;
+        this.log.info(`Remote Control: ${e.state}${e.error ? ` (${e.error}${e.detail ? ` ${e.detail}` : ''})` : ''}`);
         break;
       case 'mode.changed':
         // пересев webview (`lastInit` уходит после истории) не должен вернуть меню к режиму начала сессии
@@ -1582,6 +1700,7 @@ export class ChatController {
   }
 
   private teardown(): void {
+    this.turnLog.end(Date.now());
     this.generation++;
     this.unsubscribe?.();
     this.unsubscribe = undefined;
@@ -1601,6 +1720,7 @@ export class ChatController {
     this.lastInit = undefined;
     this.defaults = undefined;
     this.lastContext = undefined;
+    this.lastRemote = undefined;
     this.attached = { pdfPages: 0, chars: 0 };
     this.usedDrop = false;
     this.turnStartedAt = undefined;
@@ -1631,6 +1751,44 @@ export function planDecision(
     }
     case 'reject':
       return { approve: false, feedback: PLAN_REJECT_MESSAGE, interrupt: true };
+  }
+}
+
+/** Токены хода для «AI Tokens» ворклога: вход, выход и запись кэша; чтение кэша (повтор контекста каждый ход) не считаем. */
+export function turnTokens(u: { input: number; output: number; cacheWrite: number } | undefined): number {
+  return u ? (u.input || 0) + (u.output || 0) + (u.cacheWrite || 0) : 0;
+}
+
+/**
+ * Токены чата для «AI Tokens»: итоги закрытых основных ходов (без субагентов) + `usage.message` идущего хода —
+ * ворклог агент пишет обычно в том же ходе, где работал, и без них этот ход не попал бы в число.
+ * Итог хода заменяет его накопленные сообщения; обрыв сессии без итога оставляет их в сумме.
+ */
+export class TokenTally {
+  private done = 0;
+  private running = 0;
+
+  get total(): number {
+    return this.done + this.running;
+  }
+
+  note(e: AgentEvent): void {
+    if (e.agentId) return;
+    if (e.type === 'usage.message') this.running += turnTokens(e.usage);
+    else if (e.type === 'turn.result') {
+      this.done += turnTokens(e.usage);
+      this.running = 0;
+    } else if (e.type === 'session.closed') {
+      this.done += this.running;
+      this.running = 0;
+    }
+  }
+
+  /** Заново по истории (возобновление, пересев); без событий — обнулить (`/clear`). */
+  reset(events: readonly AgentEvent[] = []): void {
+    this.done = 0;
+    this.running = 0;
+    for (const e of events) this.note(e);
   }
 }
 

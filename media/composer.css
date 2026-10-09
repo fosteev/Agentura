@@ -177,3 +177,17 @@ html[data-width="380"] .compose[data-layout="gauges"] .top .g { margin-left: 0; 
 
 /* перетаскивание файла: подсветка поля и в раскладках без рамки поля (attach.css проигрывает им по специфичности); outline — без сдвига */
 .compose.drop:not([data-layout="classic"]):not([data-layout="gauges"]) .prompt { outline: 1px dashed var(--info); outline-offset: 2px; background: color-mix(in srgb, var(--info) 8%, var(--bg-input)); }
+
+/* Remote Control: кнопка «rc» (roadmap 17) и её меню */
+.compose .rc .dot { display: none; width: 6px; height: 6px; border-radius: 50%; background: var(--ok); margin-right: 5px; vertical-align: 1px; }
+.compose .rc.on .dot { display: inline-block; }
+.compose .rc.on b { color: var(--ok); }
+.compose .rc.error b { color: var(--del); }
+.compose .rcmenu { right: -60px; left: auto; min-width: 320px; }
+.compose:is([data-layout="card"], [data-layout="minimal"], [data-layout="statusline"], [data-layout="shell"]) .rcmenu { right: 0; }
+.rcmenu .qr { display: grid; grid-template-columns: 112px 1fr; gap: 12px; align-items: center; padding: 6px 8px 8px; }
+.rcmenu .qr svg { width: 112px; height: 112px; background: #fff; border-radius: 2px; }
+.rcmenu .qr p { margin: 0; color: var(--fg-mute); font-size: 11px; line-height: 1.45; }
+.rcmenu .qr p b { color: var(--fg); font-weight: 500; }
+.rcmenu .nt { padding: 4px 8px 6px; color: var(--fg-mute); font-size: 11px; line-height: 1.45; }
+.rcmenu .nt.err { color: var(--del); }

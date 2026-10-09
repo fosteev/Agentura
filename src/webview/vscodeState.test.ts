@@ -31,6 +31,15 @@ describe('состояние webview', () => {
     expect(stored).toEqual({ panel: { w: 400 } });
   });
 
+  it('вкладка задачи: forgetSession оставляет её список чатов, persistSession его не трогает', () => {
+    const taskTab = { taskKey: 'jira:i:K-1', chats: [{ provider: 'claude' as const, id: 'a' }], active: 'a' };
+    stored = { sessionId: 'a', panel: { w: 400 }, taskTab };
+    forgetSession();
+    expect(stored).toEqual({ panel: { w: 400 }, taskTab });
+    persistSession('b');
+    expect(stored).toEqual({ sessionId: 'b', panel: { w: 400 }, taskTab });
+  });
+
   it('forgetSession убирает sessionId, но оставляет panel', () => {
     stored = { sessionId: 'a', panel: { w: 400, tab: 'agents' } };
     forgetSession();

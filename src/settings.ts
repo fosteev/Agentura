@@ -4,6 +4,7 @@
  * Источник правды — настройки VS Code: вкладка настроек только читает и пишет их.
  */
 import type { AgentProvider, EffortLevel, PermissionMode } from './agent/types';
+import { isAgentToolsSetting, readAgentTools, type AgentToolsSetting } from './shared/jiraTools';
 
 export const EFFORT_LEVELS: readonly EffortLevel[] = ['low', 'medium', 'high', 'xhigh', 'max'];
 /** Режимы по умолчанию как в настройке: `manual` — обычный режим с подтверждениями. */
@@ -32,6 +33,50 @@ export const DEFAULT_SESSION_LIST: SessionListMode = 'compact';
 export const SIDEBAR_TOP_MODES = ['detailed', 'compact', 'dense'] as const;
 export type SidebarTopMode = (typeof SIDEBAR_TOP_MODES)[number];
 export const DEFAULT_SIDEBAR_TOP: SidebarTopMode = 'detailed';
+/**
+ * Вид лимитов всех движков (`sidebar.limits`, roadmap 18), когда установлено ≥ 2 движков: `stack` — стопка карточек,
+ * `switch` — переключатель движков, `table` — таблица, `active` — активный движок подробно, `header` — в заголовке.
+ */
+export const SIDEBAR_LIMITS_MODES = ['stack', 'switch', 'table', 'active', 'header'] as const;
+export type SidebarLimitsMode = (typeof SIDEBAR_LIMITS_MODES)[number];
+export const DEFAULT_SIDEBAR_LIMITS: SidebarLimitsMode = 'active';
+/**
+ * Где в боковой панели задачи Jira (`tasks.sidebar`, roadmap 19): `groups` — группы задач внутри списка сессий
+ * (чаты вложены под ключом задачи), `section` — секция «Задачи» над «Сессиями», в строке сессии метка ключа справа.
+ */
+export const TASK_SIDEBAR_MODES = ['groups', 'section'] as const;
+export type TaskSidebarMode = (typeof TASK_SIDEBAR_MODES)[number];
+export const DEFAULT_TASK_SIDEBAR: TaskSidebarMode = 'groups';
+/**
+ * Где карточка задачи в чате по задаче (`tasks.card`, roadmap 20, решение 10): `tab` — вкладка «задача» рядом с «чатом»
+ * в полосе задачи, `split` — то же плюс карточка Jiraffe слева, чат справа (только при источнике Jiraffe, иначе как `tab`).
+ * Старые значения roadmap 19 (`panel`, `strip`) читаются как `tab` — `readTaskCardMode`.
+ */
+export const TASK_CARD_MODES = ['tab', 'split'] as const;
+export type TaskCardMode = (typeof TASK_CARD_MODES)[number];
+export const DEFAULT_TASK_CARD: TaskCardMode = 'tab';
+/** Значения `tasks.card` до roadmap 20: в `package.json` их больше нет, но в settings.json пользователя могут остаться. */
+const LEGACY_TASK_CARD: readonly string[] = ['panel', 'strip'];
+/**
+ * Вкладки редактора для чатов по задаче (`tasks.tab`, roadmap 19, вариант Б): `chat` — вкладка на чат (как без задач),
+ * `task` — вкладка на задачу, её чаты — внутренними вкладками под полоской задачи.
+ */
+export const TASK_TAB_MODES = ['chat', 'task'] as const;
+export type TaskTabMode = (typeof TASK_TAB_MODES)[number];
+export const DEFAULT_TASK_TAB: TaskTabMode = 'chat';
+/**
+ * Источник Jira (`jira.source`, roadmap 19): `auto` — Jiraffe, если установлен и отдаёт API, иначе свои подключения
+ * Agentura (если есть); `jiraffe` / `own` — только он; `off` — Jira не используется (группы в сайдбаре остаются).
+ */
+export const JIRA_SOURCES = ['auto', 'jiraffe', 'own', 'off'] as const;
+export type JiraSourceSetting = (typeof JIRA_SOURCES)[number];
+export const DEFAULT_JIRA_SOURCE: JiraSourceSetting = 'auto';
+export const isJiraSource = (v: unknown): v is JiraSourceSetting => JIRA_SOURCES.includes(v as JiraSourceSetting);
+/** Обновление карточки задачи (`tasks.refresh`): опрос раз в 30 с, пока вкладка видна, или только вручную. */
+export const TASK_REFRESH_MODES = ['30s', 'manual'] as const;
+export type TaskRefreshMode = (typeof TASK_REFRESH_MODES)[number];
+export const DEFAULT_TASK_REFRESH: TaskRefreshMode = '30s';
+export const isTaskRefresh = (v: unknown): v is TaskRefreshMode => TASK_REFRESH_MODES.includes(v as TaskRefreshMode);
 /**
  * Вид ленты чата (`feed.style`): `journal` — плоский журнал, как раньше; `folded` — завершённые ходы со свёрнутыми
  * действиями; `replies` — реплики с чипами действий; `cards` — ход карточкой. DOM один, вид — `data-feed` + CSS.
@@ -95,6 +140,8 @@ export type SettingKey =
   | 'allowBypassPermissions'
   | 'defaultModel'
   | 'defaultEffort'
+  | 'remoteControl'
+  | 'remoteControlNamePrefix'
   | 'contextThresholds'
   | 'usagePollMinutes'
   | 'limits.readKeychain'
@@ -106,6 +153,14 @@ export type SettingKey =
   | 'sessionList.context'
   | 'sessionList.time'
   | 'sidebar.top'
+  | 'sidebar.limits'
+  | 'tasks.sidebar'
+  | 'tasks.card'
+  | 'tasks.tab'
+  | 'jira.source'
+  | 'tasks.refresh'
+  | 'tasks.humanChanges'
+  | 'jira.agentTools'
   | 'feed.style'
   | 'composer.layout'
   | 'agents.view'
@@ -122,6 +177,8 @@ export const SETTING_KEYS: readonly SettingKey[] = [
   'allowBypassPermissions',
   'defaultModel',
   'defaultEffort',
+  'remoteControl',
+  'remoteControlNamePrefix',
   'contextThresholds',
   'usagePollMinutes',
   'limits.readKeychain',
@@ -133,6 +190,14 @@ export const SETTING_KEYS: readonly SettingKey[] = [
   'sessionList.context',
   'sessionList.time',
   'sidebar.top',
+  'sidebar.limits',
+  'tasks.sidebar',
+  'tasks.card',
+  'tasks.tab',
+  'jira.source',
+  'tasks.refresh',
+  'tasks.humanChanges',
+  'jira.agentTools',
   'feed.style',
   'composer.layout',
   'agents.view',
@@ -165,6 +230,10 @@ export interface SettingsValues {
   defaultModel: string;
   /** Пусто — выбор движка. */
   defaultEffort: '' | EffortLevel;
+  /** Remote Control (roadmap 17) для каждой новой и восстановленной вкладки Claude. */
+  remoteControl: boolean;
+  /** Префикс имени сессии на claude.ai; пусто — имя машины. */
+  remoteControlNamePrefix: string;
   contextThresholds: [number, number];
   usagePollMinutes: number;
   'limits.readKeychain': boolean;
@@ -176,6 +245,15 @@ export interface SettingsValues {
   'sessionList.context': boolean;
   'sessionList.time': boolean;
   'sidebar.top': SidebarTopMode;
+  'sidebar.limits': SidebarLimitsMode;
+  'tasks.sidebar': TaskSidebarMode;
+  'tasks.card': TaskCardMode;
+  'tasks.tab': TaskTabMode;
+  'jira.source': JiraSourceSetting;
+  'tasks.refresh': TaskRefreshMode;
+  'tasks.humanChanges': boolean;
+  /** Инструменты Jira для агента (roadmap 19, этап 8): какие из трёх агент получает. */
+  'jira.agentTools': AgentToolsSetting;
   'feed.style': FeedStyle;
   'composer.layout': ComposerLayout;
   'agents.view': AgentsView;
@@ -214,6 +292,28 @@ export function isDefaultMode(v: unknown): v is DefaultMode {
 
 export function isSessionListMode(v: unknown): v is SessionListMode {
   return typeof v === 'string' && (SESSION_LIST_MODES as readonly string[]).includes(v);
+}
+
+export function isSidebarLimitsMode(v: unknown): v is SidebarLimitsMode {
+  return typeof v === 'string' && (SIDEBAR_LIMITS_MODES as readonly string[]).includes(v);
+}
+
+export function isTaskSidebarMode(v: unknown): v is TaskSidebarMode {
+  return typeof v === 'string' && (TASK_SIDEBAR_MODES as readonly string[]).includes(v);
+}
+
+export function isTaskCardMode(v: unknown): v is TaskCardMode {
+  return typeof v === 'string' && (TASK_CARD_MODES as readonly string[]).includes(v);
+}
+
+/** Значение `tasks.card` из настроек: старые `panel`/`strip` → `tab`, мусор → по умолчанию. */
+export function readTaskCardMode(v: unknown): TaskCardMode {
+  if (isTaskCardMode(v)) return v;
+  return typeof v === 'string' && LEGACY_TASK_CARD.includes(v) ? 'tab' : DEFAULT_TASK_CARD;
+}
+
+export function isTaskTabMode(v: unknown): v is TaskTabMode {
+  return typeof v === 'string' && (TASK_TAB_MODES as readonly string[]).includes(v);
 }
 
 export function isSidebarTopMode(v: unknown): v is SidebarTopMode {
@@ -291,6 +391,7 @@ const ERRORS = {
     allowed: (list: string) => `Допустимо: ${list}.`,
     allowedOrEmpty: (list: string) => `Допустимо: пусто, ${list}.`,
     yesNo: 'Нужно да или нет.',
+    agentTools: 'Нужен объект с флажками comment, transition, worklog.',
     string: 'Нужна строка.',
     wholeMinutes: 'Нужно целое число минут.',
     atLeast: (n: number) => `Не меньше ${n}.`,
@@ -309,6 +410,7 @@ const ERRORS = {
     allowed: (list: string) => `Allowed: ${list}.`,
     allowedOrEmpty: (list: string) => `Allowed: empty, ${list}.`,
     yesNo: 'Must be yes or no.',
+    agentTools: 'Must be an object with comment, transition and worklog flags.',
     string: 'A string is required.',
     wholeMinutes: 'A whole number of minutes is required.',
     atLeast: (n: number) => `At least ${n}.`,
@@ -357,11 +459,14 @@ export function validateSetting(key: SettingKey, value: unknown, lang: ErrLang =
         ? { ok: true, value }
         : bad(t.allowedOrEmpty(EFFORT_LEVELS.join(', ')));
     case 'allowBypassPermissions':
+    case 'remoteControl':
     case 'limits.readKeychain':
     case 'sessionList.context':
     case 'sessionList.time':
+    case 'tasks.humanChanges':
       return typeof value === 'boolean' ? { ok: true, value } : bad(t.yesNo);
     case 'defaultModel':
+    case 'remoteControlNamePrefix':
     case 'claudeExecutable':
     case 'codexExecutable':
     case 'antigravityExecutable':
@@ -392,6 +497,28 @@ export function validateSetting(key: SettingKey, value: unknown, lang: ErrLang =
       return isSidebarTopMode(value)
         ? { ok: true, value }
         : bad(t.allowed(SIDEBAR_TOP_MODES.join(', ')));
+    case 'sidebar.limits':
+      return isSidebarLimitsMode(value)
+        ? { ok: true, value }
+        : bad(t.allowed(SIDEBAR_LIMITS_MODES.join(', ')));
+    case 'tasks.sidebar':
+      return isTaskSidebarMode(value)
+        ? { ok: true, value }
+        : bad(t.allowed(TASK_SIDEBAR_MODES.join(', ')));
+    case 'tasks.card':
+      return isTaskCardMode(value)
+        ? { ok: true, value }
+        : bad(t.allowed(TASK_CARD_MODES.join(', ')));
+    case 'tasks.tab':
+      return isTaskTabMode(value) ? { ok: true, value } : bad(t.allowed(TASK_TAB_MODES.join(', ')));
+    case 'jira.source':
+      return isJiraSource(value) ? { ok: true, value } : bad(t.allowed(JIRA_SOURCES.join(', ')));
+    case 'tasks.refresh':
+      return isTaskRefresh(value) ? { ok: true, value } : bad(t.allowed(TASK_REFRESH_MODES.join(', ')));
+    case 'jira.agentTools':
+      return isAgentToolsSetting(value)
+        ? { ok: true, value: { comment: value.comment, transition: value.transition, worklog: value.worklog } }
+        : bad(t.agentTools);
     case 'feed.style':
       return isFeedStyle(value) ? { ok: true, value } : bad(t.allowed(FEED_STYLES.join(', ')));
     case 'composer.layout':
@@ -421,6 +548,12 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
   const poll = cfg.get<unknown>('usagePollMinutes');
   const list = cfg.get<unknown>('sessionList.view');
   const top = cfg.get<unknown>('sidebar.top');
+  const limits = cfg.get<unknown>('sidebar.limits');
+  const taskSb = cfg.get<unknown>('tasks.sidebar');
+  const taskCard = cfg.get<unknown>('tasks.card');
+  const taskTab = cfg.get<unknown>('tasks.tab');
+  const jiraSource = cfg.get<unknown>('jira.source');
+  const taskRefresh = cfg.get<unknown>('tasks.refresh');
   const feed = cfg.get<unknown>('feed.style');
   const cl = cfg.get<unknown>('composer.layout');
   const agv = cfg.get<unknown>('agents.view');
@@ -438,6 +571,8 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
     allowBypassPermissions: cfg.get<unknown>('allowBypassPermissions') === true,
     defaultModel: str('defaultModel'),
     defaultEffort: isEffort(effort) ? effort : '',
+    remoteControl: cfg.get<unknown>('remoteControl') === true,
+    remoteControlNamePrefix: str('remoteControlNamePrefix'),
     // кривые пороги показываем как есть, если это два числа (ошибку покажет поле); иначе — по умолчанию
     contextThresholds:
       Array.isArray(th) && th.length === 2 && th.every((n) => typeof n === 'number')
@@ -453,6 +588,14 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
     'sessionList.context': cfg.get<unknown>('sessionList.context') !== false,
     'sessionList.time': cfg.get<unknown>('sessionList.time') !== false,
     'sidebar.top': isSidebarTopMode(top) ? top : DEFAULT_SIDEBAR_TOP,
+    'sidebar.limits': isSidebarLimitsMode(limits) ? limits : DEFAULT_SIDEBAR_LIMITS,
+    'tasks.sidebar': isTaskSidebarMode(taskSb) ? taskSb : DEFAULT_TASK_SIDEBAR,
+    'tasks.card': readTaskCardMode(taskCard),
+    'tasks.tab': isTaskTabMode(taskTab) ? taskTab : DEFAULT_TASK_TAB,
+    'jira.source': isJiraSource(jiraSource) ? jiraSource : DEFAULT_JIRA_SOURCE,
+    'tasks.refresh': isTaskRefresh(taskRefresh) ? taskRefresh : DEFAULT_TASK_REFRESH,
+    'tasks.humanChanges': cfg.get<unknown>('tasks.humanChanges') !== false,
+    'jira.agentTools': readAgentTools(cfg.get<unknown>('jira.agentTools')),
     'feed.style': isFeedStyle(feed) ? feed : DEFAULT_FEED_STYLE,
     'composer.layout': isComposerLayout(cl) ? cl : DEFAULT_COMPOSER_LAYOUT,
     'agents.view': isAgentsView(agv) ? agv : DEFAULT_AGENTS_VIEW,

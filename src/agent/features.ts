@@ -23,6 +23,8 @@ export interface ProviderFeatures {
   images: boolean;
   /** Файлы (pdf/текст) как `document`-блоки. */
   files: boolean;
+  /** Remote Control (roadmap 17): кнопка «rc», `/rc` — сессия на claude.ai и в телефоне. Только Claude. */
+  remote: boolean;
 }
 
 export const CLAUDE_FEATURES: Readonly<ProviderFeatures> = {
@@ -35,10 +37,12 @@ export const CLAUDE_FEATURES: Readonly<ProviderFeatures> = {
   questions: true,
   images: true,
   files: true,
+  remote: true,
 };
 
 /**
- * Codex (app-server 0.160): режимов, compact, субагентов и плана в нашем адаптере нет (no-op); вопросы агента
+ * Codex (app-server 0.160): режимов, compact и плана в нашем адаптере нет (no-op); субагенты маппятся из
+ * `collabAgentToolCall`/`subAgentActivity`; вопросы агента
  * (`item/tool/requestUserInput`) приходят карточкой — `questions: true`;
  * контекст есть (настоящий `context.usage` из `thread/tokenUsage/updated`, без порогов и автосжатия), цены/кэша/лимитов нет
  * (`totalCostUsd: 0` = «неизвестно», лимитов подписки и cache TTL нет); `files` адаптер отбрасывает.
@@ -49,11 +53,12 @@ export const CODEX_FEATURES: Readonly<ProviderFeatures> = {
   compact: false,
   context: true,
   cost: false,
-  subagents: false,
+  subagents: true,
   plan: false,
   questions: true,
   images: true,
   files: false,
+  remote: false,
 };
 
 /**
@@ -71,6 +76,7 @@ export const ANTIGRAVITY_FEATURES: Readonly<ProviderFeatures> = {
   questions: false,
   images: false,
   files: false,
+  remote: false,
 };
 
 export function providerFeatures(provider: AgentProvider): ProviderFeatures {

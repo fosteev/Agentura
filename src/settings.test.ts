@@ -3,6 +3,7 @@ import {
   nextSessionListMode,
   overriddenKeys,
   readSettings,
+  readTaskCardMode,
   resolveLanguage,
   resolveDefaultEffort,
   resolveDefaultMode,
@@ -89,6 +90,31 @@ describe('sessionList', () => {
   it('вид верха боковой панели — detailed, compact, dense', () => {
     expect(validateSetting('sidebar.top', 'dense')).toEqual({ ok: true, value: 'dense' });
     expect(validateSetting('sidebar.top', 'mini').ok).toBe(false);
+    expect(validateSetting('sidebar.limits', 'table')).toEqual({ ok: true, value: 'table' });
+    expect(validateSetting('sidebar.limits', 'grid').ok).toBe(false);
+    expect(validateSetting('tasks.sidebar', 'section')).toEqual({ ok: true, value: 'section' });
+    expect(validateSetting('tasks.sidebar', 'tree').ok).toBe(false);
+    expect(validateSetting('tasks.card', 'split')).toEqual({ ok: true, value: 'split' });
+    expect(validateSetting('tasks.card', 'tab')).toEqual({ ok: true, value: 'tab' });
+    // режимы roadmap 19 больше не записываются (читаются как `tab` — readTaskCardMode)
+    expect(validateSetting('tasks.card', 'panel').ok).toBe(false);
+    expect(validateSetting('tasks.card', 'strip').ok).toBe(false);
+    expect(validateSetting('tasks.tab', 'task')).toEqual({ ok: true, value: 'task' });
+    expect(validateSetting('tasks.tab', 'chat')).toEqual({ ok: true, value: 'chat' });
+    expect(validateSetting('tasks.tab', 'panel').ok).toBe(false);
+    expect(validateSetting('jira.source', 'own')).toEqual({ ok: true, value: 'own' });
+    expect(validateSetting('jira.source', 'cloud').ok).toBe(false);
+    expect(validateSetting('tasks.refresh', 'manual')).toEqual({ ok: true, value: 'manual' });
+    expect(validateSetting('tasks.refresh', '5s').ok).toBe(false);
+    expect(validateSetting('tasks.humanChanges', false)).toEqual({ ok: true, value: false });
+    expect(validateSetting('tasks.humanChanges', 'no').ok).toBe(false);
+    // инструменты Jira агента (этап 8): ровно три флажка
+    expect(validateSetting('jira.agentTools', { comment: false, transition: true, worklog: true })).toEqual({
+      ok: true,
+      value: { comment: false, transition: true, worklog: true },
+    });
+    expect(validateSetting('jira.agentTools', { comment: false }).ok).toBe(false);
+    expect(validateSetting('jira.agentTools', true).ok).toBe(false);
     expect(validateSetting('feed.style', 'cards')).toEqual({ ok: true, value: 'cards' });
     expect(validateSetting('feed.style', 'grid').ok).toBe(false);
     for (const v of ['list', 'tree', 'lanes', 'cards', 'graph']) {
@@ -155,6 +181,14 @@ describe('язык интерфейса', () => {
     expect(readSettings(cfgOf({ language: 'xx' })).language).toBe('auto');
     expect(readSettings(cfgOf({ language: 'en' })).language).toBe('en');
   });
+  it('readSettings: tasks.card — старые panel/strip читаются как tab (roadmap 20, решение 10)', () => {
+    expect(readSettings(cfgOf({ 'tasks.card': 'panel' }))['tasks.card']).toBe('tab');
+    expect(readSettings(cfgOf({ 'tasks.card': 'strip' }))['tasks.card']).toBe('tab');
+    expect(readSettings(cfgOf({ 'tasks.card': 'split' }))['tasks.card']).toBe('split');
+    expect(readSettings(cfgOf({ 'tasks.card': 7 }))['tasks.card']).toBe('tab');
+    expect(readTaskCardMode('strip')).toBe('tab');
+    expect(readTaskCardMode(undefined)).toBe('tab');
+  });
 });
 
 describe('resolveDefaultMode / resolveDefaultEffort', () => {
@@ -201,6 +235,12 @@ describe('readSettings', () => {
         'sessionList.view': 'tree',
         'sessionList.context': 'x',
         'sidebar.top': 'mini',
+        'sidebar.limits': 'grid',
+        'tasks.sidebar': 'tree',
+        'tasks.card': 'grid',
+        'tasks.tab': 'split',
+        'jira.source': 'x',
+        'tasks.refresh': '1s',
         'feed.style': 'grid',
         'agents.view': 'map',
         'git.layout': 'rows',
@@ -211,6 +251,14 @@ describe('readSettings', () => {
       'sessionList.context': true,
       'sessionList.time': true,
       'sidebar.top': 'detailed',
+      'sidebar.limits': 'active',
+      'tasks.sidebar': 'groups',
+      'tasks.card': 'tab',
+      'tasks.tab': 'chat',
+      'jira.source': 'auto',
+      'tasks.refresh': '30s',
+      'tasks.humanChanges': true,
+      'jira.agentTools': { comment: true, transition: true, worklog: true },
       'feed.style': 'journal',
       'agents.view': 'list',
       'git.layout': 'stack',

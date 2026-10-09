@@ -9,7 +9,10 @@ import {
   mixedProviders,
   providerName,
   resetWhen,
+  pillClass,
+  blockEngines,
   rowClass,
+  taskLayout,
   subLabel,
   tokensLabel,
   untilLabel,
@@ -172,5 +175,64 @@ describe('поиск', () => {
     expect(filterSessions(rows, 'елк').map((r) => r.id)).toEqual(['b']);
     expect(filterSessions(rows, '  ')).toEqual(rows);
     expect(filterSessions(rows, 'нет такой')).toEqual([]);
+  });
+});
+
+describe('taskLayout: раскладка списка по группам задач', () => {
+  const row = (id: string, title: string, updatedAt: number, provider?: 'codex'): SessionSummary => ({
+    id,
+    title,
+    turns: 1,
+    state: 'idle',
+    updatedAt,
+    ...(provider ? { provider } : {}),
+  });
+  const meta = (key: string, title: string) => ({ key, instanceId: 'x', title, url: '' });
+  const sessions = [row('a', 'печать', 50), row('b', 'свободный', 40), row('c', 'очередь', 30, 'codex'), row('d', 'пуш', 20)];
+  const tasks = [
+    { taskKey: 'jira:x:GARM-8', meta: meta('GARM-8', 'Дубль пуша'), sessionIds: ['d'] },
+    { taskKey: 'jira:x:NEWMFC-1', meta: meta('NEWMFC-1', 'Талон не печатается'), sessionIds: ['a', 'c'] },
+    { taskKey: 'jira:x:GONE-1', meta: meta('GONE-1', 'Нет чатов'), sessionIds: ['zzz'] },
+  ];
+
+  it('группы — свежие сверху, чаты в порядке группы, чужие и пропавшие отброшены, остальное — free', () => {
+    const l = taskLayout(sessions, tasks, '');
+    expect(l.blocks.map((b) => b.group.meta.key)).toEqual(['NEWMFC-1', 'GARM-8']);
+    expect(l.blocks[0]!.rows.map((s) => s.id)).toEqual(['a', 'c']);
+    expect(l.blocks[0]!.updatedAt).toBe(50);
+    expect(l.free.map((s) => s.id)).toEqual(['b']);
+  });
+
+  it('нет групп — blocks пуст, free — весь список', () => {
+    expect(taskLayout(sessions, undefined, '').blocks).toEqual([]);
+    expect(taskLayout(sessions, [], '').free).toHaveLength(4);
+  });
+
+  it('поиск: по ключу и названию задачи — все её чаты; по названию чата — только он; без совпадений группа скрыта; «ё» = «е»', () => {
+    expect(taskLayout(sessions, tasks, 'newmfc').blocks[0]!.rows).toHaveLength(2);
+    expect(taskLayout(sessions, tasks, 'талон').blocks.map((b) => b.group.meta.key)).toEqual(['NEWMFC-1']);
+    const byChat = taskLayout(sessions, tasks, 'очередь');
+    expect(byChat.blocks).toHaveLength(1);
+    expect(byChat.blocks[0]!.rows.map((s) => s.id)).toEqual(['c']);
+    expect(byChat.free).toEqual([]);
+    expect(taskLayout(sessions, tasks, 'свободн').blocks).toEqual([]);
+    expect(taskLayout(sessions, tasks, 'свободн').free.map((s) => s.id)).toEqual(['b']);
+    expect(taskLayout([row('e', 'ёлка', 1)], undefined, 'елка').free).toHaveLength(1);
+  });
+
+  it('чат, указанный в двух группах, показывается в первой', () => {
+    const twice = [
+      { taskKey: 'jira:x:A-1', meta: meta('A-1', 'один'), sessionIds: ['a'] },
+      { taskKey: 'jira:x:B-1', meta: meta('B-1', 'два'), sessionIds: ['a'] },
+    ];
+    expect(taskLayout(sessions, twice, '').blocks.map((b) => b.group.meta.key)).toEqual(['A-1']);
+  });
+
+  it('пилюля по категории статуса и движки карточки без повторов', () => {
+    expect(pillClass('indeterminate')).toBe('wip');
+    expect(pillClass('done')).toBe('done');
+    expect(pillClass('new')).toBe('open');
+    expect(pillClass(undefined)).toBe('open');
+    expect(blockEngines([{}, { provider: 'codex' }, { provider: 'claude' }])).toEqual(['claude', 'codex']);
   });
 });

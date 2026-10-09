@@ -10,9 +10,8 @@ import { AntigravityAdapter } from '../agent/antigravity/adapter';
 import { AGY_NOT_FOUND, resolveAgyExecutable } from '../agent/antigravity/executable';
 import type { AgyStateStore } from '../agent/antigravity/sessionIndex';
 import type { AgentAdapter, AgentProvider, SessionRef } from '../agent/types';
-import type { LimitsSource } from '../data/limits';
+import { readOAuthToken, type LimitsSource } from '../data/limits';
 import type { LiveSessions, TranscriptCache } from '../data/sessions';
-import { postToWebview } from '../protocol';
 import {
   DEFAULT_AGENTS_VIEW,
   DEFAULT_FEED_STYLE,
@@ -20,6 +19,8 @@ import {
   isAgentsView,
   isGitLayout,
   DEFAULT_GIT_LAYOUT,
+  readTaskCardMode,
+  readSettings,
   isFeedStyle,
   isComposerLayout,
   DEFAULT_COMPOSER_LAYOUT,
@@ -40,6 +41,14 @@ import {
   type PanelView,
   type Route,
 } from './panelRouting';
+import type { ContextRequest } from './contextRequest';
+import { nextTabTask, parseTaskKey, routeTaskOpen, taskChatRows, taskKeyOf, type TabTask, type TaskGroups, type TaskKey, type TaskMeta } from './taskGroups';
+import { isTaskRequest, type TaskChatsMessage } from '../shared/task';
+import { TaskTab } from './jira/taskTab';
+import { AgentJiraTools } from './jira/agentTools';
+import { readAgentTools } from '../shared/jiraTools';
+import type { TaskService } from './jira/taskService';
+import type { JiraSources } from './jira/source';
 import type { SessionMemory } from './sessionMemory';
 import type { SessionsService } from './sessionsService';
 import type { UsageService } from './usage';
@@ -48,7 +57,11 @@ import type { GitService } from './git/gitService';
 import { isGitRequest } from '../shared/git';
 import type { Logger } from './logger';
 import { hostStrings } from '../shared/l10n';
-import { attachMessaging, currentLanguage, renderWebview, userFontsDir, webviewOptions } from './webviewHost';
+import { currentLanguage, userFontsDir, webviewOptions } from './webviewHost';
+import { panelSurface, type ChatSurface } from './chatSurface';
+import { TaskTabPanel } from './taskTabPanel';
+import type { SlotInfo } from './tabSlots';
+import { readTaskTabState, restoredTabChats, type TaskTabState } from '../shared/taskTab';
 import { WorkspaceFiles } from './workspaceFiles';
 import { writeImageTemp } from './imageFiles';
 import { fileName } from '../shared/files';
@@ -93,6 +106,12 @@ export interface ChatServices {
   sessions: SessionsService;
   account: AccountService;
   memory: SessionMemory;
+  /** Группы чатов по задачам Jira (roadmap 19). */
+  taskGroups: TaskGroups;
+  /** Карточка задачи и лента изменений для вкладок (этап 2): источник Jira, кеш, опрос. */
+  tasks: TaskService;
+  /** Источники Jira: Jiraffe и свои подключения (решения 3, 4). */
+  jira: JiraSources;
   /** Поиск `claude` (асинхронный, с прогревом). */
   engine: EngineLocator;
   /** Поиск `codex` (без прогрева: нужен только тому, кто выбрал Codex). */
@@ -159,6 +178,12 @@ export function createAdapter(
     clientApp: 'agentura',
     log: (level, message) => log[level](message),
     lang: currentLanguage,
+    // Remote Control (roadmap 17): токен — при каждом включении и обновлении JWT, настройки — на лету
+    remote: {
+      readToken: () => readOAuthToken(),
+      namePrefix: () => cfg().get<string>('remoteControlNamePrefix') ?? '',
+      allowBypass: () => cfg().get<boolean>('allowBypassPermissions', false),
+    },
   });
   let codex: AgentAdapter | undefined;
   const codexAdapter = (): AgentAdapter =>
@@ -192,6 +217,18 @@ interface OpenOptions {
   lazy?: boolean;
   /** Готовая панель (сериализатор). */
   panel?: vscode.WebviewPanel;
+  /** Колонка для новой/показываемой вкладки (сплит `tasks.card = split`: чат рядом с карточкой Jiraffe). */
+  column?: vscode.ViewColumn;
+  /**
+   * Чат задачи при `tasks.tab = task` (этап 7): новый чат идёт внутренней вкладкой во вкладку этой задачи (её нет —
+   * создаётся). Нет — своя вкладка редактора, как до этапа 7.
+   */
+  task?: TaskKey;
+}
+
+/** `agentura.tasks.tab = task`: чаты задачи — внутренними вкладками одной вкладки на задачу. */
+function taskTabMode(): boolean {
+  return readSettings(vscode.workspace.getConfiguration('agentura'))['tasks.tab'] === 'task';
 }
 
 /** Открытый документ с несохранёнными изменениями по пути файла (сравнение — `samePath`: `fsPath`, Windows). */
@@ -219,23 +256,39 @@ export class ChatPanel {
   }
   private started = false;
   private lazy = false;
+  /** Задача (`openWithContext`, «Привязать к задаче»): первая сессия вкладки входит в её группу. */
+  private pendingTask: TabTask | undefined;
+  /** Группа, в которую вход вкладки уже состоит (для `/clear`: новая сессия остаётся в ней). */
+  private member: TabTask | undefined;
+  private readonly taskTab: TaskTab;
+  private readonly jiraTools: AgentJiraTools;
   /** Вкладка графа агентов этой вкладки чата (roadmap 11, этап 2): одна на чат. */
   private readonly graph: ChatGraphSlot;
 
   /** Id сессии активной (или последней активной) вкладки — строка `cur` боковой панели. */
   static currentSessionId(): string | undefined {
     return (
-      ChatPanel.panels.find((p) => p.panel.active)?.controller.sessionId ??
+      ChatPanel.panels.find((p) => p.surface.active)?.controller.sessionId ??
       ChatPanel.lastActive?.controller.sessionId
     );
+  }
+
+  /** Движок активной (или последней активной) вкладки — «текущий» для лимитов боковой панели. */
+  static currentProvider(): AgentProvider | undefined {
+    const p = ChatPanel.panels.find((x) => x.surface.active) ?? ChatPanel.lastActive;
+    return p?.provider;
   }
 
   private static views(): PanelView[] {
     return ChatPanel.panels.map((p) => ({
       sessionId: p.controller.sessionId,
       provider: p.provider,
-      pristine: p.controller.pristine,
-      active: p.panel.active,
+      // вкладка, ждущая задачу (контекст уже в поле ввода), — не пустая: ни чужой сессии, ни другой задаче её не отдаём
+      pristine: p.controller.pristine && !p.pendingTask,
+      active: p.surface.active,
+      ...(p.surface.shown ? {} : { background: true }),
+      // чат вкладки задачи: пустым его занимает только чат той же задачи (`routeResume`/`routeNew` с `tab`)
+      ...(p.surface.taskTab ? { tab: p.surface.taskTab } : {}),
     }));
   }
 
@@ -257,17 +310,23 @@ export class ChatPanel {
     if (route.kind === 'new') {
       const folder = ChatPanel.folder();
       if (!folder) return undefined;
-      const column = ChatPanel.panels.at(-1)?.panel.viewColumn ?? vscode.ViewColumn.Beside;
+      const column = open.column ?? ChatPanel.panels.at(-1)?.surface.viewColumn ?? vscode.ViewColumn.Beside;
+      if (open.task && !open.panel && taskTabMode()) {
+        const tab = TaskTabPanel.forTask(open.task) ?? TaskTabPanel.create(context, log, open.task, column);
+        const chat = ChatPanel.inTab(tab, context, log, services, folder, open);
+        chat.surface.reveal(open.column);
+        return chat;
+      }
       const panel =
         open.panel ??
         vscode.window.createWebviewPanel(CHAT_VIEW_TYPE, 'Agentura', column, {
           ...webviewOptions(context.extensionUri, userFontsDir(context)),
           retainContextWhenHidden: true,
         });
-      return new ChatPanel(panel, context, log, services, folder, open);
+      return new ChatPanel(panelSurface(panel, context, log), context, log, services, folder, open);
     }
     const target = ChatPanel.panels[route.index]!;
-    target.panel.reveal();
+    target.surface.reveal(open.column);
     if (route.kind === 'reuse' && open.resumeId) {
       void target.controller.resume(open.resumeId, true, open.provider ?? 'claude');
     }
@@ -288,6 +347,37 @@ export class ChatPanel {
     ChatPanel.apply(routeNew(ChatPanel.views()), context, log, services, {});
   }
 
+  /** Чат внутренней вкладкой вкладки задачи `tab` (не показан: показывает вызывающий). */
+  private static inTab(
+    tab: TaskTabPanel,
+    context: vscode.ExtensionContext,
+    log: Logger,
+    services: ChatServices,
+    folder: vscode.WorkspaceFolder,
+    open: OpenOptions,
+  ): ChatPanel {
+    // поверхность нужна конструктору, а сведения о чате — поверхности: чат появляется после неё
+    const ref: { chat?: ChatPanel } = {};
+    const surface = tab.addSurface(() => ref.chat?.info());
+    ref.chat = new ChatPanel(surface, context, log, services, folder, open);
+    return ref.chat;
+  }
+
+  /** Для внутренней вкладки и состояния сериализатора вкладки задачи. */
+  private info(): SlotInfo {
+    return {
+      sessionId: this.controller.sessionId,
+      provider: this.provider,
+      title: this.controller.chatTitle,
+      status: this.controller.chatStatus,
+    };
+  }
+
+  /** Ключ задачи, во вкладку которой идёт чат сессии `id` при `tasks.tab = task`; иначе `undefined`. */
+  private static taskTabOf(services: ChatServices, id: string): TaskKey | undefined {
+    return taskTabMode() ? services.taskGroups.groupOf(id)?.taskKey : undefined;
+  }
+
   /** Возобновить сессию: открытую — показать, пустую вкладку — занять, иначе новая вкладка. */
   static resume(
     context: vscode.ExtensionContext,
@@ -295,12 +385,133 @@ export class ChatPanel {
     services: ChatServices,
     session: string | SessionRef,
     from?: ChatPanel,
-  ): void {
+    column?: vscode.ViewColumn,
+  ): ChatPanel | undefined {
     // без провайдера — `claude` (старые вызовы: боковая панель, команда, память воркспейса)
     const ref: SessionRef = typeof session === 'string' ? { provider: 'claude', id: session } : session;
     const fromIndex = from ? ChatPanel.panels.indexOf(from) : undefined;
-    const route = routeResume(ChatPanel.views(), ref, fromIndex);
-    ChatPanel.apply(route, context, log, services, { resumeId: ref.id, provider: ref.provider });
+    // `tasks.tab = task`: чат задачи — во вкладку задачи (пустой чат занимается только там же)
+    const task = ChatPanel.taskTabOf(services, ref.id);
+    const route = routeResume(ChatPanel.views(), ref, fromIndex, task);
+    return ChatPanel.apply(route, context, log, services, {
+      resumeId: ref.id,
+      provider: ref.provider,
+      ...(column ? { column } : {}),
+      ...(task ? { task } : {}),
+    });
+  }
+
+  /**
+   * Чат с контекстом снаружи (`agentura.openWithContext`, «Открыть в Agentura» в Jiraffe). Есть задача (`task` или
+   * `sessionKey` вида `jiraffe:<инстанс>:<KEY>`) — чат входит в её группу: `session` = id возобновляет этот чат,
+   * `'new'` открывает новую вкладку, без поля — последний чат группы (если есть). Чат попадает в группу, когда
+   * движок пришлёт id сессии (`onSession`). Без задачи — всегда новая вкладка. `prompt` — в поле ввода, если оно пустое.
+   */
+  static async openWithContext(
+    context: vscode.ExtensionContext,
+    log: Logger,
+    services: ChatServices,
+    req: ContextRequest,
+  ): Promise<void> {
+    const legacy = parseTaskKey(req.sessionKey);
+    const meta: TaskMeta | undefined =
+      req.task ??
+      (legacy ? { key: legacy.key, instanceId: legacy.instanceId, title: legacy.key, url: '' } : undefined);
+    const taskKey = meta ? taskKeyOf(meta.instanceId, meta.key) : undefined;
+    // `tasks.card = split` и источник Jiraffe: карточка Jiraffe открывается в активной колонке, чат — справа от неё
+    const column = taskKey && meta ? await ChatPanel.openCardBeside(services, taskKey) : undefined;
+    if (taskKey && meta) {
+      const route = routeTaskOpen(services.taskGroups.group(taskKey), await services.sessions.list(), req.session);
+      if (route.kind === 'resume') {
+        services.taskGroups.updateMeta(taskKey, meta);
+        const panel = ChatPanel.resume(context, log, services, route.ref, undefined, column);
+        if (panel && req.prompt) panel.controller.prefill(req.prompt);
+        return;
+      }
+      // вкладка этой задачи ещё не отправила ни одного сообщения (повторный клик, `'new'`) — она и есть новый чат
+      const waiting = ChatPanel.panels.find((p) => !p.controller.sessionId && p.pendingTask?.taskKey === taskKey);
+      if (waiting) {
+        waiting.surface.reveal(column);
+        if (req.prompt) waiting.controller.prefill(req.prompt);
+        return;
+      }
+    }
+    // `tasks.tab = task`: новый чат задачи — внутренней вкладкой её вкладки
+    const tab = taskKey && taskTabMode() ? taskKey : undefined;
+    const panel = ChatPanel.apply(routeNew(ChatPanel.views(), tab), context, log, services, {
+      ...(column ? { column } : {}),
+      ...(tab ? { task: tab } : {}),
+    });
+    if (!panel) return;
+    if (taskKey && meta) panel.bind(taskKey, meta);
+    panel.controller.attachFiles([
+      { name: req.name, path: req.name, kind: 'text', data: req.context, size: req.context.length },
+    ]);
+    if (req.prompt) panel.controller.prefill(req.prompt);
+  }
+
+  /**
+   * Сплит (`agentura.tasks.card = split`, roadmap 19, этап 5): при источнике Jiraffe открыть его карточку задачи в активной
+   * колонке и вернуть `Beside` — туда пойдёт чат. Иное значение настройки, не Jiraffe, нет `openIssue` или сбой — `undefined`
+   * (чат открывается как обычно, карточка остаётся вкладкой «задача» панели).
+   */
+  private static async openCardBeside(services: ChatServices, taskKey: TaskKey): Promise<vscode.ViewColumn | undefined> {
+    const mode = readSettings(vscode.workspace.getConfiguration('agentura'))['tasks.card'];
+    if (mode !== 'split') return undefined;
+    const parsed = parseTaskKey(taskKey);
+    const src = services.tasks.sourceFor(taskKey);
+    if (!parsed || src?.kind !== 'jiraffe' || !src.openIssue) return undefined;
+    try {
+      await src.openIssue(parsed.instanceId, parsed.key, false);
+      return vscode.ViewColumn.Beside;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * Привязать чат к задаче. Сессия уже есть — входит в группу сразу; иначе — когда движок пришлёт её id.
+   * Заголовок вкладки получает ключ задачи в обоих случаях.
+   */
+  bind(taskKey: TaskKey, meta: TaskMeta): void {
+    const id = this.controller.sessionId;
+    if (id) {
+      this.services.taskGroups.add(taskKey, meta, { provider: this.provider, id }, Date.now());
+      this.pendingTask = undefined;
+      this.member = { taskKey, meta };
+    } else {
+      this.pendingTask = { taskKey, meta };
+      this.member = undefined;
+    }
+    this.controller.setTask(meta.key);
+    this.syncTask();
+    ChatPanel.sessionsChanged(this.services);
+  }
+
+  /** Ключ задачи вкладки (группа или ожидание первой сессии); нет — чат вне задач. */
+  get task(): string | undefined {
+    return this.controller.task;
+  }
+
+  /** Снять привязку: из группы, из ожидания и из заголовка. */
+  unbind(): void {
+    const id = this.controller.sessionId;
+    if (id) this.services.taskGroups.remove(id);
+    this.pendingTask = undefined;
+    this.member = undefined;
+    this.controller.setTask(undefined);
+    this.syncTask();
+    ChatPanel.sessionsChanged(this.services);
+  }
+
+  /** Вкладка для команд «Привязать к задаче» / «Отвязать»: активная, иначе последняя активная. */
+  static target(): ChatPanel | undefined {
+    return ChatPanel.panels.find((p) => p.surface.active) ?? ChatPanel.lastActive;
+  }
+
+  /** Вкладка, в которой открыта сессия `id` (строка списка в боковой панели). */
+  static panelOf(id: string): ChatPanel | undefined {
+    return ChatPanel.panels.find((p) => p.controller.sessionId === id);
   }
 
   /** Кнопка `/status` боковой панели: выполнить во вкладке (активной или новой). */
@@ -316,6 +527,12 @@ export class ChatPanel {
   ): vscode.WebviewPanelSerializer {
     return {
       deserializeWebviewPanel: async (panel, state: unknown) => {
+        // вкладка задачи (`tasks.tab = task`): все её чаты, видимый — сразу, остальные — когда их покажут
+        const tabState = readTaskTabState(state);
+        if (tabState) {
+          ChatPanel.restoreTaskTab(panel, tabState, context, log, services);
+          return;
+        }
         const ref = restoredSessionId(
           state,
           ChatPanel.panels.map((p) =>
@@ -333,31 +550,78 @@ export class ChatPanel {
     };
   }
 
+  /**
+   * Вкладка задачи после «Reload Window»: её чаты из состояния webview (без открытых в других вкладках), видимый —
+   * с движком, если вкладка видна, остальные — лениво (история читается сразу, процесс — при показе). Чатов не
+   * осталось — один новый чат по задаче.
+   */
+  private static restoreTaskTab(
+    panel: vscode.WebviewPanel,
+    state: TaskTabState,
+    context: vscode.ExtensionContext,
+    log: Logger,
+    services: ChatServices,
+  ): void {
+    const folder = ChatPanel.folder();
+    if (!folder) {
+      panel.dispose();
+      return;
+    }
+    const claimed = ChatPanel.panels.map((p) =>
+      p.controller.sessionId ? { provider: p.provider, id: p.controller.sessionId } : undefined,
+    );
+    const { refs, active } = restoredTabChats(state, claimed);
+    const tab = TaskTabPanel.create(context, log, state.taskKey, vscode.ViewColumn.Active, panel);
+    const visible = panel.visible;
+    const chats = refs.map((ref, i) =>
+      ChatPanel.inTab(tab, context, log, services, folder, {
+        resumeId: ref.id,
+        provider: ref.provider,
+        lazy: !(visible && i === active),
+      }),
+    );
+    if (!chats.length) {
+      const meta = services.taskGroups.group(state.taskKey)?.task;
+      const chat = ChatPanel.inTab(tab, context, log, services, folder, { lazy: !visible });
+      if (meta) chat.bind(state.taskKey, meta);
+      chats.push(chat);
+    }
+    chats[Math.min(active, chats.length - 1)]!.surface.select();
+  }
+
   /** Сериализатор вкладки графа агентов: к вкладке чата той же сессии или закрыть (`graphSerializer`). */
   static graphSerializer(context: vscode.ExtensionContext, log: Logger): vscode.WebviewPanelSerializer {
     return graphSerializer(context, log, () => ChatPanel.panels.map((p) => p.graph));
   }
 
   private constructor(
-    private readonly panel: vscode.WebviewPanel,
+    /** Webview чата: своя вкладка редактора или внутренняя вкладка вкладки задачи (`chatSurface.ts`). */
+    private readonly surface: ChatSurface,
     private readonly context: vscode.ExtensionContext,
     private readonly log: Logger,
     private readonly services: ChatServices,
     folder: vscode.WorkspaceFolder,
     open: OpenOptions,
   ) {
-    const version = String(context.extension.packageJSON.version);
+    // до этапа 7 здесь была `WebviewPanel`; поверхность отвечает теми же именами (post/title/visible/…)
+    const panel = surface;
     const files = new WorkspaceFiles(folder.uri);
     const editorColumn = (): vscode.ViewColumn =>
       panel.viewColumn === vscode.ViewColumn.One ? vscode.ViewColumn.Two : vscode.ViewColumn.One;
-    panel.webview.options = webviewOptions(context.extensionUri, userFontsDir(context));
-    panel.iconPath = {
-      light: vscode.Uri.joinPath(context.extensionUri, 'media', 'icon-light.svg'),
-      dark: vscode.Uri.joinPath(context.extensionUri, 'media', 'icon-dark.svg'),
-    };
+    // инструменты Jira для агента (этап 8): задача вкладки, источник с записью, `agentura.jira.agentTools`
+    const jiraTools = new AgentJiraTools({
+      taskKey: () => this.taskTab?.taskKey,
+      sources: services.jira,
+      settings: () => readAgentTools(vscode.workspace.getConfiguration('agentura').get<unknown>('jira.agentTools')),
+      afterWrite: (key) => services.tasks.afterWrite(key),
+      // AI Tokens ворклога агента — расход этого чата, если агент не назвал своё число
+      aiTokens: () => this.controller?.tokens,
+    });
+    this.jiraTools = jiraTools;
     this.controller = new ChatController({
       lang: currentLanguage(),
       adapter: services.adapter,
+      taskTools: jiraTools,
       // возобновляемая сессия — своего движка; новая вкладка — `agentura.defaultProvider`
       provider: open.provider ?? defaultProvider(),
       adapterFor: (p) =>
@@ -366,18 +630,24 @@ export class ChatPanel {
         p === 'codex' ? services.codexEngine : p === 'antigravity' ? services.antigravityEngine : undefined,
       // только User (`Global`): настройка application-scope; отказ (политика, битый settings.json) — в журнал.
       // `claude` — значение по умолчанию: ключ убираем, а не пишем его явно
-      rememberProvider: (p) =>
+      rememberProvider: (p) => {
         void Promise.resolve()
           .then(() =>
             vscode.workspace
               .getConfiguration('agentura')
               .update('defaultProvider', p === 'claude' ? undefined : p, vscode.ConfigurationTarget.Global),
           )
-          .catch((e: unknown) => log.warn(`agentura.defaultProvider не записан: ${String(e)}`)),
+          .catch((e: unknown) => log.warn(`agentura.defaultProvider не записан: ${String(e)}`));
+        // движок вкладки сменился (контроллер ставит его сразу после): боковая панель перечитывает `currentProvider`
+        queueMicrotask(() => {
+          ChatPanel.changed.fire();
+          panel.changed();
+        });
+      },
       cwd: folder.uri.fsPath,
       project: folder.name,
-      post: (m) => postToWebview(panel.webview, m),
-      setTitle: (t) => (panel.title = t),
+      post: (m) => panel.post(m),
+      setTitle: (t) => panel.setTitle(t),
       log,
       settings: () => {
         const cfg = vscode.workspace.getConfiguration('agentura');
@@ -394,8 +664,10 @@ export class ChatPanel {
           ),
           agentsView: ((v) => (isAgentsView(v) ? v : DEFAULT_AGENTS_VIEW))(cfg.get<unknown>('agents.view')),
           gitLayout: ((v) => (isGitLayout(v) ? v : DEFAULT_GIT_LAYOUT))(cfg.get<unknown>('git.layout')),
+          taskCard: readTaskCardMode(cfg.get<unknown>('tasks.card')),
           defaultPermissionMode: cfg.get<string>('defaultPermissionMode'),
           defaultEffort: cfg.get<string>('defaultEffort'),
+          remoteControl: cfg.get<boolean>('remoteControl', false),
         };
       },
       usage: services.usage,
@@ -517,10 +789,27 @@ export class ChatPanel {
         const row = (await services.antigravityAdapter().listSessions(folder.uri.fsPath)).find((r) => r.id === id);
         return row && row.title !== id ? row.title : undefined;
       },
-      onSession: () => {
+      onSession: (id, why) => {
+        // /clear — новая сессия остаётся в группе задачи; сбой возобновления — нет (`nextTabTask`)
+        const next = nextTabTask(
+          { ...(this.pendingTask ? { pending: this.pendingTask } : {}), ...(this.member ? { member: this.member } : {}) },
+          { ...(id ? { id } : {}), clear: why === 'clear' },
+          (sid) => services.taskGroups.groupOf(sid),
+        );
+        if (next.join && id) {
+          // метаданные группы свежее запомненных вкладкой (опрос обновил статус/название, пока шёл прежний чат)
+          const meta = services.taskGroups.group(next.join.taskKey)?.task ?? next.join.meta;
+          services.taskGroups.add(next.join.taskKey, meta, { provider: this.provider, id }, Date.now());
+        }
+        this.pendingTask = next.pending;
+        this.member = next.member;
+        this.controller.setTask((next.pending ?? next.member)?.meta.key);
+        this.syncTask();
         this.graph.claimPending();
         ChatPanel.sessionsChanged(services);
+        panel.changed();
       },
+      onEvent: (e) => this.taskTab.onAgentEvent(e),
       openGraph: (agentId) => this.graph.show(agentId),
       graphSnapshot: (m) => this.graph.snapshot(m),
       onEngineVersion: (v) => {
@@ -529,10 +818,32 @@ export class ChatPanel {
       },
     });
 
+    // карточка и лента задачи: подписка на `TaskService`, пока вкладка в группе (или ждёт её)
+    this.taskTab = new TaskTab({
+      service: services.tasks,
+      groups: services.taskGroups,
+      sessionId: () => this.controller.sessionId,
+      pending: () => this.pendingTask?.taskKey,
+      visible: () => panel.visible,
+      turns: () => this.controller.turns(),
+      post: (m) => panel.post(m),
+      prefill: (text) => this.controller.prefill(text),
+      attach: (name, text) =>
+        this.controller.attachFiles([{ name, path: name, kind: 'text', data: text, size: text.length }]),
+      openUrl: (u) => void vscode.env.openExternal(vscode.Uri.parse(u)),
+      connect: () => void vscode.commands.executeCommand('agentura.jira.connect'),
+    });
+    // возобновляемая сессия (клик в списке, Reload Window) из группы задачи — ключ задачи в заголовке сразу
+    if (open.resumeId) {
+      const g = services.taskGroups.groupOf(open.resumeId);
+      this.member = g ? { taskKey: g.taskKey, meta: g.group.task } : undefined;
+      this.controller.setTask(g?.group.task.key);
+    }
+
     this.graph = new ChatGraphSlot(
       {
         sessionId: () => this.controller.sessionId,
-        post: (m) => postToWebview(panel.webview, m),
+        post: (m) => panel.post(m),
         // действия графа — тому же контроллеру, что и сообщения webview этой вкладки
         handle: (m) => this.controller.handle(m),
       },
@@ -540,14 +851,31 @@ export class ChatPanel {
     );
     ChatPanel.panels.push(this);
     ChatPanel.lastActive = this;
-    panel.webview.html = renderWebview(panel.webview, context.extensionUri, 'chat', 'Agentura', currentLanguage());
     // вкладка «git»: снимок на каждое изменение репозиториев рабочей папки (cwd панели)
-    const git = services.git.attach(folder.uri.fsPath, (m) => postToWebview(panel.webview, m));
+    const git = services.git.attach(folder.uri.fsPath, (m) => panel.post(m));
     this.disposables.push(
-      attachMessaging(panel.webview, 'chat', version, log, (m) => {
+      panel.onMessage((m) => {
         // действия вкладки «git» — сервису, сессия движка для них не нужна
         if (isGitRequest(m)) {
           void git.handle(m).catch((e) => log.error(`${m.type}: ${String(e)}`));
+          return;
+        }
+        // «＋ новый чат» блока «Чаты по задаче» — как «＋» группы в боковой панели; ключ из webview недоверенный
+        if (m.type === 'task.newChat') {
+          if (parseTaskKey(m.taskKey)) void vscode.commands.executeCommand('agentura.chatForTask', m.taskKey);
+          return;
+        }
+        // чат из того же блока: только сессия группы задачи этой вкладки
+        if (m.type === 'task.openChat') {
+          const key = this.taskTab.taskKey;
+          const g = key ? services.taskGroups.group(key) : undefined;
+          const ref = g?.sessions.find((x) => x.id === m.sessionId);
+          if (ref && ref.id !== this.controller.sessionId) ChatPanel.resume(context, log, services, ref);
+          return;
+        }
+        // запросы вкладки задачи — сервису задач, сессия движка не нужна
+        if (isTaskRequest(m)) {
+          this.taskTab.handle(m);
           return;
         }
         // 'ready' уже обработан в attachMessaging (init); остальное — контроллеру
@@ -556,26 +884,28 @@ export class ChatPanel {
           // webview чата пересоздан — он не помнит, что граф открыт
           this.graph.chatReady();
           git.refresh();
+          this.taskTab.resend();
+          void this.pushTaskChats(true);
         }
       }),
       git,
       // автоопрос лимитов (раз в `usagePollMinutes`) доходит и до открытого чата
       {
         dispose: services.usage.onUpdate((snap) =>
-          postToWebview(panel.webview, { type: 'limits.update', ...snap }),
+          panel.post({ type: 'limits.update', ...snap }),
         ),
       },
       // свежая квота agy доходит до открытых чатов (на движке agy её рисует HUD)
       {
         dispose: services.agyQuota.onUpdate((snap) =>
-          postToWebview(panel.webview, { type: 'quota.update', rows: snap.rows, updatedAt: snap.updatedAt }),
+          panel.post({ type: 'quota.update', rows: snap.rows, updatedAt: snap.updatedAt }),
         ),
       },
       // список сессий — и во вкладку: попап «sessions» и экран empty
       {
         dispose: services.sessions.onChange((rows) => {
           const id = this.controller.sessionId;
-          postToWebview(panel.webview, {
+          panel.post({
             type: 'sessions.update',
             sessions: rows.slice(0, CHAT_SESSIONS),
             ...(id ? { current: id } : {}),
@@ -583,19 +913,31 @@ export class ChatPanel {
           // без названия список подставляет id сессии — такое во вкладку не тянем
           const title = id ? rows.find((r) => r.id === id)?.title : undefined;
           if (title && title !== id) this.controller.syncTitle(title);
+          void this.pushTaskChats();
         }),
       },
-      panel.onDidChangeViewState((e) => {
-        if (e.webviewPanel.active) ChatPanel.lastActive = this;
+      panel.onDidChangeViewState(() => {
+        if (panel.active) ChatPanel.lastActive = this;
         // восстановленная фоновая вкладка: движок стартует, когда её впервые открыли
-        if (e.webviewPanel.visible) this.startEngine();
+        if (panel.visible) this.startEngine();
+        // чат вкладки задачи ушёл в фон: его git-клиент перестаёт следить (webview шлёт `git.watch` показанного)
+        else if (panel.taskTab) void git.handle({ type: 'git.watch', on: false }).catch(() => undefined);
+        this.syncTask();
         ChatPanel.sessionsChanged(services);
       }),
+      // метаданные и состав групп изменились (привязка из сайдбара, опрос): вкладка перепроверяет свою задачу
+      { dispose: services.taskGroups.onChange(() => this.syncTask()) },
+      // источник Jira (запись появилась/пропала) и настройка инструментов агента — набор MCP-инструментов сессии
+      { dispose: services.jira.onDidChange(() => jiraTools.changed()) },
+      vscode.workspace.onDidChangeConfiguration((e) => {
+        if (e.affectsConfiguration('agentura.jira')) jiraTools.changed();
+      }),
+      { dispose: () => this.taskTab.dispose() },
       files.watch(),
       new EditorContextTracker(files, (ctx) => this.controller.postEditorContext(ctx)),
       { dispose: () => this.controller.dispose() },
     );
-    panel.onDidDispose(() => this.dispose(), null, this.disposables);
+    this.disposables.push(panel.onDidDispose(() => this.dispose()));
     this.graph.claimPending();
     if (open.lazy) {
       // историю читаем сразу (дёшево), процесс движка — когда вкладка станет видимой
@@ -616,11 +958,37 @@ export class ChatPanel {
     else this.controller.start(true);
   }
 
+  /** Привязка/группа/видимость вкладки изменились: задача для `TaskTab` и список «Чаты по задаче». */
+  private syncTask(): void {
+    this.taskTab.sync();
+    this.jiraTools.changed();
+    void this.pushTaskChats();
+  }
+
+  private lastChats = '';
+
+  /** Чаты группы задачи вкладки → блок «Чаты по задаче»; без изменений не шлёт (`force` — webview пересоздан). */
+  private async pushTaskChats(force = false): Promise<void> {
+    const taskKey = this.taskTab.taskKey;
+    const group = taskKey ? this.services.taskGroups.group(taskKey) : undefined;
+    const rows = group ? await this.services.sessions.summaries().catch(() => []) : [];
+    const msg: TaskChatsMessage = {
+      type: 'task.chats',
+      ...(taskKey ? { taskKey } : {}),
+      chats: taskChatRows(group, rows, this.controller.sessionId),
+    };
+    const json = JSON.stringify(msg);
+    if (!force && json === this.lastChats) return;
+    this.lastChats = json;
+    this.surface.post(msg);
+  }
+
   /** Состав или фокус вкладок изменился: память воркспейса и строка `cur` боковой панели. */
   private static sessionsChanged(services: ChatServices): void {
+    // чаты вкладки задачи возвращает её состояние (`taskTab`): в запасе для вкладки без состояния их быть не должно
     const refs = ChatPanel.panels.flatMap((p): SessionRef[] => {
       const id = p.controller.sessionId;
-      return id === undefined ? [] : [{ provider: p.provider, id }];
+      return id === undefined || p.surface.taskTab ? [] : [{ provider: p.provider, id }];
     });
     services.memory.setOpenSessions(refs);
     ChatPanel.changed.fire();

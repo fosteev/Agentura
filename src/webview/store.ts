@@ -68,7 +68,9 @@ import {
   type ChatState,
   type QuestionCard,
 } from './chatState';
-import type { AgentsView, ComposerLayout, FeedStyle, GitLayout } from '../settings';
+import type { AgentsView, ComposerLayout, FeedStyle, GitLayout, TaskCardMode } from '../settings';
+import type { TaskActionMessage, TaskChatRow, TaskEventKind, TaskStateMessage, TaskTransitionsMessage } from '../shared/task';
+import type { TabChatsMessage } from '../shared/taskTab';
 import type { GitOp, GitSnapshot } from '../shared/git';
 import { pushHistory } from './composer';
 import { applyHud, contextMax, initialHud, resetHud, type HudState } from './hudState';
@@ -76,7 +78,7 @@ import { cacheView, contextFullAt, contextView, kilo, limitsView } from './hudVi
 import { limitBlock, type LimitBlock } from './limitView';
 import { ui } from './strings';
 import { shortModel } from './toolView';
-import { forgetSession, persistSession, send } from './vscode';
+import { forgetSession, persistSession, saveTaskTab, send, setTabChat } from './vscode';
 
 export const chat = signal<ChatState>(initialState());
 /** Движок вкладки и его возможности (`chat.info`); нет полей в сообщении — Claude. Переживают `session.reset`. */
@@ -115,6 +117,8 @@ export interface DraftFile {
 }
 /** Текстовые файлы и pdf в поле ввода: «+», перетаскивание из проводника VS Code. */
 export const draftFiles = signal<DraftFile[]>([]);
+/** Текст для пустого поля ввода от хоста (`composer.prefill`); поле забирает его и сбрасывает. */
+export const prefill = signal<string | undefined>(undefined);
 /**
  * Вложения в истории сессии с последней компакции (снимок хоста `session.attach`): лимиты API —
  * на запрос со всей историей, поэтому новые вложения проверяются с их учётом.
@@ -131,6 +135,51 @@ export const composerLayout = signal<ComposerLayout>('classic');
 export const agentsView = signal<AgentsView>('list');
 /** Раскладка вкладки «git» при нескольких репо (`agentura.git.layout`, `chat.info`): `data-git` на корне чата. */
 export const gitLayout = signal<GitLayout>('stack');
+/** Где карточка задачи (`agentura.tasks.card`, `chat.info`): `strip` — без вкладки «задача» в панели. */
+export const taskCardMode = signal<TaskCardMode>('tab');
+/** Карточка и лента изменений задачи вкладки (`task.state`, roadmap 19); нет `taskKey` — вкладка вне задачи. */
+export const taskState = signal<TaskStateMessage | undefined>(undefined);
+/**
+ * «в задаче →» у строки инструмента Jira (этап 8): событие ленты, к которому вкладка «задача» прокручивает, когда оно
+ * появится (`id` — точное, иначе самое свежее «моё» этого вида не раньше `since − 2 мин`). Найдено — сбрасывается.
+ */
+export const taskFocus = signal<{ kind: TaskEventKind; id?: string; since: number } | undefined>(undefined);
+/** Последний ответ хоста на `task.transitions` (меню «<статус> ▾» вкладки «задача»). */
+export const taskTransitions = signal<TaskTransitionsMessage | undefined>(undefined);
+/** Последний итог записи от имени пользователя (`task.action`); новый объект на каждое сообщение — вкладка ловит по ссылке. */
+export const taskAction = signal<TaskActionMessage | undefined>(undefined);
+/** Чаты группы задачи вкладки (`task.chats`) для блока «Чаты по задаче». */
+export const taskChats = signal<TaskChatRow[]>([]);
+/** Вкладка на задачу (`tasks.tab = task`, этап 7): её чаты внутренними вкладками; нет — обычная вкладка чата. */
+export const tabChats = signal<TabChatsMessage | undefined>(undefined);
+/** Id показанного чата вкладки задачи: поле ввода помнит черновик по нему. */
+export const activeTabChat = computed<string | undefined>(() => tabChats.value?.chats.find((c) => c.active)?.id);
+
+/** Черновики полей ввода фоновых чатов вкладки задачи (только в памяти webview). */
+interface ChatDraft {
+  text?: string;
+  extra: Attachment[];
+  images: DraftImage[];
+  files: DraftFile[];
+  dismissed: ReadonlySet<string>;
+}
+const chatDrafts = new Map<string, ChatDraft>();
+/** Чипы показанного чата, которые вернуть после его пересева (`switchTabChat`). */
+let restoreExtra: Attachment[] | undefined;
+
+/** Текст поля ввода чата `id` уходит в фон / возвращается (`Composer` монтируется заново на каждый чат). */
+export function stashComposerText(id: string, text: string): void {
+  const d = chatDrafts.get(id);
+  if (d) d.text = text;
+  else chatDrafts.set(id, { text, extra: [], images: [], files: [], dismissed: new Set() });
+}
+
+export function takeComposerText(id: string): string {
+  const d = chatDrafts.get(id);
+  const text = d?.text ?? '';
+  if (d) d.text = undefined;
+  return text;
+}
 export const history = signal<string[]>([]);
 
 /** Вкладка «git» (roadmap 12): последний снимок хоста; `undefined` — хост ещё не прислал («git загружается…»). */
@@ -299,7 +348,8 @@ export function handleHostMessage(m: ToWebview): void {
       // хост шлёт историю строго после всех событий прежней сессии: брошенных «хвостов» больше не будет
       abandonedSessionId = undefined;
       replyTarget.value = undefined;
-      extra.value = [];
+      extra.value = restoreExtra ?? [];
+      restoreExtra = undefined;
       const now = Date.now();
       chat.value = seedHistory(chat.value, m, m.events, now);
       selectedAgent.value = undefined;
@@ -341,6 +391,7 @@ export function handleHostMessage(m: ToWebview): void {
       composerLayout.value = m.composerLayout ?? 'classic';
       agentsView.value = m.agentsView ?? 'list';
       gitLayout.value = m.gitLayout ?? 'stack';
+      taskCardMode.value = m.taskCard ?? 'tab';
       // нет compact (Codex) — нет и порогов автосжатия: шкала без зон и засечек, «полный» — только само окно
       if (!features.value.compact) {
         hudState.value = { ...hudState.value, thresholds: [] };
@@ -376,6 +427,9 @@ export function handleHostMessage(m: ToWebview): void {
       break;
     case 'attach.picked':
       for (const hit of m.items) addExtra({ kind: hit.isDir ? 'folder' : 'file', path: hit.path });
+      break;
+    case 'composer.prefill':
+      prefill.value = m.text;
       break;
     case 'file.picked':
       addFiles(m.items);
@@ -415,8 +469,21 @@ export function handleHostMessage(m: ToWebview): void {
       chat.value = resetSession(chat.value);
       hudState.value = resetHud(hudState.value);
       selectedAgent.value = undefined;
-      extra.value = [];
+      extra.value = restoreExtra ?? [];
+      restoreExtra = undefined;
       break;
+    case 'tab.chats': {
+      const prev = activeTabChat.value;
+      const next = m.chats.find((c) => c.active)?.id;
+      // `persist.active` — только у показанного чата с сессией: ему хост пересеет историю (`session.history`)
+      if (prev !== undefined && next !== prev) switchTabChat(prev, next, m.persist.active !== undefined);
+      setTabChat(next);
+      // черновики закрытых чатов больше не нужны
+      for (const id of chatDrafts.keys()) if (!m.chats.some((c) => c.id === id)) chatDrafts.delete(id);
+      tabChats.value = m;
+      saveTaskTab(m.persist);
+      break;
+    }
     case 'git.state': {
       gitSnapshot.value = m.snapshot;
       // репозиторий исчез — его черновик и ошибка больше не нужны
@@ -461,9 +528,61 @@ export function handleHostMessage(m: ToWebview): void {
       for (const key of settleGenerating((roots) => sameRoots(roots, m.roots)))
         setGitDraft(key, { summary: m.summary, desc: m.desc });
       break;
+    case 'task.state':
+      // нет ключа — вкладка вне задачи: карточку и чаты сбрасываем
+      // другая задача (или никакой) — переход к событию прежней не нужен
+      if (taskState.value?.taskKey !== m.taskKey) taskFocus.value = undefined;
+      taskState.value = m.taskKey ? m : undefined;
+      if (!m.taskKey) taskChats.value = [];
+      break;
+    case 'task.transitions':
+      taskTransitions.value = m;
+      break;
+    case 'task.action':
+      taskAction.value = { ...m };
+      break;
+    case 'task.chats':
+      taskChats.value = m.taskKey ? m.chats : [];
+      break;
     default:
       break;
   }
+}
+
+/**
+ * Вкладка задачи показала другой чат (этап 7): сессионное состояние прежнего уходит (черновик поля ввода — в
+ * `chatDrafts`), ленту, приборы и возможности движка нового хост пересеет следом (`ready` → `reseed`). Состояние
+ * вкладки (панель, git, задача, лимиты, контекст редактора) остаётся — оно общее у чатов вкладки.
+ */
+function switchTabChat(prev: string, next: string | undefined, seeded: boolean): void {
+  const old = chatDrafts.get(prev);
+  chatDrafts.set(prev, {
+    ...(old?.text !== undefined ? { text: old.text } : {}),
+    extra: extra.value,
+    images: draftImages.value,
+    files: draftFiles.value,
+    dismissed: dismissed.value,
+  });
+  const d = next !== undefined ? chatDrafts.get(next) : undefined;
+  extra.value = d?.extra ?? [];
+  draftImages.value = d?.images ?? [];
+  draftFiles.value = d?.files ?? [];
+  dismissed.value = d?.dismissed ?? new Set();
+  // пересев (`session.history` / `session.reset`) сбрасывает чипы — черновик чата вернётся после него
+  restoreExtra = seeded && extra.value.length ? extra.value : undefined;
+  // полоска и блок «Чаты по задаче» — от показанного чата (у чата без задачи хост их не пришлёт)
+  taskState.value = undefined;
+  taskChats.value = [];
+  taskFocus.value = undefined;
+  // события прежнего чата хост больше не шлёт — фильтр брошенной сессии здесь только мешал бы возврату к ней
+  abandonedSessionId = undefined;
+  replyTarget.value = undefined;
+  chat.value = resetSession(chat.value);
+  hudState.value = resetHud(hudState.value);
+  selectedAgent.value = undefined;
+  sessionAttach.value = { pdfPages: 0, chars: 0 };
+  capabilities.value = { models: [], commands: [] };
+  prefill.value = undefined;
 }
 
 export function dispatchEvent(event: AgentEvent, now = Date.now()): void {
@@ -829,6 +948,17 @@ export function interrupt(): void {
 export function setMode(mode: PermissionMode): void {
   chat.value = { ...chat.value, mode };
   send({ type: 'mode.set', sessionId: chat.value.sessionId, mode });
+}
+
+/** Remote Control вкладки (кнопка «rc», `/rc`): хост ответит событием `remote.state`. */
+export function setRemote(on: boolean): void {
+  send({ type: 'remote.set', sessionId: chat.value.sessionId, on });
+}
+
+/** `/rc`, `/remote-control`: включить, если выключен (или упал), иначе выключить. */
+export function toggleRemote(): void {
+  const st = chat.value.remote?.state;
+  setRemote(st !== 'on' && st !== 'connecting');
 }
 
 export function setModel(model: string): void {

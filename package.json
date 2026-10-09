@@ -2,7 +2,7 @@
   "name": "agentura",
   "displayName": "Agentura",
   "description": "%ext.description%",
-  "version": "0.5.0",
+  "version": "0.10.0",
   "private": true,
   "publisher": "fosteev",
   "repository": {
@@ -79,6 +79,36 @@
         "category": "Agentura"
       },
       {
+        "command": "agentura.bindTask",
+        "title": "%command.bindTask.title%",
+        "category": "Agentura"
+      },
+      {
+        "command": "agentura.unbindTask",
+        "title": "%command.unbindTask.title%",
+        "category": "Agentura"
+      },
+      {
+        "command": "agentura.chatForTask",
+        "title": "%command.chatForTask.title%",
+        "category": "Agentura"
+      },
+      {
+        "command": "agentura.jira.connect",
+        "title": "%command.jira.connect.title%",
+        "category": "Agentura"
+      },
+      {
+        "command": "agentura.jira.disconnect",
+        "title": "%command.jira.disconnect.title%",
+        "category": "Agentura"
+      },
+      {
+        "command": "agentura.jira.test",
+        "title": "%command.jira.test.title%",
+        "category": "Agentura"
+      },
+      {
         "command": "agentura.refreshUsage",
         "title": "%command.refreshUsage.title%",
         "category": "Agentura"
@@ -97,6 +127,26 @@
       {
         "command": "agentura.composerLayout",
         "title": "%command.composerLayout.title%",
+        "category": "Agentura"
+      },
+      {
+        "command": "agentura.sidebarLimits",
+        "title": "%command.sidebarLimits.title%",
+        "category": "Agentura"
+      },
+      {
+        "command": "agentura.taskSidebar",
+        "title": "%command.taskSidebar.title%",
+        "category": "Agentura"
+      },
+      {
+        "command": "agentura.taskCard",
+        "title": "%command.taskCard.title%",
+        "category": "Agentura"
+      },
+      {
+        "command": "agentura.taskTab",
+        "title": "%command.taskTab.title%",
         "category": "Agentura"
       },
       {
@@ -126,6 +176,18 @@
       }
     ],
     "menus": {
+      "webview/context": [
+        {
+          "command": "agentura.bindTask",
+          "when": "webviewId == 'agentura.sidebar' && webviewSection == 'session' && !sessionBound",
+          "group": "task@1"
+        },
+        {
+          "command": "agentura.unbindTask",
+          "when": "webviewId == 'agentura.sidebar' && webviewSection == 'session' && sessionBound",
+          "group": "task@1"
+        }
+      ],
       "commandPalette": [
         {
           "command": "agentura.debug.showState",
@@ -209,6 +271,16 @@
           ],
           "default": "",
           "description": "%config.defaultEffort.description%"
+        },
+        "agentura.remoteControl": {
+          "type": "boolean",
+          "default": false,
+          "description": "%config.remoteControl.description%"
+        },
+        "agentura.remoteControlNamePrefix": {
+          "type": "string",
+          "default": "",
+          "description": "%config.remoteControlNamePrefix.description%"
         },
         "agentura.defaultModel": {
           "type": "string",
@@ -295,6 +367,64 @@
           ],
           "default": "detailed",
           "description": "%config.sidebar.top.description%"
+        },
+        "agentura.sidebar.limits": {
+          "type": "string",
+          "enum": [
+            "stack",
+            "switch",
+            "table",
+            "active",
+            "header"
+          ],
+          "enumDescriptions": [
+            "%config.sidebar.limits.enum.stack%",
+            "%config.sidebar.limits.enum.switch%",
+            "%config.sidebar.limits.enum.table%",
+            "%config.sidebar.limits.enum.active%",
+            "%config.sidebar.limits.enum.header%"
+          ],
+          "default": "active",
+          "description": "%config.sidebar.limits.description%"
+        },
+        "agentura.tasks.sidebar": {
+          "type": "string",
+          "enum": [
+            "groups",
+            "section"
+          ],
+          "enumDescriptions": [
+            "%config.tasks.sidebar.enum.groups%",
+            "%config.tasks.sidebar.enum.section%"
+          ],
+          "default": "groups",
+          "description": "%config.tasks.sidebar.description%"
+        },
+        "agentura.tasks.card": {
+          "type": "string",
+          "enum": [
+            "tab",
+            "split"
+          ],
+          "enumDescriptions": [
+            "%config.tasks.card.enum.tab%",
+            "%config.tasks.card.enum.split%"
+          ],
+          "default": "tab",
+          "description": "%config.tasks.card.description%"
+        },
+        "agentura.tasks.tab": {
+          "type": "string",
+          "enum": [
+            "chat",
+            "task"
+          ],
+          "enumDescriptions": [
+            "%config.tasks.tab.enum.chat%",
+            "%config.tasks.tab.enum.task%"
+          ],
+          "default": "chat",
+          "description": "%config.tasks.tab.description%"
         },
         "agentura.feed.style": {
           "type": "string",
@@ -416,6 +546,68 @@
           "type": "boolean",
           "default": true,
           "description": "%config.limits.readKeychain.description%"
+        },
+        "agentura.jira.source": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "jiraffe",
+            "own",
+            "off"
+          ],
+          "enumDescriptions": [
+            "%config.jira.source.enum.auto%",
+            "%config.jira.source.enum.jiraffe%",
+            "%config.jira.source.enum.own%",
+            "%config.jira.source.enum.off%"
+          ],
+          "default": "auto",
+          "description": "%config.jira.source.description%"
+        },
+        "agentura.tasks.refresh": {
+          "type": "string",
+          "enum": [
+            "30s",
+            "manual"
+          ],
+          "enumDescriptions": [
+            "%config.tasks.refresh.enum.30s%",
+            "%config.tasks.refresh.enum.manual%"
+          ],
+          "default": "30s",
+          "description": "%config.tasks.refresh.description%"
+        },
+        "agentura.tasks.humanChanges": {
+          "type": "boolean",
+          "default": true,
+          "description": "%config.tasks.humanChanges.description%"
+        },
+        "agentura.jira.agentTools": {
+          "type": "object",
+          "default": {
+            "comment": true,
+            "transition": true,
+            "worklog": true
+          },
+          "properties": {
+            "comment": {
+              "type": "boolean",
+              "default": true,
+              "description": "%config.jira.agentTools.comment%"
+            },
+            "transition": {
+              "type": "boolean",
+              "default": true,
+              "description": "%config.jira.agentTools.transition%"
+            },
+            "worklog": {
+              "type": "boolean",
+              "default": true,
+              "description": "%config.jira.agentTools.worklog%"
+            }
+          },
+          "additionalProperties": false,
+          "description": "%config.jira.agentTools.description%"
         }
       }
     }
@@ -441,6 +633,7 @@
     "marked": "^18.0.14",
     "preact": "^11.0.0",
     "prettier": "^3.9.9",
+    "qrcode-generator": "^2.0.4",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.71.0",
     "vitest": "^5.0.3"

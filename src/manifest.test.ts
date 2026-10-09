@@ -6,7 +6,19 @@ import {
   COMPOSER_LAYOUTS,
   DEFAULT_AGENTS_VIEW,
   DEFAULT_COMPOSER_LAYOUT, DEFAULT_GIT_LAYOUT,
+  DEFAULT_SIDEBAR_LIMITS,
   GIT_LAYOUTS,
+  DEFAULT_JIRA_SOURCE,
+  DEFAULT_TASK_REFRESH,
+  JIRA_SOURCES,
+  TASK_REFRESH_MODES,
+  SIDEBAR_LIMITS_MODES,
+  TASK_SIDEBAR_MODES,
+  DEFAULT_TASK_SIDEBAR,
+  TASK_CARD_MODES,
+  DEFAULT_TASK_CARD,
+  TASK_TAB_MODES,
+  DEFAULT_TASK_TAB,
 } from './settings';
 
 const root = join(__dirname, '..');
@@ -101,5 +113,131 @@ describe('agentura.composer.layout', () => {
 
   it('команда выбора раскладки объявлена', () => {
     expect(pkg.contributes.commands.map((c) => c.command)).toContain('agentura.composerLayout');
+  });
+});
+
+describe('agentura.sidebar.limits', () => {
+  const pkg = read('package.json') as {
+    contributes: {
+      configuration: { properties: Record<string, { enum?: string[]; enumDescriptions?: string[]; default?: string }> };
+      commands: { command: string }[];
+    };
+  };
+  const prop = pkg.contributes.configuration.properties['agentura.sidebar.limits']!;
+
+  it('enum и значение по умолчанию совпадают с настройкой в коде, у каждого значения есть описание', () => {
+    expect(prop.enum).toEqual([...SIDEBAR_LIMITS_MODES]);
+    expect(prop.default).toBe(DEFAULT_SIDEBAR_LIMITS);
+    expect(prop.enumDescriptions).toHaveLength(SIDEBAR_LIMITS_MODES.length);
+  });
+
+  it('команда выбора вида объявлена', () => {
+    expect(pkg.contributes.commands.map((c) => c.command)).toContain('agentura.sidebarLimits');
+  });
+});
+
+describe('agentura.tasks.card', () => {
+  const pkg = read('package.json') as {
+    contributes: {
+      configuration: { properties: Record<string, { enum?: string[]; enumDescriptions?: string[]; default?: string }> };
+      commands: { command: string }[];
+    };
+  };
+  const prop = pkg.contributes.configuration.properties['agentura.tasks.card']!;
+
+  it('enum и значение по умолчанию совпадают с настройкой в коде, у каждого значения есть описание', () => {
+    expect(prop.enum).toEqual([...TASK_CARD_MODES]);
+    expect(prop.default).toBe(DEFAULT_TASK_CARD);
+    expect(prop.enumDescriptions).toHaveLength(TASK_CARD_MODES.length);
+  });
+
+  it('команда выбора вида объявлена', () => {
+    expect(pkg.contributes.commands.map((c) => c.command)).toContain('agentura.taskCard');
+  });
+});
+
+describe('agentura.tasks.tab', () => {
+  const pkg = read('package.json') as {
+    contributes: {
+      configuration: { properties: Record<string, { enum?: string[]; enumDescriptions?: string[]; default?: string }> };
+      commands: { command: string }[];
+    };
+  };
+  const prop = pkg.contributes.configuration.properties['agentura.tasks.tab']!;
+
+  it('enum и значение по умолчанию совпадают с настройкой в коде, у каждого значения есть описание', () => {
+    expect(prop.enum).toEqual([...TASK_TAB_MODES]);
+    expect(prop.default).toBe(DEFAULT_TASK_TAB);
+    expect(prop.enumDescriptions).toHaveLength(TASK_TAB_MODES.length);
+  });
+
+  it('команда выбора вида объявлена', () => {
+    expect(pkg.contributes.commands.map((c) => c.command)).toContain('agentura.taskTab');
+  });
+});
+
+describe('agentura.tasks.sidebar', () => {
+  const pkg = read('package.json') as {
+    contributes: {
+      configuration: { properties: Record<string, { enum?: string[]; enumDescriptions?: string[]; default?: string }> };
+      commands: { command: string }[];
+    };
+  };
+  const prop = pkg.contributes.configuration.properties['agentura.tasks.sidebar']!;
+
+  it('enum и значение по умолчанию совпадают с настройкой в коде, у каждого значения есть описание', () => {
+    expect(prop.enum).toEqual([...TASK_SIDEBAR_MODES]);
+    expect(prop.default).toBe(DEFAULT_TASK_SIDEBAR);
+    expect(prop.enumDescriptions).toHaveLength(TASK_SIDEBAR_MODES.length);
+  });
+
+  it('команда выбора вида объявлена', () => {
+    expect(pkg.contributes.commands.map((c) => c.command)).toContain('agentura.taskSidebar');
+  });
+
+  it('меню строки сессии: «Привязать к задаче…» у непривязанной, «Отвязать» у привязанной (контекст строки — sessionBound)', () => {
+    const menus = (read('package.json') as { contributes: { menus: Record<string, { command: string; when: string }[]> } })
+      .contributes.menus['webview/context']!;
+    const bind = menus.find((m) => m.command === 'agentura.bindTask')!;
+    const unbind = menus.find((m) => m.command === 'agentura.unbindTask')!;
+    for (const m of [bind, unbind]) {
+      expect(m.when).toContain("webviewId == 'agentura.sidebar'");
+      expect(m.when).toContain("webviewSection == 'session'");
+    }
+    expect(bind.when).toContain('!sessionBound');
+    expect(unbind.when).not.toContain('!sessionBound');
+    expect(unbind.when).toContain('sessionBound');
+  });
+});
+
+describe('настройки Jira (roadmap 19, этап 2)', () => {
+  const pkg = read('package.json') as {
+    contributes: {
+      configuration: {
+        properties: Record<string, { type?: string; enum?: string[]; enumDescriptions?: string[]; default?: unknown }>;
+      };
+      commands: { command: string }[];
+    };
+  };
+  const props = pkg.contributes.configuration.properties;
+
+  it('agentura.jira.source и agentura.tasks.refresh: enum и значение по умолчанию совпадают с кодом, у значений есть описания', () => {
+    expect(props['agentura.jira.source']!.enum).toEqual([...JIRA_SOURCES]);
+    expect(props['agentura.jira.source']!.default).toBe(DEFAULT_JIRA_SOURCE);
+    expect(props['agentura.jira.source']!.enumDescriptions).toHaveLength(JIRA_SOURCES.length);
+    expect(props['agentura.tasks.refresh']!.enum).toEqual([...TASK_REFRESH_MODES]);
+    expect(props['agentura.tasks.refresh']!.default).toBe(DEFAULT_TASK_REFRESH);
+    expect(props['agentura.tasks.refresh']!.enumDescriptions).toHaveLength(TASK_REFRESH_MODES.length);
+  });
+
+  it('agentura.tasks.humanChanges — boolean, по умолчанию true', () => {
+    expect(props['agentura.tasks.humanChanges']).toMatchObject({ type: 'boolean', default: true });
+  });
+
+  it('команды подключения Jira и «Чат по задаче…» объявлены', () => {
+    const ids = pkg.contributes.commands.map((c) => c.command);
+    for (const c of ['agentura.jira.connect', 'agentura.jira.disconnect', 'agentura.jira.test', 'agentura.chatForTask']) {
+      expect(ids).toContain(c);
+    }
   });
 });

@@ -61,6 +61,32 @@ describe('routeNew / routeOpen', () => {
     expect(routeOpen([p(), p()])).toEqual({ kind: 'reveal', index: 1 });
     expect(routeOpen([])).toEqual({ kind: 'new' });
   });
+  it('открыть чат без активной: фоновый чат вкладки задачи не выбирается', () => {
+    expect(routeOpen([p(), p({ tab: 'k', background: true })])).toEqual({ kind: 'reveal', index: 0 });
+    expect(routeOpen([p({ tab: 'k' }), p({ tab: 'k', background: true })])).toEqual({ kind: 'reveal', index: 0 });
+  });
+});
+
+describe('вкладка на задачу (tasks.tab = task, этап 7)', () => {
+  const T = 'jira:inst:NEWMFC-1482';
+  it('пустой чат вкладки задачи не занимается чатом без задачи — ни возобновлением, ни «новой сессией»', () => {
+    const panels = [p({ pristine: true, active: true, tab: T })];
+    expect(routeResume(panels, 'x', 0)).toEqual({ kind: 'new' });
+    expect(routeNew(panels)).toEqual({ kind: 'new' });
+  });
+  it('чат задачи занимает пустой чат своей вкладки задачи, но не обычную пустую вкладку и не чужую задачу', () => {
+    const panels = [
+      p({ pristine: true, active: true }),
+      p({ pristine: true, tab: 'jira:inst:GARM-1' }),
+      p({ pristine: true, tab: T }),
+    ];
+    expect(routeResume(panels, 'x', 0, T)).toEqual({ kind: 'reuse', index: 2 });
+    expect(routeNew(panels, T)).toEqual({ kind: 'reveal', index: 2 });
+    expect(routeNew(panels.slice(0, 2), T)).toEqual({ kind: 'new' });
+  });
+  it('уже открытый чат показывается, где бы он ни был', () => {
+    expect(routeResume([p({ sessionId: 'a', tab: T })], 'a')).toEqual({ kind: 'reveal', index: 0 });
+  });
 });
 
 describe('restoredSessionId (сериализатор)', () => {

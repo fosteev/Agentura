@@ -9,6 +9,7 @@ import { CodexToolMapper } from './tools';
 import type {
   CodexNotifications,
   FileUpdateChange,
+  CollabAgentState,
   ThreadItem,
   ThreadSession,
   TokenUsageBreakdown,
@@ -109,6 +110,10 @@ export class CodexEventMapper {
   private lastCall: TokenUsageBreakdown | undefined;
   private contextWindow: number | null = null;
   private readonly tools: CodexToolMapper;
+  /** Метаданные дочерних тредов приходят в `spawnAgent`, а их жизнь — отдельными item. */
+  private readonly subagents = new Map<string, { parentThreadId: string; prompt?: string; model?: string }>();
+  private readonly startedSubagents = new Set<string>();
+  private readonly endedSubagents = new Set<string>();
 
   constructor(private readonly now: () => number = Date.now) {
     this.tools = new CodexToolMapper(now);
@@ -238,12 +243,16 @@ export class CodexEventMapper {
       }
       case 'item/started': {
         const m = params as CodexNotifications['item/started'];
+        const agents = this.collaborationItem(m.item);
+        if (agents.length) return agents;
         return this.tools.started(m.item, m.startedAtMs);
       }
       case 'item/completed': {
         const m = params as CodexNotifications['item/completed'];
         const own = this.itemCompleted(m.item);
-        return own.length ? own : this.tools.completed(m.item, m.completedAtMs);
+        if (own.length) return own;
+        const agents = this.collaborationItem(m.item);
+        return agents.length ? agents : this.tools.completed(m.item, m.completedAtMs);
       }
       case 'item/commandExecution/outputDelta': {
         const m = params as CodexNotifications['item/commandExecution/outputDelta'];
@@ -343,6 +352,69 @@ export class CodexEventMapper {
       return [{ type: 'text.delta', messageId: item.id, text: item.text }];
     }
     return [];
+  }
+
+  private collaborationItem(item: ThreadItem): AgentEvent[] {
+    if (item.type === 'collabAgentToolCall') {
+      const events: AgentEvent[] = [];
+      if (item.tool === 'spawnAgent') {
+        for (const agentId of item.receiverThreadIds) {
+          this.subagents.set(agentId, {
+            parentThreadId: item.senderThreadId,
+            ...(item.prompt ? { prompt: item.prompt } : {}),
+            ...(item.model ? { model: item.model } : {}),
+          });
+          events.push(...this.startSubagent(agentId));
+        }
+      }
+      // `interruptAgent`/`wait` тоже обновляют состояние уже известного дочернего треда.
+      for (const [agentId, state] of Object.entries(item.agentsStates))
+        if (state && this.startedSubagents.has(agentId)) events.push(...this.subagentState(agentId, state));
+      return events;
+    }
+    if (item.type !== 'subAgentActivity') return [];
+    if (item.kind === 'started') return this.startSubagent(item.agentThreadId);
+    if (item.kind === 'interacted')
+      return this.endedSubagents.has(item.agentThreadId)
+        ? []
+        : [{ type: 'agent.progress', agentId: item.agentThreadId, taskId: item.agentThreadId, status: 'working' }];
+    return this.endSubagent(item.agentThreadId, item.kind === 'completed' ? 'completed' : 'stopped');
+  }
+
+  private startSubagent(agentId: string): AgentEvent[] {
+    if (this.startedSubagents.has(agentId) || this.endedSubagents.has(agentId)) return [];
+    this.startedSubagents.add(agentId);
+    const meta = this.subagents.get(agentId);
+    const event: AgentEventOf<'agent.start'> = {
+      type: 'agent.start',
+      agentId,
+      taskId: agentId,
+      description: meta?.prompt ?? 'Codex subagent',
+      taskType: 'subagent',
+      subagentType: meta?.model,
+      background: false,
+    };
+    if (meta?.parentThreadId && meta.parentThreadId !== this.threadId) event.parentAgentId = meta.parentThreadId;
+    return [event];
+  }
+
+  private subagentState(agentId: string, state: CollabAgentState): AgentEvent[] {
+    if (state.status === 'completed') return this.endSubagent(agentId, 'completed', state.message);
+    if (state.status === 'interrupted' || state.status === 'shutdown') return this.endSubagent(agentId, 'stopped', state.message);
+    if (state.status === 'errored' || state.status === 'notFound') return this.endSubagent(agentId, 'failed', state.message);
+    return this.endedSubagents.has(agentId)
+      ? []
+      : [{ type: 'agent.progress', agentId, taskId: agentId, status: state.status, ...(state.message ? { description: state.message } : {}) }];
+  }
+
+  private endSubagent(
+    agentId: string,
+    status: AgentEventOf<'agent.end'>['status'],
+    summary?: string | null,
+  ): AgentEvent[] {
+    if (this.endedSubagents.has(agentId)) return [];
+    this.endedSubagents.add(agentId);
+    return [{ type: 'agent.end', agentId, taskId: agentId, status, ...(summary ? { summary } : {}) }];
   }
 
   private turnCompleted(turn: Turn): AgentEvent[] {

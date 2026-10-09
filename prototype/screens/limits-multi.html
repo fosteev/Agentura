@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="ru" data-theme="dark" data-width="vscode">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agentura · лимиты нескольких движков</title>
+<link rel="stylesheet" href="../shared/tokens.css">
+<link rel="stylesheet" href="../shared/preview.css">
+<link rel="stylesheet" href="../shared/hud.css">
+<style>
+  /* Каркас — как в sidebar-top.html (компактный верх, он сейчас в продукте). Вариант — из хэша: #a|b|c|d|e[-off] */
+  .webview { grid-template-rows: 1fr; grid-template-columns: 1fr; }
+  .chatside { display: none; }
+  html[data-width="900"] .webview, html[data-width="vscode"] .webview, html[data-width="full"] .webview { grid-template-columns: 380px 1fr; }
+  html[data-width="vscode"] .webview { width: 1324px; border-radius: 6px; border-left: 1px solid #333; }
+  html[data-width="900"] .chatside, html[data-width="vscode"] .chatside, html[data-width="full"] .chatside { display: grid; grid-template-rows: auto 1fr; border-left: 1px solid var(--line); font-family: var(--mono); font-size: 12px; min-width: 0; }
+  .sidebar { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+  .sidebar .list { flex: 1; min-height: 0; overflow: hidden; }
+  .sidebar .head { padding: 10px 14px 6px; font-family: var(--font); font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--fg-mute); border-bottom: 1px solid var(--line); }
+  .chatside .note { align-self: center; justify-self: center; max-width: 480px; padding: 0 24px; font-family: var(--font); font-size: 13px; color: var(--fg-mute); line-height: 1.5; }
+  .chatside .note b { display: block; color: var(--fg); font-size: 20px; font-weight: 600; margin-bottom: 8px; }
+  .chatside .note ul { margin: 10px 0 0; padding-left: 18px; }
+  .chatside .note li { margin: 3px 0; }
+  .chatside .note li.plus::marker { content: '+  '; color: var(--ok); }
+  .chatside .note li.minus::marker { content: '−  '; color: var(--full); }
+  .chatside .note i { display: block; margin-top: 12px; font-style: normal; font-family: var(--mono); font-size: 12px; color: var(--fg); }
+  .chatside .hud .agent b { color: var(--fg); font-weight: 400; }
+
+  /* метка движка: цветной квадратик с буквой — без логотипов */
+  .mk { display: inline-grid; place-items: center; width: 14px; height: 14px; border-radius: 3px; font: 700 9px/1 var(--mono); color: #fff; flex: none; font-style: normal; }
+  .mk.claude { background: #c96442; } .mk.codex { background: #6b6bd6; } .mk.agy { background: #2f7de1; }
+
+  /* строка лимита — сетка компактного вида: подпись · шкала · % · сброс */
+  .L { display: grid; grid-template-columns: 92px 1fr 4.5ch 11ch; align-items: center; gap: 0 8px; font-size: 12.5px; }
+  .L .bar { height: 5px; background: var(--bg-input); border-radius: 3px; overflow: hidden; }
+  .L .bar i { display: block; height: 100%; background: var(--lim, var(--fg-mute)); border-radius: 3px; }
+  .L .n { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+  .L:is(.lim-warn, .lim-full) .n { color: var(--lim); }
+  .L .rs { font-style: normal; color: var(--fg-mute); font-size: 11px; font-family: var(--mono); text-align: right; white-space: nowrap; }
+  .lims { display: grid; gap: 4px; padding: 0 14px 8px; }
+
+  .who { display: flex; gap: 6px; align-items: baseline; padding: 0 14px 6px; font-size: 12.5px; min-width: 0; }
+  .who b { font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .who span { color: var(--fg-mute); white-space: nowrap; }
+  .okd { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); align-self: center; margin-left: auto; flex: none; }
+  .okd.off { background: var(--fg-faint); }
+  .signin { color: var(--link); font-size: 12px; white-space: nowrap; }
+
+  /* A · стопка: блок на движок */
+  .eng + .eng { border-top: 1px dashed var(--line); padding-top: 6px; }
+  .eh { display: flex; gap: 7px; align-items: center; padding: 0 14px 5px; font-size: 12.5px; min-width: 0; }
+  .eh b { font-weight: 600; }
+  .eh span { color: var(--fg-mute); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .eh .now { font: 10px/1 var(--mono); color: var(--fg); border: 1px solid var(--line-strong); border-radius: 3px; padding: 1px 4px; flex: none; }
+
+  /* B · переключатель движков */
+  .seg { display: flex; gap: 2px; margin: 0 14px 8px; padding: 2px; background: var(--bg-input); border-radius: 4px; }
+  .seg button { flex: 1; display: flex; gap: 6px; align-items: center; justify-content: center; padding: 3px 0; border-radius: 3px; font-size: 12px; color: var(--fg-mute); }
+  .seg button[aria-selected="true"] { background: var(--bg-raise); color: var(--fg); box-shadow: 0 0 0 1px var(--line-strong); }
+  .seg .lv { width: 6px; height: 6px; border-radius: 50%; background: var(--lim, var(--fg-faint)); }
+
+  /* C · таблица: строка на движок, лимиты ячейками */
+  .grid { display: grid; grid-template-columns: auto 1fr 1fr 1fr; gap: 6px 10px; padding: 2px 14px 10px; align-items: center; font-size: 12px; }
+  .grid .nm { display: flex; gap: 6px; align-items: center; font-size: 12.5px; }
+  .grid .c { display: grid; grid-template-columns: 1fr auto; gap: 2px 4px; align-items: baseline; min-width: 0; }
+  .grid .c em { font-style: normal; color: var(--fg-mute); font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .grid .c .n { font-family: var(--mono); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+  .grid .c:is(.lim-warn, .lim-full) .n { color: var(--lim); }
+  .grid .c .bar { grid-column: 1 / 3; height: 4px; background: var(--bg-input); border-radius: 2px; overflow: hidden; }
+  .grid .c .bar i { display: block; height: 100%; background: var(--lim, var(--fg-mute)); }
+  .grid .c.none { color: var(--fg-faint); font-size: 11px; }
+  .grid .off { grid-column: 2 / 5; color: var(--fg-mute); font-size: 12px; display: flex; gap: 8px; }
+
+  /* D · активный подробно, остальные — строкой */
+  .one { display: grid; grid-template-columns: 10px 14px 74px 1fr 4.5ch 11ch; gap: 0 8px; align-items: center; padding: 3px 14px; font-size: 12.5px; }
+  .one .tw { border: 4px solid transparent; border-left: 5px solid var(--fg-mute); width: 0; height: 0; margin-left: 2px; }
+  .one .tw.open { border: 4px solid transparent; border-top: 5px solid var(--fg-mute); margin: 3px 0 0; }
+  .one .bar { height: 5px; background: var(--bg-input); border-radius: 3px; overflow: hidden; }
+  .one .bar i { display: block; height: 100%; background: var(--lim, var(--fg-mute)); }
+  .one .n { font-family: var(--mono); text-align: right; font-variant-numeric: tabular-nums; }
+  .one:is(.lim-warn, .lim-full) .n { color: var(--lim); }
+  .one .rs { font-style: normal; color: var(--fg-mute); font-size: 11px; font-family: var(--mono); text-align: right; white-space: nowrap; }
+  .one .wl { color: var(--fg-mute); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .one.hd b { font-weight: 600; }
+  .one.hd .acc { grid-column: 4 / 7; color: var(--fg-mute); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; gap: 6px; align-items: center; }
+  .one.hd .acc .okd { margin-left: auto; }
+  .exp .lims { padding-left: 46px; }
+  .exp .L { grid-template-columns: 82px 1fr 4.5ch 11ch; }
+  .exp + .one, .one + .exp { margin-top: 2px; }
+
+  /* E · в заголовке панели */
+  .sidebar .head .hx { display: flex; gap: 10px; align-items: center; margin-left: auto; font-weight: 400; text-transform: none; letter-spacing: 0; font-size: 11px; }
+  .hx .m { display: flex; gap: 4px; align-items: center; color: var(--fg-mute); }
+  .hx .m i.b { width: 28px; height: 4px; border-radius: 2px; background: var(--bg-input); overflow: hidden; }
+  .hx .m i.b b { display: block; height: 100%; background: var(--lim, var(--fg-mute)); }
+  .hx .n { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--fg); }
+  .hx .m:is(.lim-warn, .lim-full) .n { color: var(--lim); }
+  .hx .mk { width: 12px; height: 12px; font-size: 8px; }
+  .hx .refresh { color: var(--fg-mute); font-size: 13px; line-height: 1; padding: 0 2px; }
+  .sidebar .head .gear { margin-left: 4px; }
+  .pop { position: absolute; z-index: 5; left: 8px; right: 8px; top: 34px; background: var(--bg-raise); border: 1px solid var(--line-strong); border-radius: 5px; box-shadow: 0 6px 24px rgba(0,0,0,.35); padding: 8px 0 6px; font-family: var(--font); }
+  .pop .eh { padding-top: 4px; }
+  .pop .eng + .eng { margin-top: 4px; }
+  .pop .lims { padding-left: 35px; padding-right: 10px; }
+  .pop .L { grid-template-columns: 92px 1fr 4.5ch 10ch; }
+  .sidebar { position: relative; }
+</style>
+<link rel="stylesheet" href="../shared/tooltip.css">
+</head>
+<body>
+<div class="preview-bar">
+  <b>Лимиты нескольких движков</b>
+  <span class="grp"><button data-set-theme="dark">Тёмная</button><button data-set-theme="light">Светлая</button></span>
+  <span class="grp"><a href="#a">A стопка</a> <a href="#b">B переключатель</a> <a href="#c">C таблица</a> <a href="#d">D активный</a> <a href="#e">E в заголовке</a> <a href="#a-off">A, не вошли</a></span>
+  <a href="../index.html">← оглавление</a>
+</div>
+<div class="preview-stage">
+<div class="webview">
+
+  <div class="sidebar" aria-label="Боковая панель Agentura" data-top="compact" data-list="compact" data-ctx="on" data-time="on">
+    <div class="head"><span>Agentura</span><span class="hx" id="hx"></span><button class="gear" title="Настройки Agentura">⚙</button></div>
+    <section class="sec acc" id="acc"></section>
+    <section class="sec">
+      <h3><span class="tri"></span>Сессии<span class="r" style="color:var(--fg-mute)">queue-board</span><button class="add" title="Новая сессия · ⌘⇧N" style="display:inline">＋</button><button class="view" title="Вид списка">≡</button></h3>
+    </section>
+    <div class="tools"><input type="search" placeholder="Поиск по названию" disabled><button title="Фильтр">⚲</button></div>
+    <div class="list">
+      <div class="day">Сегодня</div>
+      <button class="s cur live"><span class="dot"></span><span class="t">ретраи запросов к сервису очереди<small>7 ходов</small></span><span class="ctx">74k ctx</span><span class="when">сейчас</span></button>
+      <button class="s wait"><span class="dot"></span><span class="t">плашка «нет связи» на табло<small>3 хода · ждёт ответа</small></span><span class="ctx">44k ctx</span><span class="when">13:05</span></button>
+      <button class="s"><span class="dot"></span><span class="t">мигание счётчика талонов<small>14 ходов · $1.84</small></span><span class="ctx">131k ctx</span><span class="when">12:40</span></button>
+      <button class="s"><span class="dot"></span><span class="t">почему падает lint в ws-client<small>2 хода</small></span><span class="ctx">12k ctx</span><span class="when">11:48</span></button>
+      <button class="s"><span class="dot"></span><span class="t">переименовать TicketCounter в хук<small>4 хода · $0.37</small></span><span class="ctx">8k ctx</span><span class="when">09:41</span></button>
+      <div class="day">Вчера</div>
+      <button class="s"><span class="dot"></span><span class="t">миграция табло на новый ws-client<small>31 ход · $6.20</small></span><span class="ctx">168k ctx</span><span class="when" data-d="вчера">18:02</span></button>
+      <button class="s"><span class="dot"></span><span class="t">звук вызова талона не играет в Safari<small>12 ходов</small></span><span class="ctx">96k ctx</span><span class="when" data-d="вчера">15:27</span></button>
+      <button class="s"><span class="dot"></span><span class="t">тесты очереди талонов<small>9 ходов · $1.05</small></span><span class="ctx">35k ctx</span><span class="when" data-d="вчера">11:30</span></button>
+      <button class="s"><span class="dot"></span><span class="t">что делает флаг legacyBoard<small>3 хода · $0.19</small></span><span class="ctx">6k ctx</span><span class="when" data-d="вчера">10:02</span></button>
+      <div class="day">29 сентября</div>
+      <button class="s"><span class="dot"></span><span class="t">разбор падения board в проде<small>18 ходов · $3.70</small></span><span class="ctx">142k ctx</span><span class="when">вт</span></button>
+      <button class="s"><span class="dot"></span><span class="t">обновить зависимости монорепо<small>5 ходов</small></span><span class="ctx">58k ctx</span><span class="when">вт</span></button>
+      <button class="s"><span class="dot"></span><span class="t">табло: режим «окно закрыто»<small>22 хода · $4.45</small></span><span class="ctx">173k ctx</span><span class="when">вт</span></button>
+      <div class="day">28 сентября</div>
+      <button class="s"><span class="dot"></span><span class="t">линтер ругается на any в api-типах<small>6 ходов</small></span><span class="ctx">21k ctx</span><span class="when">пн</span></button>
+      <button class="s"><span class="dot"></span><span class="t">локализация табло на татарский<small>15 ходов · $2.88</small></span><span class="ctx">77k ctx</span><span class="when">пн</span></button>
+      <button class="s"><span class="dot"></span><span class="t">перенос сборки с webpack на vite<small>27 ходов · $5.31</small></span><span class="ctx">118k ctx</span><span class="when">пн</span></button>
+    </div>
+  </div>
+
+  <div class="chatside">
+    <header class="hud" aria-label="Сессия">
+      <nav class="tabs" role="tablist">
+        <button role="tab" aria-selected="true">чат</button>
+        <button role="tab" aria-selected="false">изменения</button>
+      </nav>
+      <span class="sess">queue-board · <b>ретраи запросов к сервису очереди</b> · агент <b>codex</b></span>
+    </header>
+    <div class="note" id="note"></div>
+  </div>
+
+</div>
+</div>
+<script src="../shared/preview.js"></script>
+<script>
+(function () {
+  // Данные: Claude (5 ч, неделя, неделя Fable), Codex (5 ч, неделя), Antigravity (квота по семействам моделей;
+  // agy отдаёт «осталось», здесь — «израсходовано», как у остальных). Активная вкладка — Codex.
+  var E = [
+    { id: 'claude', k: 'C', name: 'Claude', acc: 'andrey@example.com', plan: 'Max 5×', ver: 'claude 2.1.291',
+      lim: [['Окно 5 часов', '5 ч', 62, '→ 17:00'], ['Неделя', 'нед', 34, '→ чт 09:00'], ['Неделя · Fable', 'Fable', 8, '→ чт 09:00']] },
+    { id: 'codex', k: 'X', name: 'Codex', acc: 'andrey@example.com', plan: 'Plus', ver: 'codex 0.46', active: true,
+      lim: [['Окно 5 часов', '5 ч', 78, '→ 16:20'], ['Неделя', 'нед', 41, '→ пн 11:00']] },
+    { id: 'agy', k: 'G', name: 'Antigravity', acc: 'andrey@gmail.com', plan: 'AI Pro', ver: 'agy 1.4',
+      lim: [['Gemini', 'Gemini', 23, '→ пт 12:00'], ['Claude / GPT', 'Cl/GPT', 91, '→ пт 12:00']] }
+  ];
+  var parts = (location.hash.slice(1) || 'a').toLowerCase().split('-');
+  var v = 'abcde'.indexOf(parts[0]) >= 0 ? parts[0] : 'a';
+  if (parts.indexOf('off') >= 0) { E[2].off = true; E[1].off = 'install'; }
+
+  function lv(p) { return p > 85 ? 'lim-full' : p > 70 ? 'lim-warn' : 'lim-hot'; }
+  function worst(e) { return e.lim.reduce(function (a, l) { return l[2] > a[2] ? l : a; }); }
+  function row(l, label) {
+    return '<div class="L ' + lv(l[2]) + '" title="' + l[0] + ' · сброс ' + l[3].slice(2) + '"><span>' + (label || l[0]) + '</span><span class="bar"><i style="width:' + l[2] + '%"></i></span><span class="n">' + l[2] + ' %</span><em class="rs">' + l[3] + '</em></div>';
+  }
+  function mk(e) { return '<i class="mk ' + e.id + '">' + e.k + '</i>'; }
+  function offLine(e) {
+    return e.off === 'install' ? '<span>не установлен</span><a class="signin">как поставить</a>' : '<span>не вошли</span><a class="signin">войти</a>';
+  }
+  function h3(t) { return '<h3><span class="tri"></span>' + t + '<button class="refresh" title="Обновить лимиты всех движков · данные на 14:52">↻</button></h3>'; }
+
+  var R = {
+    a: function () {
+      return h3('Аккаунты и лимиты') + E.map(function (e) {
+        if (e.off) return '<div class="eng"><div class="eh">' + mk(e) + '<b>' + e.name + '</b>' + offLine(e) + '<i class="okd off"></i></div></div>';
+        return '<div class="eng"><div class="eh" title="' + e.ver + '">' + mk(e) + '<b>' + e.name + '</b><span>' + e.acc + ' · ' + e.plan + '</span>' + (e.active ? '<em class="now" title="Движок открытой вкладки">вкладка</em>' : '') + '<i class="okd"></i></div>' +
+          '<div class="lims">' + e.lim.map(function (l) { return row(l); }).join('') + '</div></div>';
+      }).join('');
+    },
+    b: function () {
+      var e = E[1];
+      return h3('Аккаунт и лимиты') +
+        '<div class="seg" role="tablist">' + E.map(function (x) {
+          return '<button role="tab" aria-selected="' + (x === e) + '" class="' + lv(worst(x)[2]) + '" title="' + x.name + ' · максимум ' + worst(x)[2] + ' %">' + mk(x) + x.name + '<i class="lv"></i></button>';
+        }).join('') + '</div>' +
+        '<div class="who" title="Вход через CLI · ок · ' + e.ver + '"><b>' + e.acc + '</b><span>· ' + e.plan + '</span><span>· ' + e.ver + '</span><i class="okd"></i></div>' +
+        '<div class="lims">' + e.lim.map(function (l) { return row(l); }).join('') + '</div>';
+    },
+    c: function () {
+      return h3('Лимиты') + '<div class="grid">' + E.map(function (e) {
+        var cells = [0, 1, 2].map(function (i) {
+          var l = e.lim[i];
+          if (!l) return '<span class="c none">—</span>';
+          return '<span class="c ' + lv(l[2]) + '" title="' + l[0] + ' · сброс ' + l[3].slice(2) + '"><em>' + l[1] + '</em><span class="n">' + l[2] + '%</span><span class="bar"><i style="width:' + l[2] + '%"></i></span></span>';
+        }).join('');
+        return '<span class="nm" title="' + e.acc + ' · ' + e.plan + ' · ' + e.ver + '">' + mk(e) + e.name.replace('Antigravity', 'Antigr.') + '</span>' + cells;
+      }).join('') + '</div>';
+    },
+    d: function () {
+      var act = E.filter(function (e) { return e.active; })[0];
+      var rest = E.filter(function (e) { return !e.active; });
+      function line(e) {
+        var w = worst(e);
+        return '<div class="one ' + lv(w[2]) + '" title="' + e.acc + ' · ' + e.plan + ' · ' + w[0] + '"><i class="tw"></i>' + mk(e) + '<b>' + e.name + '</b><span class="bar"><i style="width:' + w[2] + '%"></i></span><span class="n">' + w[2] + ' %</span><em class="rs">' + w[3] + '</em></div>';
+      }
+      return h3('Аккаунты и лимиты') +
+        '<div class="exp"><div class="one hd"><i class="tw open"></i>' + mk(act) + '<b>' + act.name + '</b><span class="acc">' + act.acc + ' · ' + act.plan + '<i class="okd"></i></span></div>' +
+        '<div class="lims" style="padding-top:3px">' + act.lim.map(function (l) { return row(l); }).join('') + '</div></div>' +
+        rest.map(line).join('') + '<div style="height:6px"></div>';
+    },
+    e: function () { return ''; }
+  };
+  var acc = document.getElementById('acc');
+  if (v === 'e') {
+    acc.remove();
+    document.getElementById('hx').innerHTML = E.map(function (e) {
+      var w = worst(e);
+      return '<span class="m ' + lv(w[2]) + '" title="' + e.name + ' · ' + w[0] + ' · сброс ' + w[3].slice(2) + '">' + mk(e) + '<i class="b"><b style="width:' + w[2] + '%"></b></i><span class="n">' + w[2] + '</span></span>';
+    }).join('') + '<button class="refresh" title="Обновить лимиты">↻</button>';
+    document.querySelector('.sidebar').insertAdjacentHTML('beforeend', '<div class="pop">' + E.map(function (e) {
+      return '<div class="eng"><div class="eh">' + mk(e) + '<b>' + e.name + '</b><span>' + e.acc + ' · ' + e.plan + '</span><i class="okd"></i></div><div class="lims">' + e.lim.map(function (l) { return row(l); }).join('') + '</div></div>';
+    }).join('') + '</div>');
+  } else acc.innerHTML = R[v]();
+
+  var notes = {
+    a: ['A · стопка', 'Секция «Аккаунты и лимиты» — блок на каждый движок: метка, аккаунт и план, ниже его лимиты в компактном виде. Движок открытой вкладки помечен «вкладка». Неустановленный движок — строка «как поставить», невошедший — «войти».',
+      ['видно всё сразу, без кликов', 'та же раскладка, что сейчас у Claude'], ['высота растёт с числом движков: ~3 строки на каждый', 'список сессий заметно сжимается']],
+    b: ['B · переключатель', 'Над лимитами — сегменты Claude / Codex / Antigravity. По умолчанию выбран движок открытой вкладки, руками можно переключить. Точка на сегменте — цвет худшего лимита движка (оранжевый / жёлтый / красный).',
+      ['высота как сейчас, не зависит от числа движков', 'точки сигналят, если у соседа кончается'], ['цифры чужих движков — только по клику', 'при смене вкладки блок «прыгает»']],
+    c: ['C · таблица', 'Строка на движок, столбцы — его окна (5 ч, неделя и что есть ещё: Fable, семейства моделей agy). Время сброса и аккаунт — в подсказках.',
+      ['самый компактный при полном обзоре: 3 строки на 3 движка', 'легко сравнить, где ещё есть запас'], ['столбцы у движков разные по смыслу', 'нет сброса и аккаунта на виду']],
+    d: ['D · активный подробно', 'Движок открытой вкладки раскрыт (аккаунт, все лимиты, сброс). Остальные — свёрнутой строкой с худшим лимитом и его сбросом; клик раскрывает.',
+      ['важное — подробно, остальное — одним взглядом', 'высота почти не растёт: +1 строка на движок'], ['раскрытый блок меняется при смене вкладки']],
+    e: ['E · в заголовке панели', 'Секции нет: в заголовке панели — по мини-шкале на движок (худший лимит), всё подробно — во всплывашке по наведению или клику (на кадре открыта).',
+      ['максимум места под сессии', 'развитие варианта «плотно» из вида верха'], ['3 шкалы в 380 px — впритык; четвёртый движок уже не влезет', 'без наведения не понять, какой лимит худший']]
+  };
+  var n = notes[v];
+  var list = document.querySelector('.list'), sb = document.querySelector('.sidebar');
+  var fit = 0, bottom = list.getBoundingClientRect().bottom;
+  list.querySelectorAll('.s').forEach(function (r) { if (r.getBoundingClientRect().bottom <= bottom + 1) fit++; });
+  var top = list.getBoundingClientRect().top - sb.getBoundingClientRect().top;
+  document.getElementById('note').innerHTML = '<b>' + n[0] + (E[2].off ? ' · Codex не установлен, Antigravity без входа' : '') + '</b>' + n[1] +
+    '<ul>' + n[2].map(function (t) { return '<li class="plus">' + t + '</li>'; }).join('') + n[3].map(function (t) { return '<li class="minus">' + t + '</li>'; }).join('') + '</ul>' +
+    '<i>верх ' + Math.round(top) + ' px · на экране ' + fit + ' из ' + list.querySelectorAll('.s').length + ' сессий</i>';
+  window.addEventListener('hashchange', function () { location.reload(); });
+})();
+</script>
+<script src="../shared/tooltip.js"></script>
+</body>
+</html>

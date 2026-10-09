@@ -1,0 +1,707 @@
+{
+ "issue": {
+  "expand": "renderedFields,names,schema,operations,editmeta,changelog,versionedRepresentations",
+  "id": "10001",
+  "self": "https://jira.example.test/rest/api/2/issue/10001",
+  "key": "ABC-123",
+  "fields": {
+   "issuetype": {
+    "self": "https://jira.example.test/rest/api/2/issuetype/10003",
+    "id": "10003",
+    "description": "",
+    "iconUrl": "https://jira.example.test/secure/viewavatar?size=xsmall&avatarId=10300&avatarType=issuetype",
+    "name": "Задача",
+    "subtask": false,
+    "avatarId": 10318
+   },
+   "project": {
+    "self": "https://jira.example.test/rest/api/2/project/10000",
+    "id": "10000",
+    "key": "ABC",
+    "name": "Sample project"
+   },
+   "fixVersions": [
+    {
+     "self": "https://jira.example.test/rest/api/2/version/20001",
+     "id": "20001",
+     "name": "1.7.0",
+     "archived": false,
+     "released": true,
+     "releaseDate": "2026-08-17"
+    }
+   ],
+   "created": "2026-07-17T08:51:23.135+0300",
+   "priority": {
+    "self": "https://jira.example.test/rest/api/2/priority/3",
+    "iconUrl": "https://jira.example.test/images/icons/priorities/major.svg",
+    "name": "Medium",
+    "id": "3"
+   },
+   "labels": [
+    "backend",
+    "urgent"
+   ],
+   "assignee": {
+    "self": "https://jira.example.test/rest/api/2/user?username=ivan.petrov",
+    "name": "ivan.petrov",
+    "key": "ivan.petrov",
+    "emailAddress": "ivan.petrov@example.test",
+    "avatarUrls": {
+     "48x48": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000",
+     "24x24": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000&size=small",
+     "16x16": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000&size=xsmall",
+     "32x32": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000&size=medium"
+    },
+    "displayName": "Ivan Petrov",
+    "active": true,
+    "timeZone": "Europe/Moscow"
+   },
+   "updated": "2026-10-02T14:13:09.230+0300",
+   "status": {
+    "self": "https://jira.example.test/rest/api/2/status/3",
+    "description": "",
+    "iconUrl": "https://jira.example.test/images/icons/statuses/closed.png",
+    "name": "В работе",
+    "id": "3",
+    "statusCategory": {
+     "self": "https://jira.example.test/rest/api/2/statuscategory/4",
+     "id": 4,
+     "key": "indeterminate",
+     "colorName": "inprogress",
+     "name": "В работе"
+    }
+   },
+   "components": [
+    {
+     "self": "https://jira.example.test/rest/api/2/component/30001",
+     "id": "30001",
+     "name": "API"
+    }
+   ],
+   "summary": "Fix export of the report to CSV",
+   "reporter": {
+    "self": "https://jira.example.test/rest/api/2/user?username=ivan.petrov",
+    "name": "ivan.petrov",
+    "key": "ivan.petrov",
+    "emailAddress": "ivan.petrov@example.test",
+    "avatarUrls": {
+     "48x48": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000",
+     "24x24": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000&size=small",
+     "16x16": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000&size=xsmall",
+     "32x32": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000&size=medium"
+    },
+    "displayName": "Ivan Petrov",
+    "active": true,
+    "timeZone": "Europe/Moscow"
+   },
+   "timetracking": {
+    "remainingEstimate": "0m",
+    "timeSpent": "40m",
+    "remainingEstimateSeconds": 0,
+    "timeSpentSeconds": 2400
+   },
+   "duedate": null,
+   "attachment": [
+    {
+     "self": "https://jira.example.test/rest/api/2/attachment/40001",
+     "id": "40001",
+     "filename": "report.png",
+     "author": {
+      "self": "https://jira.example.test/rest/api/2/user?username=ivan.petrov",
+      "name": "ivan.petrov",
+      "key": "ivan.petrov",
+      "emailAddress": "ivan.petrov@example.test",
+      "avatarUrls": {
+       "48x48": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000",
+       "24x24": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000&size=small",
+       "16x16": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000&size=xsmall",
+       "32x32": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000&size=medium"
+      },
+      "displayName": "Ivan Petrov",
+      "active": true,
+      "timeZone": "Europe/Moscow"
+     },
+     "created": "2026-07-17T09:00:00.000+0300",
+     "size": 20480,
+     "mimeType": "image/png",
+     "content": "https://jira.example.test/secure/attachment/40001/report.png",
+     "thumbnail": "https://jira.example.test/secure/thumbnail/40001/_thumb_40001.png"
+    }
+   ],
+   "customfield_10100": "ABC-100",
+   "description": "h2. Problem\n\nThe CSV export drops the last row.\n\n* check the *exporter*\n* add a test",
+   "comment": {
+    "comments": [
+     {
+      "self": "https://jira.example.test/rest/api/2/issue/10001/comment/50000",
+      "id": "50000",
+      "author": {
+       "self": "https://jira.example.test/rest/api/2/user?username=ivan.petrov",
+       "name": "ivan.petrov",
+       "key": "ivan.petrov",
+       "emailAddress": "ivan.petrov@example.test",
+       "avatarUrls": {
+        "48x48": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000",
+        "24x24": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000&size=small",
+        "16x16": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000&size=xsmall",
+        "32x32": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000&size=medium"
+       },
+       "displayName": "Ivan Petrov",
+       "active": true,
+       "timeZone": "Europe/Moscow"
+      },
+      "body": "Looks reproducible, taking it.",
+      "updateAuthor": {
+       "self": "https://jira.example.test/rest/api/2/user?username=ivan.petrov",
+       "name": "ivan.petrov",
+       "key": "ivan.petrov",
+       "emailAddress": "ivan.petrov@example.test",
+       "avatarUrls": {
+        "48x48": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000",
+        "24x24": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000&size=small",
+        "16x16": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000&size=xsmall",
+        "32x32": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000&size=medium"
+       },
+       "displayName": "Ivan Petrov",
+       "active": true,
+       "timeZone": "Europe/Moscow"
+      },
+      "created": "2026-07-17T14:21:10.290+0300",
+      "updated": "2026-07-17T14:21:10.290+0300"
+     },
+     {
+      "self": "https://jira.example.test/rest/api/2/issue/10001/comment/50001",
+      "id": "50001",
+      "author": {
+       "self": "https://jira.example.test/rest/api/2/user?username=anna.smirnova",
+       "name": "anna.smirnova",
+       "key": "anna.smirnova",
+       "emailAddress": "anna.smirnova@example.test",
+       "avatarUrls": {
+        "48x48": "https://jira.example.test/secure/useravatar?ownerId=anna.smirnova&avatarId=10000",
+        "24x24": "https://jira.example.test/secure/useravatar?ownerId=anna.smirnova&avatarId=10000&size=small",
+        "16x16": "https://jira.example.test/secure/useravatar?ownerId=anna.smirnova&avatarId=10000&size=xsmall",
+        "32x32": "https://jira.example.test/secure/useravatar?ownerId=anna.smirnova&avatarId=10000&size=medium"
+       },
+       "displayName": "Anna Smirnova",
+       "active": true,
+       "timeZone": "Europe/Moscow"
+      },
+      "body": "Steps:\n# open the report\n# export",
+      "updateAuthor": {
+       "self": "https://jira.example.test/rest/api/2/user?username=anna.smirnova",
+       "name": "anna.smirnova",
+       "key": "anna.smirnova",
+       "emailAddress": "anna.smirnova@example.test",
+       "avatarUrls": {
+        "48x48": "https://jira.example.test/secure/useravatar?ownerId=anna.smirnova&avatarId=10000",
+        "24x24": "https://jira.example.test/secure/useravatar?ownerId=anna.smirnova&avatarId=10000&size=small",
+        "16x16": "https://jira.example.test/secure/useravatar?ownerId=anna.smirnova&avatarId=10000&size=xsmall",
+        "32x32": "https://jira.example.test/secure/useravatar?ownerId=anna.smirnova&avatarId=10000&size=medium"
+       },
+       "displayName": "Anna Smirnova",
+       "active": true,
+       "timeZone": "Europe/Moscow"
+      },
+      "created": "2026-10-02T14:12:56.887+0300",
+      "updated": "2026-10-02T14:12:56.887+0300"
+     }
+    ],
+    "maxResults": 2,
+    "total": 2,
+    "startAt": 0
+   }
+  },
+  "renderedFields": {
+   "description": "<h2><a name=\"Problem\"></a>Problem</h2>\n<p>The CSV export drops the last row, see <a href=\"https://example.test/docs\" class=\"external-link\" rel=\"nofollow\">the docs</a>.</p>\n<ul>\n\t<li>check the <b>exporter</b> (<tt>export.csv</tt>)</li>\n\t<li><del>old workaround</del> add a test</li>\n</ul>",
+   "comment": {
+    "comments": [
+     {
+      "self": "https://jira.example.test/rest/api/2/issue/10001/comment/50000",
+      "id": "50000",
+      "author": {
+       "self": "https://jira.example.test/rest/api/2/user?username=ivan.petrov",
+       "name": "ivan.petrov",
+       "key": "ivan.petrov",
+       "emailAddress": "ivan.petrov@example.test",
+       "avatarUrls": {
+        "48x48": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000",
+        "24x24": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000&size=small",
+        "16x16": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000&size=xsmall",
+        "32x32": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000&size=medium"
+       },
+       "displayName": "Ivan Petrov",
+       "active": true,
+       "timeZone": "Europe/Moscow"
+      },
+      "body": "<p>Looks reproducible, taking it.</p>",
+      "updateAuthor": {
+       "self": "https://jira.example.test/rest/api/2/user?username=ivan.petrov",
+       "name": "ivan.petrov",
+       "key": "ivan.petrov",
+       "emailAddress": "ivan.petrov@example.test",
+       "avatarUrls": {
+        "48x48": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000",
+        "24x24": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000&size=small",
+        "16x16": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000&size=xsmall",
+        "32x32": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000&size=medium"
+       },
+       "displayName": "Ivan Petrov",
+       "active": true,
+       "timeZone": "Europe/Moscow"
+      },
+      "created": "2026-07-17T14:21:10.290+0300",
+      "updated": "2026-07-17T14:21:10.290+0300"
+     },
+     {
+      "self": "https://jira.example.test/rest/api/2/issue/10001/comment/50001",
+      "id": "50001",
+      "author": {
+       "self": "https://jira.example.test/rest/api/2/user?username=anna.smirnova",
+       "name": "anna.smirnova",
+       "key": "anna.smirnova",
+       "emailAddress": "anna.smirnova@example.test",
+       "avatarUrls": {
+        "48x48": "https://jira.example.test/secure/useravatar?ownerId=anna.smirnova&avatarId=10000",
+        "24x24": "https://jira.example.test/secure/useravatar?ownerId=anna.smirnova&avatarId=10000&size=small",
+        "16x16": "https://jira.example.test/secure/useravatar?ownerId=anna.smirnova&avatarId=10000&size=xsmall",
+        "32x32": "https://jira.example.test/secure/useravatar?ownerId=anna.smirnova&avatarId=10000&size=medium"
+       },
+       "displayName": "Anna Smirnova",
+       "active": true,
+       "timeZone": "Europe/Moscow"
+      },
+      "body": "<h3><a name=\"Steps\"></a>Steps</h3>\n<ol>\n\t<li>open the report</li>\n\t<li>export<br/>and check the last row</li>\n</ol>\n<p>See <a href=\"https://example.test/ticket\" class=\"external-link\">the ticket</a></p>",
+      "updateAuthor": {
+       "self": "https://jira.example.test/rest/api/2/user?username=anna.smirnova",
+       "name": "anna.smirnova",
+       "key": "anna.smirnova",
+       "emailAddress": "anna.smirnova@example.test",
+       "avatarUrls": {
+        "48x48": "https://jira.example.test/secure/useravatar?ownerId=anna.smirnova&avatarId=10000",
+        "24x24": "https://jira.example.test/secure/useravatar?ownerId=anna.smirnova&avatarId=10000&size=small",
+        "16x16": "https://jira.example.test/secure/useravatar?ownerId=anna.smirnova&avatarId=10000&size=xsmall",
+        "32x32": "https://jira.example.test/secure/useravatar?ownerId=anna.smirnova&avatarId=10000&size=medium"
+       },
+       "displayName": "Anna Smirnova",
+       "active": true,
+       "timeZone": "Europe/Moscow"
+      },
+      "created": "2026-10-02T14:12:56.887+0300",
+      "updated": "2026-10-02T14:12:56.887+0300"
+     }
+    ],
+    "maxResults": 2,
+    "total": 2,
+    "startAt": 0
+   },
+   "created": "17/июл/26 08:51"
+  },
+  "changelog": {
+   "startAt": 0,
+   "maxResults": 100,
+   "total": 10,
+   "histories": [
+    {
+     "id": "130546",
+     "author": {
+      "self": "https://jira.example.test/rest/api/2/user?username=ivan.petrov",
+      "name": "ivan.petrov",
+      "key": "ivan.petrov",
+      "emailAddress": "ivan.petrov@example.test",
+      "avatarUrls": {
+       "48x48": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000",
+       "24x24": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000&size=small",
+       "16x16": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000&size=xsmall",
+       "32x32": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000&size=medium"
+      },
+      "displayName": "Ivan Petrov",
+      "active": true,
+      "timeZone": "Europe/Moscow"
+     },
+     "created": "2026-07-17T14:05:20.258+0300",
+     "items": [
+      {
+       "field": "description",
+       "fieldtype": "jira",
+       "from": null,
+       "fromString": "h2. Problem",
+       "to": null,
+       "toString": "h2. Problem\n\nThe CSV export drops the last row."
+      }
+     ]
+    },
+    {
+     "id": "130549",
+     "author": {
+      "self": "https://jira.example.test/rest/api/2/user?username=ivan.petrov",
+      "name": "ivan.petrov",
+      "key": "ivan.petrov",
+      "emailAddress": "ivan.petrov@example.test",
+      "avatarUrls": {
+       "48x48": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000",
+       "24x24": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000&size=small",
+       "16x16": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000&size=xsmall",
+       "32x32": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000&size=medium"
+      },
+      "displayName": "Ivan Petrov",
+      "active": true,
+      "timeZone": "Europe/Moscow"
+     },
+     "created": "2026-07-17T14:21:09.909+0300",
+     "items": [
+      {
+       "field": "WorklogId",
+       "fieldtype": "jira",
+       "from": "19212",
+       "fromString": "19212",
+       "to": null,
+       "toString": null
+      },
+      {
+       "field": "timeestimate",
+       "fieldtype": "jira",
+       "from": null,
+       "fromString": null,
+       "to": "0",
+       "toString": "0"
+      },
+      {
+       "field": "timespent",
+       "fieldtype": "jira",
+       "from": null,
+       "fromString": null,
+       "to": "2400",
+       "toString": "2400"
+      }
+     ]
+    },
+    {
+     "id": "130550",
+     "author": {
+      "self": "https://jira.example.test/rest/api/2/user?username=ivan.petrov",
+      "name": "ivan.petrov",
+      "key": "ivan.petrov",
+      "emailAddress": "ivan.petrov@example.test",
+      "avatarUrls": {
+       "48x48": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000",
+       "24x24": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000&size=small",
+       "16x16": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000&size=xsmall",
+       "32x32": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000&size=medium"
+      },
+      "displayName": "Ivan Petrov",
+      "active": true,
+      "timeZone": "Europe/Moscow"
+     },
+     "created": "2026-07-17T14:21:16.494+0300",
+     "items": [
+      {
+       "field": "status",
+       "fieldtype": "jira",
+       "from": "1",
+       "fromString": "Open",
+       "to": "3",
+       "toString": "In Progress"
+      }
+     ]
+    },
+    {
+     "id": "130551",
+     "author": {
+      "self": "https://jira.example.test/rest/api/2/user?username=ivan.petrov",
+      "name": "ivan.petrov",
+      "key": "ivan.petrov",
+      "emailAddress": "ivan.petrov@example.test",
+      "avatarUrls": {
+       "48x48": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000",
+       "24x24": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000&size=small",
+       "16x16": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000&size=xsmall",
+       "32x32": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000&size=medium"
+      },
+      "displayName": "Ivan Petrov",
+      "active": true,
+      "timeZone": "Europe/Moscow"
+     },
+     "created": "2026-07-17T14:21:16.968+0300",
+     "items": [
+      {
+       "field": "assignee",
+       "fieldtype": "jira",
+       "from": "ivan.petrov",
+       "fromString": "Ivan Petrov",
+       "to": "anna.smirnova",
+       "toString": "Anna Smirnova"
+      },
+      {
+       "field": "status",
+       "fieldtype": "jira",
+       "from": "3",
+       "fromString": "In Progress",
+       "to": "10202",
+       "toString": "Testing"
+      }
+     ]
+    },
+    {
+     "id": "130880",
+     "author": {
+      "self": "https://jira.example.test/rest/api/2/user?username=oleg.sidorov",
+      "name": "oleg.sidorov",
+      "key": "oleg.sidorov",
+      "emailAddress": "oleg.sidorov@example.test",
+      "avatarUrls": {
+       "48x48": "https://jira.example.test/secure/useravatar?ownerId=oleg.sidorov&avatarId=10000",
+       "24x24": "https://jira.example.test/secure/useravatar?ownerId=oleg.sidorov&avatarId=10000&size=small",
+       "16x16": "https://jira.example.test/secure/useravatar?ownerId=oleg.sidorov&avatarId=10000&size=xsmall",
+       "32x32": "https://jira.example.test/secure/useravatar?ownerId=oleg.sidorov&avatarId=10000&size=medium"
+      },
+      "displayName": "Oleg Sidorov",
+      "active": true,
+      "timeZone": "Europe/Moscow"
+     },
+     "created": "2026-07-21T11:43:15.762+0300",
+     "items": [
+      {
+       "field": "assignee",
+       "fieldtype": "jira",
+       "from": "anna.smirnova",
+       "fromString": "Anna Smirnova",
+       "to": "oleg.sidorov",
+       "toString": "Oleg Sidorov"
+      }
+     ]
+    },
+    {
+     "id": "130881",
+     "author": {
+      "self": "https://jira.example.test/rest/api/2/user?username=oleg.sidorov",
+      "name": "oleg.sidorov",
+      "key": "oleg.sidorov",
+      "emailAddress": "oleg.sidorov@example.test",
+      "avatarUrls": {
+       "48x48": "https://jira.example.test/secure/useravatar?ownerId=oleg.sidorov&avatarId=10000",
+       "24x24": "https://jira.example.test/secure/useravatar?ownerId=oleg.sidorov&avatarId=10000&size=small",
+       "16x16": "https://jira.example.test/secure/useravatar?ownerId=oleg.sidorov&avatarId=10000&size=xsmall",
+       "32x32": "https://jira.example.test/secure/useravatar?ownerId=oleg.sidorov&avatarId=10000&size=medium"
+      },
+      "displayName": "Oleg Sidorov",
+      "active": true,
+      "timeZone": "Europe/Moscow"
+     },
+     "created": "2026-07-21T11:44:54.298+0300",
+     "items": [
+      {
+       "field": "status",
+       "fieldtype": "jira",
+       "from": "10202",
+       "fromString": "Testing",
+       "to": "10900",
+       "toString": "Release testing"
+      }
+     ]
+    },
+    {
+     "id": "136746",
+     "author": {
+      "self": "https://jira.example.test/rest/api/2/user?username=ivan.petrov",
+      "name": "ivan.petrov",
+      "key": "ivan.petrov",
+      "emailAddress": "ivan.petrov@example.test",
+      "avatarUrls": {
+       "48x48": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000",
+       "24x24": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000&size=small",
+       "16x16": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000&size=xsmall",
+       "32x32": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000&size=medium"
+      },
+      "displayName": "Ivan Petrov",
+      "active": true,
+      "timeZone": "Europe/Moscow"
+     },
+     "created": "2026-08-27T12:21:34.668+0300",
+     "items": [
+      {
+       "field": "Fix Version",
+       "fieldtype": "jira",
+       "from": null,
+       "fromString": null,
+       "to": "11905",
+       "toString": "1.7.0"
+      }
+     ]
+    },
+    {
+     "id": "142117",
+     "author": {
+      "self": "https://jira.example.test/rest/api/2/user?username=anna.smirnova",
+      "name": "anna.smirnova",
+      "key": "anna.smirnova",
+      "emailAddress": "anna.smirnova@example.test",
+      "avatarUrls": {
+       "48x48": "https://jira.example.test/secure/useravatar?ownerId=anna.smirnova&avatarId=10000",
+       "24x24": "https://jira.example.test/secure/useravatar?ownerId=anna.smirnova&avatarId=10000&size=small",
+       "16x16": "https://jira.example.test/secure/useravatar?ownerId=anna.smirnova&avatarId=10000&size=xsmall",
+       "32x32": "https://jira.example.test/secure/useravatar?ownerId=anna.smirnova&avatarId=10000&size=medium"
+      },
+      "displayName": "Anna Smirnova",
+      "active": true,
+      "timeZone": "Europe/Moscow"
+     },
+     "created": "2026-09-29T16:02:05.360+0300",
+     "items": [
+      {
+       "field": "assignee",
+       "fieldtype": "jira",
+       "from": "oleg.sidorov",
+       "fromString": "Oleg Sidorov",
+       "to": "ivan.petrov",
+       "toString": "Ivan Petrov"
+      }
+     ]
+    },
+    {
+     "id": "142682",
+     "author": {
+      "self": "https://jira.example.test/rest/api/2/user?username=anna.smirnova",
+      "name": "anna.smirnova",
+      "key": "anna.smirnova",
+      "emailAddress": "anna.smirnova@example.test",
+      "avatarUrls": {
+       "48x48": "https://jira.example.test/secure/useravatar?ownerId=anna.smirnova&avatarId=10000",
+       "24x24": "https://jira.example.test/secure/useravatar?ownerId=anna.smirnova&avatarId=10000&size=small",
+       "16x16": "https://jira.example.test/secure/useravatar?ownerId=anna.smirnova&avatarId=10000&size=xsmall",
+       "32x32": "https://jira.example.test/secure/useravatar?ownerId=anna.smirnova&avatarId=10000&size=medium"
+      },
+      "displayName": "Anna Smirnova",
+      "active": true,
+      "timeZone": "Europe/Moscow"
+     },
+     "created": "2026-10-02T14:13:01.450+0300",
+     "items": [
+      {
+       "field": "status",
+       "fieldtype": "jira",
+       "from": "10900",
+       "fromString": "Release testing",
+       "to": "3",
+       "toString": "In Progress"
+      }
+     ]
+    },
+    {
+     "id": "142683",
+     "author": {
+      "self": "https://jira.example.test/rest/api/2/user?username=anna.smirnova",
+      "name": "anna.smirnova",
+      "key": "anna.smirnova",
+      "emailAddress": "anna.smirnova@example.test",
+      "avatarUrls": {
+       "48x48": "https://jira.example.test/secure/useravatar?ownerId=anna.smirnova&avatarId=10000",
+       "24x24": "https://jira.example.test/secure/useravatar?ownerId=anna.smirnova&avatarId=10000&size=small",
+       "16x16": "https://jira.example.test/secure/useravatar?ownerId=anna.smirnova&avatarId=10000&size=xsmall",
+       "32x32": "https://jira.example.test/secure/useravatar?ownerId=anna.smirnova&avatarId=10000&size=medium"
+      },
+      "displayName": "Anna Smirnova",
+      "active": true,
+      "timeZone": "Europe/Moscow"
+     },
+     "created": "2026-10-02T14:13:09.231+0300",
+     "items": [
+      {
+       "field": "assignee",
+       "fieldtype": "jira",
+       "from": "ivan.petrov",
+       "fromString": "Ivan Petrov",
+       "to": "ivan.petrov",
+       "toString": "Ivan Petrov"
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "watchers": {
+  "self": "https://jira.example.test/rest/api/2/issue/ABC-123/watchers",
+  "isWatching": false,
+  "watchCount": 2,
+  "watchers": [
+   {
+    "self": "https://jira.example.test/rest/api/2/user?username=ivan.petrov",
+    "name": "ivan.petrov",
+    "key": "ivan.petrov",
+    "emailAddress": "ivan.petrov@example.test",
+    "avatarUrls": {
+     "48x48": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000",
+     "24x24": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000&size=small",
+     "16x16": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000&size=xsmall",
+     "32x32": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000&size=medium"
+    },
+    "displayName": "Ivan Petrov",
+    "active": true,
+    "timeZone": "Europe/Moscow"
+   },
+   {
+    "self": "https://jira.example.test/rest/api/2/user?username=anna.smirnova",
+    "name": "anna.smirnova",
+    "key": "anna.smirnova",
+    "emailAddress": "anna.smirnova@example.test",
+    "avatarUrls": {
+     "48x48": "https://jira.example.test/secure/useravatar?ownerId=anna.smirnova&avatarId=10000",
+     "24x24": "https://jira.example.test/secure/useravatar?ownerId=anna.smirnova&avatarId=10000&size=small",
+     "16x16": "https://jira.example.test/secure/useravatar?ownerId=anna.smirnova&avatarId=10000&size=xsmall",
+     "32x32": "https://jira.example.test/secure/useravatar?ownerId=anna.smirnova&avatarId=10000&size=medium"
+    },
+    "displayName": "Anna Smirnova",
+    "active": true,
+    "timeZone": "Europe/Moscow"
+   }
+  ]
+ },
+ "worklog": {
+  "startAt": 0,
+  "maxResults": 1048576,
+  "total": 1,
+  "worklogs": [
+   {
+    "self": "https://jira.example.test/rest/api/2/issue/10001/worklog/60000",
+    "author": {
+     "self": "https://jira.example.test/rest/api/2/user?username=ivan.petrov",
+     "name": "ivan.petrov",
+     "key": "ivan.petrov",
+     "emailAddress": "ivan.petrov@example.test",
+     "avatarUrls": {
+      "48x48": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000",
+      "24x24": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000&size=small",
+      "16x16": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000&size=xsmall",
+      "32x32": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000&size=medium"
+     },
+     "displayName": "Ivan Petrov",
+     "active": true,
+     "timeZone": "Europe/Moscow"
+    },
+    "updateAuthor": {
+     "self": "https://jira.example.test/rest/api/2/user?username=ivan.petrov",
+     "name": "ivan.petrov",
+     "key": "ivan.petrov",
+     "emailAddress": "ivan.petrov@example.test",
+     "avatarUrls": {
+      "48x48": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000",
+      "24x24": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000&size=small",
+      "16x16": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000&size=xsmall",
+      "32x32": "https://jira.example.test/secure/useravatar?ownerId=ivan.petrov&avatarId=10000&size=medium"
+     },
+     "displayName": "Ivan Petrov",
+     "active": true,
+     "timeZone": "Europe/Moscow"
+    },
+    "comment": "Investigation and fix",
+    "created": "2026-07-17T14:21:09.897+0300",
+    "updated": "2026-07-17T14:21:09.897+0300",
+    "started": "2026-07-17T12:00:00.000+0300",
+    "timeSpent": "40m",
+    "timeSpentSeconds": 2400,
+    "id": "60000",
+    "issueId": "10001"
+   }
+  ]
+ }
+}

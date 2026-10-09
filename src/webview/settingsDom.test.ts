@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { h, render } from 'preact';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SettingsValues } from '../settings';
+import type { IntegrationsState } from '../shared/integrations';
 import { Settings } from './components/Settings';
 import { Sidebar } from './components/Sidebar';
 import {
@@ -12,6 +13,7 @@ import {
   engineCheck,
   errors,
   handleSettingsMessage,
+  integrations,
   overridden,
   settingsValues,
 } from './settingsStore';
@@ -31,10 +33,13 @@ function mount(component: () => unknown) {
 }
 
 const values: SettingsValues = {
+  'jira.agentTools': { comment: true, transition: true, worklog: true },
   defaultPermissionMode: 'manual',
   allowBypassPermissions: false,
   defaultModel: '',
   defaultEffort: '',
+  remoteControl: false,
+  remoteControlNamePrefix: '',
   contextThresholds: [120_000, 150_000],
   usagePollMinutes: 15,
   'limits.readKeychain': true,
@@ -46,6 +51,13 @@ const values: SettingsValues = {
   'sessionList.context': true,
   'sessionList.time': true,
   'sidebar.top': 'detailed',
+  'sidebar.limits': 'active',
+  'tasks.sidebar': 'groups',
+  'tasks.card': 'tab',
+  'tasks.tab': 'chat',
+  'jira.source': 'auto',
+  'tasks.refresh': '30s',
+  'tasks.humanChanges': true,
   'feed.style': 'journal',
   'composer.layout': 'classic',
   'agents.view': 'list',
@@ -79,6 +91,7 @@ beforeEach(() => {
     (m) => void posted.push(m as Record<string, unknown>),
   );
   settingsValues.value = undefined;
+  integrations.value = undefined;
   overridden.value = [];
   errors.value = {};
   engineCheck.value = { pending: false };
@@ -108,6 +121,7 @@ describe('вкладка настроек', () => {
       'limits',
       'sidebar',
       'look',
+      'integrations',
       'engine',
     ]);
     expect([...host.querySelectorAll('.set .key')].map((e) => e.textContent)).toEqual([
@@ -116,10 +130,14 @@ describe('вкладка настроек', () => {
       'agentura.allowBypassPermissions · только эта машина',
       'agentura.defaultModel',
       'agentura.defaultEffort',
+      'agentura.remoteControl · только движок Claude',
+      'agentura.remoteControlNamePrefix',
       'agentura.contextThresholds',
       'agentura.usagePollMinutes · не меньше 5',
       'agentura.limits.readKeychain',
       'agentura.sidebar.top',
+      'agentura.sidebar.limits',
+      'agentura.tasks.sidebar',
       'agentura.sessionList.view',
       'agentura.sessionList.context',
       'agentura.sessionList.time',
@@ -127,12 +145,20 @@ describe('вкладка настроек', () => {
       'agentura.composer.layout',
       'agentura.agents.view',
       'agentura.git.layout',
+      'agentura.tasks.card',
+      'agentura.tasks.tab',
       'agentura.feed.fontSize',
       'agentura.ui.fontSize',
       'agentura.font.interface',
       'agentura.font.panels',
       'agentura.font.code',
       'agentura.language',
+      'agentura.jira.source',
+      'fosteev.jiraffe',
+      'agentura.jira.connect',
+      'agentura.tasks.refresh',
+      'agentura.tasks.humanChanges',
+      'agentura.jira.agentTools',
       'agentura.defaultProvider',
       'agentura.claudeExecutable · только эта машина',
       'agentura.codexExecutable · только эта машина',
@@ -162,6 +188,24 @@ describe('вкладка настроек', () => {
     expect(host.querySelector('.set.on .warn')).not.toBeNull();
   });
 
+  it('Remote Control: переключатель и префикс пишут через settings.set', async () => {
+    const host = mount(Settings);
+    state();
+    await flush();
+    host.querySelector<HTMLElement>('.set[data-key$="remoteControl"] .tg')!.click();
+    await flush();
+    change(host.querySelector('.set[data-key$="remoteControlNamePrefix"] input')!, 'Мак');
+    expect(sets()).toEqual([
+      { type: 'settings.set', key: 'remoteControl', value: true },
+      { type: 'settings.set', key: 'remoteControlNamePrefix', value: 'Мак' },
+    ]);
+    expect(
+      host
+        .querySelector('.set[data-key$="remoteControlNamePrefix"] input')
+        ?.getAttribute('placeholder'),
+    ).toBe('пусто — имя машины');
+  });
+
   it('разделы — страницы: видна одна, клик и стрелки переключают', async () => {
     const host = mount(Settings);
     state();
@@ -177,6 +221,9 @@ describe('вкладка настроек', () => {
     expect(tab('look').classList.contains('on')).toBe(true);
     expect(tab('session').tabIndex).toBe(-1);
     tab('look').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    await flush();
+    expect(visible()).toEqual(['integrations']);
+    tab('integrations').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
     await flush();
     expect(visible()).toEqual(['engine']);
     expect(document.activeElement).toBe(tab('engine'));
@@ -244,6 +291,101 @@ describe('вкладка настроек', () => {
     expect(
       host.querySelector('[data-key="agentura.feed.fontSize"] .pv-one .pv-sized .log'),
     ).not.toBeNull();
+  });
+
+  it('лимиты движков: пять разных превью даже при плотном верхе; выбор пишет настройку', async () => {
+    const host = mount(Settings);
+    state({ 'sidebar.top': 'dense' });
+    await flush();
+    const row = host.querySelector('[data-key="agentura.sidebar.limits"]')!;
+    expect(row.querySelector('select')).toBeNull();
+    const cards = [...row.querySelectorAll<HTMLElement>('[role="radio"]')];
+    expect(cards.map((c) => c.dataset.value)).toEqual(['stack', 'switch', 'table', 'active', 'header']);
+    for (const card of cards) {
+      expect(card.querySelector('.pv[inert][aria-hidden="true"]')).not.toBeNull();
+      if (card.dataset.value === 'header') {
+        expect(card.querySelectorAll('.head .hx .m')).toHaveLength(3);
+        expect(card.querySelector('.sec.acc')).toBeNull();
+      } else {
+        expect(card.querySelector('.sec.acc')?.getAttribute('data-limits')).toBe(card.dataset.value);
+        expect(card.textContent).toContain('Claude');
+        expect(card.textContent).toContain('Codex');
+        expect(card.querySelector('.mk.agy')).not.toBeNull();
+      }
+    }
+    expect(row.querySelector('[aria-checked="true"]')?.getAttribute('data-value')).toBe('active');
+    cards[0]!.click();
+    expect(sets().at(-1)).toEqual({ type: 'settings.set', key: 'sidebar.limits', value: 'stack' });
+    state({ 'sidebar.limits': 'stack' });
+    await flush();
+    cards[0]!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    expect(sets().at(-1)).toEqual({ type: 'settings.set', key: 'sidebar.limits', value: 'switch' });
+  });
+
+  it('задачи Jira в панели: два превью с фикстурой групп (группы / секция), выбор пишет настройку', async () => {
+    const host = mount(Settings);
+    state();
+    await flush();
+    const row = host.querySelector('[data-key="agentura.tasks.sidebar"]')!;
+    expect(row.querySelector('select')).toBeNull();
+    const cards = [...row.querySelectorAll<HTMLElement>('[role="radio"]')];
+    expect(cards.map((c) => c.dataset.value)).toEqual(['groups', 'section']);
+    for (const card of cards) expect(card.querySelector('.pv[inert][aria-hidden="true"]')).not.toBeNull();
+    const [groups, section] = cards as [HTMLElement, HTMLElement];
+    expect(groups.querySelectorAll('.tgp')).toHaveLength(3); // две задачи и «Без задачи»
+    expect(groups.querySelector('.tgp .tkey')!.textContent).toBe('NEWMFC-1482');
+    expect(groups.querySelector('.tgp .pill')).not.toBeNull();
+    expect(groups.querySelector('.sec.tasks')).toBeNull();
+    expect(section.querySelector('.sec.tasks .tk')).not.toBeNull();
+    expect(section.querySelector('.tgp')).toBeNull();
+    expect(section.querySelector('.s .tag')!.textContent).toBe('NEWMFC-1482');
+    expect(row.querySelector('[aria-checked="true"]')?.getAttribute('data-value')).toBe('groups');
+    section.click();
+    expect(sets().at(-1)).toEqual({ type: 'settings.set', key: 'tasks.sidebar', value: 'section' });
+  });
+
+  it('карточка задачи в чате: два превью (вкладка / сплит с пометкой «только с Jiraffe»), выбор пишет настройку', async () => {
+    const host = mount(Settings);
+    state();
+    await flush();
+    const row = host.querySelector('[data-key="agentura.tasks.card"]')!;
+    const cards = [...row.querySelectorAll<HTMLElement>('[role="radio"]')];
+    expect(cards.map((c) => c.dataset.value)).toEqual(['tab', 'split']);
+    for (const card of cards) {
+      expect(card.querySelector('.pv-taskcard[inert][aria-hidden="true"]')).not.toBeNull();
+      expect(card.querySelector('.tk-strip .tkey')!.textContent).toBe('NEWMFC-1482');
+    }
+    const [tab, split] = cards as [HTMLElement, HTMLElement];
+    // «задача» — вкладка полосы рядом с «чатом», в правой панели её нет
+    expect([...tab.querySelectorAll('.tk-strip .vtab')].map((b) => b.textContent)).toEqual(['чат', 'задача']);
+    expect([...tab.querySelectorAll('.tcp-side .tcp-tabs span')].map((b) => b.textContent)).toEqual(['изменения', 'git', 'агенты']);
+    expect(tab.querySelector('.tcp-card')).toBeNull();
+    expect(split.querySelector('.tcp-card')).not.toBeNull();
+    expect(split.querySelector('.tcp-note')!.textContent).toBe('только с Jiraffe');
+    expect(row.querySelector('[aria-checked="true"]')?.getAttribute('data-value')).toBe('tab');
+    split.click();
+    expect(sets().at(-1)).toEqual({ type: 'settings.set', key: 'tasks.card', value: 'split' });
+  });
+
+  it('вкладки чатов по задаче: два превью (вкладка на чат / на задачу с внутренними вкладками), выбор пишет настройку', async () => {
+    const host = mount(Settings);
+    state();
+    await flush();
+    const row = host.querySelector('[data-key="agentura.tasks.tab"]')!;
+    const cards = [...row.querySelectorAll<HTMLElement>('[role="radio"]')];
+    expect(cards.map((c) => c.dataset.value)).toEqual(['chat', 'task']);
+    const [perChat, perTask] = cards as [HTMLElement, HTMLElement];
+    for (const card of cards) {
+      expect(card.querySelector('.pv-tasktab[inert][aria-hidden="true"]')).not.toBeNull();
+      expect(card.querySelector('.tk-strip .tkey')!.textContent).toBe('NEWMFC-1482');
+    }
+    expect(perChat.querySelector('.tk-ctabs')).toBeNull();
+    expect(perChat.querySelector('.ttp-tabs .on')!.textContent).toContain('NEWMFC-1482 · ');
+    expect(perTask.querySelector('.ttp-tabs .on')!.textContent).toBe('NEWMFC-1482');
+    expect(perTask.querySelectorAll('.tk-ctabs .ctab')).toHaveLength(2);
+    expect(row.querySelector('[aria-checked="true"]')?.getAttribute('data-value')).toBe('chat');
+    perTask.click();
+    expect(sets().at(-1)).toEqual({ type: 'settings.set', key: 'tasks.tab', value: 'task' });
   });
 
   it('шрифт карточками: каждая своим шрифтом, наведение примеряет на образец, клик пишет', async () => {
@@ -490,5 +632,121 @@ describe('вкладка настроек', () => {
     await flush();
     expect(host.querySelector('.set[data-key$="defaultModel"] .note')).not.toBeNull();
     expect(host.querySelector('.set[data-key$="defaultEffort"] .note')).toBeNull();
+  });
+});
+
+describe('страница «Интеграции»', () => {
+  const inst = (id: string, kind: 'dc' | 'cloud' = 'dc') => ({ id, name: id.toUpperCase(), baseUrl: `https://${id}.example`, kind });
+  const page = (st: IntegrationsState | undefined) => {
+    const host = mount(Settings);
+    state();
+    if (st) handleSettingsMessage({ type: 'integrations.state', state: st });
+    return host;
+  };
+  const pageEl = (host: HTMLElement) => host.querySelector<HTMLElement>('#integrations')!;
+
+  it('Jiraffe есть: версия, инстансы по именам; свои подключения пусты', async () => {
+    const host = page({ jiraffe: { state: 'ready', version: '0.8.0', instances: [inst('a'), inst('b')] }, own: [], active: 'jiraffe' });
+    await flush();
+    const p = pageEl(host);
+    expect(p.textContent).toContain('Jiraffe 0.8.0 установлен');
+    expect(p.textContent).toContain('2 инстанса: A, B');
+    expect(p.textContent).toContain('Сейчас работает: Jiraffe');
+    expect(p.textContent).toContain('Подключений нет.');
+    expect(p.querySelector('.set[data-key$="jira.source"] select')).not.toBeNull();
+    expect(p.querySelector('.set .btn')?.textContent).toBe('подключить'); // «поставить» только без Jiraffe
+    expect(p.textContent).not.toContain('поставить');
+  });
+
+  it('Jiraffe нет, два своих: «поставить», список, проверить / удалить / подключить шлют сообщения', async () => {
+    const host = page({ jiraffe: { state: 'absent', instances: [] }, own: [inst('a'), inst('b', 'cloud')], active: 'own' });
+    await flush();
+    const p = pageEl(host);
+    expect(p.textContent).toContain('не установлен');
+    expect(p.textContent).toContain('Сейчас работает: свои подключения');
+    const rows = [...p.querySelectorAll<HTMLElement>('.cn .r')];
+    expect(rows.map((r) => r.dataset.instance)).toEqual(['a', 'b']);
+    expect(rows[1]!.textContent).toContain('Cloud');
+    const btn = (el: ParentNode, text: string) =>
+      [...el.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent === text)!;
+    btn(rows[0]!, 'проверить').click();
+    btn(rows[1]!, 'удалить').click();
+    btn(p, 'подключить').click();
+    btn(p, 'поставить').click();
+    expect(posted.filter((m) => String(m.type).startsWith('integrations.'))).toEqual([
+      { type: 'integrations.test', instanceId: 'a' },
+      { type: 'integrations.disconnect', instanceId: 'b' },
+      { type: 'integrations.connect' },
+      { type: 'integrations.installJiraffe' },
+    ]);
+  });
+
+  it('ничего нет; старый Jiraffe без API; Jiraffe не используется', async () => {
+    const host = page({ jiraffe: { state: 'absent', instances: [] }, own: [] });
+    await flush();
+    const p = pageEl(host);
+    expect(p.textContent).toContain('Сейчас источника нет');
+    expect(p.textContent).toContain('Подключений нет.');
+    handleSettingsMessage({ type: 'integrations.state', state: { jiraffe: { state: 'no-api', version: '0.7.0', instances: [] }, own: [] } });
+    await flush();
+    expect(p.textContent).toContain('не отдаёт API');
+    handleSettingsMessage({ type: 'integrations.state', state: { jiraffe: { state: 'inactive', version: '0.8.0', instances: [] }, own: [inst('a')], active: 'own' } });
+    await flush();
+    expect(p.textContent).toContain('сейчас не используется');
+  });
+
+  it('источник, обновление и «изменения от людей» пишут через settings.set; инструменты агента неактивны', async () => {
+    const host = page({ jiraffe: { state: 'absent', instances: [] }, own: [] });
+    await flush();
+    const p = pageEl(host);
+    const sel = p.querySelector<HTMLSelectElement>('.set[data-key$="jira.source"] select')!;
+    sel.value = 'own';
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+    const rf = p.querySelector<HTMLSelectElement>('.set[data-key$="tasks.refresh"] select')!;
+    rf.value = 'manual';
+    rf.dispatchEvent(new Event('change', { bubbles: true }));
+    p.querySelector<HTMLElement>('.set[data-key$="tasks.humanChanges"] .tg')!.click();
+    expect(sets()).toEqual([
+      { type: 'settings.set', key: 'jira.source', value: 'own' },
+      { type: 'settings.set', key: 'tasks.refresh', value: 'manual' },
+      { type: 'settings.set', key: 'tasks.humanChanges', value: false },
+    ]);
+    const boxes = [...p.querySelectorAll<HTMLInputElement>('.cbs input')];
+    expect(boxes).toHaveLength(3);
+    expect(boxes.every((b) => b.disabled)).toBe(true);
+    expect(p.querySelector('.set[data-key$="jira.agentTools"] .soon')?.textContent).toContain('источник не пишет');
+  });
+
+  it('инструменты агента (этап 8): источник пишет — флажки активны и пишут настройку целиком', async () => {
+    const host = page({ jiraffe: { state: 'absent', instances: [] }, own: [inst('a')], active: 'own', writes: true });
+    await flush();
+    const p = pageEl(host);
+    const boxes = [...p.querySelectorAll<HTMLInputElement>('.set[data-key$="jira.agentTools"] .cbs input')];
+    expect(boxes.map((b) => [b.disabled, b.checked])).toEqual([
+      [false, true],
+      [false, true],
+      [false, true],
+    ]);
+    expect(p.querySelector('.set[data-key$="jira.agentTools"] .soon')).toBeNull();
+    boxes[1]!.checked = false;
+    boxes[1]!.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(sets()).toEqual([{ type: 'settings.set', key: 'jira.agentTools', value: { comment: true, transition: false, worklog: true } }]);
+  });
+
+  it('шестая страница в навигации; стрелки ↑↓ проходят по кругу через неё', async () => {
+    const host = mount(Settings);
+    state();
+    await flush();
+    const ids = [...host.querySelectorAll<HTMLElement>('.st-tabs [role="tab"]')].map((t) => t.dataset.section);
+    expect(ids).toEqual(['session', 'limits', 'sidebar', 'look', 'integrations', 'engine']);
+    const tab = (id: string) => host.querySelector<HTMLButtonElement>(`[data-section="${id}"]`)!;
+    tab('look').click();
+    await flush();
+    tab('look').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    await flush();
+    expect(tab('integrations').getAttribute('aria-selected')).toBe('true');
+    tab('integrations').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+    await flush();
+    expect(tab('look').getAttribute('aria-selected')).toBe('true');
   });
 });

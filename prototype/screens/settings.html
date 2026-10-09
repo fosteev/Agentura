@@ -32,6 +32,7 @@
         <button role="tab" data-section="limits">Контекст и лимиты</button>
         <button role="tab" data-section="sidebar">Боковая панель</button>
         <button role="tab" data-section="look">Внешний вид</button>
+        <button role="tab" data-section="integrations">Интеграции</button>
         <button role="tab" data-section="engine">Движок</button>
       </div>
       <div class="src">Хранится в настройках VS Code, раздел «Пользователь». Меняется сразу, без перезапуска.<a href="#">открыть settings.json</a></div>
@@ -64,6 +65,18 @@
         <span class="ds">Сколько думать перед ответом. Меняется в строке под полем ввода.</span>
         <span class="key">agentura.defaultEffort</span>
         <span class="ctl"><span class="dd">high</span></span>
+      </div>
+      <div class="set">
+        <span class="nm">Remote Control для новых сессий<span class="new">новая</span></span>
+        <span class="ds">Каждая новая сессия Claude сразу видна на claude.ai/code и в приложении Claude: оттуда можно писать, отвечать на запросы разрешений и остановить ход. Ходы идут на этой машине. В открытой сессии — кнопка «rc» под полем ввода или /rc.</span>
+        <span class="key">agentura.remoteControl · только движок Claude</span>
+        <span class="ctl"><span class="tg" role="switch" aria-checked="false"></span></span>
+      </div>
+      <div class="set">
+        <span class="nm">Префикс имени в Remote Control</span>
+        <span class="ds">Как сессия называется в списке на claude.ai: «префикс · заголовок сессии». Пусто — имя машины.</span>
+        <span class="key">agentura.remoteControlNamePrefix</span>
+        <span class="ctl"><span class="num wide">пусто — fost-mbp</span></span>
       </div>
       </section>
 
@@ -98,6 +111,18 @@
         <span class="ds">Сколько места под аккаунтом и лимитами: подробно — таблицей, компактно — по строке, плотно — мини-шкалы лимитов в заголовке панели.</span>
         <span class="key">agentura.sidebar.top</span>
         <span class="ctl"><span class="dd">подробно — как сейчас</span></span>
+      </div>
+      <div class="set">
+        <span class="nm">Лимиты движков<span class="new">новая</span></span>
+        <span class="ds">Как выложены лимиты, когда установлено два и больше движков: стопка карточек, переключатель, таблица, активный движок подробно или мини-шкалы в заголовке. Если установлен только Claude, секция выглядит как раньше.</span>
+        <span class="key">agentura.sidebar.limits</span>
+        <span class="ctl"><span class="dd">активный подробно</span></span>
+      </div>
+      <div class="set">
+        <span class="nm">Задачи Jira в боковой панели<span class="new">новая</span></span>
+        <span class="ds">Где показаны чаты по задачам Jira: группами внутри списка сессий (под ключом задачи, статус-пилюля и «＋» нового чата) или отдельной секцией «Задачи» над «Сессиями», а в строке сессии — метка ключа справа.</span>
+        <span class="key">agentura.tasks.sidebar</span>
+        <span class="ctl"><span class="dd">группы в списке сессий</span></span>
       </div>
       <div class="set">
         <span class="nm">Вид списка сессий<span class="new">новая</span></span>
@@ -146,6 +171,18 @@
         <span class="ctl"><span class="dd">стопка — раздел на репозиторий</span></span>
       </div>
       <div class="set">
+        <span class="nm">Карточка задачи в чате<span class="new">новая</span></span>
+        <span class="ds">Где показана задача Jira в чате по задаче. Панель — вкладка «задача» справа (карточка и лента изменений); сплит — карточка Jiraffe слева, чат справа (только с Jiraffe, иначе как панель); полоска — только строка над лентой.</span>
+        <span class="key">agentura.tasks.card</span>
+        <span class="ctl"><span class="dd">панель — вкладка «задача» справа</span></span>
+      </div>
+      <div class="set">
+        <span class="nm">Вкладки чатов по задаче<span class="new">новая</span></span>
+        <span class="ds">Как открываются чаты по задаче Jira. Вкладка на чат — каждый чат в своей вкладке редактора, как без задач; вкладка на задачу — одна вкладка на задачу, её чаты внутренними вкладками под полоской задачи. Действует на чаты, открытые после смены.</span>
+        <span class="key">agentura.tasks.tab</span>
+        <span class="ctl"><span class="dd">вкладка на чат</span></span>
+      </div>
+      <div class="set">
         <span class="nm">Размер текста ленты<span class="new">новая</span></span>
         <span class="ds">Лента чата масштабируется целиком: ответы, действия, код, карточки. Открытые вкладки меняются сразу.</span>
         <span class="key">agentura.feed.fontSize</span>
@@ -180,6 +217,51 @@
         <span class="ds">По умолчанию — как в VS Code. Применяется после перезагрузки окна.</span>
         <span class="key">agentura.language</span>
         <span class="ctl"><span class="dd">как в VS Code</span></span>
+      </div>
+      </section>
+
+      <section class="st-page" id="integrations" hidden>
+      <h2>Интеграции</h2>
+      <div class="set">
+        <span class="nm">Источник задач Jira<span class="new">новая</span></span>
+        <span class="ds">Откуда Agentura берёт задачи для полоски и вкладки «задача». Авто: Jiraffe, если он установлен и отдаёт API, иначе свои подключения. «Выкл» — задачи не запрашиваются; группы в списке сессий остаются.</span>
+        <span class="key">agentura.jira.source</span>
+        <span class="ctl"><span class="dd">авто</span></span>
+        <div class="ok">Сейчас работает: Jiraffe</div>
+      </div>
+      <div class="set">
+        <span class="nm">Jiraffe</span>
+        <span class="ds">Расширение Jira для VS Code. Берём из него инстансы и токены воркспейса; в карточке задачи появляется «Открыть в Agentura».</span>
+        <span class="key">fosteev.jiraffe</span>
+        <span class="ctl"></span>
+        <div class="ok">✓ Jiraffe 0.8.0 установлен <span class="dim">· 2 инстанса: jira.sccloud.ru, jira.pilot-gps.com</span></div>
+      </div>
+      <div class="set">
+        <span class="nm">Свои подключения</span>
+        <span class="ds">Jira, подключённая прямо в Agentura, без Jiraffe: адрес и токен только для этого воркспейса, токен хранится в SecretStorage VS Code.</span>
+        <span class="key">agentura.jira.connect</span>
+        <span class="ctl"><button class="btn">подключить</button></span>
+        <div class="cn">
+          <div class="r"><span class="n">pilot</span><span class="u">https://jira.pilot-gps.com</span><span class="k">Server / DC</span><button class="btn">проверить</button><button class="btn">удалить</button></div>
+        </div>
+      </div>
+      <div class="set">
+        <span class="nm">Обновлять задачу<span class="new">новая</span></span>
+        <span class="ds">Как часто читать задачу из Jira, пока открыт чат по ней. Вручную — кнопка ↻ во вкладке «задача»; после хода агента задача перечитывается в обоих режимах.</span>
+        <span class="key">agentura.tasks.refresh</span>
+        <span class="ctl"><span class="dd">каждые 30 с</span></span>
+      </div>
+      <div class="set">
+        <span class="nm">Показывать изменения от людей<span class="new">новая</span></span>
+        <span class="ds">Комментарии, статусы и ворклоги, сделанные не агентом, попадают в «изменения» и в плашку «отправить агенту?».</span>
+        <span class="key">agentura.tasks.humanChanges</span>
+        <span class="ctl"><span class="tg on" role="switch"></span></span>
+      </div>
+      <div class="set" data-key="agentura.jira.agentTools">
+        <span class="nm">Инструменты Jira для агента<span class="new">новая</span></span>
+        <span class="ds">Что агент (движок Claude) может делать в задаче чата от вашего имени через текущий источник: комментарий — без вопроса, статус и ворклог — через карточку разрешения.</span>
+        <span class="key">agentura.jira.agentTools</span>
+        <span class="ctl"><div class="cbs"><label><input type="checkbox" checked>комментарий</label><label><input type="checkbox" checked>статус <em>спрашивать разрешение</em></label><label><input type="checkbox" checked>ворклог <em>спрашивать разрешение</em></label></div></span>
       </div>
       </section>
 

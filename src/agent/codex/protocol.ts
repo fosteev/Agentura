@@ -58,6 +58,30 @@ export interface FileUpdateChange {
   diff: string;
 }
 export type ItemStatus = 'inProgress' | 'completed' | 'failed' | 'declined';
+export type CollabAgentTool =
+  | 'spawnAgent'
+  | 'sendInput'
+  | 'resumeAgent'
+  | 'wait'
+  | 'closeAgent'
+  | 'sendMessage'
+  | 'followupTask'
+  | 'interruptAgent'
+  | 'listAgents';
+export type CollabAgentToolCallStatus = 'inProgress' | 'completed' | 'failed' | 'interrupted';
+export type CollabAgentStatus =
+  | 'pendingInit'
+  | 'running'
+  | 'interrupted'
+  | 'completed'
+  | 'errored'
+  | 'shutdown'
+  | 'notFound';
+export interface CollabAgentState {
+  status: CollabAgentStatus;
+  message: string | null;
+}
+export type SubAgentActivityKind = 'started' | 'interacted' | 'interrupted' | 'completed';
 
 /** Элементы ленты хода. Остальные виды (`webSearch`, `imageView`, …) приходят как `{ type, id, … }`. */
 export type ThreadItem =
@@ -97,6 +121,19 @@ export type ThreadItem =
       status: string;
       success: boolean | null;
     }
+  | {
+      type: 'collabAgentToolCall';
+      id: string;
+      tool: CollabAgentTool;
+      status: CollabAgentToolCallStatus;
+      senderThreadId: string;
+      receiverThreadIds: string[];
+      prompt: string | null;
+      model: string | null;
+      reasoningEffort: ReasoningEffort | null;
+      agentsStates: Record<string, CollabAgentState | undefined>;
+    }
+  | { type: 'subAgentActivity'; id: string; kind: SubAgentActivityKind; agentThreadId: string; agentPath: string }
   | { type: 'contextCompaction'; id: string }
   | {
       type: 'webSearch';
@@ -112,9 +149,7 @@ export type ThreadItem =
         | 'hookPrompt'
         | 'enteredReviewMode'
         | 'exitedReviewMode'
-        | 'functionCallOutput'
-        | 'collabAgentToolCall'
-        | 'subAgentActivity';
+        | 'functionCallOutput';
       id: string;
     };
 
@@ -307,6 +342,29 @@ export interface ModelListResponse {
   nextCursor: string | null;
 }
 
+/** Окно лимита `account/rateLimits/read`: `usedPercent` 0…100, `resetsAt` — epoch в секундах. */
+export interface CodexRateLimitWindow {
+  usedPercent: number;
+  windowDurationMins?: number | null;
+  resetsAt?: number | null;
+}
+export interface CodexRateLimitSnapshot {
+  limitId?: string | null;
+  limitName?: string | null;
+  primary?: CodexRateLimitWindow | null;
+  secondary?: CodexRateLimitWindow | null;
+  planType?: string | null;
+  credits?: unknown;
+}
+export interface CodexRateLimitsResponse {
+  rateLimits: CodexRateLimitSnapshot;
+  rateLimitsByLimitId?: Record<string, CodexRateLimitSnapshot> | null;
+}
+export interface CodexAccountResponse {
+  account: { type: string; email?: string | null; planType?: string | null } | null;
+  requiresOpenaiAuth?: boolean;
+}
+
 /** Метод → [params, result] для `CodexRpcClient.request`. */
 export interface CodexRequests {
   initialize: [InitializeParams, InitializeResponse];
@@ -320,6 +378,8 @@ export interface CodexRequests {
   'turn/interrupt': [TurnInterruptParams, Record<string, never>];
   'turn/steer': [TurnSteerParams, { turnId: string }];
   'model/list': [ModelListParams, ModelListResponse];
+  'account/rateLimits/read': [Record<string, never> | undefined, CodexRateLimitsResponse];
+  'account/read': [{ refreshToken: boolean }, CodexAccountResponse];
 }
 export type CodexRequestMethod = keyof CodexRequests;
 

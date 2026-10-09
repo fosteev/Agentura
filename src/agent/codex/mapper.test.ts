@@ -203,6 +203,106 @@ describe('CodexEventMapper: рассуждение и токены', () => {
   });
 });
 
+describe('CodexEventMapper: субагенты', () => {
+  it('spawnAgent связывает дочерний тред с prompt, моделью и итоговым состоянием', () => {
+    const m = new CodexEventMapper();
+    m.threadId = 'root';
+    const started = m.map('item/started', {
+      threadId: 'root',
+      item: {
+        type: 'collabAgentToolCall',
+        id: 'call-1',
+        tool: 'spawnAgent',
+        status: 'inProgress',
+        senderThreadId: 'root',
+        receiverThreadIds: ['child'],
+        prompt: 'Find test gaps',
+        model: 'gpt-6-luna',
+        reasoningEffort: 'high',
+        agentsStates: { child: { status: 'running', message: null } },
+      },
+    });
+    expect(started).toEqual([
+      {
+        type: 'agent.start',
+        agentId: 'child',
+        taskId: 'child',
+        description: 'Find test gaps',
+        taskType: 'subagent',
+        subagentType: 'gpt-6-luna',
+        background: false,
+      },
+      { type: 'agent.progress', agentId: 'child', taskId: 'child', status: 'running' },
+    ]);
+    const done = m.map('item/completed', {
+      threadId: 'root',
+      item: {
+        type: 'collabAgentToolCall',
+        id: 'call-1',
+        tool: 'spawnAgent',
+        status: 'completed',
+        senderThreadId: 'root',
+        receiverThreadIds: ['child'],
+        prompt: 'Find test gaps',
+        model: 'gpt-6-luna',
+        reasoningEffort: 'high',
+        agentsStates: { child: { status: 'completed', message: 'No gaps found' } },
+      },
+    });
+    expect(done).toEqual([
+      { type: 'agent.end', agentId: 'child', taskId: 'child', status: 'completed', summary: 'No gaps found' },
+    ]);
+  });
+
+  it('subAgentActivity closes a known nested agent once', () => {
+    const m = new CodexEventMapper();
+    m.threadId = 'root';
+    const spawned = {
+      type: 'collabAgentToolCall',
+      id: 'call-2',
+      tool: 'spawnAgent',
+      status: 'inProgress',
+      senderThreadId: 'parent',
+      receiverThreadIds: ['child'],
+      prompt: null,
+      model: null,
+      reasoningEffort: null,
+      agentsStates: {},
+    };
+    m.map('item/started', { threadId: 'root', item: spawned });
+    expect(m.map('item/started', { threadId: 'root', item: { type: 'subAgentActivity', id: 'a', kind: 'interacted', agentThreadId: 'child', agentPath: '/root/parent/child' } })).toEqual([
+      { type: 'agent.progress', agentId: 'child', taskId: 'child', status: 'working' },
+    ]);
+    expect(m.map('item/completed', { threadId: 'root', item: { type: 'subAgentActivity', id: 'a', kind: 'completed', agentThreadId: 'child', agentPath: '/root/parent/child' } })).toEqual([
+      { type: 'agent.end', agentId: 'child', taskId: 'child', status: 'completed' },
+    ]);
+    expect(m.map('item/completed', { threadId: 'root', item: spawned })).toEqual([]);
+  });
+
+  it('interruptAgent завершает уже известного субагента по agentsStates', () => {
+    const m = new CodexEventMapper();
+    m.threadId = 'root';
+    m.map('item/started', {
+      threadId: 'root',
+      item: {
+        type: 'collabAgentToolCall', id: 'spawn', tool: 'spawnAgent', status: 'completed', senderThreadId: 'root',
+        receiverThreadIds: ['child'], prompt: null, model: null, reasoningEffort: null,
+        agentsStates: { child: { status: 'running', message: null } },
+      },
+    });
+    expect(m.map('item/completed', {
+      threadId: 'root',
+      item: {
+        type: 'collabAgentToolCall', id: 'stop', tool: 'interruptAgent', status: 'completed', senderThreadId: 'root',
+        receiverThreadIds: ['child'], prompt: null, model: null, reasoningEffort: null,
+        agentsStates: { child: { status: 'interrupted', message: 'Stopped by parent' } },
+      },
+    })).toEqual([
+      { type: 'agent.end', agentId: 'child', taskId: 'child', status: 'stopped', summary: 'Stopped by parent' },
+    ]);
+  });
+});
+
 describe('CodexEventMapper: синтетический ход', () => {
   it('turn.start → error → turn.result для отклонённого turn/start', () => {
     const m = new CodexEventMapper();

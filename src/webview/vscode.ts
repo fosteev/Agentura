@@ -1,4 +1,5 @@
 import type { AgentProvider } from '../agent/types';
+import type { TaskTabState } from '../shared/taskTab';
 import { postToHost, type FromWebview, type ToWebview, type VsCodeApiLike } from '../protocol';
 
 declare function acquireVsCodeApi(): VsCodeApiLike;
@@ -13,9 +14,21 @@ export function host(): VsCodeApiLike {
   return api;
 }
 
-export function send(message: FromWebview): void {
-  postToHost(host(), message);
+/** Показанный чат вкладки задачи (этап 7): им помечается каждое сообщение хосту (`tab`), см. `TabSlots.receive`. */
+let tabChat: string | undefined;
+
+export function setTabChat(id: string | undefined): void {
+  tabChat = id;
 }
+
+export function send(message: FromWebview): void {
+  // сообщение, отправленное до того, как webview узнал о переключении чата хостом, не должно уйти новому чату
+  postToHost(host(), tabChat === undefined ? message : ({ ...message, tab: tabChat } as unknown as FromWebview));
+}
+
+/** Подвкладки карточки задачи (roadmap 20, решение 4). */
+export const TASK_SUBS = ['comments', 'history', 'worklog', 'changes'] as const;
+export type TaskSub = (typeof TASK_SUBS)[number];
 
 /** Состояние правой панели вкладки чата (широкий режим): свои значения у каждой вкладки. */
 export interface PanelState {
@@ -25,6 +38,8 @@ export interface PanelState {
   off?: boolean;
   /** Активная вкладка панели. */
   tab?: 'changes' | 'git' | 'agents';
+  /** Вкладка чата по задаче (roadmap 20): «чат» или «задача» (карточка на всю вкладку; панель и поле ввода прячутся). */
+  view?: 'chat' | 'task';
   /** Вкладка «git»: файлы деревом (иначе списком путей). */
   gitTree?: boolean;
   /** Вкладка «git»: выбранный репозиторий (`root`) в раскладке «выбор сверху». */
@@ -33,6 +48,12 @@ export interface PanelState {
   gitAgent?: boolean;
   /** Охват вкладки «изменения»: вся сессия или последний ход. */
   changes?: 'session' | 'turn';
+  /** Подвкладка карточки задачи (нет — комментарии). */
+  taskView?: TaskSub;
+  /** Вкладка «задача»: время (мс) самого позднего события, которое человек уже видел; новее — «новое». */
+  taskSeen?: number;
+  /** Ключ задачи, для которой записано `taskSeen` (другая задача — отсчёт заново). */
+  taskSeenKey?: string;
   /** Охват вкладки «агенты» по видам (список охвата не имеет): последний ход или вся сессия. */
   agScope?: Partial<Record<'tree' | 'lanes' | 'cards', 'turn' | 'session'>>;
 }
@@ -45,10 +66,14 @@ export interface WebviewState {
   panel?: PanelState;
   /** Боковая панель: свёрнутые секции. */
   fold?: SidebarFold;
+  /** Боковая панель: свёрнутые группы задач (ключи групп). */
+  taskFold?: string[];
   /** Вкладка настроек: открытый раздел. */
   settingsSection?: SettingsSection;
   /** Вкладка графа агентов: выбранные ход и агент (`sessionId` — сессия, которую граф показывал). */
   graph?: GraphViewState;
+  /** Вкладка на задачу (`tasks.tab = task`, roadmap 19, этап 7): её чаты — по ним сериализатор вернёт их все. */
+  taskTab?: TaskTabState;
 }
 
 /** Выбор во вкладке графа агентов: переживает скрытие вкладки и перезагрузку окна. */
@@ -58,13 +83,15 @@ export interface GraphViewState {
 }
 
 /** Разделы вкладки настроек (страницы, порядок в навигации). */
-export const SETTINGS_SECTIONS = ['session', 'limits', 'sidebar', 'look', 'engine'] as const;
+export const SETTINGS_SECTIONS = ['session', 'limits', 'sidebar', 'look', 'integrations', 'engine'] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 
 /** Свёрнутые секции боковой панели (нет поля — развёрнута). */
 export interface SidebarFold {
   account?: boolean;
   sessions?: boolean;
+  /** Секция «Задачи» (вид `section`). */
+  tasks?: boolean;
 }
 
 function readState(): WebviewState {
@@ -96,7 +123,13 @@ export function persistSession(sessionId: string, provider?: AgentProvider): voi
  */
 export function forgetSession(): void {
   const st = readState();
-  writeState(st.panel ? { panel: st.panel } : {});
+  // список чатов вкладки задачи принадлежит вкладке (его ведёт хост), а не брошенной сессии
+  writeState({ ...(st.panel ? { panel: st.panel } : {}), ...(st.taskTab ? { taskTab: st.taskTab } : {}) });
+}
+
+/** Чаты вкладки задачи от хоста (`tab.chats.persist`): сериализатор вернёт их после перезагрузки окна. */
+export function saveTaskTab(taskTab: TaskTabState): void {
+  writeState({ ...readState(), taskTab });
 }
 
 /**
@@ -113,6 +146,14 @@ export function readPanel(): PanelState {
   if (p.tab === 'turn' || p.tab === 'changes') out.tab = 'changes';
   else if (p.tab === 'git') out.tab = 'git';
   else if (p.tab === 'agents') out.tab = 'agents';
+  // вкладка «задача» ушла из правой панели (roadmap 20, решение 2): сохранённое 'task' открывает «изменения»
+  else if (p.tab === 'task') out.tab = 'changes';
+  if (p.view === 'chat' || p.view === 'task') out.view = p.view;
+  // 'card' — прежний вид «карточка»: теперь это комментарии
+  if (p.taskView === 'card') out.taskView = 'comments';
+  else if (TASK_SUBS.includes(p.taskView as TaskSub)) out.taskView = p.taskView as TaskSub;
+  if (typeof p.taskSeen === 'number' && Number.isFinite(p.taskSeen) && p.taskSeen >= 0) out.taskSeen = p.taskSeen;
+  if (typeof p.taskSeenKey === 'string' && p.taskSeenKey) out.taskSeenKey = p.taskSeenKey;
   if (typeof p.gitTree === 'boolean') out.gitTree = p.gitTree;
   if (typeof p.gitRepo === 'string' && p.gitRepo) out.gitRepo = p.gitRepo;
   if (typeof p.gitAgent === 'boolean') out.gitAgent = p.gitAgent;
@@ -140,7 +181,21 @@ export function readFold(): SidebarFold {
   const out: SidebarFold = {};
   if (typeof f.account === 'boolean') out.account = f.account;
   if (typeof f.sessions === 'boolean') out.sessions = f.sessions;
+  if (typeof f.tasks === 'boolean') out.tasks = f.tasks;
   return out;
+}
+
+/** Потолок запоминаемых свёрнутых групп: ключи пропавших задач не копятся вечно. */
+const TASK_FOLD_MAX = 200;
+
+/** Свёрнутые группы задач в боковой панели (ключи `jira:<инстанс>:<KEY>`); переживают перезагрузку вида. */
+export function readTaskFold(): string[] {
+  const v = readState().taskFold;
+  return Array.isArray(v) ? v.filter((k): k is string => typeof k === 'string').slice(0, TASK_FOLD_MAX) : [];
+}
+
+export function saveTaskFold(keys: readonly string[]): void {
+  writeState({ ...readState(), taskFold: keys.slice(-TASK_FOLD_MAX) });
 }
 
 export function saveFold(fold: SidebarFold): void {

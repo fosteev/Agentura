@@ -46,6 +46,8 @@ export type FeedRow =
       images?: ImageRef[];
       /** Файлы сообщения (этап 8): чип с именем и размером, содержимое в ленту не выводится. */
       files?: FileRef[];
+      /** Реплика набрана на телефоне или claude.ai (Remote Control, roadmap 17). */
+      via?: 'phone' | 'web';
     }
   | {
       id: number;
@@ -185,6 +187,17 @@ export interface ChatState {
   engine?: AgentProvider;
   /** Идёт ход основного агента (`updateInTurn`) — куда вернуться после ответа на запрос. */
   inTurn?: boolean;
+  /** Remote Control вкладки (`remote.state`); нет — выключен. Сбрасывается вместе с сессией. */
+  remote?: RemoteView;
+  /** Реплики с claude.ai/телефона, ещё не показанные в ленте (`remote.prompt` → `turn.start`): текст → откуда. */
+  remotePrompts?: { text: string; from: 'phone' | 'web' }[];
+}
+
+export interface RemoteView {
+  state: 'connecting' | 'on' | 'off' | 'error';
+  url?: string;
+  error?: 'no-token' | 'oauth' | 'rejected' | 'network' | 'closed' | 'superseded';
+  detail?: string;
 }
 
 export function initialState(): ChatState {
@@ -335,6 +348,28 @@ function deliverUser(
   atMs: number,
   images?: readonly ImageRef[],
   files?: readonly FileRef[],
+  toEnd = false,
+): ChatState {
+  const out = deliverUserRow(s, prompt, atMs, images, files, toEnd);
+  // реплика пришла с claude.ai/телефона (`remote.prompt` был раньше хода): отметить строку и снять ожидание
+  const want = splitPrompt(prompt).text.trim();
+  const k = out.remotePrompts?.findIndex((p) => p.text.trim() === want) ?? -1;
+  if (k < 0) return out;
+  const { remotePrompts, ...rest } = out;
+  const from = remotePrompts![k]!.from;
+  const left = remotePrompts!.filter((_, i) => i !== k);
+  const next: ChatState = left.length ? { ...rest, remotePrompts: left } : rest;
+  const i = lastIndex(next.rows, (r) => r.kind === 'user' && !r.queued && r.text.trim() === want);
+  if (i < 0) return next;
+  return replaceAt(next, i, { ...(next.rows[i] as Extract<FeedRow, { kind: 'user' }>), via: from });
+}
+
+function deliverUserRow(
+  s: ChatState,
+  prompt: string,
+  atMs: number,
+  images?: readonly ImageRef[],
+  files?: readonly FileRef[],
   /** Новый ход (`turn.start`): своя строка «в очереди» встаёт в конец ленты, а не остаётся посреди прошлого хода. */
   toEnd = false,
 ): ChatState {
@@ -398,6 +433,8 @@ export function seedHistory(
     ...(seed.title ? { title: seed.title } : {}),
     ...(seed.model ? { model: seed.model } : {}),
     ...(seed.mode ? { mode: seed.mode } : {}),
+    // мост живёт отдельно от истории: хост шлёт `remote.state` по своему расписанию
+    ...(s.remote ? { remote: s.remote } : {}),
   };
   if (seed.skippedTurns > 0) out = addSys(out, [ui.sys.historyTrimmed(seed.skippedTurns)]);
   for (const e of events) out = applyEvent(out, e, now);
@@ -458,6 +495,17 @@ function reduce(s: ChatState, e: AgentEvent, now: number): ChatState {
       ]);
       const last = out.rows[out.rows.length - 1] as Extract<FeedRow, { kind: 'sys' }>;
       return replaceAt(out, out.rows.length - 1, { ...last, at: clock(now) });
+    }
+    case 'remote.state':
+      return remoteState(s, e, now);
+    case 'remote.prompt': {
+      // реплика уже могла попасть в ленту (ход начался раньше события) — пометить; иначе ждёт `turn.start`
+      const want = e.text.trim();
+      const i = lastIndex(s.rows, (r) => r.kind === 'user' && !r.queued);
+      const row = i >= 0 ? (s.rows[i] as Extract<FeedRow, { kind: 'user' }>) : undefined;
+      if (row && !row.via && row.text.trim() === want)
+        return replaceAt(s, i, { ...row, via: e.from });
+      return { ...s, remotePrompts: [...(s.remotePrompts ?? []), { text: e.text, from: e.from }] };
     }
     case 'limit.update':
       if (e.status !== 'rejected') return s;
@@ -774,7 +822,8 @@ function resolveCard(
   if (i < 0) return s;
   const card = s.rows[i] as Card;
   const at = clock(now);
-  const byUser = e.by === 'user';
+  // с claude.ai/телефона ответили так же, как здесь: карточка закрывается тем же итогом
+  const byUser = e.by === 'user' || e.by === 'remote';
   switch (card.kind) {
     case 'perm': {
       const decision: PermissionDecision =
@@ -817,6 +866,43 @@ function resolveCard(
       });
     }
   }
+}
+
+/** Текст причины ошибки или отключения моста Remote Control. */
+export function remoteErrorText(r: RemoteView): string {
+  if (!r.error) return '';
+  return r.error === 'rejected'
+    ? ui.sys.remoteError.rejected(r.detail)
+    : ui.sys.remoteError[r.error];
+}
+
+/** Переход состояния моста Remote Control: состояние в `remote`, строка в ленту — на включение, выключение и ошибку. */
+function remoteState(
+  s: ChatState,
+  e: Extract<AgentEvent, { type: 'remote.state' }>,
+  now: number,
+): ChatState {
+  const prev = s.remote;
+  const view: RemoteView = {
+    state: e.state,
+    ...(e.url ? { url: e.url } : {}),
+    ...(e.error ? { error: e.error } : {}),
+    ...(e.detail ? { detail: e.detail } : {}),
+  };
+  const out: ChatState = { ...s, remote: view };
+  const at = clock(now);
+  const sys = (text: string, tone?: 'ok' | 'bad'): ChatState =>
+    push(out, { kind: 'sys', text: [text], at, ...(tone ? { tone } : {}) });
+  if (e.error) {
+    if (prev?.state === e.state && prev.error === e.error && prev.detail === e.detail) return out;
+    return sys(remoteErrorText(view), 'bad');
+  }
+  if (e.state === 'on') {
+    if (prev?.state === 'on' && prev.url === e.url) return out;
+    return sys(ui.sys.remoteOn((e.url ?? '').replace(/^https?:\/\//, '')), 'ok');
+  }
+  if (e.state === 'off' && prev?.state === 'on') return sys(ui.sys.remoteOff);
+  return out;
 }
 
 function permissionSummary(

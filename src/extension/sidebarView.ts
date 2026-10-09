@@ -6,8 +6,21 @@ import { ChatPanel } from './chatPanel';
 import type { SessionsService } from './sessionsService';
 import type { Logger } from './logger';
 import type { UsageService } from './usage';
+import type { AgyQuotaService } from './agyQuota';
+import type { CodexLimitsService } from './codexLimits';
+import type { EngineLocator } from './engineLocator';
+import { summarizeAgy, summarizeCodex } from './engineLimits';
+import { decorateSessions, parseTaskKey, type TaskGroups } from './taskGroups';
 import { hostStrings } from '../shared/l10n';
 import { attachMessaging, currentLanguage, renderWebview, userFontsDir, webviewOptions } from './webviewHost';
+
+/** Источники лимитов не-Claude движков (roadmap 18) и их локаторы. */
+export interface SidebarEngines {
+  codexLimits: CodexLimitsService;
+  agyQuota: AgyQuotaService;
+  codexEngine: EngineLocator;
+  antigravityEngine: EngineLocator;
+}
 
 export const SIDEBAR_VIEW_ID = 'agentura.sidebar';
 
@@ -27,6 +40,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     private readonly usage: UsageService,
     private readonly sessions: SessionsService,
     private readonly account: AccountService,
+    private readonly taskGroups: TaskGroups,
+    private readonly engines: SidebarEngines,
   ) {}
 
   resolveWebviewView(view: vscode.WebviewView): void {
@@ -39,6 +54,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       switch (m.type) {
         case 'session.new':
           void vscode.commands.executeCommand('agentura.newSession');
+          break;
+        case 'task.newChat':
+          // ключ из webview недоверенный: не ключ группы — молча игнор (иначе chatForTask спросил бы ключ в поле ввода)
+          if (parseTaskKey(m.taskKey)) void vscode.commands.executeCommand('agentura.chatForTask', m.taskKey);
           break;
         case 'session.resume':
           void vscode.commands.executeCommand('agentura.openSession', m.sessionId, m.provider);
@@ -55,6 +74,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           break;
         case 'limits.refresh':
           void this.refreshUsage();
+          break;
+        case 'engine.login':
+          void this.openLogin(m.engine);
           break;
         case 'ready':
           // Опрос лимитов идёт с активации; открытой позже панели отдаём снимок (в кулдауне — из кэша).
@@ -75,12 +97,16 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         this.rows = rows;
         this.pushSessions();
       }),
+      this.taskGroups.onChange(() => this.pushSessions()),
       this.account.onUpdate((a) => this.post({ type: 'account.info', ...a })),
+      this.engines.codexLimits.onUpdate(() => void this.pushEngineLimits()),
+      this.engines.agyQuota.onUpdate(() => void this.pushEngineLimits()),
       ChatPanel.onDidChange(() => this.pushSessions()),
       vscode.workspace.onDidChangeConfiguration((e) => {
         if (
           (e.affectsConfiguration('agentura.sessionList') ||
-            e.affectsConfiguration('agentura.sidebar')) &&
+            e.affectsConfiguration('agentura.sidebar') ||
+            e.affectsConfiguration('agentura.tasks.sidebar')) &&
           this.viewWrites === 0
         )
           this.pushView();
@@ -99,12 +125,16 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
   private pushSessions(): void {
     const current = ChatPanel.currentSessionId();
+    const provider = ChatPanel.currentProvider();
     const project = vscode.workspace.workspaceFolders?.[0]?.name;
+    const { sessions, tasks } = decorateSessions(this.rows, this.taskGroups.groups());
     this.post({
       type: 'sessions.update',
-      sessions: this.rows,
+      sessions,
+      ...(tasks.length ? { tasks } : {}),
       ...(current ? { current } : {}),
       ...(project ? { project } : {}),
+      ...(provider ? { currentProvider: provider } : {}),
     });
   }
 
@@ -116,6 +146,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       context: v['sessionList.context'],
       time: v['sessionList.time'],
       top: v['sidebar.top'],
+      limits: v['sidebar.limits'],
+      tasks: v['tasks.sidebar'],
     });
   }
 
@@ -158,11 +190,46 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  /** Кнопка ↻ в боковой панели и команда «Обновить лимиты». */
+  /**
+   * «войти» у движка без входа: терминал, в котором сразу запущен найденный исполняемый файл (путь из настройки
+   * тоже), без shell и кавычек — `codex login` / `agy`. Не нашли — команда по имени из PATH.
+   */
+  private async openLogin(engine: 'codex' | 'antigravity'): Promise<void> {
+    const loc = engine === 'codex' ? this.engines.codexEngine : this.engines.antigravityEngine;
+    const exe = (await loc.locate(true).catch(() => undefined))?.path ?? (engine === 'codex' ? 'codex' : 'agy');
+    const args = engine === 'codex' ? ['login'] : [];
+    vscode.window.createTerminal({ name: [engine === 'codex' ? 'codex' : 'agy', ...args].join(' '), shellPath: exe, shellArgs: args }).show();
+  }
+
+  /** Сводка Codex и Antigravity → `engines.limits`; не установленный движок приходит как `missing`. */
+  private async pushEngineLimits(): Promise<void> {
+    const { codexLimits, agyQuota, codexEngine, antigravityEngine } = this.engines;
+    const [codexVersion, agy] = await Promise.all([
+      codexEngine.locate(true).then((r) => (r.path && r.version ? `codex ${r.version}` : undefined), () => undefined),
+      antigravityEngine.locate(true).then(
+        (r) => ({ installed: !!r.path && !!r.version, version: r.path && r.version ? `agy ${r.version}` : undefined }),
+        () => ({ installed: false, version: undefined }),
+      ),
+    ]);
+    this.post({
+      type: 'engines.limits',
+      engines: [
+        summarizeCodex(codexLimits.snapshot, codexVersion),
+        summarizeAgy(agyQuota.snapshot, agy.installed, agy.version),
+      ],
+    });
+  }
+
+  /** Кнопка ↻ в боковой панели и команда «Обновить лимиты». Claude, Codex и Antigravity — параллельно. */
   async refreshUsage(): Promise<void> {
+    const { codexLimits, agyQuota, antigravityEngine } = this.engines;
+    // agy — только установленный: `AgyQuotaService` ищет его громко, и без agy каждый опрос писал бы «не найден»
+    const agy = antigravityEngine.available().then((ok) => (ok ? agyQuota.refresh() : undefined));
+    const others = Promise.allSettled([codexLimits.refresh(), agy]).then(() => this.pushEngineLimits());
     const snap = await this.usage.refresh();
     if (snap.error) this.log.warn(`Лимиты не обновились: ${snap.error}`);
     else this.log.info(`Лимиты: данные на ${new Date(snap.updatedAt).toLocaleTimeString(hostStrings(currentLanguage()).locale)}`);
     this.post({ type: 'limits.update', ...snap });
+    await others;
   }
 }

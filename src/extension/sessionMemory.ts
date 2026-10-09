@@ -11,7 +11,7 @@ const ENGINE = 'agentura.engineVersion';
 
 /**
  * Память воркспейса (`workspaceState`, этап 6): открытые вкладки (запас к состоянию webview для
- * сериализатора) и версия движка.
+ * сериализатора), версия движка. Сессии по задачам — `TaskGroups` (`taskGroups.ts`).
  */
 export class SessionMemory {
   constructor(private readonly state: MementoLike) {}

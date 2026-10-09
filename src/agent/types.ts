@@ -237,8 +237,11 @@ export type AgentEvent =
       type: 'permission.resolved';
       toolUseId: string;
       decision: 'allow' | 'deny';
-      /** `user` — ответ из интерфейса; `abort` — движок отменил запрос (прерывание, закрытие). */
-      by: 'user' | 'abort';
+      /**
+       * `user` — ответ из интерфейса; `remote` — ответили на claude.ai / с телефона (Remote Control);
+       * `abort` — движок отменил запрос (прерывание, закрытие).
+       */
+      by: 'user' | 'remote' | 'abort';
     })
   | (Base & {
       type: 'usage.message';
@@ -343,6 +346,20 @@ export type AgentEvent =
       resetsAt?: number;
     })
   | (Base & { type: 'mode.changed'; mode: PermissionMode })
+  /**
+   * Remote Control (roadmap 17): состояние моста к claude.ai. `on` — сессия видна на claude.ai/code и в
+   * приложении, `url` — её ссылка. `error` — причина: нет токена, OAuth отвергнут, сервер отказал, сеть,
+   * транспорт закрыт; `superseded` (при `off`) — сессию подхватил другой воркер.
+   */
+  | (Base & {
+      type: 'remote.state';
+      state: 'connecting' | 'on' | 'off' | 'error';
+      url?: string;
+      error?: 'no-token' | 'oauth' | 'rejected' | 'network' | 'closed' | 'superseded';
+      detail?: string;
+    })
+  /** Промпт, набранный на claude.ai (`web`) или в мобильном приложении (`phone`): уже ушёл движку. */
+  | (Base & { type: 'remote.prompt'; uuid: string; text: string; from: 'phone' | 'web' })
   | (Base & {
       type: 'session.closed';
       /** `exit` — процесс движка завершился; `error` — поток оборвался ошибкой; `disposed` — закрыли мы. */
@@ -379,6 +396,29 @@ export interface SessionOptions {
   title?: string;
   /** Разрешить `bypassPermissions` (настройка `agentura.allowBypassPermissions`). */
   allowBypassPermissions?: boolean;
+  /** Инструменты задачи Jira (roadmap 19, этап 8): подключает только Claude (MCP-сервер `agentura_jira`), остальные движки — нет. */
+  taskTools?: TaskTools;
+}
+
+/** Что агент может сделать в задаче чата сейчас: ключ задачи по умолчанию и включённые инструменты. */
+export interface TaskToolsSpec {
+  /** Ключ задачи чата (`NEWMFC-1482`). */
+  issue: string;
+  /** Имя инстанса Jira — для описания сервера модели. */
+  instance: string;
+  tools: ('comment' | 'transition' | 'worklog')[];
+}
+
+/**
+ * Инструменты задачи Jira для агента: хост решает, есть ли они (чат в задаче, источник пишет, настройка), и выполняет
+ * вызов. Движок подписывается на изменения и пересобирает набор (привязка/отвязка, смена источника или настройки).
+ */
+export interface TaskTools {
+  /** Нет — инструментов нет (чат вне задачи, источник только читает или всё выключено). */
+  spec(): TaskToolsSpec | undefined;
+  onDidChange(listener: () => void): () => void;
+  /** Вызов инструмента; аргументы — от модели (недоверенные). Ошибка — `isError`, не исключение. */
+  run(tool: 'comment' | 'transition' | 'worklog', args: Record<string, unknown>): Promise<{ text: string; isError?: boolean }>;
 }
 
 /**
@@ -455,6 +495,11 @@ export interface AgentSession {
   capabilities(): Promise<SessionCapabilities>;
   /** Точный контекст от движка; то же уходит событием `context.usage` после каждого хода. */
   contextUsage(): Promise<AgentEventOf<'context.usage'> | undefined>;
+  /**
+   * Remote Control (roadmap 17): сессия видна и управляема с claude.ai/code и телефона. Состояние приходит
+   * событием `remote.state`. Необязателен: есть только у Claude (`features.remote`).
+   */
+  setRemote?(on: boolean): Promise<void>;
   dispose(): void;
 }
 

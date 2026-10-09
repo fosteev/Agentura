@@ -1,5 +1,110 @@
 # Changelog
 
+## 0.10.0 — 2026-10-09
+
+### Added
+
+- **"Chat | task" tabs.** A chat on a Jira issue gets tabs in the task strip. "Task" is the full issue card in the
+  width of the chat tab (the chat keeps its scroll and draft): description and comments as sanitized HTML, fields, time,
+  attachments as file tiles and the task's chats, with sub-tabs Comments, History, Worklog and Changes. Links open
+  in the browser (http, https, mailto only).
+- **Writing from the card.** Change status (transitions that need extra fields are disabled), post a comment
+  (Ctrl/Cmd+Enter) or log work, on your behalf and without a confirmation dialog; needs your own connection or
+  Jiraffe with API v2. "To chat" attaches the task as a `<KEY>.md` file.
+- **Indicators on "chat".** While "task" is open, the chat tab shows a spinner with the number of new feed entries
+  when a turn is running, and a dot with a toast when the agent waits for a permission, answer or plan.
+
+### Changed
+
+- `agentura.tasks.card` is now `tab` (default) or `split`; the old `panel` and `strip` read as `tab`. The right
+  panel no longer has a "task" tab.
+
+## 0.9.0 — 2026-10-08
+
+### Added
+
+- **Chats by Jira task.** Chats on the same Jira issue are grouped under it. `agentura.tasks.sidebar` picks the
+  sidebar layout: `groups` (default — chats nested in the session list under the task key) or `section` (a "Tasks"
+  section above "Sessions", a key tag on the session row). "Agentura: Chat for Issue…" starts a chat from a key or a
+  link; "Bind to Issue…" / "Unbind from Issue" bind and unbind an existing one; "+" on a group starts one more
+  chat on the task.
+- **Two Jira sources.** Connections made in Agentura ("Agentura: Connect Jira…", Jira Data Center and Cloud, the token
+  lives in SecretStorage per workspace) or the [Jiraffe](https://github.com/fosteev/jiraffe) extension, which needs
+  **0.8.0** for the integration (older versions are ignored and Agentura falls back to its own connections).
+  `agentura.jira.source`: `auto` (default), `jiraffe`, `own`, `off`.
+- **Task strip and "task" tab.** A chat on a task gets a strip above the feed (key, status, title, link) and a "task"
+  tab in the right panel: the card (description, comments, attachments, the task's chats) and "changes" (status and
+  field changes, comments, worklogs; what the agent wrote is highlighted, a comment from a person made while the agent
+  was working shows a notice with "to chat"). `agentura.tasks.card`: `panel` (default), `split` (Jiraffe's card beside
+  the chat, Jiraffe source only) or `strip`. `agentura.tasks.refresh` and `agentura.tasks.humanChanges` tune polling
+  and the notices.
+- **A tab per task.** `agentura.tasks.tab=task` opens one editor tab per task with its chats as inner tabs
+  (`chat` — a tab per chat — stays the default).
+- **Integrations settings page.** Source, Jiraffe status, the list of own connections (connect, test, remove),
+  refresh, human changes and the agent tools in one place.
+- **Jira tools for Claude.** In a chat on a task the agent can write to it on your behalf through the in-process MCP
+  server `agentura_jira`: `comment`, `transition`, `worklog`, switched per tool with `agentura.jira.agentTools`. A
+  short comment on the chat's own task is posted without asking; a long one, one that looks like a secret, more than
+  three in ten minutes, a comment on another task, plan mode, every status change and every worklog go through the
+  usual permission card (also in bypass and auto modes). Codex and Antigravity do not get these tools.
+- **AI Tokens in worklogs.** A worklog the agent writes carries this chat's token usage so far (input, output and
+  cache writes of the main turns, the current turn included; cache reads and subagents are not counted) unless the
+  agent passes its own number: Tempo through Jiraffe gets the "AI Tokens" attribute, a plain Jira worklog gets
+  "(AI Tokens: N)" appended to its comment.
+- **What reaches the model.** The issue key and connection name of a chat's task go to Claude with the Jira tools;
+  the issue card (description, comments) only as the file "Chat for Issue…" (or Jiraffe's "Open in Agentura")
+  puts into the prompt box, a person's
+  comment only when you move it to the chat, and whatever the agent's own Jira tool calls return. Polling for the
+  card and the change feed stays in the extension.
+
+## 0.8.0 — 2026-10-08
+
+### Added
+
+- **Chat with context from other extensions.** `agentura.openWithContext({ context, name?, prompt?, sessionKey? })`
+  opens a chat tab beside the editor with `context` attached as a text file in the input box and `prompt` typed into
+  an empty input. A session started this way is remembered under `sessionKey` (per workspace), so the next call
+  resumes it; a key whose session was never sent starts over. Jiraffe uses it for "Ask AI" on a Jira issue.
+
+## 0.7.1 — 2026-10-07
+
+### Changed
+
+- **Engine limits layout previews.** The "Sidebar" settings page now shows all five layouts as selectable
+  preview cards with Claude, Codex and Antigravity limits instead of a dropdown. Click or use arrow keys to select.
+- **Codex subagents.** The agents tab and graph now show Codex subagent lifecycle, hierarchy, prompt, model and
+  returned summary.
+
+## 0.7.0 — 2026-10-07
+
+### Added
+
+- **Limits of every engine in the sidebar.** "Accounts & limits" now shows Claude, Codex and Antigravity side by
+  side once more than one engine is installed (only Claude installed — the section looks as before).
+  `agentura.sidebar.limits` picks the layout: `active` (default — the engine of the current chat tab expanded, the
+  others one line with their worst limit), `stack`, `switch`, `table` or `header` (mini bars in the panel title with
+  a popup). Also on the "Sidebar" settings page and in "Agentura: Limits View…". With `agentura.sidebar.top` set to
+  `dense` the limits always go to the header.
+  - Codex limits come from `codex app-server` (`account/rateLimits/read`, `account/read`): 5-hour and weekly windows,
+    plan and email. Antigravity quota comes from `agy /usage` as before, shown as used instead of remaining.
+  - ↻ and the background poll refresh all engines; an engine you are not signed in to shows "sign in", which opens a
+    terminal with `codex login` / `agy`.
+
+## 0.6.0 — 2026-10-06
+
+### Added
+
+- **Remote Control for Claude tabs.** Mirror a session to claude.ai/code and the Claude mobile app and keep driving it
+  from there: `rc` under the input box (all six layouts), `/rc` or `/remote-control`. The `rc` menu has a switch, a QR
+  code for the phone, the session link and a copy button; a "● remote" badge sits in the tab header while it is on.
+  - From claude.ai you can send messages (marked "from phone" / "from claude.ai" in the feed), answer approvals,
+    agent questions and plans (whoever answers first wins, the other side's card closes), stop a turn, and change the
+    model or permission mode (`bypassPermissions` only with `agentura.allowBypassPermissions`).
+  - `agentura.remoteControl` turns it on for every Claude tab; `agentura.remoteControlNamePrefix` sets the session name
+    prefix on claude.ai (empty means the machine name). Both are on the "New session" settings page.
+  - Built on the Agent SDK's alpha `bridge` API (the CLI's `--remote-control` does not work headless). Uses the Claude
+    Code login; the bridge credentials refresh themselves and reconnect once if they expire.
+
 ## 0.5.0 — 2026-10-06
 
 ### Added

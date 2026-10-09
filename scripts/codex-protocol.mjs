@@ -108,6 +108,7 @@ const FIELDS = {
   ToolRequestUserInputParams: ['questions', 'isBlocking'],
   ToolRequestUserInputResponse: ['answers'],
   ThreadTokenUsage: ['total', 'last', 'modelContextWindow'],
+  CollabAgentState: ['status', 'message'],
   ErrorNotification: ['error', 'willRetry', 'threadId', 'turnId'],
 };
 /** Значения union-ов, на которые завязан маппер. */
@@ -131,7 +132,23 @@ const LITERALS = {
     'fileChange',
     'mcpToolCall',
     'plan',
+    'collabAgentToolCall',
+    'subAgentActivity',
   ],
+  CollabAgentTool: [
+    'spawnAgent',
+    'sendInput',
+    'resumeAgent',
+    'wait',
+    'closeAgent',
+    'sendMessage',
+    'followupTask',
+    'interruptAgent',
+    'listAgents',
+  ],
+  CollabAgentToolCallStatus: ['inProgress', 'completed', 'failed', 'interrupted'],
+  CollabAgentStatus: ['pendingInit', 'running', 'interrupted', 'completed', 'errored', 'shutdown', 'notFound'],
+  SubAgentActivityKind: ['started', 'interacted', 'interrupted', 'completed'],
 };
 
 const out = mkdtempSync(join(tmpdir(), 'codex-proto-'));

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { unlink } from 'node:fs/promises';
 import type {
+  McpServerConfig,
   Options,
   PermissionResult,
   Query,
@@ -9,6 +10,8 @@ import type {
   listSessions as sdkListSessions,
   getSessionMessages as sdkGetSessionMessages,
   renameSession as sdkRenameSession,
+  createSdkMcpServer as sdkCreateSdkMcpServer,
+  tool as sdkTool,
 } from '@anthropic-ai/claude-agent-sdk';
 import type {
   AccountInfo,
@@ -31,11 +34,21 @@ import type {
   SessionHistory,
   SessionInfo,
   SessionOptions,
+  TaskTools,
 } from '../types';
 import { AsyncQueue, EventHub } from '../stream';
 import type { Lang } from '../../shared/l10n';
 import { ClaudeEventMapper } from './mapper';
 import { PermissionBroker } from './permissions';
+import { RemoteBridge, type RemoteConfig } from './remote';
+import {
+  buildJiraServer,
+  JIRA_COMMENT_TOOL,
+  JIRA_SERVER,
+  specSignature,
+  type McpKit,
+} from './jiraMcp';
+import { autoCommentOk, jiraToolOf } from '../../shared/jiraTools';
 import { buildHistory, DEFAULT_MAX_TURNS, findRetryPoint, type HistoryMessage } from './history';
 import { defaultClaudeHome, transcriptPath } from '../../data/sessions';
 import { readTranscriptExtras } from '../../data/transcriptExtras';
@@ -63,6 +76,9 @@ interface SdkModule {
   listSessions: typeof sdkListSessions;
   getSessionMessages: typeof sdkGetSessionMessages;
   renameSession: typeof sdkRenameSession;
+  /** Инструменты задачи Jira (этап 8 roadmap 19); в подменах SDK из тестов может не быть. */
+  createSdkMcpServer?: typeof sdkCreateSdkMcpServer;
+  tool?: typeof sdkTool;
 }
 
 export type LogFn = (level: 'debug' | 'info' | 'warn' | 'error', message: string) => void;
@@ -80,6 +96,8 @@ export interface ClaudeAdapterConfig {
   lang?: () => Lang;
   /** Подмена SDK в тестах. */
   loadSdk?: () => Promise<SdkModule>;
+  /** zod для схем MCP-инструментов (тот же пакет, что у SDK); по умолчанию динамический `import('zod')`. */
+  loadZod?: () => Promise<Pick<McpKit, 'z'>>;
   /** База окружения; по умолчанию `process.env`. */
   env?: NodeJS.ProcessEnv;
   /**
@@ -89,6 +107,8 @@ export interface ClaudeAdapterConfig {
   settingSources?: ('user' | 'project' | 'local')[];
   /** Диагностика: каждое сырое сообщение SDK до маппинга (smoke, отладка). */
   trace?: (message: unknown) => void;
+  /** Remote Control (roadmap 17): модуль моста, токен, префикс имени, bypass — инъекцией для тестов. */
+  remote?: RemoteConfig;
 }
 
 /**
@@ -178,6 +198,9 @@ export function userContent(
 export const ACCOUNT_INFO_TIMEOUT_MS = 15_000;
 /** Сколько ждать ответа одноразового запроса (`complete`). */
 export const COMPLETE_TIMEOUT_MS = 60_000;
+/** `comment` инструментов Jira без вопроса — не больше стольких за окно (приёмка этапа 8); сверх — карточкой разрешения. */
+export const AUTO_COMMENTS = 3;
+export const AUTO_WINDOW_MS = 10 * 60_000;
 
 /** `parentUuid` записи `uuid` в транскрипте (потоком: файл бывает в десятки МБ); нет — `undefined`. */
 export async function promptParent(path: string, uuid: string): Promise<string | undefined> {
@@ -208,18 +231,43 @@ export class ClaudeAdapter implements AgentAdapter {
 
   async createSession(options: SessionOptions): Promise<AgentSession> {
     const sdk = await this.loadSdk();
-    return new ClaudeSession(sdk, this.config, await this.baseOptions(options.cwd), options);
+    const kit = await this.mcpKit(sdk, options.taskTools);
+    return new ClaudeSession(
+      sdk,
+      this.config,
+      await this.baseOptions(options.cwd),
+      options,
+      undefined,
+      kit,
+    );
   }
 
   async resumeSession(sessionId: string, options: ResumeOptions): Promise<AgentSession> {
     const sdk = await this.loadSdk();
+    const kit = await this.mcpKit(sdk, options.taskTools);
     return new ClaudeSession(
       sdk,
       this.config,
       await this.baseOptions(options.cwd),
       options,
       sessionId,
+      kit,
     );
+  }
+
+  /**
+   * SDK-функции MCP и zod — только сессии с инструментами задачи. zod грузится тем же `import()`, что и SDK: экземпляр zod
+   * у схем и у SDK один (в бандле расширения zod внешний). Не загрузился — сессия без инструментов, но работает.
+   */
+  private async mcpKit(sdk: SdkModule, tools: TaskTools | undefined): Promise<McpKit | undefined> {
+    if (!tools || !sdk.createSdkMcpServer || !sdk.tool) return undefined;
+    try {
+      const { z } = await (this.config.loadZod ?? (() => import('zod')))();
+      return { createSdkMcpServer: sdk.createSdkMcpServer, tool: sdk.tool, z };
+    } catch (error) {
+      this.config.log?.('warn', `инструменты Jira недоступны: zod не загрузился: ${String(error)}`);
+      return undefined;
+    }
   }
 
   async listSessions(dir: string): Promise<SessionInfo[]> {
@@ -486,6 +534,21 @@ class ClaudeSession implements AgentSession {
   private resumedId: string | undefined;
   /** Effort, заданный расширением (при создании или из меню): движок его в `init` не сообщает. */
   private effort: EffortLevel | undefined;
+  /** Модель из последнего `session.init` (или из опций) — для сессии на claude.ai. */
+  private model: string | undefined;
+  /** Мост Remote Control: создаётся при первом включении. */
+  private remote: RemoteBridge | undefined;
+  private readonly remoteConfig: RemoteConfig | undefined;
+  private readonly cwd: string;
+  private readonly title: string | undefined;
+  /** Режим разрешений сейчас (опции, `setMode`, `mode.changed`): `comment` без вопроса — не в режиме plan. */
+  private mode: PermissionMode;
+  /** Инструменты задачи Jira (этап 8): сигнатура набора, с которым сейчас подключён сервер `agentura_jira` ('' — не подключён). */
+  private jiraSig = '';
+  private offTaskTools: (() => void) | undefined;
+  /** Когда `comment` прошёл без вопроса (окно `AUTO_WINDOW_MS`). */
+  private autoComments: number[] = [];
+  private readonly taskTools: TaskTools | undefined;
 
   constructor(
     sdk: SdkModule,
@@ -493,6 +556,7 @@ class ClaudeSession implements AgentSession {
     base: Options,
     options: SessionOptions & ResumeOptions,
     resume?: string,
+    private readonly kit?: McpKit,
   ) {
     this.log = config.log ?? (() => {});
     this.trace = config.trace;
@@ -500,6 +564,10 @@ class ClaudeSession implements AgentSession {
       this.log('error', `подписчик событий упал: ${String(e)}`),
     );
     this.resumedId = resume;
+    this.remoteConfig = config.remote;
+    this.cwd = options.cwd;
+    this.title = options.title;
+    this.model = options.model;
     this.mapper = new ClaudeEventMapper({
       baselineCostUsd: resume ? options.baselineCostUsd : 0,
       ...(config.lang ? { lang: config.lang } : {}),
@@ -516,12 +584,14 @@ class ClaudeSession implements AgentSession {
       forwardSubagentText: true,
       // Брокер отдаёт подсказки движка (`PermissionUpdate[]`) как пришли — тип сужаем здесь.
       canUseTool: (toolName, input, opts) =>
-        this.broker.canUseTool(toolName, input, opts) as Promise<PermissionResult>,
+        this.autoAllow(toolName, input, opts.mcpServer)
+          ? Promise.resolve({ behavior: 'allow', updatedInput: input })
+          : (this.broker.canUseTool(toolName, input, this.jiraAsk(toolName, opts)) as Promise<PermissionResult>),
     };
     if (options.model) sdkOptions.model = options.model;
     // Режим задаём всегда: иначе движок возьмёт `permissions.defaultMode` из настроек пользователя
     // (у владельца — `auto`, классификатор вместо вопросов), а расширение режимы `auto`/`dontAsk` не ведёт.
-    sdkOptions.permissionMode = options.permissionMode ?? 'default';
+    sdkOptions.permissionMode = this.mode = options.permissionMode ?? 'default';
     if (options.allowBypassPermissions) sdkOptions.allowDangerouslySkipPermissions = true;
     if (options.effort) sdkOptions.effort = this.effort = options.effort;
     if (options.title) sdkOptions.title = options.title;
@@ -532,8 +602,88 @@ class ClaudeSession implements AgentSession {
       sdkOptions.resumeDropsTurn = options.dropTurn.promptUuid;
     }
 
+    // инструменты задачи Jira: сервер `agentura_jira`, пока у чата есть задача с записью; набор меняется — `setMcpServers`
+    const tools = (this.taskTools = kit ? options.taskTools : undefined);
+    const spec = tools?.spec();
+    if (kit && tools && spec) {
+      sdkOptions.mcpServers = { [JIRA_SERVER]: buildJiraServer(kit, spec, tools) };
+      this.jiraSig = specSignature(spec);
+    }
+
     this.q = sdk.query({ prompt: this.input, options: sdkOptions });
+    if (tools) {
+      this.offTaskTools = tools.onDidChange(() => this.syncTaskTools(tools));
+      // bypassPermissions (и auto) иначе пропустили бы transition/worklog без карточки — решение 13 обещает вопрос всегда.
+      // Только ужесточает; запоминается и до подключения сервера (`setMcpServers` посреди сессии)
+      void Promise.resolve()
+        .then(() => this.q.setMcpPermissionModeOverride(JIRA_SERVER, 'default'))
+        .catch((e: unknown) => this.log('warn', `инструменты Jira: setMcpPermissionModeOverride: ${String(e)}`));
+    }
     void this.pump();
+  }
+
+  /** Вызов нашего in-process сервера: SDK отдаёт `mcpServer.source = 'sdk'` (старый CLI поля не шлёт — тогда по имени). */
+  private static ownServer(server: { name: string; source: string } | undefined): boolean {
+    return !server || (server.source === 'sdk' && server.name === JIRA_SERVER);
+  }
+
+  /**
+   * Карточка инструмента Jira: «Всегда разрешать» — только до конца сессии. Подсказки движка пишут правило в
+   * `.claude/settings.local.json` — оно действовало бы во всех сессиях проекта и в самом CLI (приёмка этапа 8).
+   */
+  private jiraAsk<O extends { suggestions?: unknown[]; mcpServer?: { name: string; source: string } }>(toolName: string, opts: O): O {
+    if (!jiraToolOf(toolName) || !ClaudeSession.ownServer(opts.mcpServer) || !opts.suggestions?.length) return opts;
+    return {
+      ...opts,
+      suggestions: opts.suggestions.map((s) =>
+        s && typeof s === 'object' && 'destination' in s ? { ...(s as Record<string, unknown>), destination: 'session' } : s,
+      ),
+    };
+  }
+
+  /**
+   * `comment` к задаче чата — без вопроса (решение 13), кроме режима plan; к другой задаче — обычной карточкой. Приёмка этапа 8:
+   * только наш сервер (`mcpServer.source`), короткий текст без похожего на секрет (`autoCommentOk`) и не чаще
+   * `AUTO_COMMENTS` за `AUTO_WINDOW_MS` — остальное тоже карточкой.
+   */
+  private autoAllow(toolName: string, input: Record<string, unknown>, server?: { name: string; source: string }): boolean {
+    if (toolName !== JIRA_COMMENT_TOOL || !this.jiraSig || this.mode === 'plan' || !ClaudeSession.ownServer(server)) return false;
+    const issue = input['issue'];
+    const own = this.taskTools?.spec()?.issue;
+    const ownIssue =
+      issue === undefined ||
+      (typeof issue === 'string' && !!own && issue.trim().toUpperCase() === own.toUpperCase());
+    if (!ownIssue || !autoCommentOk(input['text'])) return false;
+    const now = Date.now();
+    this.autoComments = this.autoComments.filter((t) => now - t < AUTO_WINDOW_MS);
+    if (this.autoComments.length >= AUTO_COMMENTS) return false;
+    this.autoComments.push(now);
+    return true;
+  }
+
+  /** Привязка/отвязка задачи, смена источника или настройки: сервер `agentura_jira` подключается, пересобирается или снимается. */
+  private syncTaskTools(tools: TaskTools): void {
+    if (this.closed || !this.kit) return;
+    const spec = tools.spec();
+    const sig = specSignature(spec);
+    if (sig === this.jiraSig) return;
+    this.jiraSig = sig;
+    // `setMcpServers` заменяет только серверы, добавленные через SDK (у нас — один `agentura_jira`); серверы из настроек не трогает
+    const servers: Record<string, McpServerConfig> = spec
+      ? { [JIRA_SERVER]: buildJiraServer(this.kit, spec, tools) }
+      : {};
+    this.q
+      .setMcpServers(servers)
+      .then((r) => {
+        const err = r.errors[JIRA_SERVER];
+        if (!err) return;
+        this.log('warn', `инструменты Jira: сервер не подключился: ${err}`);
+        if (this.jiraSig === sig) this.jiraSig = ''; // следующее изменение набора попробует снова
+      })
+      .catch((e: unknown) => {
+        this.log('warn', `инструменты Jira: setMcpServers: ${String(e)}`);
+        if (this.jiraSig === sig) this.jiraSig = '';
+      });
   }
 
   get id(): string {
@@ -553,12 +703,14 @@ class ClaudeSession implements AgentSession {
       images?.length ? images : undefined,
       files?.length ? files : undefined,
     );
-    this.input.push({
+    const message: SDKUserMessage = {
       type: 'user',
       message: { role: 'user', content: userContent(text, images, files) },
       parent_tool_use_id: null,
       uuid: uuid as SDKUserMessage['uuid'],
-    });
+    };
+    this.input.push(message);
+    this.remote?.notePrompt(message);
     return true;
   }
 
@@ -576,6 +728,7 @@ class ClaudeSession implements AgentSession {
 
   async setMode(mode: PermissionMode): Promise<void> {
     await this.q.setPermissionMode(mode);
+    this.mode = mode;
   }
 
   async setModel(model: string): Promise<void> {
@@ -634,6 +787,34 @@ class ClaudeSession implements AgentSession {
     return result;
   }
 
+  /** Remote Control вкладки: включение — мост к claude.ai (лениво), выключение — досылка и закрытие. */
+  async setRemote(on: boolean): Promise<void> {
+    if (!on) {
+      await this.remote?.disable();
+      return;
+    }
+    if (this.closed) return;
+    this.remote ??= new RemoteBridge(
+      {
+        cwd: this.cwd,
+        title: this.title,
+        model: () => this.model,
+        closed: () => this.closed,
+        emit: (e) => this.emit(e),
+        prompt: (message, text) => {
+          this.mapper.notePrompt(text, message.uuid as string);
+          this.input.push(message);
+        },
+        resolvePermission: (toolUseId, result) => this.broker.resolveExternal(toolUseId, result),
+        query: this.q,
+        log: this.log,
+      },
+      this.remoteConfig,
+    );
+    this.broker.observer = this.remote;
+    await this.remote.enable();
+  }
+
   dispose(): void {
     if (this.closed) return;
     this.close('disposed');
@@ -651,13 +832,19 @@ class ClaudeSession implements AgentSession {
   private close(reason: 'exit' | 'error' | 'disposed', message?: string): void {
     if (this.closed) return;
     this.closed = true;
+    this.offTaskTools?.();
+    this.offTaskTools = undefined;
     this.broker.cancelAll();
+    // мост — без ожидания: закрытие сессии не ждёт досылки на claude.ai
+    if (this.remote) void this.remote.disable();
     this.input.end();
     this.events.emit({ type: 'session.closed', reason, ...(message ? { message } : {}) });
     this.events.close();
   }
 
   private emit(event: AgentEvent): void {
+    if (event.type === 'mode.changed') this.mode = event.mode;
+    else if (event.type === 'session.init') this.mode = event.permissionMode;
     this.events.emit(event);
   }
 
@@ -667,6 +854,7 @@ class ClaudeSession implements AgentSession {
       for await (const message of this.q) {
         if (this.closed) break;
         this.trace?.(message);
+        this.remote?.mirror(message);
         for (const event of this.mapper.map(message)) {
           this.emit(
             event.type === 'session.init' && this.effort
@@ -674,6 +862,7 @@ class ClaudeSession implements AgentSession {
               : event,
           );
           // Окно до первого ответа неизвестно: `getContextUsage()` работает и до хода (раздел 4 пробы).
+          if (event.type === 'session.init') this.model = event.model || this.model;
           if (event.type === 'session.init' && first) {
             first = false;
             void this.emitContext();

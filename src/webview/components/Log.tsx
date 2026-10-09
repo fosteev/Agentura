@@ -13,14 +13,27 @@ import {
   editStats,
   formatDuration,
   matchCount,
+  jiraTaskLink,
   toolLinks,
   toolView,
 } from '../toolView';
+import type { TaskEventKind } from '../../shared/task';
+import { issueKeyOf } from '../taskView';
 import { FailCardView, PermissionCard, RefusalCardView, PlanCardView, QuestionCardView, ToolOutput } from './Cards';
 import { agentGroupView, feedItems, type FeedItem } from '../agentsView';
 import { feedTurns, foldSummary, stepRows, type FoldSummary, type Turn } from '../turnView';
 import { initialHud, type HudState } from '../hudState';
 import { AgentGroup } from './AgentGroup';
+import { provider, taskState } from '../store';
+
+/** Событие ленты задачи, на которое ведёт «в задаче →» строки инструмента Jira (этап 8 roadmap 19). */
+export type TaskEventRef = { kind: TaskEventKind; id?: string };
+
+/** Ключ задачи чата (`NEWMFC-1482`) — подпись инструментов Jira без явного `issue`; чат вне задачи — нет. */
+function chatIssue(): string | undefined {
+  const st = taskState.value;
+  return st?.card?.key ?? (st?.taskKey ? issueKeyOf(st.taskKey) : undefined);
+}
 
 type Row<K extends FeedRow['kind']> = Extract<FeedRow, { kind: K }>;
 
@@ -147,6 +160,8 @@ interface Right {
   diff?: boolean;
   preview?: string;
   url?: string;
+  /** Инструмент Jira по задаче чата: «в задаче →». */
+  task?: TaskEventRef;
 }
 
 function ToolRight({
@@ -154,11 +169,13 @@ function ToolRight({
   onDiff,
   onPreview,
   onOpenUrl,
+  onTask,
 }: {
   r: Right;
   onDiff?: () => void;
   onPreview?: (path: string) => void;
   onOpenUrl?: (url: string) => void;
+  onTask?: (ref: TaskEventRef) => void;
 }) {
   // ссылки справа: «diff · превью · открыть» — каждая с разделителем ' · ' перед собой
   const link = (label: string, run: () => void) => (
@@ -196,11 +213,15 @@ function ToolRight({
       {r.preview !== undefined && link(ui.log.preview, () => onPreview?.(r.preview as string))}
       {r.url !== undefined && sep()}
       {r.url !== undefined && link(ui.log.open, () => onOpenUrl?.(r.url as string))}
+      {r.task !== undefined && onTask && sep()}
+      {r.task !== undefined && onTask && (
+        <span data-tip={ui.log.inTaskTitle}>{link(ui.log.inTask, () => onTask(r.task as TaskEventRef))}</span>
+      )}
     </span>
   );
 }
 
-export function toolRight(t: Row<'tool'>, now: number): Right {
+export function toolRight(t: Row<'tool'>, now: number, taskIssue?: string): Right {
   if (t.state === 'run') {
     const ms = t.elapsedMs ?? Math.max(0, now - t.startedAt);
     return { text: formatDuration(ms) };
@@ -209,6 +230,9 @@ export function toolRight(t: Row<'tool'>, now: number): Right {
   const dur = t.durationMs !== undefined ? formatDuration(t.durationMs) : undefined;
   if (t.state === 'err') return { err: ui.log.toolError, ...(dur ? { text: dur } : {}) };
   const links = toolLinks(t.name, t.input, t.result, t.state);
+  // инструмент Jira (этап 8): «✓ · в задаче →» — запись прошла, событие видно во вкладке «задача»
+  const task = jiraTaskLink(t.name, t.input, t.content, t.state, taskIssue);
+  if (task) return { text: '✓', task };
   const stats = editStats(t.name, t.input, t.result);
   if (stats) {
     return {
@@ -234,6 +258,7 @@ export function Tool({
   onDiff,
   onPreview,
   onOpenUrl,
+  onTaskEvent,
 }: {
   t: Row<'tool'>;
   cwd: string;
@@ -241,8 +266,10 @@ export function Tool({
   onDiff: (toolUseId: string) => void;
   onPreview: (path: string) => void;
   onOpenUrl: (url: string) => void;
+  onTaskEvent?: ((ref: TaskEventRef) => void) | undefined;
 }) {
-  const v = toolView(t.name, t.input, cwd);
+  const issue = chatIssue();
+  const v = toolView(t.name, t.input, cwd, issue);
   const running = t.state === 'run';
   const failed = t.state === 'err';
   // красный результат раскрывается: вывод инструмента как его увидела модель
@@ -290,10 +317,11 @@ export function Tool({
           )}
         </span>
         <ToolRight
-          r={toolRight(t, now)}
+          r={toolRight(t, now, issue)}
           onDiff={() => onDiff(t.toolUseId)}
           onPreview={onPreview}
           onOpenUrl={onOpenUrl}
+          onTask={onTaskEvent}
         />
       </div>
       {open && t.content && <ToolOutput content={t.content} />}
@@ -348,6 +376,7 @@ export function Log({
   onOpenUrl,
   onOpenImage,
   onOpenFile,
+  onTaskEvent,
   hud,
   onStopAgent,
   onOpenAgent,
@@ -370,6 +399,8 @@ export function Log({
   onOpenImage?: (i: ImageRef) => void;
   /** Клик по чипу файла в реплике (этап 8) — файл во вкладке редактора. */
   onOpenFile?: (f: FileRef) => void;
+  /** «в задаче →» у строки инструмента Jira: показать событие во вкладке «задача». */
+  onTaskEvent?: (ref: TaskEventRef) => void;
   /** Агенты (A6): вызовы `Agent`/`Task` рисуются группой со статусами из приборов. */
   hud?: HudState;
   onStopAgent?: (taskId: string) => void;
@@ -433,6 +464,7 @@ export function Log({
             onDiff={onDiff}
             onPreview={onPreview}
             onOpenUrl={onOpenUrl}
+            onTaskEvent={onTaskEvent}
           />
         );
       case 'text':
@@ -489,7 +521,7 @@ export function Log({
                 tm={b.sum ? [b.sum.cost, b.sum.time] : live ? [ui.log.turnLive(turnStartedAt ? formatDuration(now - turnStartedAt) : '').trim()] : []}
               />
             )}
-            <div class="who">{ui.log.who}</div>
+            <div class="who">{provider.value}</div>
             {b.parts.map((p) => {
               if (p.kind === 'item') return renderItem(p.item);
               const its = visible(p.items);
@@ -571,7 +603,12 @@ function UserRowView({
         onOpenImage={onOpenImage}
         onOpenFile={onOpenFile}
       />
-      <span class="at">{u.queued ? ui.log.queued : u.at}</span>
+      <span class="at">
+        {u.via && !u.queued && (
+          <span class="src">{u.via === 'phone' ? ui.remote.fromPhone : ui.remote.fromWeb} ·</span>
+        )}
+        {u.queued ? ui.log.queued : u.at}
+      </span>
       {tm && <span class="tm">{tmText}</span>}
     </div>
   );

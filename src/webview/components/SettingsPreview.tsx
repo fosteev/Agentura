@@ -1,7 +1,9 @@
 import type { ComponentChildren } from 'preact';
 import type { FeedRow } from '../chatState';
-import type { SessionSummary } from '../../protocol';
-import type { AgentsView, ComposerLayout, FeedStyle, GitLayout } from '../../settings';
+import type { SessionSummary, TaskGroupSummary } from '../../protocol';
+import type { AgentsView, ComposerLayout, FeedStyle, GitLayout, TaskCardMode, TaskTabMode } from '../../settings';
+import type { TabChatsMessage } from '../../shared/taskTab';
+import type { TaskStateMessage } from '../../shared/task';
 import type { GitFileStatus, GitFileView, GitRepoView, GitSnapshot } from '../../shared/git';
 import { agentMapView } from '../agentsView';
 import { agentGraphView, agentsViewPane, defaultScope } from '../agentViews';
@@ -13,6 +15,7 @@ import { Log } from './Log';
 import { SidebarView, type SidebarData, type SidebarLook } from './Sidebar';
 import { AgentsPane } from './SidePanes';
 import { GitPane } from './GitPane';
+import { ChatTabs, TaskStrip } from './TaskPane';
 
 /**
  * Миниатюры вида во вкладке настроек: настоящие `Log` и `SidebarView` на фикстуре, уменьшенные CSS-`zoom`.
@@ -36,6 +39,10 @@ const TEXT = {
       'миграция табло на новый ws-client',
     ],
     account: { email: 'you@example.com', plan: 'Max 5×', login: 'через CLI · ок' },
+    tasks: [
+      ['NEWMFC-1482', 'Электронная очередь: талон не печатается после перерыва', 'В работе'],
+      ['GARM-833', 'Pulse: пуш о тревоге дублируется', 'Открыта'],
+    ],
   },
   en: {
     ask: 'Fix the ticket counter flicker on the board',
@@ -50,6 +57,10 @@ const TEXT = {
       'move the board to the new ws-client',
     ],
     account: { email: 'you@example.com', plan: 'Max 5×', login: 'CLI · ok' },
+    tasks: [
+      ['NEWMFC-1482', 'Electronic queue: the ticket is not printed after a break', 'In progress'],
+      ['GARM-833', 'Pulse: the alarm push is duplicated', 'Open'],
+    ],
   },
 }[uiLang];
 
@@ -577,11 +588,68 @@ export function ComposerPreview({ layout }: { layout: ComposerLayout }) {
   );
 }
 
-/** Боковая панель: `part="top"` — верх (аккаунт, лимиты), `"list"` — заголовок «Сессии» и список. */
-export function SidebarPreview({ look, part }: { look: SidebarLook; part: 'top' | 'list' }) {
+/** Фикстура групп задач для превью `tasks.sidebar`: две задачи, чаты s0+s1 и s3; остальные — вне задач. */
+function taskFixture(sessions: SessionSummary[]): { sessions: SessionSummary[]; tasks: TaskGroupSummary[] } {
+  const [a, b] = TEXT.tasks as [string, string, string][];
+  const spec: [[string, string, string], string[]][] = [
+    [a!, ['s0', 's1']],
+    [b!, ['s3']],
+  ];
+  const tasks = spec.map(([[key, title, status], sessionIds], i): TaskGroupSummary => ({
+    taskKey: `jira:demo:${key}`,
+    meta: { key, instanceId: 'demo', title, status, statusCategory: i === 0 ? 'indeterminate' : 'new', url: '' },
+    sessionIds,
+  }));
+  const keyOf = new Map(tasks.flatMap((t) => t.sessionIds.map((id) => [id, t.meta] as const)));
+  return {
+    sessions: sessions.map((s) => {
+      const m = keyOf.get(s.id);
+      return m ? { ...s, task: { key: m.key, title: m.title, status: m.status } } : s;
+    }),
+    tasks,
+  };
+}
+
+/** Боковая панель: верх, лимиты нескольких движков, список сессий или задачи Jira (группы / секция). */
+export function SidebarPreview({
+  look,
+  part,
+}: {
+  look: SidebarLook;
+  part: 'top' | 'limits' | 'list' | 'tasks';
+}) {
+  const data = sidebarData(Date.now());
+  if (part === 'tasks') {
+    const fx = taskFixture(data.sessions);
+    data.sessions = fx.sessions;
+    data.tasks = fx.tasks;
+  }
+  if (part === 'limits') {
+    data.provider = 'claude';
+    data.engines = [
+      {
+        engine: 'codex',
+        state: 'ok',
+        email: TEXT.account.email,
+        plan: 'Plus',
+        windows: [
+          { kind: 'fiveHour', percent: 78, resetsAt: data.now + 60 * 60_000 },
+          { kind: 'weekly', percent: 41, resetsAt: data.now + 2 * 24 * 60 * 60_000 },
+        ],
+        updatedAt: data.now,
+      },
+      {
+        engine: 'antigravity',
+        state: 'ok',
+        email: TEXT.account.email,
+        windows: [{ kind: 'model', name: 'Gemini', percent: 23 }],
+        updatedAt: data.now,
+      },
+    ];
+  }
   return (
     <div class={`pv pv-side pv-${part}`} inert aria-hidden="true">
-      <SidebarView look={look} data={sidebarData(Date.now())} />
+      <SidebarView look={look} data={data} />
     </div>
   );
 }
@@ -679,6 +747,123 @@ export function ChoiceCards<V extends string>({
           </div>
         );
       })}
+    </div>
+  );
+}
+
+
+/** Фикстура для превью `tasks.card`: первая задача из образца, статус «в работе». */
+function taskCardFixture(): TaskStateMessage & { taskKey: string } {
+  const [key, title, status] = TEXT.tasks[0] as [string, string, string];
+  return {
+    type: 'task.state',
+    taskKey: `jira:demo:${key}`,
+    card: {
+      key,
+      instanceId: 'demo',
+      instanceName: 'demo',
+      title,
+      type: 'Task',
+      status,
+      statusCategory: 'indeterminate',
+      url: '',
+      updatedAt: 0,
+      description: '',
+      descriptionHtml: '',
+      created: 0,
+      labels: [],
+      components: [],
+      fixVersions: [],
+      time: {},
+      attachments: [],
+      comments: [],
+      history: [],
+      worklogs: [],
+      canWrite: false,
+    },
+    events: [],
+    fetchedAt: 1,
+    source: 'jiraffe',
+  };
+}
+
+/** Полоска задачи в превью: открыт «чат», ход не идёт, ничего нового. */
+const STRIP_IDLE = {
+  view: 'chat' as const,
+  onView: () => {},
+  unseen: 0,
+  activity: { working: false, waiting: false, fresh: 0 },
+};
+
+/**
+ * Где карточка задачи в чате по задаче (`tasks.card`, roadmap 19): схема окна редактора — настоящая полоска
+ * `TaskStrip` и условные блоки (лента, вкладки панели, карточка Jiraffe). Сплит без Jiraffe работает как панель — пометка.
+ */
+export function TaskCardPreview({ mode }: { mode: TaskCardMode }) {
+  const st = taskCardFixture();
+  const lines = (n: number) => Array.from({ length: n }, () => <i />);
+  const chat = (
+    <div class="tcp-chat">
+      <TaskStrip state={st} {...STRIP_IDLE} />
+      <div class="tcp-feed">{lines(5)}</div>
+    </div>
+  );
+  return (
+    <div class={`pv pv-taskcard pv-tc-${mode}`} inert aria-hidden="true">
+      {mode === 'split' && (
+        <div class="tcp-card">
+          <b>J</b>
+          <div class="tcp-feed">{lines(6)}</div>
+        </div>
+      )}
+      {chat}
+      {/* вкладка «задача» есть в обоих режимах (roadmap 20, решение 10) — в полосе задачи, не в правой панели */}
+      <div class="tcp-side">
+        <div class="tcp-tabs">
+          <span class="on">{ui.tabs.changes}</span>
+          <span>{ui.tabs.git}</span>
+          <span>{ui.tabs.agents}</span>
+        </div>
+        <div class="tcp-feed">{lines(5)}</div>
+      </div>
+      {mode === 'split' && <small class="tcp-note">{ui.settings.tasksCard.onlyJiraffe}</small>}
+    </div>
+  );
+}
+
+/**
+ * Вкладки чатов по задаче (`tasks.tab`, roadmap 19, этап 7): схема окна редактора — ряд вкладок редактора, настоящая
+ * полоска `TaskStrip`, у `task` — настоящие внутренние вкладки `ChatTabs` (`tasks.html#b`), и лента.
+ */
+export function TaskTabPreview({ mode }: { mode: TaskTabMode }) {
+  const st = taskCardFixture();
+  const key = st.card!.key;
+  const [chat1, chat2] = TEXT.sessions as [string, string];
+  const other = (TEXT.tasks[1] as [string, string, string])[0];
+  const lines = (n: number) => Array.from({ length: n }, () => <i />);
+  const inner: TabChatsMessage = {
+    type: 'tab.chats',
+    taskKey: st.taskKey,
+    chats: [
+      { id: 'c1', title: chat1, provider: 'claude', status: 'idle', active: false },
+      { id: 'c2', title: chat2, provider: 'codex', status: 'working', active: true },
+    ],
+    persist: { taskKey: st.taskKey, chats: [] },
+  };
+  const tabs =
+    mode === 'task' ? [key, other, TEXT.sessions[2]!] : [`${key} · ${chat2}`, `${key} · ${chat1}`, TEXT.sessions[2]!];
+  return (
+    <div class={`pv pv-tasktab pv-tt-${mode}`} inert aria-hidden="true">
+      <div class="ttp-tabs">
+        {tabs.map((t, i) => (
+          <span class={i === 0 ? 'on' : undefined}>{t}</span>
+        ))}
+      </div>
+      <div class="ttp-chat">
+        <TaskStrip state={st} {...STRIP_IDLE} />
+        {mode === 'task' && <ChatTabs state={inner} />}
+        <div class="ttp-feed">{lines(4)}</div>
+      </div>
     </div>
   );
 }

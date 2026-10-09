@@ -1,4 +1,5 @@
 import type { AgentProvider } from '../agent/types';
+import type { IntegrationsState } from '../shared/integrations';
 import type { FromWebview, ToWebview } from '../protocol';
 import { hostStrings, type Lang } from '../shared/l10n';
 import {
@@ -25,6 +26,14 @@ export interface SettingsDeps {
   /** Скачать шрифт из Google Fonts (`kind` — назначение карточки) / удалить скачанный. */
   addFont?(kind: 'ui' | 'code' | 'panels'): void;
   removeFont?(family: string): void;
+  /** Страница «Интеграции» (roadmap 19, этап 6); нет — страница не получает данных. */
+  integrations?: {
+    state(): IntegrationsState;
+    connect(): void;
+    test(instanceId: string): void;
+    disconnect(instanceId: string): void;
+    installJiraffe(): void;
+  };
   /** Язык текстов ошибок; по умолчанию русский. */
   lang?(): Lang;
 }
@@ -46,6 +55,22 @@ export class SettingsController {
       values: readSettings(cfg),
       overridden: overriddenKeys(cfg),
     });
+    this.pushIntegrations();
+  }
+
+  /** Состояние Jiraffe и своих подключений → webview (на `ready`, при смене источников/подключений и настройки). */
+  pushIntegrations(): void {
+    const i = this.deps.integrations;
+    if (i) this.deps.post({ type: 'integrations.state', state: i.state() });
+  }
+
+  /**
+   * id из webview — только одно из своих подключений: команды этапа 2 на незнакомый id не отказывают, а берут
+   * единственное подключение или спрашивают выбор — чужой id не должен дойти до «удалить» не того инстанса.
+   */
+  private ownInstance(id: unknown): id is string {
+    const i = this.deps.integrations;
+    return !!i && typeof id === 'string' && i.state().own.some((o) => o.id === id);
   }
 
   async handle(m: FromWebview): Promise<void> {
@@ -70,6 +95,18 @@ export class SettingsController {
       }
       case 'settings.reveal':
         this.deps.reveal(m.target === 'json' ? 'json' : 'ui');
+        break;
+      case 'integrations.connect':
+        this.deps.integrations?.connect();
+        break;
+      case 'integrations.test':
+        if (this.ownInstance(m.instanceId)) this.deps.integrations?.test(m.instanceId);
+        break;
+      case 'integrations.disconnect':
+        if (this.ownInstance(m.instanceId)) this.deps.integrations?.disconnect(m.instanceId);
+        break;
+      case 'integrations.installJiraffe':
+        this.deps.integrations?.installJiraffe();
         break;
       case 'fonts.add':
         this.deps.addFont?.(m.kind === 'code' || m.kind === 'panels' ? m.kind : 'ui');
