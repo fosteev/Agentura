@@ -113,9 +113,8 @@ const ru = {
     section: ['Секция', 'секция «Задачи» над «Сессиями», в строке сессии метка ключа'],
   } as Record<string, [string, string]>,
   taskCardViews: {
-    panel: ['Панель', 'вкладка «задача» в правой панели чата'],
-    split: ['Сплит', 'карточка Jiraffe слева, чат справа с вкладкой «задача» на изменениях (только с Jiraffe, иначе как «Панель»)'],
-    strip: ['Полоска', 'только полоска над лентой, без вкладки'],
+    tab: ['Вкладка', 'вкладка «задача» рядом с «чатом» в полосе задачи'],
+    split: ['Сплит', 'карточка Jiraffe слева, чат справа, вкладка «задача» тоже есть (только с Jiraffe, иначе как «Вкладка»)'],
   } as Record<string, [string, string]>,
   taskTabViews: {
     chat: ['Вкладка на чат', 'каждый чат в своей вкладке редактора, как без задач'],
@@ -343,9 +342,8 @@ const en: HostUi = {
     section: ['Section', 'a "Tasks" section above "Sessions", a key tag on the session row'],
   } as Record<string, [string, string]>,
   taskCardViews: {
-    panel: ['Panel', 'a "task" tab in the chat right panel'],
-    split: ['Split', "Jiraffe's card on the left, the chat and a “task” tab on changes on the right (Jiraffe only, otherwise as Panel)"],
-    strip: ['Strip', 'only the strip above the feed, no tab'],
+    tab: ['Tab', 'a "task" tab next to "chat" in the task strip'],
+    split: ['Split', "Jiraffe's card on the left, the chat on the right, the “task” tab is there too (Jiraffe only, otherwise as Tab)"],
   } as Record<string, [string, string]>,
   taskTabViews: {
     chat: ['Tab per chat', 'every chat in its own editor tab, as without tasks'],

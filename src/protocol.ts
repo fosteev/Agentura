@@ -21,7 +21,16 @@ import type { FileProblem } from './shared/files';
 import { isAgentGraphView, type AgentGraphView } from './shared/agentsGraph';
 import type { GitNotice, GitRequest } from './shared/git';
 import type { IntegrationsState } from './shared/integrations';
-import type { TaskChatsMessage, TaskRequest, TaskStateMessage } from './shared/task';
+import {
+  isIsoDate,
+  isOpenableLink,
+  TASK_LIMITS,
+  type TaskActionMessage,
+  type TaskChatsMessage,
+  type TaskRequest,
+  type TaskStateMessage,
+  type TaskTransitionsMessage,
+} from './shared/task';
 import type { TabChatsMessage, TabRequest } from './shared/taskTab';
 import type {
   EngineCheck,
@@ -297,6 +306,9 @@ export type ToWebview =
    * привязки. Нет `taskKey` — вкладка вне задачи.
    */
   | TaskStateMessage
+  /** Ответы вкладке «задача» (roadmap 20): переходы статуса и итог записи от имени пользователя. */
+  | TaskTransitionsMessage
+  | TaskActionMessage
   /** Чаты группы задачи вкладки для блока «Чаты по задаче» (этап 5). */
   | TaskChatsMessage
   /** Вкладка на задачу (`tasks.tab = task`, этап 7): внутренние вкладки чатов и состояние для сериализатора. */
@@ -589,6 +601,11 @@ const FROM_WEBVIEW_TYPES: Record<FromWebview['type'], true> = {
   'task.openExternal': true,
   'task.openChat': true,
   'task.connect': true,
+  'task.transitions': true,
+  'task.transition': true,
+  'task.comment': true,
+  'task.logWork': true,
+  'task.openLink': true,
   'tab.select': true,
   'tab.close': true,
   'tab.new': true,
@@ -639,7 +656,19 @@ const FIELD_CHECKS: Partial<Record<FromWebview['type'], (m: Record<string, unkno
   'tab.select': (m) => str(m.id) && m.id.length > 0 && m.id.length <= 100,
   'tab.close': (m) => str(m.id) && m.id.length > 0 && m.id.length <= 100,
   'task.openChat': (m) => str(m.sessionId) && m.sessionId.length > 0 && m.sessionId.length <= 200,
-  'task.toComposer': (m) => str(m.commentId) && m.commentId.length > 0 && m.commentId.length <= 200,
+  'task.toComposer': (m) => m.commentId === undefined || (str(m.commentId) && m.commentId.length > 0 && m.commentId.length <= 200),
+  // вкладка «задача» (roadmap 20): запись от имени пользователя — длины и форма здесь, `writer` проверяет ещё раз
+  'task.transitions': () => true,
+  'task.transition': (m) => str(m.transitionId) && m.transitionId.length > 0 && m.transitionId.length <= 50,
+  'task.comment': (m) => str(m.body) && m.body.trim().length > 0 && m.body.length <= TASK_LIMITS.comment,
+  'task.logWork': (m) =>
+    Number.isInteger(m.seconds) &&
+    (m.seconds as number) >= 1 &&
+    (m.seconds as number) <= TASK_LIMITS.workSeconds &&
+    isIsoDate(m.date) &&
+    str(m.comment) &&
+    m.comment.length <= TASK_LIMITS.workComment,
+  'task.openLink': (m) => isOpenableLink(m.url),
   'task.openExternal': (m) => m.attachmentId === undefined || (str(m.attachmentId) && m.attachmentId.length <= 200),
 };
 

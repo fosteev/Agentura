@@ -1,6 +1,6 @@
 import { htmlToText } from '../../data/jira/text';
 import type { Attachment, IssueDetail, Worklog } from '../../data/jira/types';
-import type { TaskAttachment, TaskCard, TaskComment, TaskEvent } from '../../shared/task';
+import type { TaskAttachment, TaskCard, TaskComment, TaskEvent, TaskHistory, TaskWorklog } from '../../shared/task';
 
 /** Ход сессии: `end` нет, пока ход идёт. Мс эпохи. */
 export interface TurnSpan {
@@ -14,6 +14,10 @@ export const FROM_CHAT_SLACK_MS = 60_000;
 export const MAX_EVENTS = 100;
 const MAX_DESCRIPTION = 20_000;
 const MAX_COMMENT = 4_000;
+/** HTML описания и одного комментария для вкладки «задача» (roadmap 20) — по символам, обрезка может порвать тег. */
+export const MAX_HTML = 200_000;
+/** Записей истории и ворклогов в карточке (лента изменений берёт свои из полного перечня). */
+export const MAX_CARD_ROWS = 200;
 /** Короткие поля (имя, статус, ключ, имя файла) и число записей каждого вида в снимке. */
 const MAX_FIELD = 500;
 const MAX_ITEMS = 500;
@@ -21,6 +25,8 @@ const MAX_ITEMS = 500;
 // Данные источника недоверенные (Jiraffe — чужое расширение, свой клиент — ответ сервера): типы и длины — здесь.
 const str = (v: unknown, n = MAX_FIELD): string => (typeof v === 'string' ? (v.length > n ? v.slice(0, n) : v) : '');
 const arr = <T>(v: readonly T[] | undefined): readonly T[] => (Array.isArray(v) ? v.slice(-MAX_ITEMS) : []);
+const strs = (v: readonly unknown[] | undefined): string[] => arr(v).filter((x): x is string => typeof x === 'string').map((x) => str(x));
+const secs = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : undefined);
 const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
 const CATEGORIES = ['new', 'indeterminate', 'done'] as const;
 
@@ -73,24 +79,61 @@ const attachmentOf = (a: Attachment): TaskAttachment => ({
 
 /**
  * Загрузка источника → снимок задачи. HTML (описание, комментарии) превращается в текст — свой клиент отдаёт его
- * несанитизированным, Jiraffe — санитизированным, на тексте разницы нет.
+ * несанитизированным, Jiraffe — санитизированным, на тексте разницы нет. Сам HTML уходит в карточку как есть (с обрезкой):
+ * санитайзер — в webview, один для обоих источников (roadmap 20, решение 5).
  */
 export function buildSnapshot(input: {
   instance: { id: string; name: string; baseUrl: string };
   issue: IssueDetail;
   worklogs: readonly Worklog[];
   me: MeRef | undefined;
+  /** У источника есть `writer` (кнопки записи во вкладке). Нет — `false`. */
+  canWrite?: boolean;
 }): TaskSnapshot {
   const { instance, issue, worklogs, me } = input;
   const isMine = (id: unknown): boolean => me?.id !== undefined && typeof id === 'string' && id === me.id;
   const baseUrl = instance.baseUrl.replace(/\/+$/, '');
-  const comments: TaskComment[] = arr(issue.comments).map((c) => ({
-    id: str(c?.id),
-    author: str(c?.author?.name),
-    mine: isMine(c?.author?.id),
-    at: ms(c?.created),
-    text: clip(htmlToText(str(c?.bodyHtml, 200_000)), MAX_COMMENT),
-  }));
+  const comments: TaskComment[] = arr(issue.comments).map((c) => {
+    const html = str(c?.bodyHtml, MAX_HTML);
+    return {
+      id: str(c?.id),
+      author: str(c?.author?.name),
+      mine: isMine(c?.author?.id),
+      at: ms(c?.created),
+      text: clip(htmlToText(html), MAX_COMMENT),
+      html,
+    };
+  });
+  const history: TaskHistory[] = arr(issue.history)
+    .slice(-MAX_CARD_ROWS)
+    .map((h) => ({
+      at: ms(h?.created),
+      author: str(h?.author?.name),
+      items: arr(h?.items).map((it) => ({
+        field: str(it?.field, 200),
+        from: typeof it?.from === 'string' ? str(it.from) : null,
+        to: typeof it?.to === 'string' ? str(it.to) : null,
+      })),
+    }));
+  const worklogRows: TaskWorklog[] = arr(worklogs)
+    .slice(-MAX_CARD_ROWS)
+    .map((w) => ({
+      id: str(w?.id),
+      author: str(w?.author?.name),
+      mine: isMine(w?.author?.id),
+      at: ms(w?.started),
+      seconds: num(w?.timeSpentSec),
+      comment: str(w?.comment, MAX_COMMENT),
+    }));
+  const tt: Partial<Record<keyof TaskCard['time'], unknown>> =
+    issue.timetracking && typeof issue.timetracking === 'object' ? issue.timetracking : {};
+  const time: TaskCard['time'] = {};
+  for (const k of ['originalSec', 'remainingSec', 'spentSec'] as const) {
+    const v = secs(tt[k]);
+    if (v !== undefined) time[k] = v;
+  }
+  const epicKey = str(issue.epic?.key, 100);
+  const epicSummary = str(issue.epic?.summary, 1_000);
   const key = str(issue.key, 100);
   const card: TaskCard = {
     key,
@@ -105,8 +148,22 @@ export function buildSnapshot(input: {
     url: `${baseUrl}/browse/${encodeURIComponent(key)}`,
     updatedAt: ms(issue.updated),
     description: clip(htmlToText(str(issue.descriptionHtml, 1_000_000)), MAX_DESCRIPTION),
+    descriptionHtml: str(issue.descriptionHtml, MAX_HTML),
+    ...(issue.reporter ? { reporter: str(issue.reporter.name) } : {}),
+    created: ms(issue.created),
+    ...(typeof issue.due === 'string' && issue.due ? { due: str(issue.due, 40) } : {}),
+    labels: strs(issue.labels),
+    components: strs(issue.components),
+    fixVersions: arr(issue.fixVersions)
+      .map((v) => str(v?.name))
+      .filter(Boolean),
+    ...(epicKey ? { epic: { key: epicKey, ...(epicSummary ? { summary: epicSummary } : {}) } } : {}),
+    time,
     attachments: arr(issue.attachments).map(attachmentOf),
     comments,
+    history,
+    worklogs: worklogRows,
+    canWrite: input.canWrite === true,
   };
 
   const changes: TaskChange[] = [];

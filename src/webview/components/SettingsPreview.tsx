@@ -769,8 +769,17 @@ function taskCardFixture(): TaskStateMessage & { taskKey: string } {
       url: '',
       updatedAt: 0,
       description: '',
+      descriptionHtml: '',
+      created: 0,
+      labels: [],
+      components: [],
+      fixVersions: [],
+      time: {},
       attachments: [],
       comments: [],
+      history: [],
+      worklogs: [],
+      canWrite: false,
     },
     events: [],
     fetchedAt: 1,
@@ -800,16 +809,15 @@ export function TaskCardPreview({ mode }: { mode: TaskCardMode }) {
         </div>
       )}
       {chat}
-      {mode !== 'strip' && (
-        <div class="tcp-side">
-          <div class="tcp-tabs">
-            <span class={mode === 'split' ? 'on' : undefined}>{ui.tabs.changes}</span>
-            <span>{ui.tabs.git}</span>
-            <span class={mode === 'panel' ? 'on' : undefined}>{ui.tabs.task}</span>
-          </div>
-          <div class="tcp-feed">{lines(5)}</div>
+      {/* вкладка «задача» есть в обоих режимах (roadmap 20, решение 10); схему под полосу задачи перерисует этап 2 */}
+      <div class="tcp-side">
+        <div class="tcp-tabs">
+          <span class={mode === 'split' ? 'on' : undefined}>{ui.tabs.changes}</span>
+          <span>{ui.tabs.git}</span>
+          <span class={mode === 'tab' ? 'on' : undefined}>{ui.tabs.task}</span>
         </div>
-      )}
+        <div class="tcp-feed">{lines(5)}</div>
+      </div>
       {mode === 'split' && <small class="tcp-note">{ui.settings.tasksCard.onlyJiraffe}</small>}
     </div>
   );

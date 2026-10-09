@@ -910,11 +910,10 @@ export const en: Ui = {
     },
     tasksCard: {
       name: 'Task card in the chat',
-      desc: 'Where the Jira task is shown in a chat for a task. Panel: a “task” tab on the right (card and change feed); split: Jiraffe’s card on the left, the chat on the right, the “task” tab opens on changes (Jiraffe only, otherwise as Panel); strip: only the line above the feed.',
+      desc: 'Where the Jira task is shown in a chat for a task. Tab: a “task” tab next to “chat” in the task strip (card, comments, history, worklog, changes); split: the same plus Jiraffe’s card on the left, the chat on the right (Jiraffe only, otherwise as Tab).',
       options: {
-        panel: 'panel — a “task” tab on the right',
+        tab: 'tab — “task” next to “chat”',
         split: 'split — Jiraffe’s card on the left',
-        strip: 'strip — no tab',
       },
       onlyJiraffe: 'Jiraffe only',
     },

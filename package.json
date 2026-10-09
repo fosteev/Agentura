@@ -403,16 +403,14 @@
         "agentura.tasks.card": {
           "type": "string",
           "enum": [
-            "panel",
-            "split",
-            "strip"
+            "tab",
+            "split"
           ],
           "enumDescriptions": [
-            "%config.tasks.card.enum.panel%",
-            "%config.tasks.card.enum.split%",
-            "%config.tasks.card.enum.strip%"
+            "%config.tasks.card.enum.tab%",
+            "%config.tasks.card.enum.split%"
           ],
-          "default": "panel",
+          "default": "tab",
           "description": "%config.tasks.card.description%"
         },
         "agentura.tasks.tab": {

@@ -19,8 +19,7 @@ import {
   isAgentsView,
   isGitLayout,
   DEFAULT_GIT_LAYOUT,
-  isTaskCardMode,
-  DEFAULT_TASK_CARD,
+  readTaskCardMode,
   readSettings,
   isFeedStyle,
   isComposerLayout,
@@ -665,7 +664,7 @@ export class ChatPanel {
           ),
           agentsView: ((v) => (isAgentsView(v) ? v : DEFAULT_AGENTS_VIEW))(cfg.get<unknown>('agents.view')),
           gitLayout: ((v) => (isGitLayout(v) ? v : DEFAULT_GIT_LAYOUT))(cfg.get<unknown>('git.layout')),
-          taskCard: ((v) => (isTaskCardMode(v) ? v : DEFAULT_TASK_CARD))(cfg.get<unknown>('tasks.card')),
+          taskCard: readTaskCardMode(cfg.get<unknown>('tasks.card')),
           defaultPermissionMode: cfg.get<string>('defaultPermissionMode'),
           defaultEffort: cfg.get<string>('defaultEffort'),
           remoteControl: cfg.get<boolean>('remoteControl', false),
@@ -829,6 +828,8 @@ export class ChatPanel {
       turns: () => this.controller.turns(),
       post: (m) => panel.post(m),
       prefill: (text) => this.controller.prefill(text),
+      attach: (name, text) =>
+        this.controller.attachFiles([{ name, path: name, kind: 'text', data: text, size: text.length }]),
       openUrl: (u) => void vscode.env.openExternal(vscode.Uri.parse(u)),
       connect: () => void vscode.commands.executeCommand('agentura.jira.connect'),
     });

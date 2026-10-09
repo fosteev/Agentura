@@ -91,10 +91,10 @@ describe('protocol', () => {
       { type: 'task.toComposer', commentId: '50001' },
       { type: 'task.openExternal' },
       { type: 'task.openExternal', attachmentId: '40001' },
+      { type: 'task.toComposer' }, // roadmap 20: без commentId — контекст всей задачи
     ];
     for (const m of ok) expect(isFromWebview(m), JSON.stringify(m)).toBe(true);
     const bad = [
-      { type: 'task.toComposer' },
       { type: 'task.toComposer', commentId: '' },
       { type: 'task.toComposer', commentId: 5 },
       { type: 'task.toComposer', commentId: 'x'.repeat(201) },
@@ -102,6 +102,54 @@ describe('protocol', () => {
       { type: 'task.state' }, // это сообщение хоста, от webview не принимается
     ];
     for (const m of bad) expect(isFromWebview(m), JSON.stringify(m)).toBe(false);
+  });
+
+  it('вкладка «задача» (roadmap 20): запись от пользователя и ссылки — длины, типы, схемы', () => {
+    const ok = [
+      { type: 'task.transitions' },
+      { type: 'task.transition', transitionId: '31' },
+      { type: 'task.comment', body: 'Готово' },
+      { type: 'task.comment', body: 'x'.repeat(32_000) },
+      { type: 'task.logWork', seconds: 5400, date: '2026-10-09', comment: '' },
+      { type: 'task.logWork', seconds: 86_400, date: '2024-02-29', comment: 'x'.repeat(30_000) },
+      { type: 'task.openLink', url: 'https://jira.example.test/browse/ABC-1' },
+      { type: 'task.openLink', url: 'http://x.test' },
+      { type: 'task.openLink', url: 'mailto:a@x.test' },
+    ];
+    for (const m of ok) expect(isFromWebview(m), JSON.stringify(m).slice(0, 200)).toBe(true);
+    const bad = [
+      { type: 'task.transition' },
+      { type: 'task.transition', transitionId: '' },
+      { type: 'task.transition', transitionId: 31 },
+      { type: 'task.transition', transitionId: 'x'.repeat(51) },
+      { type: 'task.comment' },
+      { type: 'task.comment', body: '' },
+      { type: 'task.comment', body: '   \n ' },
+      { type: 'task.comment', body: 5 },
+      { type: 'task.comment', body: 'x'.repeat(32_001) },
+      { type: 'task.logWork', seconds: 0, date: '2026-10-09', comment: '' },
+      { type: 'task.logWork', seconds: 1.5, date: '2026-10-09', comment: '' },
+      { type: 'task.logWork', seconds: 86_401, date: '2026-10-09', comment: '' },
+      { type: 'task.logWork', seconds: '60', date: '2026-10-09', comment: '' },
+      { type: 'task.logWork', seconds: 60, date: '2026-02-30', comment: '' },
+      { type: 'task.logWork', seconds: 60, date: '09.10.2026', comment: '' },
+      { type: 'task.logWork', seconds: 60, date: '2026-10-09' },
+      { type: 'task.logWork', seconds: 60, date: '2026-10-09', comment: 'x'.repeat(30_001) },
+      { type: 'task.openLink' },
+      { type: 'task.openLink', url: '' },
+      { type: 'task.openLink', url: 'javascript:alert(1)' },
+      { type: 'task.openLink', url: 'JavaScript:alert(1)' },
+      { type: 'task.openLink', url: ' javascript:alert(1)' },
+      { type: 'task.openLink', url: 'file:///etc/passwd' },
+      { type: 'task.openLink', url: 'vscode://ms-vscode.x/y' },
+      { type: 'task.openLink', url: 'command:workbench.action.terminal.new' },
+      { type: 'task.openLink', url: 'data:text/html,<script>1</script>' },
+      { type: 'task.openLink', url: '/relative/path' },
+      { type: 'task.openLink', url: `https://x.test/${'a'.repeat(4000)}` },
+      { type: 'task.openLink', url: 7 },
+      { type: 'task.action', kind: 'comment', ok: true }, // сообщение хоста, от webview не принимается
+    ];
+    for (const m of bad) expect(isFromWebview(m), JSON.stringify(m).slice(0, 200)).toBe(false);
   });
 
   it('вкладка «git» (roadmap 12): запросы проверяются по полям', () => {

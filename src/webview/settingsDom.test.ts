@@ -53,7 +53,7 @@ const values: SettingsValues = {
   'sidebar.top': 'detailed',
   'sidebar.limits': 'active',
   'tasks.sidebar': 'groups',
-  'tasks.card': 'panel',
+  'tasks.card': 'tab',
   'tasks.tab': 'chat',
   'jira.source': 'auto',
   'tasks.refresh': '30s',
@@ -344,24 +344,23 @@ describe('вкладка настроек', () => {
     expect(sets().at(-1)).toEqual({ type: 'settings.set', key: 'tasks.sidebar', value: 'section' });
   });
 
-  it('карточка задачи в чате: три превью (панель / сплит с пометкой «только с Jiraffe» / полоска), выбор пишет настройку', async () => {
+  it('карточка задачи в чате: два превью (вкладка / сплит с пометкой «только с Jiraffe»), выбор пишет настройку', async () => {
     const host = mount(Settings);
     state();
     await flush();
     const row = host.querySelector('[data-key="agentura.tasks.card"]')!;
     const cards = [...row.querySelectorAll<HTMLElement>('[role="radio"]')];
-    expect(cards.map((c) => c.dataset.value)).toEqual(['panel', 'split', 'strip']);
+    expect(cards.map((c) => c.dataset.value)).toEqual(['tab', 'split']);
     for (const card of cards) {
       expect(card.querySelector('.pv-taskcard[inert][aria-hidden="true"]')).not.toBeNull();
       expect(card.querySelector('.tk-strip .tkey')!.textContent).toBe('NEWMFC-1482');
     }
-    const [panel, split, strip] = cards as [HTMLElement, HTMLElement, HTMLElement];
-    expect(panel.querySelector('.tcp-side .on')!.textContent).toBe('задача');
-    expect(panel.querySelector('.tcp-card')).toBeNull();
+    const [tab, split] = cards as [HTMLElement, HTMLElement];
+    expect(tab.querySelector('.tcp-side .on')!.textContent).toBe('задача');
+    expect(tab.querySelector('.tcp-card')).toBeNull();
     expect(split.querySelector('.tcp-card')).not.toBeNull();
     expect(split.querySelector('.tcp-note')!.textContent).toBe('только с Jiraffe');
-    expect(strip.querySelector('.tcp-side')).toBeNull();
-    expect(row.querySelector('[aria-checked="true"]')?.getAttribute('data-value')).toBe('panel');
+    expect(row.querySelector('[aria-checked="true"]')?.getAttribute('data-value')).toBe('tab');
     split.click();
     expect(sets().at(-1)).toEqual({ type: 'settings.set', key: 'tasks.card', value: 'split' });
   });

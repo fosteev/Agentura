@@ -12,12 +12,11 @@ export function isTaskChat(state: TaskStateMessage | undefined): state is TaskSt
 }
 
 /**
- * Вкладка «задача» правой панели есть у любого чата по задаче, кроме режима `strip` (только полоска). При `split`
- * с Jiraffe она тоже есть (решение владельца 2026-10-08): карточка Jiraffe слева, справа — лента изменений.
+ * Вкладка «задача» есть у любого чата по задаче в обоих режимах `tasks.card` (roadmap 20, решение 10; режима `strip`
+ * больше нет). При `split` с Jiraffe она тоже есть (решение владельца 2026-10-08): карточка Jiraffe слева.
  */
 export function taskPanelShown(mode: TaskCardMode, state: TaskStateMessage | undefined): boolean {
-  if (!isTaskChat(state)) return false;
-  return mode !== 'strip';
+  return isTaskChat(state) && (mode === 'tab' || mode === 'split');
 }
 
 /** Вид вкладки по умолчанию: при `split` с Jiraffe карточка уже слева — вкладка открыта на «изменениях». */

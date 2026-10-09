@@ -3,6 +3,7 @@ import {
   nextSessionListMode,
   overriddenKeys,
   readSettings,
+  readTaskCardMode,
   resolveLanguage,
   resolveDefaultEffort,
   resolveDefaultMode,
@@ -94,7 +95,10 @@ describe('sessionList', () => {
     expect(validateSetting('tasks.sidebar', 'section')).toEqual({ ok: true, value: 'section' });
     expect(validateSetting('tasks.sidebar', 'tree').ok).toBe(false);
     expect(validateSetting('tasks.card', 'split')).toEqual({ ok: true, value: 'split' });
-    expect(validateSetting('tasks.card', 'tab').ok).toBe(false);
+    expect(validateSetting('tasks.card', 'tab')).toEqual({ ok: true, value: 'tab' });
+    // режимы roadmap 19 больше не записываются (читаются как `tab` — readTaskCardMode)
+    expect(validateSetting('tasks.card', 'panel').ok).toBe(false);
+    expect(validateSetting('tasks.card', 'strip').ok).toBe(false);
     expect(validateSetting('tasks.tab', 'task')).toEqual({ ok: true, value: 'task' });
     expect(validateSetting('tasks.tab', 'chat')).toEqual({ ok: true, value: 'chat' });
     expect(validateSetting('tasks.tab', 'panel').ok).toBe(false);
@@ -177,6 +181,14 @@ describe('язык интерфейса', () => {
     expect(readSettings(cfgOf({ language: 'xx' })).language).toBe('auto');
     expect(readSettings(cfgOf({ language: 'en' })).language).toBe('en');
   });
+  it('readSettings: tasks.card — старые panel/strip читаются как tab (roadmap 20, решение 10)', () => {
+    expect(readSettings(cfgOf({ 'tasks.card': 'panel' }))['tasks.card']).toBe('tab');
+    expect(readSettings(cfgOf({ 'tasks.card': 'strip' }))['tasks.card']).toBe('tab');
+    expect(readSettings(cfgOf({ 'tasks.card': 'split' }))['tasks.card']).toBe('split');
+    expect(readSettings(cfgOf({ 'tasks.card': 7 }))['tasks.card']).toBe('tab');
+    expect(readTaskCardMode('strip')).toBe('tab');
+    expect(readTaskCardMode(undefined)).toBe('tab');
+  });
 });
 
 describe('resolveDefaultMode / resolveDefaultEffort', () => {
@@ -225,7 +237,7 @@ describe('readSettings', () => {
         'sidebar.top': 'mini',
         'sidebar.limits': 'grid',
         'tasks.sidebar': 'tree',
-        'tasks.card': 'tab',
+        'tasks.card': 'grid',
         'tasks.tab': 'split',
         'jira.source': 'x',
         'tasks.refresh': '1s',
@@ -241,7 +253,7 @@ describe('readSettings', () => {
       'sidebar.top': 'detailed',
       'sidebar.limits': 'active',
       'tasks.sidebar': 'groups',
-      'tasks.card': 'panel',
+      'tasks.card': 'tab',
       'tasks.tab': 'chat',
       'jira.source': 'auto',
       'tasks.refresh': '30s',

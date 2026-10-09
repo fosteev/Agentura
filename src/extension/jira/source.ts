@@ -1,6 +1,7 @@
 import { createJiraClient, startedWithOffset, type JiraClient } from '../../data/jira/client';
 import type { IssueDetail, StatusCategory, TransitionInfo, Worklog } from '../../data/jira/types';
 import type { JiraSourceSetting } from '../../settings';
+import { isIsoDate, TASK_LIMITS } from '../../shared/task';
 import { hasJiraffeWrite, type JiraffeApi } from './jiraffeApi';
 import type { OwnInstance, OwnInstanceStore } from './ownInstances';
 
@@ -26,10 +27,10 @@ export interface WorkInput {
   aiTokens?: number;
 }
 
-/** Потолки записи — как у Jiraffe API v2 (комментарий 32 000, комментарий ворклога 30 000, ворклог до суток). */
-export const MAX_COMMENT = 32_000;
-export const MAX_WORK_COMMENT = 30_000;
-export const MAX_WORK_SECONDS = 86_400;
+/** Потолки записи — как у Jiraffe API v2 (общие с проверкой протокола webview — `TASK_LIMITS`). */
+export const MAX_COMMENT = TASK_LIMITS.comment;
+export const MAX_WORK_COMMENT = TASK_LIMITS.workComment;
+export const MAX_WORK_SECONDS = TASK_LIMITS.workSeconds;
 
 /**
  * Запись в Jira от имени пользователя (этап 8 roadmap 19, инструменты агента): у своего подключения — копия клиента
@@ -42,15 +43,8 @@ export interface JiraWriter {
   logWork(instanceId: string, key: string, work: WorkInput): Promise<{ id?: string }>;
 }
 
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-
-/** Дата `YYYY-MM-DD`, которая существует в календаре. */
-export function isIsoDate(s: unknown): s is string {
-  if (typeof s !== 'string' || !DATE_RE.test(s)) return false;
-  const [y, m, d] = s.split('-').map(Number) as [number, number, number];
-  const dt = new Date(Date.UTC(y, m - 1, d));
-  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
-}
+/** Дата `YYYY-MM-DD`, которая существует в календаре (живёт в `shared/task` — её проверяет и протокол webview). */
+export { isIsoDate };
 
 /** Проверка записи до запроса (общая для обоих источников): мусор не уходит ни в Jira, ни в чужое расширение. */
 function checkComment(body: unknown): string {

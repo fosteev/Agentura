@@ -1,6 +1,6 @@
 # 20 — Вкладка «задача» рядом с чатом: карточка по вёрстке Jiraffe
 
-> **Статус:** план 2026-10-09, ветка `feature/task-groups` (поверх 0.9.0, ещё не в main).
+> **Статус:** план 2026-10-09, ветка `feature/task-groups` (поверх 0.9.0, ещё не в main). Этап 1 принят 2026-10-09.
 > Прототип — `prototype/screens/task-tab.html` (`#chat|#task|#wide|#busy|#wait`); галерея v40, раздел «Вкладка «задача»
 > рядом с чатом». **Выбран широкий вариант (`#wide`).**
 > Исполнитель отмечает чекбоксы по ходу работы — по факту проверки. Ручные проверки и решения на подтверждение —
@@ -89,27 +89,42 @@ Agentura (Preact + `@preact/signals`):
 11. **Не делаем:** редактирование описания и полей, назначение исполнителя, загрузку вложений, превью картинок,
     упоминания @ в комментарии, правки репо Jiraffe.
 
+### Решения по итогам этапа 1 (2026-10-09)
+
+12. После успешной записи хост зовёт `service.afterWrite` (как инструменты агента), а не `refresh`: `refresh` упирается
+    в окно 5 с и отдал бы старый кеш.
+13. Ошибка получения переходов приходит в `task.transitions {items: [], error}` (это чтение), запись — в `task.action`.
+14. Хост не пускает второй запрос записи того же вида, пока летит первый (дубль комментария/ворклога), и **ничего не
+    отвечает** на отброшенный — webview обязан сам блокировать кнопку до `task.action`. Таймаут ответа источника — 60 с
+    (`WRITE_TIMEOUT_MS`), ошибка «may have been saved — refresh».
+15. «↳ в чат» у карточки (`task.toComposer` без `commentId`) прикладывает к полю ввода файл `<KEY>.md` с контекстом
+    задачи — как «Чат по задаче…», а не вставляет текст. Переключение на «чат» и фокус — на стороне webview (этап 2).
+16. `TASK_LIMITS`, `isIsoDate`, `isOpenableLink` живут в `src/shared/task.ts` — их берёт и протокол webview.
+17. Превью `tasks.card` в настройках (`SettingsPreview.tsx`) сейчас только поправлено под новый enum — перерисовать под
+    вкладки «чат | задача» на этапе 2. `scripts/readme-shots/data.mjs` строит `task.state` без новых полей — дополнить
+    на этапе 2 (иначе кадры вкладки пустые).
+
 ## Этапы
 
 ### 1. Хост и протокол — **opus, high** (HTML из Jira идёт в webview, запись от имени пользователя)
 
-- [ ] `src/shared/task.ts`: `TaskCard` + `descriptionHtml`, `reporter?`, `created`, `due?`, `labels`, `components`,
+- [x] `src/shared/task.ts`: `TaskCard` + `descriptionHtml`, `reporter?`, `created`, `due?`, `labels`, `components`,
       `fixVersions`, `epic?`, `time {originalSec?, remainingSec?, spentSec?}`, `history: TaskHistory[]`
       (`{at, author, items:{field, from, to}[]}`), `worklogs: TaskWorklog[]` (`{id, author, mine, at, seconds, comment}`),
       `canWrite: boolean`; `TaskComment` + `html`. Клипы: HTML описания 1 000 000 → как `MAX_DESCRIPTION`-аналог
       по символам HTML (взять 200 000), комментария — 200 000; истории — последние 200 записей; ворклогов — 200.
-- [ ] `taskEvents.ts:95` — заполнить новые поля из `IssueDetail`/`Worklog[]` (текстовые поля оставить как есть).
-- [ ] Запросы webview → хост (в `TaskRequest`, `FROM_WEBVIEW_TYPES`, `FIELD_CHECKS` с проверкой длин):
+- [x] `taskEvents.ts:95` — заполнить новые поля из `IssueDetail`/`Worklog[]` (текстовые поля оставить как есть).
+- [x] Запросы webview → хост (в `TaskRequest`, `FROM_WEBVIEW_TYPES`, `FIELD_CHECKS` с проверкой длин):
       `task.transitions` → ответ `task.transitions {items}`; `task.transition {transitionId}`;
       `task.comment {body}` (≤ `MAX_COMMENT`, непустой); `task.logWork {seconds, date, comment}` (потолки
       `source.ts:29–31`, `isIsoDate`); `task.openLink {url}` (только http/https/mailto, ≤ 4000);
       `task.toComposer` — `commentId` становится необязательным (нет — весь контекст задачи, решение 8).
       Ответ на запись — `task.action {kind, ok, error?}`; после `ok` — `refresh`.
-- [ ] Обработка в `taskTab.ts` через `source.writer` текущей задачи (тот же путь, что у инструментов агента в
+- [x] Обработка в `taskTab.ts` через `source.writer` текущей задачи (тот же путь, что у инструментов агента в
       `agentTools.ts`, но без разрешения — инициатор пользователь). Нет writer — `task.action {ok:false, error:'no-writer'}`.
-- [ ] Настройка `tasks.card`: enum `tab|split`, по умолчанию `tab`, `panel`/`strip` → `tab` при чтении; `package.json`,
+- [x] Настройка `tasks.card`: enum `tab|split`, по умолчанию `tab`, `panel`/`strip` → `tab` при чтении; `package.json`,
       `package.nls.json`, `package.nls.ru.json`.
-- [ ] Тесты: `taskEvents.test.ts` (новые поля, клипы), `taskTab.test.ts` (каждый новый запрос: ok, нет writer, ошибка
+- [x] Тесты: `taskEvents.test.ts` (новые поля, клипы), `taskTab.test.ts` (каждый новый запрос: ok, нет writer, ошибка
       источника, отказ на плохих полях), `protocol` (FIELD_CHECKS: длины, схемы URL `javascript:`/`file:` — отказ).
 
 **Готово, когда:** `npm run check` зелёный; webview получает в `task.state` HTML и историю/ворклоги; новые запросы
@@ -182,7 +197,10 @@ task.openLink, настройка tasks.card = tab|split. Решения 5, 7, 8
 Сессия 2 — webview: вкладки «чат | задача» и карточка · Модель: sonnet, effort: high · после сессии 1
 <общая шапка>
 Задача: этап 2 roadmap 20 — вкладки в полосе задачи, правая панель без «задачи», TaskView по прототипу #wide.
-Решения 1–9. Новые поля и запросы протокола уже есть (этап 1) — src/shared/task.ts.
+Решения 1–9 и 12–17. Новые поля и запросы протокола уже есть (этап 1) — src/shared/task.ts (TaskCard, TaskComment.html,
+TaskHistory, TaskWorklog, TaskTransition, TaskTransitionsMessage, TaskActionMessage, TaskRequest); ответы хоста приходят
+в store webview там же, где task.state. Кнопки записи блокировать до task.action (решение 14). Превью tasks.card в
+SettingsPreview.tsx и фикстуру scripts/readme-shots/data.mjs дополнить (решение 17).
 Эталоны: TaskPane.tsx (текущая карточка, «изменения», ChatTabs/TaskStrip), Chat.tsx:282/401/410/435/502/586/697/715/747,
 DOMPurify — Cards.tsx:448; вёрстка — prototype/screens/task-tab.html (#wide и #task для узкой), jiraffe/webview/render.ts.
 Порядок — чекбоксы этапа 2. DoD: «Готово, когда» этапа 2. Проверка: npm run check, node scripts/readme-shots/run.mjs tasks.

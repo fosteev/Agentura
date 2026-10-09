@@ -2,7 +2,17 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { mapIssueDetail, mapWorklog } from '../../data/jira/mappers';
-import { FROM_CHAT_SLACK_MS, TurnLog, buildSnapshot, eventsSince, formatDuration, meRef, type TurnSpan } from './taskEvents';
+import {
+  FROM_CHAT_SLACK_MS,
+  MAX_CARD_ROWS,
+  MAX_HTML,
+  TurnLog,
+  buildSnapshot,
+  eventsSince,
+  formatDuration,
+  meRef,
+  type TurnSpan,
+} from './taskEvents';
 
 const fixture = JSON.parse(readFileSync(join(__dirname, '../../../test/fixtures/jira/issue-dc.json'), 'utf8'));
 const issue = mapIssueDetail({ id: 'inst', kind: 'dc' }, fixture.issue, []);
@@ -34,6 +44,53 @@ describe('buildSnapshot (фикстура DC)', () => {
     expect(s.card.comments[1]!.text).not.toMatch(/<[a-z]/);
     expect(s.card.attachments[0]).toMatchObject({ id: '40001', filename: 'report.png' });
     expect(s.card.attachments[0]!.url).toMatch(/^https:\/\//);
+  });
+
+  it('вкладка «задача» (roadmap 20): HTML описания и комментариев как есть, поля, время, история, ворклоги', () => {
+    expect(s.card.descriptionHtml).toBe(issue.descriptionHtml);
+    expect(s.card.comments.map((c) => c.html)).toEqual(issue.comments.map((c) => c.bodyHtml));
+    expect(s.card.created).toBe(Date.parse(issue.created));
+    expect(s.card.labels).toEqual(issue.labels);
+    expect(s.card.components).toEqual(issue.components);
+    expect(s.card.fixVersions).toEqual(issue.fixVersions.map((v) => v.name));
+    if (issue.reporter) expect(s.card.reporter).toBe(issue.reporter.name);
+    if (issue.epic) expect(s.card.epic?.key).toBe(issue.epic.key);
+    expect(s.card.time).toEqual(
+      Object.fromEntries(Object.entries(issue.timetracking).filter(([, v]) => typeof v === 'number')),
+    );
+    expect(s.card.history).toHaveLength(issue.history.length);
+    expect(s.card.history[0]).toEqual({
+      at: Date.parse(issue.history[0]!.created),
+      author: issue.history[0]!.author?.name ?? '',
+      items: issue.history[0]!.items,
+    });
+    expect(s.card.worklogs).toHaveLength(worklogs.length);
+    expect(s.card.worklogs[0]).toMatchObject({ id: worklogs[0].id, seconds: worklogs[0].timeSpentSec, at: Date.parse(worklogs[0].started) });
+    expect(s.card.worklogs.some((w) => w.mine)).toBe(s.changes.some((c) => c.kind === 'worklog' && c.mine));
+    // запись — только если у источника есть writer
+    expect(s.card.canWrite).toBe(false);
+    expect(buildSnapshot({ instance, issue, worklogs, me: undefined, canWrite: true }).card.canWrite).toBe(true);
+  });
+
+  it('клипы: HTML описания и комментария — 200 000, история и ворклоги — последние 200', () => {
+    const big = `<p>${'x'.repeat(MAX_HTML + 5_000)}</p>`;
+    const history = Array.from({ length: MAX_CARD_ROWS + 50 }, (_, n) => ({
+      created: new Date(Date.UTC(2026, 0, 1, 0, n)).toISOString(),
+      items: [{ field: 'labels', from: null, to: `l${n}` }],
+    }));
+    const many = Array.from({ length: MAX_CARD_ROWS + 50 }, (_, n) => ({ ...worklogs[0], id: `w${n}` }));
+    const c = buildSnapshot({
+      instance,
+      issue: { ...issue, descriptionHtml: big, comments: [{ ...issue.comments[0]!, bodyHtml: big }], history },
+      worklogs: many,
+      me: undefined,
+    }).card;
+    expect(c.descriptionHtml).toHaveLength(MAX_HTML);
+    expect(c.comments[0]!.html).toHaveLength(MAX_HTML);
+    expect(c.history).toHaveLength(MAX_CARD_ROWS);
+    expect(c.history.at(-1)!.items[0]!.to).toBe(`l${MAX_CARD_ROWS + 49}`);
+    expect(c.worklogs).toHaveLength(MAX_CARD_ROWS);
+    expect(c.worklogs[0]!.id).toBe('w50');
   });
 
   it('вложение с не-http адресом получает пустую ссылку (чип не откроется)', () => {
@@ -171,5 +228,36 @@ describe('buildSnapshot: недоверенный ввод (чужое расш�
     expect(new Set(ids).size).toBe(2);
     expect(s.changes.find((c) => c.kind === 'status')?.from).toBeNull();
     expect(s.changes.find((c) => c.kind === 'worklog')?.text).toBe('<1m');
+  });
+
+  it('новые поля карточки: мусор — пустые значения, а не падение', () => {
+    const bad = {
+      ...issue,
+      descriptionHtml: { x: 1 },
+      reporter: { name: {} },
+      created: 5,
+      due: 7,
+      labels: [1, 'ok', null],
+      components: 'nope',
+      fixVersions: [{ name: 3 }, null, { name: '1.0' }],
+      epic: { key: 9 },
+      timetracking: { originalSec: 'x', remainingSec: -1, spentSec: 60 },
+      comments: [{ id: 'c', bodyHtml: ['<b>x</b>'] }],
+      history: [null, { created: 1, author: 'x', items: 'nope' }],
+    } as never;
+    const c = buildSnapshot({ instance, issue: bad, worklogs: [null, { id: 3, comment: { a: 1 } }] as never, me: undefined }).card;
+    expect(c).toMatchObject({ descriptionHtml: '', reporter: '', created: 0, labels: ['ok'], components: [], fixVersions: ['1.0'] });
+    expect(c.due).toBeUndefined();
+    expect(c.epic).toBeUndefined();
+    expect(c.time).toEqual({ spentSec: 60 });
+    expect(c.comments[0]!.html).toBe('');
+    expect(c.history).toEqual([
+      { at: 0, author: '', items: [] },
+      { at: 0, author: '', items: [] },
+    ]);
+    expect(c.worklogs).toEqual([
+      { id: '', author: '', mine: false, at: 0, seconds: 0, comment: '' },
+      { id: '', author: '', mine: false, at: 0, seconds: 0, comment: '' },
+    ]);
   });
 });

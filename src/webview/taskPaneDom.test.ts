@@ -56,10 +56,19 @@ function card(over: Partial<TaskCard> = {}): TaskCard {
     url: 'https://jira.example/browse/NEWMFC-1482',
     updatedAt: T0,
     description: 'Талон выдаётся на экран, но печать не запускается. <b>не жирный</b>',
+    descriptionHtml: '<p>Талон выдаётся на экран, но печать не запускается.</p>',
+    created: T0 - 86_400_000,
+    labels: [],
+    components: [],
+    fixVersions: [],
+    time: {},
+    history: [],
+    worklogs: [],
+    canWrite: true,
     attachments: [{ id: 'a1', filename: 'terminal.log', size: 148 * 1024, mimeType: 'text/plain', url: 'https://x/a1' }],
     comments: [
-      { id: 'c1', author: 'М. Крылова', mine: false, at: T0 - 3_600_000, text: 'Приложила лог.' },
-      { id: 'c2', author: 'И. Петров', mine: false, at: T0 - 1_800_000, text: 'Подтверждаю.' },
+      { id: 'c1', author: 'М. Крылова', mine: false, at: T0 - 3_600_000, text: 'Приложила лог.', html: '<p>Приложила лог.</p>' },
+      { id: 'c2', author: 'И. Петров', mine: false, at: T0 - 1_800_000, text: 'Подтверждаю.', html: '<p>Подтверждаю.</p>' },
     ],
     ...over,
   };
@@ -95,7 +104,7 @@ beforeEach(() => {
   hudState.value = initialHud();
   taskState.value = undefined;
   taskChats.value = [];
-  taskCardMode.value = 'panel';
+  taskCardMode.value = 'tab';
   taskFocus.value = undefined;
 });
 
@@ -184,13 +193,13 @@ describe('полоска и вкладка «задача»', () => {
     expect(q(host, '.tk-txt').classList.contains('clamp')).toBe(false);
   });
 
-  it('tasks.card: strip — только полоска; split с Jiraffe — вкладка на «изменениях», без Jiraffe — как panel', async () => {
+  it('tasks.card: tab — полоска и вкладка; split с Jiraffe — вкладка на «изменениях», без Jiraffe — как tab', async () => {
     const host = mount();
     post(state());
-    taskCardMode.value = 'strip';
+    taskCardMode.value = 'tab';
     await flush();
     expect(q(host, '.tk-strip')).not.toBeNull();
-    expect(taskTab(host)).toBeUndefined();
+    expect(taskTab(host)).toBeDefined();
     taskCardMode.value = 'split';
     await flush();
     expect(taskTab(host)).toBeDefined(); // карточка Jiraffe слева, справа — вкладка «задача»
@@ -200,15 +209,15 @@ describe('полоска и вкладка «задача»', () => {
     expect(taskTab(host)).toBeDefined();
     expect(q(host, '.tk-seg [aria-pressed="true"], .tk-seg [aria-checked="true"], .tk-seg .on')?.textContent).not.toMatch(/измен/i);
     // chat.info несёт значение настройки
-    taskCardMode.value = 'panel';
+    taskCardMode.value = 'tab';
     handleHostMessage({
       type: 'chat.info',
       project: 'p',
       cwd: '/p',
       allowBypass: false,
-      taskCard: 'strip',
+      taskCard: 'split',
     });
-    expect(taskCardMode.value).toBe('strip');
+    expect(taskCardMode.value).toBe('split');
   });
 });
 
@@ -257,7 +266,7 @@ describe('лента изменений и «новое»', () => {
     const host = mount();
     post(state({ humanChanges: false }));
     await flush();
-    const fresh = { id: 'c3', author: 'О. К.', mine: false, at: T0 + 300_000, text: 'Новый комментарий.' };
+    const fresh = { id: 'c3', author: 'О. К.', mine: false, at: T0 + 300_000, text: 'Новый комментарий.', html: '' };
     post(state({ humanChanges: false, card: card({ comments: [...card().comments, fresh] }), events: [human, agent], fetchedAt: T0 + 400_000 }));
     await flush();
     expect(taskTab(host)!.querySelector('.b')!.textContent).toBe('1'); // чужое событие спрятано, своё — новое
@@ -481,22 +490,13 @@ describe('инструменты Jira агента в ленте (этап 8)', 
     expect(taskFocus.value).toBeUndefined();
   });
 
-  it('ворклог по другой задаче или ошибка — без «в задаче →»; `tasks.card = strip` — ссылка открывает задачу как полоска', async () => {
+  it('ворклог по другой задаче или ошибка — без «в задаче →»', async () => {
     const host = mount();
     post(state());
     toolRow('worklog', { minutes: 90, issue: 'ABC-7' }, 'Logged 1h 30m on ABC-7.\nevent: worklog:5');
     await flush();
     expect(row(host).querySelector('.what')!.textContent).toBe('ворклог ABC-7 · 1h 30m');
     expect(row(host).textContent).not.toContain('в задаче');
-    for (const host2 of mounted.splice(0)) render(null, host2);
-    chat.value = initialState();
-    taskCardMode.value = 'strip';
-    const h2 = mount();
-    post(state());
-    toolRow('worklog', { minutes: 30 }, 'Logged 30m on NEWMFC-1482.\nevent: worklog');
-    await flush();
-    [...row(h2).querySelectorAll<HTMLElement>('.r a')].find((a) => a.textContent === 'в задаче →')!.click();
-    expect(sent.at(-1)).toEqual({ type: 'task.openExternal' });
   });
 });
 

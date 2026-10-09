@@ -48,13 +48,15 @@ export const TASK_SIDEBAR_MODES = ['groups', 'section'] as const;
 export type TaskSidebarMode = (typeof TASK_SIDEBAR_MODES)[number];
 export const DEFAULT_TASK_SIDEBAR: TaskSidebarMode = 'groups';
 /**
- * Где карточка задачи в чате по задаче (`tasks.card`, roadmap 19): `panel` — вкладка «задача» правой панели чата,
- * `split` — карточка Jiraffe слева, чат справа (только при источнике Jiraffe, иначе работает как `panel`), `strip` —
- * только полоска над лентой.
+ * Где карточка задачи в чате по задаче (`tasks.card`, roadmap 20, решение 10): `tab` — вкладка «задача» рядом с «чатом»
+ * в полосе задачи, `split` — то же плюс карточка Jiraffe слева, чат справа (только при источнике Jiraffe, иначе как `tab`).
+ * Старые значения roadmap 19 (`panel`, `strip`) читаются как `tab` — `readTaskCardMode`.
  */
-export const TASK_CARD_MODES = ['panel', 'split', 'strip'] as const;
+export const TASK_CARD_MODES = ['tab', 'split'] as const;
 export type TaskCardMode = (typeof TASK_CARD_MODES)[number];
-export const DEFAULT_TASK_CARD: TaskCardMode = 'panel';
+export const DEFAULT_TASK_CARD: TaskCardMode = 'tab';
+/** Значения `tasks.card` до roadmap 20: в `package.json` их больше нет, но в settings.json пользователя могут остаться. */
+const LEGACY_TASK_CARD: readonly string[] = ['panel', 'strip'];
 /**
  * Вкладки редактора для чатов по задаче (`tasks.tab`, roadmap 19, вариант Б): `chat` — вкладка на чат (как без задач),
  * `task` — вкладка на задачу, её чаты — внутренними вкладками под полоской задачи.
@@ -302,6 +304,12 @@ export function isTaskSidebarMode(v: unknown): v is TaskSidebarMode {
 
 export function isTaskCardMode(v: unknown): v is TaskCardMode {
   return typeof v === 'string' && (TASK_CARD_MODES as readonly string[]).includes(v);
+}
+
+/** Значение `tasks.card` из настроек: старые `panel`/`strip` → `tab`, мусор → по умолчанию. */
+export function readTaskCardMode(v: unknown): TaskCardMode {
+  if (isTaskCardMode(v)) return v;
+  return typeof v === 'string' && LEGACY_TASK_CARD.includes(v) ? 'tab' : DEFAULT_TASK_CARD;
 }
 
 export function isTaskTabMode(v: unknown): v is TaskTabMode {
@@ -582,7 +590,7 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
     'sidebar.top': isSidebarTopMode(top) ? top : DEFAULT_SIDEBAR_TOP,
     'sidebar.limits': isSidebarLimitsMode(limits) ? limits : DEFAULT_SIDEBAR_LIMITS,
     'tasks.sidebar': isTaskSidebarMode(taskSb) ? taskSb : DEFAULT_TASK_SIDEBAR,
-    'tasks.card': isTaskCardMode(taskCard) ? taskCard : DEFAULT_TASK_CARD,
+    'tasks.card': readTaskCardMode(taskCard),
     'tasks.tab': isTaskTabMode(taskTab) ? taskTab : DEFAULT_TASK_TAB,
     'jira.source': isJiraSource(jiraSource) ? jiraSource : DEFAULT_JIRA_SOURCE,
     'tasks.refresh': isTaskRefresh(taskRefresh) ? taskRefresh : DEFAULT_TASK_REFRESH,

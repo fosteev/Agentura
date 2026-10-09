@@ -264,6 +264,22 @@ describe('TaskService', () => {
     expect(h.svc.issueUrl(TASK)).toBe('https://jira.example.test/jira/browse/ABC-123');
   });
 
+  it('contextOf (roadmap 20, «↳ в чат» карточки): контекст задачи из последней загрузки; canWrite — по writer источника', async () => {
+    const h = harness();
+    expect(h.svc.contextOf(TASK)).toBeUndefined();
+    const v = h.view();
+    h.svc.attach(TASK, v.tv);
+    await h.flush();
+    const ctx = h.svc.contextOf(TASK)!;
+    expect(ctx.key).toBe('ABC-123');
+    expect(ctx.text).toMatch(/^# ABC-123: /);
+    expect(ctx.text).toContain('- URL: https://jira.example.test/jira/browse/ABC-123');
+    expect(ctx.text).toContain('- Jira: Work');
+    const last = v.posts.at(-1)!;
+    expect(last.card?.canWrite).toBe(false); // у источника харнесса нет writer
+    expect(last.card?.descriptionHtml).toBe(issue.descriptionHtml);
+  });
+
   it('401/403: таймер и nudge больше не грузят (CAPTCHA на DC), ↻ и reconfigure — грузят', async () => {
     const h = harness();
     const { tv, posts } = h.view();

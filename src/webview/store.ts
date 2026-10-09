@@ -136,7 +136,7 @@ export const agentsView = signal<AgentsView>('list');
 /** Раскладка вкладки «git» при нескольких репо (`agentura.git.layout`, `chat.info`): `data-git` на корне чата. */
 export const gitLayout = signal<GitLayout>('stack');
 /** Где карточка задачи (`agentura.tasks.card`, `chat.info`): `strip` — без вкладки «задача» в панели. */
-export const taskCardMode = signal<TaskCardMode>('panel');
+export const taskCardMode = signal<TaskCardMode>('tab');
 /** Карточка и лента изменений задачи вкладки (`task.state`, roadmap 19); нет `taskKey` — вкладка вне задачи. */
 export const taskState = signal<TaskStateMessage | undefined>(undefined);
 /**
@@ -387,7 +387,7 @@ export function handleHostMessage(m: ToWebview): void {
       composerLayout.value = m.composerLayout ?? 'classic';
       agentsView.value = m.agentsView ?? 'list';
       gitLayout.value = m.gitLayout ?? 'stack';
-      taskCardMode.value = m.taskCard ?? 'panel';
+      taskCardMode.value = m.taskCard ?? 'tab';
       // нет compact (Codex) — нет и порогов автосжатия: шкала без зон и засечек, «полный» — только само окно
       if (!features.value.compact) {
         hudState.value = { ...hudState.value, thresholds: [] };

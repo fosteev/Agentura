@@ -1,4 +1,6 @@
 import { JiraError } from '../../data/jira/http';
+import { issueContext } from '../../data/jira/text';
+import type { IssueDetail } from '../../data/jira/types';
 import type { TaskRefreshMode } from '../../settings';
 import type { TaskError, TaskErrorCode, TaskSourceKind, TaskStateMessage } from '../../shared/task';
 import { parseTaskKey, type TaskGroup, type TaskKey, type TaskMeta } from '../taskGroups';
@@ -46,6 +48,8 @@ interface Entry {
   taskKey: TaskKey;
   viewers: Set<TaskView>;
   snap?: TaskSnapshot;
+  /** Ответ источника, из которого собран `snap`: для контекста задачи в поле ввода («↳ в чат» карточки). */
+  issue?: { instanceName: string; detail: IssueDetail };
   source: TaskSourceKind;
   error?: TaskError;
   fetchedAt: number;
@@ -154,6 +158,7 @@ export class TaskService {
   reconfigure(): void {
     for (const e of this.entries.values()) {
       e.snap = undefined;
+      e.issue = undefined;
       e.error = undefined;
       e.fetchedAt = 0;
       e.me = undefined;
@@ -169,6 +174,13 @@ export class TaskService {
   commentOf(taskKey: TaskKey, commentId: string): { author: string; text: string } | undefined {
     const c = this.entries.get(taskKey)?.snap?.card.comments.find((x) => x.id === commentId);
     return c ? { author: c.author, text: c.text } : undefined;
+  }
+
+  /** Контекст задачи для модели (`issueContext`, как у «Чат по задаче…») из последней загрузки; нет загрузки — `undefined`. */
+  contextOf(taskKey: TaskKey): { key: string; text: string } | undefined {
+    const e = this.entries.get(taskKey);
+    if (!e?.snap || !e.issue) return undefined;
+    return { key: e.snap.card.key, text: issueContext({ instanceName: e.issue.instanceName, issue: e.issue.detail }, e.snap.card.url) };
   }
 
   attachmentUrl(taskKey: TaskKey, attachmentId: string): string | undefined {
@@ -265,6 +277,7 @@ export class TaskService {
     if (!parsed || !src) {
       e.source = 'none';
       e.snap = undefined;
+      e.issue = undefined;
       const m = this.deps.messages;
       const off = setting === 'off';
       const known = this.deps.sources.current() !== undefined;
@@ -284,7 +297,15 @@ export class TaskService {
       );
       if (gen !== e.gen) return this.restart(e);
       const baseUrl = inst?.baseUrl ?? this.deps.groups.group(e.taskKey)?.task.url.replace(/\/browse\/[^/]*$/, '') ?? '';
-      e.snap = buildSnapshot({ instance: { id: parsed.instanceId, name: inst?.name ?? parsed.instanceId, baseUrl }, issue, worklogs, me });
+      const instanceName = inst?.name ?? parsed.instanceId;
+      e.snap = buildSnapshot({
+        instance: { id: parsed.instanceId, name: instanceName, baseUrl },
+        issue,
+        worklogs,
+        me,
+        canWrite: src.writer !== undefined,
+      });
+      e.issue = { instanceName, detail: issue };
       e.error = undefined;
       e.failures = 0;
       e.fetchedAt = this.now();
