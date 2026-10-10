@@ -132,6 +132,25 @@ export type DiffPreview =
   | { kind: 'edit'; filePath: string; oldText: string; newText: string; replaceAll: boolean }
   | { kind: 'write'; filePath: string; content: string };
 
+/** Статус MCP-сервера, приведённый к одному виду для всех движков (roadmap 21, решение 1). */
+export type McpServerStatus = 'connected' | 'pending' | 'failed' | 'needs-auth' | 'disabled';
+
+/** MCP-сервер сессии. Поля, которых движок не сообщил, отсутствуют (init Claude — только имя и статус). */
+export interface McpServerInfo {
+  name: string;
+  status: McpServerStatus;
+  /** Текст ошибки движка (`failed`, иногда `needs-auth`). */
+  error?: string;
+  /** `serverInfo.version` сервера. */
+  version?: string;
+  /** Число тулов сервера. */
+  tools?: number;
+  /** Откуда конфиг: `user`, `project`, `local`, `claudeai`, `plugin`… — как сообщил движок. */
+  scope?: string;
+  /** In-process сервер самого Agentura (Claude `source: 'sdk'`, например `agentura_jira`): «встроенный». */
+  builtin?: boolean;
+}
+
 interface Base {
   /**
    * Субагент или фоновая задача, от которой пришло событие: id вызова инструмента `Agent`
@@ -360,6 +379,11 @@ export type AgentEvent =
     })
   /** Промпт, набранный на claude.ai (`web`) или в мобильном приложении (`phone`): уже ушёл движку. */
   | (Base & { type: 'remote.prompt'; uuid: string; text: string; from: 'phone' | 'web' })
+  /**
+   * MCP-серверы сессии (roadmap 21): всегда полный список, не дельта. Claude — из `init` и `mcpServerStatus()`,
+   * Codex — `mcpServerStatus/list` и `mcpServer/startupStatus/updated`. `at` — когда список получен, мс.
+   */
+  | (Base & { type: 'mcp.status'; servers: McpServerInfo[]; at: number })
   | (Base & {
       type: 'session.closed';
       /** `exit` — процесс движка завершился; `error` — поток оборвался ошибкой; `disposed` — закрыли мы. */
@@ -398,6 +422,12 @@ export interface SessionOptions {
   allowBypassPermissions?: boolean;
   /** Инструменты задачи Jira (roadmap 19, этап 8): подключает только Claude (MCP-сервер `agentura_jira`), остальные движки — нет. */
   taskTools?: TaskTools;
+  /**
+   * Следить за статусом MCP (roadmap 21, решение 12): включено хотя бы одно статусное отображение. Движок сам
+   * запрашивает статус после старта (Claude — и после каждого хода); выключено — только то, что приходит даром
+   * (`mcp_servers` в init Claude, уведомления Codex). Меняется на ходу — `setMcpWatch`.
+   */
+  mcpWatch?: boolean;
 }
 
 /** Что агент может сделать в задаче чата сейчас: ключ задачи по умолчанию и включённые инструменты. */
@@ -500,6 +530,17 @@ export interface AgentSession {
    * событием `remote.state`. Необязателен: есть только у Claude (`features.remote`).
    */
   setRemote?(on: boolean): Promise<void>;
+  /**
+   * MCP (roadmap 21): запросить статус серверов у движка; ответ придёт событием `mcp.status`. Ошибка движка —
+   * в лог, без исключения. Нет метода — движок статуса не знает (Antigravity, `features.mcp`).
+   */
+  mcpStatus?(): Promise<void>;
+  /** Переподключить один сервер, затем `mcpStatus()`. Только Claude (`features.mcpReconnect`). */
+  mcpReconnect?(name: string): Promise<void>;
+  /** Перезагрузить все серверы сразу, затем `mcpStatus()`. Только Codex (`features.mcpReloadAll`). */
+  mcpReloadAll?(): Promise<void>;
+  /** Включить/выключить слежение за статусом (`SessionOptions.mcpWatch`) у живой сессии: смена настроек. */
+  setMcpWatch?(on: boolean): void;
   dispose(): void;
 }
 

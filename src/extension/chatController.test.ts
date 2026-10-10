@@ -11,7 +11,7 @@ import type {
   SessionHistory,
   SessionOptions,
 } from '../agent/types';
-import type { ToWebview } from '../protocol';
+import { isFromWebview, type ToWebview } from '../protocol';
 import { MAX_IMAGE_BASE64, MAX_IMAGES_PER_MESSAGE } from '../shared/images';
 
 /** png 1×1 — хост сверяет формат по сигнатуре. */
@@ -2825,5 +2825,135 @@ describe('граф агентов во вкладке редактора (roadma
     expect(controller.tokens).toBe(280);
     controller.newSession(true);
     expect(controller.tokens).toBe(0);
+  });
+});
+
+describe('ChatController: MCP и скиллы (roadmap 21)', () => {
+  class McpSession extends FakeSession {
+    calls: string[] = [];
+    async mcpStatus() {
+      this.calls.push('status');
+    }
+    async mcpReconnect(name: string) {
+      this.calls.push(`reconnect:${name}`);
+    }
+    setMcpWatch(on: boolean) {
+      this.calls.push(`watch:${on}`);
+    }
+  }
+  function mcpSetup() {
+    const t = setup();
+    const sessions: McpSession[] = [];
+    (t.deps.adapter as { createSession: unknown }).createSession = async (o: SessionOptions) => {
+      t.created.push(o);
+      const s = new McpSession();
+      sessions.push(s);
+      return s;
+    };
+    const opened: string[] = [];
+    const looked: string[] = [];
+    t.deps.findSkill = async (name) => {
+      looked.push(name);
+      return name === 'plan' || name === 'plug:mine' ? `/home/.claude/skills/${name.split(':').pop()}/SKILL.md` : undefined;
+    };
+    t.deps.openPath = async (p) => void opened.push(p);
+    return { ...t, mcpSessions: sessions, opened, looked };
+  }
+  const init: AgentEvent = {
+    type: 'session.init',
+    sessionId: 'sess-1',
+    model: 'm',
+    cwd: '/p',
+    permissionMode: 'default',
+    tools: [],
+    slashCommands: [],
+    skills: ['plan', 'simplify', 'plug:mine', 'Bad/Name'],
+    agents: [],
+    apiKeySource: 'none',
+    engineVersion: '1',
+  };
+
+  it('skill.open: плохое имя и ../ отклоняет isFromWebview; контроллер тоже не ищет файл', async () => {
+    for (const name of ['../x', '', '..', 'a/b', '.claude', 'X'])
+      expect(isFromWebview({ type: 'skill.open', name })).toBe(false);
+    expect(isFromWebview({ type: 'skill.open' })).toBe(false);
+    expect(isFromWebview({ type: 'skill.open', name: 'plug:mine' })).toBe(true);
+    const { controller, opened, looked, deps } = mcpSetup();
+    await controller.handle({ type: 'skill.open', name: '../x' });
+    await controller.handle({ type: 'skill.open', name: '' });
+    expect(looked).toEqual([]);
+    expect(opened).toEqual([]);
+    expect(deps.log.warn).toHaveBeenCalledTimes(2);
+  });
+
+  it('skill.open: найденный SKILL.md открывается, не найденный — в лог; движок не поднимается', async () => {
+    const { controller, opened, sessions, mcpSessions, deps } = mcpSetup();
+    await controller.handle({ type: 'skill.open', name: 'plan' });
+    await controller.handle({ type: 'skill.open', name: 'simplify' });
+    expect(opened).toEqual(['/home/.claude/skills/plan/SKILL.md']);
+    expect(deps.log.warn).toHaveBeenCalledWith(expect.stringContaining('simplify'));
+    expect([...sessions, ...mcpSessions]).toHaveLength(0);
+  });
+
+  it('mcp.reconnect: имя ≤ 128 символов; mcp.refresh/reloadAll без полей', () => {
+    expect(isFromWebview({ type: 'mcp.reconnect', name: 'github' })).toBe(true);
+    expect(isFromWebview({ type: 'mcp.reconnect', name: '' })).toBe(false);
+    expect(isFromWebview({ type: 'mcp.reconnect', name: 'x'.repeat(129) })).toBe(false);
+    expect(isFromWebview({ type: 'mcp.reconnect' })).toBe(false);
+    expect(isFromWebview({ type: 'mcp.refresh' })).toBe(true);
+    expect(isFromWebview({ type: 'mcp.reloadAll' })).toBe(true);
+  });
+
+  it('mcp.* без сессии движок не поднимают; с сессией — доходят; reloadAll без метода — в лог', async () => {
+    const { controller, mcpSessions, deps } = mcpSetup();
+    await controller.handle({ type: 'mcp.refresh' });
+    await controller.handle({ type: 'mcp.reconnect', name: 'github' });
+    expect(mcpSessions).toHaveLength(0);
+    controller.start();
+    await tick();
+    const s = mcpSessions[0]!;
+    await controller.handle({ type: 'mcp.refresh' });
+    await controller.handle({ type: 'mcp.reconnect', name: 'github' });
+    await controller.handle({ type: 'mcp.reloadAll' });
+    expect(s.calls.filter((c) => !c.startsWith('watch'))).toEqual(['status', 'reconnect:github']);
+    expect(deps.log.warn).toHaveBeenCalledWith(expect.stringContaining('mcp.reloadAll'));
+  });
+
+  it('mcpWatch новой сессии — по настройкам; chat.info несёт mcp; смена настроек — setMcpWatch', async () => {
+    const { controller, created, posted, deps, mcpSessions } = mcpSetup();
+    controller.start();
+    await tick();
+    expect(created[0]!.mcpWatch).toBe(true);
+    const off = { feedLabels: true, composerButton: false, panelTab: false, feedStatus: 'off' as const };
+    deps.settings = () => ({ allowBypass: false, mcp: off });
+    controller.pushInfo();
+    const info = posted.filter((m): m is Extract<ToWebview, { type: 'chat.info' }> => m.type === 'chat.info').at(-1)!;
+    expect(info.mcp).toEqual(off);
+    expect(mcpSessions[0]!.calls.at(-1)).toBe('watch:false');
+    await controller.handle({ type: 'session.new' });
+    await controller.handle({ type: 'send', sessionId: '', text: 'hi' });
+    await tick();
+    expect(created[1]!.mcpWatch).toBe(false);
+  });
+
+  it('mcp.status и skill.files уходят в webview и возвращаются при пересеве', async () => {
+    const { controller, posted, mcpSessions } = mcpSetup();
+    controller.start();
+    await tick();
+    const s = mcpSessions[0]!;
+    const status: AgentEvent = { type: 'mcp.status', servers: [{ name: 'github', status: 'failed', error: 'x' }], at: 5 };
+    s.emit(init);
+    s.emit(status);
+    await tick();
+    await tick();
+    const files = () => posted.filter((m) => m.type === 'skill.files');
+    expect(files()).toEqual([{ type: 'skill.files', names: ['plan', 'plug:mine'] }]);
+    expect(posted).toContainEqual({ type: 'agent.event', sessionId: 'sess-1', event: status });
+    posted.length = 0;
+    await controller.handle({ type: 'ready' });
+    await controller.handle({ type: 'ready' });
+    for (let i = 0; i < 5; i++) await tick();
+    expect(posted.filter((m) => m.type === 'agent.event' && m.event.type === 'mcp.status')).toHaveLength(1);
+    expect(files()).toEqual([{ type: 'skill.files', names: ['plan', 'plug:mine'] }]);
   });
 });

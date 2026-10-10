@@ -278,3 +278,79 @@ describe('Read картинки моделью', () => {
     expect(withoutImageData(noData)).toBe(noData);
   });
 });
+
+describe('статус MCP из init (roadmap 21)', () => {
+  const mcpOf = (events: AgentEvent[]) =>
+    events.filter((e): e is AgentEventOf<'mcp.status'> => e.type === 'mcp.status');
+
+  it('mcp_servers → mcp.status после session.init; неизвестный статус — pending, source sdk — builtin', () => {
+    const m = new ClaudeEventMapper({ now: () => 42 });
+    const events = m.map({
+      ...init(),
+      mcp_servers: [
+        { name: 'github', status: 'connected', source: 'user' },
+        { name: 'agentura_jira', status: 'connected', source: 'sdk' },
+        { name: 'slack', status: 'needs-auth' },
+        { name: 'linear', status: 'warming-up' },
+        { name: 'off', status: 'disabled' },
+        { status: 'connected' },
+      ],
+    });
+    expect(events.map((e) => e.type)).toEqual(['session.init', 'mcp.status']);
+    expect(mcpOf(events)[0]).toEqual({
+      type: 'mcp.status',
+      at: 42,
+      servers: [
+        { name: 'github', status: 'connected' },
+        { name: 'agentura_jira', status: 'connected', builtin: true },
+        { name: 'slack', status: 'needs-auth' },
+        { name: 'linear', status: 'pending' },
+        { name: 'off', status: 'disabled' },
+      ],
+    });
+  });
+
+  it('init без mcp_servers (старый CLI) — события нет; пустой список — событие с пустым списком', () => {
+    expect(mcpOf(new ClaudeEventMapper().map(init()))).toEqual([]);
+    expect(mcpOf(new ClaudeEventMapper().map({ ...init(), mcp_servers: [] }))[0]?.servers).toEqual([]);
+  });
+
+  it('тот же init — без повторов; список изменился при том же lastInitKey — только mcp.status', () => {
+    const m = new ClaudeEventMapper();
+    const a = { ...init(), mcp_servers: [{ name: 'github', status: 'pending' }] };
+    m.map(a);
+    expect(m.map(a)).toEqual([]);
+    const b = m.map({ ...init(), mcp_servers: [{ name: 'github', status: 'connected' }] });
+    expect(b.map((e) => e.type)).toEqual(['mcp.status']);
+    expect(mcpOf(b)[0]!.servers).toEqual([{ name: 'github', status: 'connected' }]);
+  });
+
+  it('подробности mcpServerStatus() переживают init с тем же статусом, со сменой статуса — сбрасываются', () => {
+    const m = new ClaudeEventMapper();
+    m.map({ ...init(), mcp_servers: [{ name: 'github', status: 'connected' }] });
+    const full = m.mcpFromEngine([
+      { name: 'github', status: 'connected', serverInfo: { name: 'gh', version: '2.0' }, tools: [{}, {}, {}], scope: 'user' },
+    ]);
+    expect(full?.servers).toEqual([{ name: 'github', status: 'connected', version: '2.0', tools: 3, scope: 'user' }]);
+    expect(m.map({ ...init(), mcp_servers: [{ name: 'github', status: 'connected' }] })).toEqual([]);
+    const failed = mcpOf(m.map({ ...init(), mcp_servers: [{ name: 'github', status: 'failed' }] }));
+    expect(failed[0]!.servers).toEqual([{ name: 'github', status: 'failed', scope: 'user' }]);
+  });
+
+  it('mcpFromEngine: без изменений — undefined, с force — событие; не массив — undefined', () => {
+    const m = new ClaudeEventMapper();
+    const list = [{ name: 'x', status: 'failed', error: 'boom' }];
+    expect(m.mcpFromEngine(list)?.servers).toEqual([{ name: 'x', status: 'failed', error: 'boom' }]);
+    expect(m.mcpFromEngine(list)).toBeUndefined();
+    expect(m.mcpFromEngine(list, true)?.servers).toHaveLength(1);
+    expect(m.mcpFromEngine({ nope: 1 }, true)).toBeUndefined();
+  });
+
+  it('тот же список в другом порядке — не изменение', () => {
+    const m = new ClaudeEventMapper();
+    const a = { name: 'a', status: 'connected' };
+    const b = { name: 'b', status: 'failed' };
+    expect(m.mcpFromEngine([a, b])).toBeDefined();
+    expect(m.mcpFromEngine([b, a])).toBeUndefined();
+  });
+});

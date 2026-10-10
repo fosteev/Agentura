@@ -114,6 +114,30 @@ export const GIT_LAYOUTS = ['stack', 'picker', 'unified'] as const;
 export type GitLayout = (typeof GIT_LAYOUTS)[number];
 export const DEFAULT_GIT_LAYOUT: GitLayout = 'stack';
 /**
+ * Системная строка MCP в ленте (`mcp.feedStatus`, roadmap 21): `failures` — только если сервер не подключился (при
+ * старте или по ходу), `start` — сводка при каждом старте сессии плюс сбои, `off` — никогда.
+ */
+export const MCP_FEED_STATUS_MODES = ['failures', 'start', 'off'] as const;
+export type McpFeedStatus = (typeof MCP_FEED_STATUS_MODES)[number];
+export const DEFAULT_MCP_FEED_STATUS: McpFeedStatus = 'failures';
+/** Четыре настройки `mcp.*` одним объектом: так они идут в `chat.info` и в store webview. */
+export interface McpView {
+  feedLabels: boolean;
+  composerButton: boolean;
+  panelTab: boolean;
+  feedStatus: McpFeedStatus;
+}
+export const DEFAULT_MCP_VIEW: Readonly<McpView> = {
+  feedLabels: true,
+  composerButton: true,
+  panelTab: true,
+  feedStatus: DEFAULT_MCP_FEED_STATUS,
+};
+/** Статус MCP нужен (решение 12): включено хотя бы одно статусное отображение. `feedLabels` статуса не требует. */
+export function mcpWatchOf(v: McpView): boolean {
+  return v.composerButton || v.panelTab || v.feedStatus !== 'off';
+}
+/**
  * Язык интерфейса (`language`): `auto` — как в VS Code (`vscode.env.language`), иначе явно. Применяется после
  * перезагрузки окна.
  */
@@ -165,6 +189,10 @@ export type SettingKey =
   | 'composer.layout'
   | 'agents.view'
   | 'git.layout'
+  | 'mcp.feedLabels'
+  | 'mcp.composerButton'
+  | 'mcp.panelTab'
+  | 'mcp.feedStatus'
   | 'feed.fontSize'
   | 'ui.fontSize'
   | 'font.interface'
@@ -202,6 +230,10 @@ export const SETTING_KEYS: readonly SettingKey[] = [
   'composer.layout',
   'agents.view',
   'git.layout',
+  'mcp.feedLabels',
+  'mcp.composerButton',
+  'mcp.panelTab',
+  'mcp.feedStatus',
   'feed.fontSize',
   'ui.fontSize',
   'font.interface',
@@ -258,6 +290,13 @@ export interface SettingsValues {
   'composer.layout': ComposerLayout;
   'agents.view': AgentsView;
   'git.layout': GitLayout;
+  /** Метки скиллов и MCP в ленте (roadmap 21, вариант B); выключено — лента как раньше. */
+  'mcp.feedLabels': boolean;
+  /** Кнопка «mcp N/M» у поля ввода. */
+  'mcp.composerButton': boolean;
+  /** Вкладка «mcp» правой панели. */
+  'mcp.panelTab': boolean;
+  'mcp.feedStatus': McpFeedStatus;
   'feed.fontSize': number;
   /** Размер интерфейса (всё, кроме ленты), px; 13 — как есть, иначе всё масштабируется (`--ui-zoom`). */
   'ui.fontSize': number;
@@ -330,6 +369,10 @@ export function isFeedStyle(v: unknown): v is FeedStyle {
 
 export function isGitLayout(v: unknown): v is GitLayout {
   return typeof v === 'string' && (GIT_LAYOUTS as readonly string[]).includes(v);
+}
+
+export function isMcpFeedStatus(v: unknown): v is McpFeedStatus {
+  return typeof v === 'string' && (MCP_FEED_STATUS_MODES as readonly string[]).includes(v);
 }
 
 export function isAgentsView(v: unknown): v is AgentsView {
@@ -464,6 +507,9 @@ export function validateSetting(key: SettingKey, value: unknown, lang: ErrLang =
     case 'sessionList.context':
     case 'sessionList.time':
     case 'tasks.humanChanges':
+    case 'mcp.feedLabels':
+    case 'mcp.composerButton':
+    case 'mcp.panelTab':
       return typeof value === 'boolean' ? { ok: true, value } : bad(t.yesNo);
     case 'defaultModel':
     case 'remoteControlNamePrefix':
@@ -529,6 +575,10 @@ export function validateSetting(key: SettingKey, value: unknown, lang: ErrLang =
       return isAgentsView(value) ? { ok: true, value } : bad(t.allowed(AGENTS_VIEWS.join(', ')));
     case 'git.layout':
       return isGitLayout(value) ? { ok: true, value } : bad(t.allowed(GIT_LAYOUTS.join(', ')));
+    case 'mcp.feedStatus':
+      return isMcpFeedStatus(value)
+        ? { ok: true, value }
+        : bad(t.allowed(MCP_FEED_STATUS_MODES.join(', ')));
     case 'language':
       return isLanguageMode(value)
         ? { ok: true, value }
@@ -558,6 +608,7 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
   const cl = cfg.get<unknown>('composer.layout');
   const agv = cfg.get<unknown>('agents.view');
   const gl = cfg.get<unknown>('git.layout');
+  const mcp = readMcpView(cfg);
   const lang = cfg.get<unknown>('language');
   const provider = cfg.get<unknown>('defaultProvider');
   const fz = cfg.get<unknown>('feed.fontSize');
@@ -600,12 +651,27 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
     'composer.layout': isComposerLayout(cl) ? cl : DEFAULT_COMPOSER_LAYOUT,
     'agents.view': isAgentsView(agv) ? agv : DEFAULT_AGENTS_VIEW,
     'git.layout': isGitLayout(gl) ? gl : DEFAULT_GIT_LAYOUT,
+    'mcp.feedLabels': mcp.feedLabels,
+    'mcp.composerButton': mcp.composerButton,
+    'mcp.panelTab': mcp.panelTab,
+    'mcp.feedStatus': mcp.feedStatus,
     'feed.fontSize': isFeedFontSize(fz) ? fz : DEFAULT_FEED_FONT_SIZE,
     'ui.fontSize': isFeedFontSize(uz) ? uz : DEFAULT_FEED_FONT_SIZE,
     'font.interface': str('font.interface'),
     'font.panels': str('font.panels'),
     'font.code': str('font.code'),
     language: isLanguageMode(lang) ? lang : DEFAULT_LANGUAGE,
+  };
+}
+
+/** `mcp.*` одним объектом (`chat.info`): флажки включены, пока не `false`; кривой `feedStatus` — по умолчанию. */
+export function readMcpView(cfg: Pick<ConfigLike, 'get'>): McpView {
+  const status = cfg.get<unknown>('mcp.feedStatus');
+  return {
+    feedLabels: cfg.get<unknown>('mcp.feedLabels') !== false,
+    composerButton: cfg.get<unknown>('mcp.composerButton') !== false,
+    panelTab: cfg.get<unknown>('mcp.panelTab') !== false,
+    feedStatus: isMcpFeedStatus(status) ? status : DEFAULT_MCP_FEED_STATUS,
   };
 }
 
