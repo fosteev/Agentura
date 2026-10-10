@@ -498,6 +498,36 @@
           "default": "stack",
           "description": "%config.git.layout.description%"
         },
+        "agentura.mcp.feedLabels": {
+          "type": "boolean",
+          "default": true,
+          "description": "%config.mcp.feedLabels.description%"
+        },
+        "agentura.mcp.composerButton": {
+          "type": "boolean",
+          "default": true,
+          "description": "%config.mcp.composerButton.description%"
+        },
+        "agentura.mcp.panelTab": {
+          "type": "boolean",
+          "default": true,
+          "description": "%config.mcp.panelTab.description%"
+        },
+        "agentura.mcp.feedStatus": {
+          "type": "string",
+          "enum": [
+            "failures",
+            "start",
+            "off"
+          ],
+          "enumDescriptions": [
+            "%config.mcp.feedStatus.enum.failures%",
+            "%config.mcp.feedStatus.enum.start%",
+            "%config.mcp.feedStatus.enum.off%"
+          ],
+          "default": "failures",
+          "description": "%config.mcp.feedStatus.description%"
+        },
         "agentura.font.interface": {
           "type": "string",
           "default": "",

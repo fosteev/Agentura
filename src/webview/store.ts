@@ -68,7 +68,7 @@ import {
   type ChatState,
   type QuestionCard,
 } from './chatState';
-import type { AgentsView, ComposerLayout, FeedStyle, GitLayout, TaskCardMode } from '../settings';
+import type { AgentsView, ComposerLayout, FeedStyle, GitLayout, McpFeedStatus, McpView, TaskCardMode } from '../settings';
 import type { TaskActionMessage, TaskChatRow, TaskEventKind, TaskStateMessage, TaskTransitionsMessage } from '../shared/task';
 import type { TabChatsMessage } from '../shared/taskTab';
 import type { GitOp, GitSnapshot } from '../shared/git';
@@ -137,6 +137,16 @@ export const agentsView = signal<AgentsView>('list');
 export const gitLayout = signal<GitLayout>('stack');
 /** Где карточка задачи (`agentura.tasks.card`, `chat.info`): `strip` — без вкладки «задача» в панели. */
 export const taskCardMode = signal<TaskCardMode>('tab');
+/**
+ * Roadmap 21, `agentura.mcp.*` из `chat.info`: метки скиллов и MCP в ленте, кнопка «mcp N/M» у поля ввода, вкладка
+ * «mcp» правой панели, системная строка MCP в ленте. Кнопка, вкладка и строка ещё и требуют `features.mcp`.
+ */
+export const mcpFeedLabels = signal(true);
+export const mcpComposerButton = signal(true);
+export const mcpPanelTab = signal(true);
+export const mcpFeedStatus = signal<McpFeedStatus>('failures');
+/** Скиллы, у которых хост нашёл SKILL.md (`skill.files`, решение 6): только у них ссылка «открыть SKILL.md». */
+export const skillFiles = signal<ReadonlySet<string>>(new Set());
 /** Карточка и лента изменений задачи вкладки (`task.state`, roadmap 19); нет `taskKey` — вкладка вне задачи. */
 export const taskState = signal<TaskStateMessage | undefined>(undefined);
 /**
@@ -332,6 +342,14 @@ function abandonSession(): void {
   forgetSession();
 }
 
+/** `chat.info.mcp` → signals; нет поля (старый хост) — по умолчанию: всё включено, строка только при сбое. */
+function applyMcpView(v: McpView | undefined): void {
+  mcpFeedLabels.value = v?.feedLabels ?? true;
+  mcpComposerButton.value = v?.composerButton ?? true;
+  mcpPanelTab.value = v?.panelTab ?? true;
+  mcpFeedStatus.value = v?.feedStatus ?? 'failures';
+}
+
 export function handleHostMessage(m: ToWebview): void {
   switch (m.type) {
     case 'agent.event':
@@ -392,6 +410,7 @@ export function handleHostMessage(m: ToWebview): void {
       agentsView.value = m.agentsView ?? 'list';
       gitLayout.value = m.gitLayout ?? 'stack';
       taskCardMode.value = m.taskCard ?? 'tab';
+      applyMcpView(m.mcp);
       // нет compact (Codex) — нет и порогов автосжатия: шкала без зон и засечек, «полный» — только само окно
       if (!features.value.compact) {
         hudState.value = { ...hudState.value, thresholds: [] };
@@ -462,7 +481,11 @@ export function handleHostMessage(m: ToWebview): void {
     case 'session.attach':
       sessionAttach.value = { pdfPages: m.pdfPages, chars: m.chars };
       break;
+    case 'skill.files':
+      skillFiles.value = new Set(m.names);
+      break;
     case 'session.reset':
+      skillFiles.value = new Set();
       sessionAttach.value = { pdfPages: 0, chars: 0 };
       abandonSession();
       replyTarget.value = undefined;

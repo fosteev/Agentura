@@ -4,6 +4,7 @@
     "session.title": 1,
     "context.usage": 6,
     "session.init": 1,
+    "mcp.status": 1,
     "turn.start": 2,
     "text.delta": 4,
     "usage.message": 2,
@@ -104,6 +105,11 @@
       ],
       "apiKeySource": "none",
       "engineVersion": "2.1.285"
+    },
+    {
+      "type": "mcp.status",
+      "servers": [],
+      "at": 0
     },
     {
       "type": "turn.start",

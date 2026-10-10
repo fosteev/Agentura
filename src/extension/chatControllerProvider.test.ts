@@ -150,7 +150,7 @@ describe('ChatController: маршрутизация по провайдеру',
     await tick();
     expect(claude.created).toHaveLength(0);
     expect(codex.created).toEqual([
-      { cwd: '/p', allowBypassPermissions: false, permissionMode: 'default' },
+      { cwd: '/p', allowBypassPermissions: false, mcpWatch: true, permissionMode: 'default' },
     ]);
     expect(codexReady).toHaveBeenCalled();
     controller.pushInfo();

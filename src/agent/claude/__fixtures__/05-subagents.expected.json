@@ -3,6 +3,7 @@
   "counts": {
     "session.title": 1,
     "session.init": 1,
+    "mcp.status": 1,
     "turn.start": 5,
     "tool.start": 6,
     "agent.start": 4,
@@ -61,6 +62,11 @@
       ],
       "apiKeySource": "none",
       "engineVersion": "2.1.285"
+    },
+    {
+      "type": "mcp.status",
+      "servers": [],
+      "at": 0
     },
     {
       "type": "turn.start",

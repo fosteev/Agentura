@@ -45,7 +45,9 @@ import type {
   TaskSidebarMode,
   SidebarTopMode,
   SettingsValues,
+  McpView,
 } from './settings';
+import { isSkillName } from './shared/skills';
 
 export type {
   AgentEvent,
@@ -122,6 +124,7 @@ export const AGENT_EVENT_TYPES = [
   'mode.changed',
   'remote.state', // roadmap 17: мост Remote Control (connecting/on/off/error, ссылка claude.ai)
   'remote.prompt', // roadmap 17: промпт с claude.ai или телефона
+  'mcp.status', // roadmap 21: MCP-серверы сессии, всегда полный список
   'session.closed', // этап 2 (приёмка): движок завершился / сессия закрыта — последнее событие потока
   'error',
 ] as const satisfies readonly AgentEvent['type'][];
@@ -200,7 +203,14 @@ export type ToWebview =
       features?: ProviderFeatures;
       /** Где карточка задачи в чате по задаче (`agentura.tasks.card`, roadmap 19); нет — `panel`. */
       taskCard?: TaskCardMode;
+      /** Настройки `agentura.mcp.*` (roadmap 21); нет — по умолчанию (`DEFAULT_MCP_VIEW`). */
+      mcp?: McpView;
     }
+  /**
+   * Roadmap 21, решение 6: скиллы из `session.init`, у которых хост нашёл SKILL.md (`.claude/skills` проекта или
+   * домашней папки), — только у них ссылка «открыть SKILL.md». Приходит после каждого `session.init` и при пересеве.
+   */
+  | { type: 'skill.files'; names: string[] }
   | { type: 'capabilities'; sessionId: string; models: ModelOption[]; commands: CommandOption[] }
   | ({ type: 'editor.context' } & EditorContext)
   | { type: 'files.result'; requestId: number; items: FileHit[] }
@@ -384,6 +394,16 @@ export type FromWebview =
   | { type: 'effort.set'; sessionId: string; effort: string }
   /** Roadmap 17: Remote Control вкладки — кнопка «rc», `/rc`, `/remote-control`. Только Claude. */
   | { type: 'remote.set'; sessionId?: string; on: boolean }
+  /**
+   * Roadmap 21: MCP вкладки. `mcp.refresh` — ↻ (статус придёт `mcp.status`); `mcp.reconnect` — «повторить» у сервера
+   * (Claude, `features.mcpReconnect`); `mcp.reloadAll` — «перезапустить все» (Codex, `features.mcpReloadAll`). Без
+   * сессии движка — ничего (движок ради этого не поднимается).
+   */
+  | { type: 'mcp.refresh' }
+  | { type: 'mcp.reconnect'; name: string }
+  | { type: 'mcp.reloadAll' }
+  /** Roadmap 21, решение 6: открыть SKILL.md скилла в редакторе; путь собирает хост, имя — `SKILL_NAME_RE`. */
+  | { type: 'skill.open'; name: string }
   | { type: 'compact'; sessionId: string }
   | { type: 'agent.stop'; sessionId: string; taskId: string }
   /**
@@ -560,6 +580,10 @@ const FROM_WEBVIEW_TYPES: Record<FromWebview['type'], true> = {
   'model.set': true,
   'effort.set': true,
   'remote.set': true,
+  'mcp.refresh': true,
+  'mcp.reconnect': true,
+  'mcp.reloadAll': true,
+  'skill.open': true,
   'compact': true,
   'agent.stop': true,
   'agent.transcript': true,
@@ -632,6 +656,8 @@ const FIELD_CHECKS: Partial<Record<FromWebview['type'], (m: Record<string, unkno
   'agents.openGraph': (m) => m.agentId === undefined || typeof m.agentId === 'string',
   'agents.snapshot': (m) => typeof m.sessionId === 'string' && isAgentGraphView(m.graph),
   'remote.set': (m) => bool(m.on) && (m.sessionId === undefined || str(m.sessionId)),
+  'mcp.reconnect': (m) => str(m.name) && m.name.length > 0 && m.name.length <= 128,
+  'skill.open': (m) => isSkillName(m.name),
   'agent.stop': (m) => typeof m.sessionId === 'string' && typeof m.taskId === 'string',
   'agent.transcript': (m) =>
     typeof m.sessionId === 'string' && typeof m.agentId === 'string' && typeof m.taskId === 'string',

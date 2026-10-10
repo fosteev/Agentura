@@ -48,7 +48,8 @@ import {
   sessionProblem,
   type SessionAttach,
 } from '../shared/files';
-import { resolveDefaultEffort, resolveDefaultMode, type AgentsView, type ComposerLayout, type FeedStyle, type GitLayout, type TaskCardMode } from '../settings';
+import { DEFAULT_MCP_VIEW, mcpWatchOf, resolveDefaultEffort, resolveDefaultMode, type AgentsView, type ComposerLayout, type FeedStyle, type GitLayout, type McpView, type TaskCardMode } from '../settings';
+import { isSkillName } from '../shared/skills';
 import { hostStrings, type Lang } from '../shared/l10n';
 import { appliedSides, previewOf, proposedSides, type EditSides } from './editDiff';
 import {
@@ -108,6 +109,8 @@ export interface ChatDeps {
     defaultEffort?: string | undefined;
     /** `agentura.remoteControl`: Remote Control для каждой новой и восстановленной вкладки Claude (roadmap 17). */
     remoteControl?: boolean | undefined;
+    /** `agentura.mcp.*` (roadmap 21): уходят в `chat.info`; статусные отображения включают слежение за статусом MCP. */
+    mcp?: McpView | undefined;
   };
   /** Лимиты подписки (этап 4): `refresh` ограничен кулдауном сервиса, ответ уходит в webview. */
   usage?: { refresh(): Promise<{ windows: LimitWindow[]; updatedAt: number; error?: string }> };
@@ -153,6 +156,10 @@ export interface ChatDeps {
   openText?(d: { key: string; name: string; text: string }): Promise<void>;
   /** Превью `.html` в соседней вкладке (абсолютный путь). */
   openPreview?(path: string): Promise<void>;
+  /** SKILL.md скилла по имени (roadmap 21, решение 6; `findSkillFile`): абсолютный путь или `undefined`. */
+  findSkill?(name: string): Promise<string | undefined>;
+  /** Открыть файл в редакторе (абсолютный путь): SKILL.md. */
+  openPath?(path: string): Promise<void>;
   /** Открыть ссылку в браузере (только https://claude.ai/). */
   openExternal?(url: string): void;
   /** Возобновить эту сессию сразу (вкладка восстановлена сериализатором или открыта из списка). */
@@ -271,9 +278,12 @@ export class ChatController {
       ...(s.agentsView ? { agentsView: s.agentsView } : {}),
       ...(s.gitLayout ? { gitLayout: s.gitLayout } : {}),
       ...(s.taskCard ? { taskCard: s.taskCard } : {}),
+      mcp: { ...(s.mcp ?? DEFAULT_MCP_VIEW) },
       provider: this.engineProvider,
       features: providerFeatures(this.engineProvider),
     });
+    // настройки сменились: живая сессия начинает (или перестаёт) сама спрашивать статус MCP
+    this.current?.setMcpWatch?.(mcpWatchOf(s.mcp ?? DEFAULT_MCP_VIEW));
   }
 
   /** Webview прислал `ready` столько раз: второй и дальше — webview пересоздан, ленту надо пересеять. */
@@ -299,6 +309,11 @@ export class ChatController {
   private lastContext: Extract<AgentEvent, { type: 'context.usage' }> | undefined;
   /** Последнее состояние моста Remote Control: кнопка «rc» после пересева webview. */
   private lastRemote: Extract<AgentEvent, { type: 'remote.state' }> | undefined;
+  /** Последний статус MCP (roadmap 21): кнопка, вкладка «mcp» после пересева webview. */
+  private lastMcp: Extract<AgentEvent, { type: 'mcp.status' }> | undefined;
+  /** Скиллы с найденным SKILL.md (`skill.files`) — после пересева; `skillFilesSeq` отбрасывает устаревший поиск. */
+  private lastSkillFiles: Extract<ToWebview, { type: 'skill.files' }> | undefined;
+  private skillFilesSeq = 0;
   /**
    * Выбор Remote Control во вкладке (кнопка «rc», `/rc`): переживает `/clear` и смену сессии вкладки.
    * Нет — по настройке `agentura.remoteControl`.
@@ -566,6 +581,8 @@ export class ChatController {
     if (this.lastInit) this.forward(id, this.lastInit);
     if (this.lastContext) this.forward(id, this.lastContext);
     if (this.lastRemote) this.forward(id, this.lastRemote);
+    if (this.lastMcp) this.forward(id, this.lastMcp);
+    if (this.lastSkillFiles) this.deps.post(this.lastSkillFiles);
     if (this.title) this.forward(id, { type: 'session.title', title: this.title });
     if (this.inTurn && this.turnStartedAt !== undefined) {
       this.forward(id, { type: 'turn.start', at: this.turnStartedAt });
@@ -837,6 +854,27 @@ export class ChatController {
         return;
       case 'agents.snapshot':
         deps.graphSnapshot?.(m);
+        return;
+      // MCP (roadmap 21): только у живой сессии — движок ради статуса не поднимаем; ответ придёт `mcp.status`
+      case 'mcp.refresh':
+        await this.current?.mcpStatus?.();
+        return;
+      case 'mcp.reconnect':
+        if (!this.current?.mcpReconnect) {
+          this.log.warn(`mcp.reconnect: у движка ${this.engineProvider} переподключения сервера нет`);
+          return;
+        }
+        await this.current.mcpReconnect(m.name);
+        return;
+      case 'mcp.reloadAll':
+        if (!this.current?.mcpReloadAll) {
+          this.log.warn(`mcp.reloadAll: у движка ${this.engineProvider} перезапуска серверов нет`);
+          return;
+        }
+        await this.current.mcpReloadAll();
+        return;
+      case 'skill.open':
+        await this.openSkill(m.name);
         return;
       default:
         break;
@@ -1442,6 +1480,8 @@ export class ChatController {
         allowBypassPermissions: hasModes && s.allowBypass,
         // инструменты задачи Jira (roadmap 19, этап 8, решение 13) — только Claude; есть ли они сейчас, решает сам набор
         ...(claude && deps.taskTools ? { taskTools: deps.taskTools } : {}),
+        // статус MCP движок спрашивает сам, только если его что-то покажет (roadmap 21, решение 12); у agy статуса нет
+        ...(providerFeatures(provider).mcp ? { mcpWatch: mcpWatchOf(s.mcp ?? DEFAULT_MCP_VIEW) } : {}),
       };
       const open = (): Promise<AgentSession> =>
         resume
@@ -1595,11 +1635,15 @@ export class ChatController {
         this.register(session.id);
         this.lastSessionId = session.id || this.lastSessionId;
         this.lastInit = e;
+        void this.postSkillFiles(e.skills);
         if (this.engineProvider === 'claude') this.deps.onEngineVersion?.(e.engineVersion);
         this.log.info(`session.init: ${e.model}, режим ${e.permissionMode}`);
         break;
       case 'context.usage':
         if (e.source === 'engine' && !e.agentId) this.lastContext = e;
+        break;
+      case 'mcp.status':
+        if (!e.agentId) this.lastMcp = e;
         break;
       case 'remote.state':
         this.lastRemote = e;
@@ -1695,6 +1739,40 @@ export class ChatController {
     this.deps.onSession?.(id);
   }
 
+  /**
+   * «открыть SKILL.md» (roadmap 21, решение 6): имя ещё раз проверяется здесь (сообщение могло прийти мимо
+   * `isFromWebview`), путь собирает `findSkill`. Не нашёл — в лог, без ошибки.
+   */
+  private async openSkill(name: string): Promise<void> {
+    if (!isSkillName(name)) {
+      this.log.warn(`skill.open: недопустимое имя скилла ${JSON.stringify(String(name).slice(0, 80))}`);
+      return;
+    }
+    const path = await this.deps.findSkill?.(name);
+    if (!path) {
+      this.log.warn(`skill.open: SKILL.md для ${name} не найден`);
+      return;
+    }
+    await this.deps.openPath?.(path);
+  }
+
+  /** Какие скиллы из `session.init` можно открыть (решение 6): `skill.files` в webview. */
+  private async postSkillFiles(skills: readonly string[]): Promise<void> {
+    const { findSkill } = this.deps;
+    if (!findSkill) return;
+    const seq = ++this.skillFilesSeq;
+    const names: string[] = [];
+    try {
+      const found = await Promise.all(skills.filter(isSkillName).map(async (n) => ((await findSkill(n)) ? n : undefined)));
+      for (const n of found) if (n) names.push(n);
+    } catch (error) {
+      this.log.warn(`поиск SKILL.md: ${String(error)}`);
+    }
+    if (seq !== this.skillFilesSeq || this.disposed) return;
+    this.lastSkillFiles = { type: 'skill.files', names };
+    this.deps.post(this.lastSkillFiles);
+  }
+
   private forward(sessionId: string, event: AgentEvent): void {
     this.deps.post({ type: 'agent.event', sessionId, event });
   }
@@ -1721,6 +1799,9 @@ export class ChatController {
     this.defaults = undefined;
     this.lastContext = undefined;
     this.lastRemote = undefined;
+    this.lastMcp = undefined;
+    this.lastSkillFiles = undefined;
+    this.skillFilesSeq++;
     this.attached = { pdfPages: 0, chars: 0 };
     this.usedDrop = false;
     this.turnStartedAt = undefined;

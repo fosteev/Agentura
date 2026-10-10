@@ -1,6 +1,7 @@
 # 21 — Скиллы и MCP-серверы: метки в ленте, статус серверов
 
-> **Статус:** план 2026-10-10, ветка `feature/skills-mcp` от `main` (0.10.0). Этапы не начаты.
+> **Статус:** план 2026-10-10, ветка `feature/skills-mcp` от `main` (0.10.0). Этап 1 принят 2026-10-10 (ветка
+> `stage-1-mcp-protocol`), следующий — 2.
 > Прототип — `prototype/screens/tools-mcp.html` (`#feed-b|#popover|#panel|#sys`); галерея v42, раздел «Скиллы и
 > MCP-серверы». **Выбраны: лента B, кнопка у поля (3), вкладка «mcp» (4), системная строка (5).** Вариант A (`#feed-a`)
 > не берём.
@@ -36,7 +37,7 @@
     | null, serverInfo, httpOrigin, pluginId, …}`;
   - уведомление `mcpServer/startupStatus/updated {threadId, name, status: starting|ready|failed|cancelled, error,
     failureReason: reauthenticationRequired|null}`;
-  - запрос `mcpServer/reload`;
+  - запрос `mcpServer/reload` (на деле `config/mcpServer/reload`, без параметров — см. решения сессии 1);
   - у скиллов `skills/list` и `skills/changed`.
   - В `src/agent/codex/protocol.ts:388/433` всего этого нет. Неизвестные уведомления — `return []`
     (`codex/mapper.ts:285`). Вызовы MCP приходят как `mcpToolCall` и превращаются в `mcp__server__tool` (`codex/tools.ts:74/91`).
@@ -147,38 +148,136 @@
 
 ### 1. Движки и протокол — **opus, high** (два движка, нормализация статусов, новый путь webview→хост)
 
-- [ ] `src/agent/types.ts`: `McpServerInfo`, событие `mcp.status {servers, at}` в `AgentEvent`; в `AgentSession` —
+- [x] `src/agent/types.ts`: `McpServerInfo`, событие `mcp.status {servers, at}` в `AgentEvent`; в `AgentSession` —
       необязательные `mcpStatus?(): Promise<void>` (запросить, ответ придёт событием) и `mcpReconnect?(name)`,
       `mcpReloadAll?()`. Флаги возможностей (`canReconnect`, `canReloadAll`, `skillsKnown`) — в `capabilities()` или в
       `session.init`, по месту.
-- [ ] Claude, mapper: `init()` читает `mcp_servers` и шлёт `mcp.status` (статус приводится к решению 1, неизвестный →
+- [x] Claude, mapper: `init()` читает `mcp_servers` и шлёт `mcp.status` (статус приводится к решению 1, неизвестный →
       `pending`, `source:'sdk'` → `builtin`). Событие идёт и тогда, когда `lastInitKey` не изменился, но список изменился.
-- [ ] Claude, adapter: `mcpStatus()` через `q.mcpServerStatus()` (tools → число, `serverInfo.version`, `error`, `scope`);
+- [x] Claude, adapter: `mcpStatus()` через `q.mcpServerStatus()` (tools → число, `serverInfo.version`, `error`, `scope`);
       вызов после init и после каждого `turn.result` — только если хост просил (флаг от контроллера, решение 12);
       `mcpReconnect(name)` → `q.reconnectMcpServer`, затем `mcpStatus()`. Ошибки control-запроса — в лог, без падения хода.
-- [ ] Codex: в `protocol.ts` — запрос `mcpServerStatus/list`, уведомление `mcpServer/startupStatus/updated`, запрос
+- [x] Codex: в `protocol.ts` — запрос `mcpServerStatus/list`, уведомление `mcpServer/startupStatus/updated`, запрос
       `mcpServer/reload`; списки в `scripts/codex-protocol.mjs` пополнить (скрипт сверяет их со схемой CLI). Маппер:
       держит последний список, на уведомление обновляет один сервер (`threadId` чужого треда игнорирует) и шлёт полный
       `mcp.status`. `mcpStatus()` листает страницы по `cursor` до конца, максимум 10 страниц.
-- [ ] Antigravity: ничего не реализует; `mcpStatus` отсутствует.
-- [ ] Контроллер чата: передаёт `mcp.status` в webview (через существующий поток событий); запросы webview →
+- [x] Antigravity: ничего не реализует; `mcpStatus` отсутствует.
+- [x] Контроллер чата: передаёт `mcp.status` в webview (через существующий поток событий); запросы webview →
       `mcp.refresh`, `mcp.reconnect {name}`, `mcp.reloadAll`, `skill.open {name}` — в `FROM_WEBVIEW_TYPES` и
       `FIELD_CHECKS` (имя сервера ≤ 128, имя скилла по regex из решения 6). `skill.open` ищет файл по решению 6 и
       открывает его через `vscode.window.showTextDocument`.
-- [ ] Настройки 4 ключа (решение 12) end-to-end по образцу `remoteControl`: `package.json` + nls ru/en, `settings.ts`
+- [x] Настройки 4 ключа (решение 12) end-to-end по образцу `remoteControl`: `package.json` + nls ru/en, `settings.ts`
       (ключи, типы, валидация enum, чтение), `chat.info` → `store.ts` (signals `mcpFeedLabels`, `mcpComposerButton`,
       `mcpPanelTab`, `mcpFeedStatus`). Строки на странице «Внешний вид» рисует этап 3 — здесь только данные.
-- [ ] Тесты:
+- [x] Тесты:
       - `mapper.unit.test.ts`: init с `mcp_servers`, в том числе неизвестный статус и `source:'sdk'`;
       - `adapter.test.ts`: fake `mcpServerStatus`/`reconnectMcpServer`, ошибка control-запроса;
       - Codex `mapper.test.ts` + `fakeServer.ts`: list с двумя страницами, updated по одному серверу, чужой `threadId`;
       - контроллер: `skill.open` с плохим именем отклоняется, с `../` — отклоняется;
       - `settings.test.ts` и `manifest.test.ts` — новые ключи.
-- [ ] Перегенерировать фикстуры `node scripts/gen-adapter-fixtures.mjs`. В `expected.json` должно добавиться только
+- [x] Перегенерировать фикстуры `node scripts/gen-adapter-fixtures.mjs`. В `expected.json` должно добавиться только
       событие `mcp.status` (дифф глазами).
 
 **Готово, когда:** `npm run check` зелёный; в фикстуре с `mcp_servers` есть `mcp.status`; тесты Codex на
 `startupStatus/updated` и пагинацию проходят; `skill.open` с `../x` или пустым именем отклоняется тестом.
+
+**Решения (2026-10-10, по итогам сессии 1):**
+
+*Раскладка файлов.*
+- `src/agent/types.ts` — `McpServerStatus` (union статусов), `McpServerInfo`, событие `mcp.status`;
+  `SessionOptions.mcpWatch`; в `AgentSession` — `mcpStatus?`, `mcpReconnect?`, `mcpReloadAll?`, `setMcpWatch?`.
+- `src/agent/features.ts` — флаги возможностей (см. ниже).
+- Claude: `claude/mapper.ts` (`mcpFromInit`, `mcpFromEngine`, `mcpStatusOf`), `claude/adapter.ts` (`mcpStatus`,
+  `mcpReconnect`, `setMcpWatch`, `refreshMcp`).
+- Codex: `codex/protocol.ts` (`ListMcpServerStatusParams/Response`, `CodexMcpServerStatus`, уведомление, запрос
+  reload), `codex/mapper.ts` (`mcpList`, `mcpStartup`, `mcpRuntimeStatus`), `codex/adapter.ts` (`mcpStatus`,
+  `mcpReloadAll`, `setMcpWatch`), `scripts/codex-protocol.mjs` (методы, поля, литералы).
+- `src/shared/skills.ts` — `SKILL_NAME_RE`, `isSkillName`, `skillDirName` (общие для хоста и webview).
+- `src/extension/skillFiles.ts` — `findSkillFile(name, cwd, home)`; `chatPanel.ts` — deps `findSkill`, `openPath`
+  (`vscode.window.showTextDocument`).
+- `src/protocol.ts`, `src/extension/chatController.ts`, `src/settings.ts`, `package.json` + nls, `src/webview/store.ts`.
+
+*Контракт для этапов 2–3.*
+- Событие (через `agent.event`, как все): `{type: 'mcp.status', servers: McpServerInfo[], at: number}`;
+  `McpServerInfo = {name, status: 'connected'|'pending'|'failed'|'needs-auth'|'disabled', error?, version?, tools?,
+  scope?, builtin?}`. Всегда полный список; поля, которых движок не сообщил, отсутствуют (init Claude — только
+  `name`/`status`/`builtin`). У Codex `scope: 'plugin'` — сервер плагина (`pluginId`), других scope Codex не даёт.
+  Пустой список (`servers: []`) — статус известен, серверов нет; события нет вовсе — статус неизвестен.
+- Когда приходит. Claude: из каждого init, но только если список изменился (сервер с тем же статусом сохраняет
+  версию/тулы из `mcpServerStatus()`); при `mcpWatch` — `mcpServerStatus()` после первого init, после каждого
+  `turn.result` основного агента и после `setMcpServers` (смена инструментов Jira) — тоже только при изменении.
+  Явный запрос (`mcp.refresh`, `mcp.reconnect`) шлёт событие всегда. Codex: `mcpServerStatus/list` при `mcpWatch`
+  после открытия треда (у новой вкладки — после первого сообщения: тред открывается с ним), по ↻ и после reload;
+  до открытия треда ↻ и reload ничего не делают (приёмка);
+  уведомление о запуске сервера шлёт полный список всегда.
+- Флаги возможностей — в `ProviderFeatures` (`chat.info.features`), а не в `capabilities()`/`session.init`: так
+  уже устроены остальные флаги движков, и webview прячет UI по ним. `mcp` (Claude, Codex) — статус есть, иначе
+  кнопка/вкладка/системная строка скрыты; `mcpReconnect` (Claude) — «повторить»; `mcpReloadAll` (Codex) —
+  «перезапустить все»; `skills` (Claude) — раздел скиллов. У Antigravity все четыре `false`.
+- Webview → хост: `{type: 'mcp.refresh'}`, `{type: 'mcp.reconnect', name}` (1…128 символов), `{type: 'mcp.reloadAll'}`,
+  `{type: 'skill.open', name}` (`SKILL_NAME_RE`). Без `sessionId`: у вкладки одна сессия. `mcp.*` без живой
+  сессии ничего не делают (движок не поднимается); движок без метода — предупреждение в лог.
+- Хост → webview, новое: `{type: 'skill.files', names: string[]}` — скиллы из `session.init`, у которых найден
+  SKILL.md. Приходит после каждого `session.init` и при пересеве; `session.reset` в webview его очищает. Нужен
+  решению 6 («не нашёл — ссылки нет»): иначе webview не знает, рисовать ли ссылку. Store: `skillFiles`
+  (`ReadonlySet<string>`).
+- Настройки: `chat.info.mcp = {feedLabels, composerButton, panelTab, feedStatus}` (тип `McpView` в `settings.ts`,
+  чтение `readMcpView`); нет поля — `DEFAULT_MCP_VIEW`. Store: `mcpFeedLabels`, `mcpComposerButton`, `mcpPanelTab`,
+  `mcpFeedStatus`. Решение 12 «хост запрашивает, только если…» — `mcpWatchOf(view)` = кнопка или вкладка или
+  `feedStatus != off`; уходит в `SessionOptions.mcpWatch` (только движкам с `features.mcp`), смена настроек —
+  `setMcpWatch` живой сессии из `pushInfo()`. Init Claude и уведомления Codex приходят и при выключенном
+  слежении: они бесплатные.
+- Пересев webview: контроллер держит последний `mcp.status` (без `agentId`) и `skill.files` и шлёт их после истории.
+
+*Отступления от плана.*
+- Codex reload — `config/mcpServer/reload` (params нет), а не `mcpServer/reload`: так в схеме CLI 0.160.0.
+- В `mcpServerStatus/list` передаём `threadId` треда, когда он открыт: без него `runtimeStatus` пуст (по схеме).
+  Уведомление с `threadId: null` применяется (оно не про чужой тред).
+- `toolsError` Codex идёт в `error`, `tools` — число ключей карты тулов.
+- `mcpReconnect`: ошибка `reconnectMcpServer` — в лог, затем всё равно `mcpStatus()` (ошибку покажет статус сервера).
+- SKILL.md открывается `showTextDocument` (обычная вкладка редактора, preview), а не `vscode.open` (тот может открыть
+  превью Markdown).
+
+*Не проверено.* Живой SDK/Codex с настоящими MCP-серверами (это приёмка): что `mcpServerStatus()` быстрый
+(риск «после каждого хода»), что Codex при `toolsAndAuthOnly` отдаёт `serverInfo.version`, как часто
+`runtimeStatus: null`. Фикстуры проб содержат только `mcp_servers: []` — в `expected.json` добавилось
+`mcp.status {servers: []}` (по одному на фикстуру, дифф просмотрен), непустой список покрыт юнит-тестами.
+Плагинный скилл `a:b` ищется как `<…>/.claude/skills/b/SKILL.md` (решение 5) — если у пользователя есть свой скилл
+с тем же именем, откроется он, а не плагинный.
+
+**Приёмка (2026-10-10).**
+- Починено (свой проход + независимый ревьюер, у каждого пункта тест):
+  - Codex: пагинация останавливается, если `nextCursor` повторился (раньше страница дублировалась до 10 раз);
+  - Codex: уведомление `startupStatus/updated`, пришедшее, пока `mcpServerStatus/list` в пути, ответом списка не
+    откатывается (`mcpListStart`/`mcpList(servers, listing)` в маппере) — иначе сервер застревал в `pending`: после
+    хода Codex статус не переспрашивает;
+  - Codex: `mcpStatus()`/`mcpReloadAll()` до открытия треда ничего не делают — без `threadId` Codex ради списка
+    поднимает все серверы (discovery, до 15 с), а `runtimeStatus` всё равно пуст;
+  - Claude: перекрытые опросы `mcpServerStatus()` (конец хода, ↻, смена Jira) — ответ старше последнего запроса
+    отбрасывается, «событие обязательно» запроса пользователя переходит к последнему;
+  - Claude: ключ «список изменился» не зависит от порядка серверов (init и `mcpServerStatus()` могут перечислять
+    по-разному — было бы событие на каждый ход);
+  - отказ control-запроса после закрытия сессии (оба движка) не пишет предупреждение в лог;
+  - `findSkillFile`: симлинк разрешён, но его цель должна называться `SKILL.md` — репозиторий не подсунет ссылкой
+    произвольный файл (`~/.ssh/id_rsa`) во вкладку редактора; папка-ссылка на свой скилл работает.
+- Не брали: Codex `authStatus: notLoggedIn` при `runtimeStatus: null` → `needs-auth` (вне решения 1; см. «Риски»).
+- Живая проба (SDK 0.3.285, haiku, временная папка с `.claude/skills/probe-skill`, SDK-сервер и сломанный stdio,
+  ~$0.06):
+  - вызов скилла агентом — `tool_use` `Skill` с `input: {skill: "probe-skill"}` (без `args`), `tool_result` —
+    `Launching skill: probe-skill`, текст скилла — отдельное синтетическое сообщение пользователя
+    (`isSynthetic`, «Base directory for this skill: <абсолютный путь>…»; маппер текстовые user-сообщения
+    отбрасывает — в ленте его нет). Решения 5 и 7 подтверждены;
+  - `/probe-skill` от пользователя — вызова `Skill` нет, скилл разворачивается движком молча; узнаём только по
+    тексту своего промпта (решение 5, «/имя»);
+  - init приходит на каждый ход; `mcp_servers` несёт и коннекторы claude.ai (`claude.ai Gmail`, `source:
+    'claudeai'`), серверы из `options.mcpServers` — `scope: 'dynamic'`, in-process — `source: 'sdk'`;
+    `needs-auth` приходит без `error`; у `failed` в `mcpServerStatus()` есть `error`;
+  - `mcpServerStatus()` — 17 мс сразу после init, 1–2 мс после хода: риск «после каждого хода» снят;
+  - `serverInfo` бывает огромным (иконки data:URI) — берём только `version`, как и сделано.
+- **Имя сервера ≠ префикс инструмента.** Инструменты сервера `claude.ai Gmail` приходят как
+  `mcp__claude_ai_Gmail__<тул>`: CLI заменяет в имени сервера всё, кроме `[A-Za-z0-9_-]`, на `_`. Этап 2
+  сопоставляет чип/счётчики со статусом по нормализованному имени (см. промт 2); `mcp.reconnect` шлёт исходное имя
+  из `mcp.status`.
 
 ### 2. Лента: метки B и системная строка — **sonnet, high**, после 1
 
@@ -275,7 +374,13 @@ npm run codex:protocol -- --keep.
 <общая шапка>
 Задача: этап 2 roadmap 21 — чип сервера у MCP-вызовов, полоса скилла, счётчики mcp/скилл в итоге хода и FoldRow,
 системная строка MCP по agentura.mcp.feedStatus, всё под agentura.mcp.feedLabels. Решения 4, 5, 7, 8, 11, 12.
-Событие mcp.status и signals настроек уже есть (этап 1): src/agent/types.ts (McpServerInfo), store.ts.
+Событие mcp.status и signals настроек уже есть (этап 1): src/agent/types.ts (McpServerInfo), store.ts
+(mcpFeedLabels, mcpFeedStatus, skillFiles — у кого есть SKILL.md, только им ссылка «открыть SKILL.md»);
+флаги движка — features.mcp/skills (src/agent/features.ts). Контракт — «Решения по итогам сессии 1» этапа 1.
+По реальному коду (приёмка этапа 1): префикс инструмента — нормализованное имя сервера (`claude.ai Gmail` →
+mcp__claude_ai_Gmail__…, всё кроме [A-Za-z0-9_-] → `_`); чип и красный цвет — по совпадению нормализованных имён,
+показывать исходное имя из mcp.status, если оно нашлось. `/имя` от пользователя вызова Skill не даёт — только текст
+промпта; init (и mcp.status из него) приходит на каждый ход, но событие — только при изменении списка.
 Эталоны: toolView.ts:41/148, Log.tsx:254 (Tool), :617 (SumView), :630 (FoldRow), chatState.ts:674 (sum), :175/483
 (skills); DOM-тест — taskPaneDom.test.ts:603; вёрстка — prototype/screens/tools-mcp.html#feed-b и #sys.
 Порядок — чекбоксы этапа 2. DoD: «Готово, когда» этапа 2. Проверка: npm run check.
@@ -289,7 +394,9 @@ npm run codex:protocol -- --keep.
 Задача: этап 3 roadmap 21 — McpMenu в шести раскладках composer, вкладка mcp в правой панели (рейл, узкий режим),
 общий компонент строки сервера/скилла, подраздел «MCP и скиллы» на странице «Внешний вид». Решения 3, 5, 9, 10, 12.
 Состояние MCP, счётчики и скиллы сессии уже в chatState (этап 2); запросы mcp.refresh/mcp.reconnect/mcp.reloadAll —
-в протоколе (этап 1).
+в протоколе (этап 1); показывать «повторить» по features.mcpReconnect, «перезапустить все» по features.mcpReloadAll,
+кнопку/вкладку — по features.mcp, раздел скиллов — по features.skills; signals mcpComposerButton/mcpPanelTab, skillFiles
+(store.ts). Контракт — «Решения по итогам сессии 1» этапа 1.
 Эталоны: RemoteMenu — Composer.tsx:1459, MenuName :79, menuProps :616; вкладка панели — vscode.ts:40/135,
 Chat.tsx:403/421/~700, Hud.tsx:8, SidePanes.tsx; строка настроек — Settings.tsx:825 (remoteControl), Row :79,
 Toggle :125; вёрстка — prototype/screens/tools-mcp.html#popover и #panel.
@@ -309,14 +416,16 @@ README/README.ru, CHANGELOG (англ.), версия 0.11.0, vsix, docs/feature
 
 ## Риски и открытые вопросы
 
-- **Форма `Skill`.** Её не проверяли на живом SDK: в пробах вызовов `Skill` нет. Приёмка этапа 1 делает одну живую
-  пробу (`spikes/sdk-probe`) с вызовом скилла и сверяет, что приходят `input.skill` и сообщение `/имя`. Если форма
-  другая, поправить решение 5 до этапа 2.
-- **`mcpServerStatus()` после каждого хода** — лишний control-запрос. Если окажется медленным (> 300 мс) или будет
-  мешать следующему ходу, перейти на запрос только при открытой всплывашке или вкладке и при `feedStatus != off`.
+- ~~**Форма `Skill`.**~~ Проверено живой пробой на приёмке этапа 1: `input.skill`, `/имя` вызова `Skill` не даёт
+  (подробности — «Приёмка» этапа 1). Решение 5 в силе.
+- ~~**`mcpServerStatus()` после каждого хода**~~ — 1–17 мс на живом SDK (приёмка этапа 1), риск снят.
+- **Путь к SKILL.md из сообщения движка.** Синтетическое сообщение после `Skill` несёт точную папку скилла
+  («Base directory for this skill: …»), в том числе плагинного. Сейчас её не читаем (решение 6 ищет по имени, у
+  плагинного возможна подмена одноимённым пользовательским). Если коллизия станет проблемой — брать путь оттуда.
 - **Сбой сервера посреди хода у Claude** виден только после конца хода. Push-события об этом в SDK не нашли — принято.
 - **Codex `runtimeStatus: null`** («конфиг изменился») — считаем `pending`. Если на живом Codex это частое состояние,
-  пересмотреть.
+  пересмотреть. Кандидат: при `null` и `authStatus: notLoggedIn` (поле `McpServerStatus` в схеме 0.160.0) —
+  `needs-auth`; это правка решения 1.
 - **Скиллы у Codex** (`skills/list`, вызов через `$skill`) не показываем. Отдельной задачей — если понадобится.
 - **«войти» для `needs-auth`** — только подсказка: в SDK нет авторизации MCP. Если владельцу нужна настоящая кнопка,
   это отдельная работа через терминал `claude /mcp`.

@@ -19,6 +19,8 @@ import {
   DEFAULT_TASK_CARD,
   TASK_TAB_MODES,
   DEFAULT_TASK_TAB,
+  MCP_FEED_STATUS_MODES,
+  DEFAULT_MCP_FEED_STATUS,
 } from './settings';
 
 const root = join(__dirname, '..');
@@ -93,6 +95,31 @@ describe('agentura.git.layout', () => {
 
   it('команда выбора раскладки объявлена', () => {
     expect(pkg.contributes.commands.map((c) => c.command)).toContain('agentura.gitLayout');
+  });
+});
+
+describe('agentura.mcp.*', () => {
+  const props = (
+    read('package.json') as {
+      contributes: {
+        configuration: {
+          properties: Record<string, { type?: string; enum?: string[]; enumDescriptions?: string[]; default?: unknown }>;
+        };
+      };
+    }
+  ).contributes.configuration.properties;
+
+  it('три флажка boolean, по умолчанию включены', () => {
+    for (const k of ['feedLabels', 'composerButton', 'panelTab']) {
+      expect(props[`agentura.mcp.${k}`]).toMatchObject({ type: 'boolean', default: true });
+    }
+  });
+
+  it('feedStatus: enum и значение по умолчанию совпадают с кодом, у каждого значения есть описание', () => {
+    const prop = props['agentura.mcp.feedStatus']!;
+    expect(prop.enum).toEqual([...MCP_FEED_STATUS_MODES]);
+    expect(prop.default).toBe(DEFAULT_MCP_FEED_STATUS);
+    expect(prop.enumDescriptions).toHaveLength(MCP_FEED_STATUS_MODES.length);
   });
 });
 
