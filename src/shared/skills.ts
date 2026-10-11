@@ -14,3 +14,8 @@ export function skillDirName(name: string): string | undefined {
   const dir = name.slice(name.lastIndexOf(':') + 1);
   return dir || undefined;
 }
+
+/** Плагинный скилл (`plugin:skill`): файла для «открыть SKILL.md» у него нет. */
+export function isPluginSkill(name: string): boolean {
+  return name.includes(':');
+}

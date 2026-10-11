@@ -81,3 +81,40 @@
 .webview[data-feed="cards"] .log .sum { gap: 0 14px; padding: 5px 10px; border-top: 1px solid var(--line); color: var(--fg-faint); font-size: 10.5px; }
 .webview[data-feed="cards"] .log .sum::before { content: none; }
 .webview[data-feed="cards"] .log .sum b, .webview[data-feed="cards"] .log .sum .t { display: none; }
+
+/* ── MCP и скиллы в ленте (roadmap 21, метки B) ───────────────────── */
+.log .e .op.mcp { color: var(--info); }
+.log .e .op.bad { color: var(--del); }
+.log .e .chip2 { display: inline-block; font: 10.5px/15px var(--mono); padding: 0 5px; margin-right: 6px; border-radius: 3px; border: 1px solid color-mix(in srgb, var(--info) 55%, transparent); color: var(--info); }
+.log .e .chip2.bad { border-color: color-mix(in srgb, var(--del) 55%, transparent); color: var(--del); }
+.log .e .what .dim { margin-left: 4px; }
+.log .skrow { display: grid; grid-template-columns: 14px 1fr auto; gap: 8px; align-items: baseline; margin: 4px 0; padding: 4px 8px 4px 0; border-radius: 3px; background: color-mix(in srgb, var(--accent) 9%, transparent); box-shadow: -8px 0 0 color-mix(in srgb, var(--accent) 9%, transparent), -10px 0 0 var(--accent); font-size: 12px; }
+.log .skrow .p { color: var(--accent); }
+.log .skrow.fail .p, .log .skrow.fail b { color: var(--del); }
+.log .skrow b { color: var(--fg); font-weight: 600; }
+.log .skrow .ds { color: var(--fg-mute); }
+.log .skrow .r { color: var(--fg-mute); font-size: 11px; white-space: nowrap; }
+.log .skrow .r a { color: var(--link); text-decoration: none; }
+.log .sum .mx { color: var(--info); }
+.log .sum .sx { color: var(--accent); }
+.log .sys.mcp a { color: var(--link); text-decoration: none; }
+.log .sys.mcp .bad { color: var(--del); }
+.log .sys.mcp .wn { color: var(--warn); }
+.log .sysd { display: grid; gap: 1px; margin: 0 0 4px 22px; padding: 4px 8px; border-left: 2px solid var(--line-strong); font-size: 11.5px; }
+.log .sysd .srv { display: grid; grid-template-columns: 10px 1fr auto; gap: 8px; align-items: baseline; }
+.log .sysd .srv .st { width: 6px; height: 6px; border-radius: 50%; background: var(--fg-faint); }
+.log .sysd .srv.connected .st { background: var(--ok); }
+.log .sysd .srv.failed .st { background: var(--del); }
+.log .sysd .srv.needs-auth .st { background: var(--warn); }
+.log .sysd .srv .nm small { display: block; color: var(--fg-mute); }
+.log .sysd .srv.failed .nm small { color: var(--del); }
+.log .sysd .srv .n { color: var(--fg-mute); white-space: nowrap; }
+/* replies: полоса скилла и список серверов — на всю ширину ряда чипов */
+.webview[data-feed="replies"] .log .skrow { margin-left: 20px; }
+.webview[data-feed="replies"] .log .steps .e .chip2 { margin-right: 4px; }
+/* folded: свёрнутый ход прячет действия, но полосы скиллов остаются видны */
+/* только там, где полоса есть: пустой grid без неё дал бы лишний зазор у каждого свёрнутого хода */
+.webview[data-feed="folded"] .log .turn[data-open="false"] .steps:has(> .skrow) { display: grid; }
+.webview[data-feed="folded"] .log .turn[data-open="false"] .steps > :not(.skrow) { display: none; }
+/* cards: полоса не тянет за собой точку маршрута */
+.webview[data-feed="cards"] .log .steps .skrow { grid-template-columns: 14px 1fr auto; margin-left: 0; }

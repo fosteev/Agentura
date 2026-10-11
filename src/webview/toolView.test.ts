@@ -188,3 +188,41 @@ describe('инструменты Jira агента (этап 8)', () => {
     expect(link('Bash', {}, 'ok')).toBeUndefined();
   });
 });
+
+describe('toolView: метки B (roadmap 21, этап 2)', () => {
+  it('без флага MCP и Skill — как раньше (короткое имя, op skill)', () => {
+    expect(toolView('mcp__serena__find_symbol', { name_path: 'A/b' })).toEqual({ op: 'find_sy', what: 'A/b' });
+    expect(toolView('Skill', { skill: 'plan' })).toEqual({ op: 'skill', what: 'plan' });
+  });
+
+  it('с флагом MCP: op mcp, сервер из имени, тул в what, аргумент серым после него', () => {
+    expect(toolView('mcp__serena__find_symbol', { name_path: 'A/b' }, undefined, undefined, true)).toEqual({
+      op: 'mcp',
+      what: 'find_symbol',
+      server: 'serena',
+      dim: 'A/b',
+      dimAfter: true,
+    });
+    // имя тула может само содержать `__`: сервер — до первого
+    expect(toolView('mcp__claude_ai_Gmail__search__threads', {}, undefined, undefined, true)).toMatchObject({
+      server: 'claude_ai_Gmail',
+      what: 'search__threads',
+    });
+    expect(toolView('mcp__broken', {}, undefined, undefined, true)).toEqual({ op: 'broken', what: '' });
+  });
+
+  it('с флагом Skill: имя полностью, плагинное a:b тоже; `/` в начале отбрасывается', () => {
+    expect(toolView('Skill', { skill: 'plan', args: 'x' }, undefined, undefined, true)).toEqual({
+      op: 'skill',
+      what: 'plan',
+      skill: 'plan',
+    });
+    expect(toolView('Skill', { skill: '/pohuy:pohuy' }, undefined, undefined, true).skill).toBe('pohuy:pohuy');
+    // Skill без имени — обычная строка
+    expect(toolView('Skill', {}, undefined, undefined, true).skill).toBeUndefined();
+  });
+
+  it('инструменты Jira остаются «jira» и с флагом', () => {
+    expect(toolView('mcp__agentura_jira__comment', { issue: 'A-1' }, undefined, undefined, true).op).toBe('jira');
+  });
+});

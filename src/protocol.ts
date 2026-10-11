@@ -271,6 +271,8 @@ export type ToWebview =
       title?: string;
       model?: string;
       mode?: PermissionMode;
+      /** Следом хост повторит последний `mcp.status` (пересев живой сессии) — это не новость для ленты (roadmap 21). */
+      mcpReplay?: true;
     }
   /**
    * Вид боковой панели (`agentura.sessionList.*`, `agentura.sidebar.top`): строк на сессию, колонки контекста и

@@ -13,6 +13,10 @@ export interface ToolView {
   /** Порядок: `dim` перед `what` (пути) или после (grep). */
   dimAfter?: boolean;
   edit?: boolean;
+  /** Метки B (`agentura.mcp.feedLabels`): сервер MCP-вызова, как он стоит в имени инструмента (нормализованный). */
+  server?: string;
+  /** Метки B: вызов `Skill` — имя скилла (показываем полным, `plugin:skill`). */
+  skill?: string;
 }
 
 const MAX_WHAT = 160;
@@ -41,6 +45,15 @@ export function splitPath(path: string): { dir: string; base: string } {
 /** `mcp__server__tool` → `tool`. */
 function shortName(name: string): string {
   return name.startsWith('mcp__') ? (name.split('__').pop() ?? name) : name;
+}
+
+/** `mcp__server__tool` → `{server, tool}`; не MCP или кривое имя — `undefined`. */
+export function mcpToolParts(name: string): { server: string; tool: string } | undefined {
+  if (!name.startsWith('mcp__')) return undefined;
+  const rest = name.slice(5);
+  const i = rest.indexOf('__');
+  if (i <= 0 || i + 2 >= rest.length) return undefined;
+  return { server: rest.slice(0, i), tool: rest.slice(i + 2) };
 }
 
 /** Ключ задачи из входа инструмента Jira; нет — задача чата (`taskIssue`). */
@@ -73,9 +86,27 @@ export function toolView(
   input: Record<string, unknown>,
   cwd?: string,
   taskIssue?: string,
+  labels = false,
 ): ToolView {
   const jira = jiraToolOf(name);
   if (jira) return jiraView(jira, input, taskIssue);
+  if (labels) {
+    // метки B (roadmap 21, решение 8): чип сервера перед инструментом; `Skill` — отдельная полоса
+    const mcp = mcpToolParts(name);
+    if (mcp) {
+      const arg = Object.values(input).find((v) => typeof v === 'string' && v) as string | undefined;
+      const view: ToolView = { op: 'mcp', what: clip(mcp.tool), server: mcp.server };
+      if (arg) {
+        view.dim = clip(arg);
+        view.dimAfter = true;
+      }
+      return view;
+    }
+    if (name === 'Skill') {
+      const skill = str(input['skill'])?.replace(/^\//, '');
+      if (skill) return { op: 'skill', what: skill, skill };
+    }
+  }
   const file = str(input['file_path']) ?? str(input['notebook_path']);
   switch (name) {
     case 'Read':
