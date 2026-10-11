@@ -21,7 +21,7 @@ const ru = {
     sessionsTitle: 'Сессии',
     untitled: 'новая сессия',
   },
-  tabs: { chat: 'чат', changes: 'изменения', git: 'git', agents: 'агенты', task: 'задача' },
+  tabs: { chat: 'чат', changes: 'изменения', git: 'git', agents: 'агенты', mcp: 'mcp', task: 'задача' },
   task: {
     stripAria: 'Задача чата',
     openJiraffe: 'в Jiraffe ↗',
@@ -150,6 +150,34 @@ const ru = {
   // MCP и скиллы в ленте (roadmap 21)
   mcp: {
     chipTip: (server: string) => `MCP-сервер ${server}`,
+    // кнопка у поля, всплывашка и вкладка (этап 3)
+    button: 'mcp',
+    buttonTitle: (n: number, m: number) => `MCP-серверы: ${n} из ${m} подключены`,
+    menuTitle: 'MCP-серверы',
+    paneAria: 'MCP и скиллы',
+    refresh: 'Обновить статус',
+    reconnect: 'повторить',
+    reconnectTip: (name: string) => `Переподключить ${name}`,
+    reloadAll: 'перезапустить все',
+    reloadAllTip: 'Перезагрузить все MCP-серверы (Codex не умеет по одному)',
+    builtin: 'встроенный',
+    version: (v: string) => `v${v}`,
+    tools: (n: number) => `${n} тул.`,
+    calls: 'выз.',
+    noServers: 'Серверов нет',
+    expandServer: (name: string) => `Вызовы сервера ${name} по тулам`,
+    loginClaude: 'Войдите через /mcp в Claude Code или в настройках коннекторов claude.ai',
+    loginCodex: (name: string) => `Войдите: codex mcp login ${name}`,
+    copyCommand: 'скопировать команду',
+    copied: 'скопировано',
+    skillsHead: 'Скиллы в этой сессии',
+    skillsPaneHead: 'Скиллы в сессии',
+    available: (n: number) => `доступно ${n}`,
+    usedOf: (k: number, n: number) => `${k} из ${n}`,
+    noSkillsUsed: 'пока не вызывались',
+    allSkills: 'все скиллы…',
+    allSkillsPane: 'все доступные скиллы…',
+    hideSkills: 'свернуть список',
     skillWord: 'скилл',
     skillBy: (how: 'agent' | 'slash'): string => (how === 'slash' ? 'вызван вами' : 'вызвал агент'),
     openSkill: 'открыть SKILL.md',
@@ -244,6 +272,7 @@ const ru = {
     remoteOn: (url: string) => `Remote Control включён · ${url}`,
     remoteOff: 'Remote Control выключен',
     remoteLink: (url: string) => `ссылка: ${url}`,
+    mcpCommand: (cmd: string) => `команда: ${cmd}`,
     remoteError: {
       'no-token': 'нет входа Claude Code — выполните claude login',
       oauth: 'вход Claude Code устарел — перезапустите claude',
@@ -946,6 +975,31 @@ const ru = {
       name: 'Remote Control для новых сессий',
       desc: 'Каждая новая сессия Claude сразу видна на claude.ai/code и в приложении Claude: оттуда можно писать, отвечать на запросы разрешений и остановить ход. Ходы идут на этой машине. В открытой сессии — кнопка «rc» под полем ввода или /rc.',
       keyNote: 'только движок Claude',
+    },
+    mcpGroup: {
+      title: 'MCP и скиллы',
+      note: 'Метки в ленте, кнопка у поля ввода, вкладка правой панели и системная строка. Статус серверов запрашивается, только если включено хотя бы одно из трёх последних.',
+    },
+    mcpFeedLabels: {
+      name: 'Метки MCP и скиллов в ленте',
+      desc: 'Чип сервера у вызова MCP, полоса у скилла, счётчики «mcp N» и «скилл N» в итоге хода. Выключено — как раньше: короткое имя тула, скилл обычной строкой.',
+    },
+    mcpComposerButton: {
+      name: 'Кнопка «mcp N/M» у поля ввода',
+      desc: 'Сколько серверов подключено; жёлтая точка — есть сбой. По клику — серверы, «повторить» и скиллы сессии.',
+    },
+    mcpPanelTab: {
+      name: 'Вкладка «mcp» в правой панели',
+      desc: 'Серверы с вызовами по тулам, скиллы сессии и все доступные скиллы.',
+    },
+    mcpFeedStatus: {
+      name: 'Строка о статусе MCP в ленте',
+      desc: 'Когда писать в ленту о состоянии MCP-серверов.',
+      options: {
+        failures: 'только сбои',
+        start: 'сводка при старте и сбои',
+        off: 'не писать',
+      } as Record<string, string>,
     },
     remoteControlNamePrefix: {
       name: 'Префикс имени в Remote Control',

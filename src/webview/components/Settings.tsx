@@ -18,6 +18,7 @@ import {
   FEED_STYLES,
   AGENTS_VIEWS,
   GIT_LAYOUTS,
+  MCP_FEED_STATUS_MODES,
   DEFAULT_FEED_FONT_SIZE,
   MAX_FEED_FONT_SIZE,
   MIN_FEED_FONT_SIZE,
@@ -1148,6 +1149,29 @@ export function Settings() {
               </Row>
               <Row name={T.language.name} isNew desc={T.language.desc} k="language">
                 <Select k="language" value={v.language} options={languageModes} />
+              </Row>
+              <h3 class="st-sub">{T.mcpGroup.title}</h3>
+              <p class="st-subnote">{T.mcpGroup.note}</p>
+              <Row name={T.mcpFeedLabels.name} isNew desc={T.mcpFeedLabels.desc} k="mcp.feedLabels">
+                <Toggle k="mcp.feedLabels" value={v['mcp.feedLabels']} />
+              </Row>
+              <Row
+                name={T.mcpComposerButton.name}
+                isNew
+                desc={T.mcpComposerButton.desc}
+                k="mcp.composerButton"
+              >
+                <Toggle k="mcp.composerButton" value={v['mcp.composerButton']} />
+              </Row>
+              <Row name={T.mcpPanelTab.name} isNew desc={T.mcpPanelTab.desc} k="mcp.panelTab">
+                <Toggle k="mcp.panelTab" value={v['mcp.panelTab']} />
+              </Row>
+              <Row name={T.mcpFeedStatus.name} isNew desc={T.mcpFeedStatus.desc} k="mcp.feedStatus">
+                <Select
+                  k="mcp.feedStatus"
+                  value={v['mcp.feedStatus']}
+                  options={MCP_FEED_STATUS_MODES.map((m) => [m, T.mcpFeedStatus.options[m] ?? m] as const)}
+                />
               </Row>
             </>,
           )}

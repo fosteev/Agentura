@@ -39,6 +39,7 @@ import {
   history,
   imagesBusy,
   limitBlocked,
+  mcpComposerButton,
   meters,
   newSession,
   provider,
@@ -63,6 +64,8 @@ import {
 import { quotaView, type LimitMeter } from '../hudView';
 import { deferredNote } from '../limitView';
 import { menuKeys } from '../a11y';
+import { mcpCounts, mcpSurfaceShown } from '../mcpView';
+import { McpSections } from './McpRows';
 import { ui, uiLang } from '../strings';
 import { compactTokens, shortModel } from '../toolView';
 import { imageTokens, imagesTokens } from '../../shared/images';
@@ -76,7 +79,7 @@ import {
 } from '../imageDraft';
 import { send } from '../vscode';
 
-type MenuName = 'mode' | 'model' | 'effort' | 'agent' | 'plus' | 'engine' | 'remote';
+type MenuName = 'mode' | 'model' | 'effort' | 'agent' | 'plus' | 'engine' | 'remote' | 'mcp';
 
 /** Запасной список, пока движок не прислал `supportedModels()` (сессия ещё поднимается). */
 const FALLBACK_MODELS = [
@@ -317,6 +320,13 @@ export function Composer() {
     document.addEventListener('selectionchange', onSel);
     return () => document.removeEventListener('selectionchange', onSel);
   }, []);
+
+  // кнопка «mcp» пропала при открытой всплывашке (↻ дал пустой список, выключили настройку, сменился движок) —
+  // закрыть: иначе невидимое меню съест следующий Esc (стоп хода) и само откроется, когда кнопка вернётся
+  const mcpShown = mcpSurfaceShown(features.value.mcp, mcpComposerButton.value, chat.value.mcp?.servers);
+  useEffect(() => {
+    if (menu === 'mcp' && !mcpShown) setMenu(undefined);
+  }, [menu, mcpShown]);
 
   // закрытие всплывающих меню кликом вне и по Esc
   useEffect(() => {
@@ -692,6 +702,7 @@ export function Composer() {
             <ModeMenu {...menuProps} look="pill" />
             <EngineMenu {...menuProps} {...modelProps} efforts={efforts} look="full" />
             <RemoteMenu {...menuProps} />
+            <McpMenu {...menuProps} />
             <span class="sp" />
             <ContextRing hv={hv} />
             {sendCtl('round')}
@@ -735,6 +746,7 @@ export function Composer() {
           <ModelMenu {...menuProps} {...modelProps} look="value" />
           <EffortMenu {...menuProps} efforts={efforts} />
           <RemoteMenu {...menuProps} />
+          <McpMenu {...menuProps} />
           <span class="sp" />
           {sendCtl('long')}
         </div>
@@ -757,6 +769,7 @@ export function Composer() {
           <PlusMenu {...menuProps} look="circle" />
           <EngineMenu {...menuProps} {...modelProps} efforts={efforts} look="short" />
           <RemoteMenu {...menuProps} />
+          <McpMenu {...menuProps} />
           {sendCtl('enter')}
         </div>
         <div class="sub">
@@ -787,6 +800,7 @@ export function Composer() {
           <ModelMenu {...menuProps} {...modelProps} look="value" />
           <EffortMenu {...menuProps} efforts={efforts} look="value" />
           <RemoteMenu {...menuProps} />
+          <McpMenu {...menuProps} />
           <span class="sp" />
           <ContextStatus hv={hv} look="sl" />
           <Meters hv={hv} look="time" />
@@ -815,6 +829,7 @@ export function Composer() {
             <EffortMenu {...menuProps} efforts={efforts} look="value" />
           </span>
           <RemoteMenu {...menuProps} />
+          <McpMenu {...menuProps} />
           <PlusMenu {...menuProps} />
           <span class="rg">
             <ContextStatus hv={hv} look="sh" />
@@ -858,6 +873,7 @@ export function Composer() {
         <ModelMenu {...menuProps} {...modelProps} />
         <EffortMenu {...menuProps} efforts={efforts} />
         <RemoteMenu {...menuProps} />
+        <McpMenu {...menuProps} />
         <Meters hv={hv} />
         {sendCtl('classic')}
       </div>
@@ -1514,6 +1530,36 @@ function RemoteMenu({ menu, toggle }: MenuProps) {
           )}
           <div class="sep" />
           <div class="nt">{ui.remote.note}</div>
+        </div>
+      )}
+    </span>
+  );
+}
+
+/**
+ * «mcp N/M» — MCP-серверы сессии (roadmap 21, этап 3): N подключено из M (без выключенных), жёлтая точка — есть сбой.
+ * Всплывашка — серверы, «повторить» / «перезапустить все», подсказка входа, скиллы сессии, ↻. Только у движков с
+ * `features.mcp`, при включённой `agentura.mcp.composerButton` и после первого `mcp.status`.
+ */
+function McpMenu({ menu, toggle }: MenuProps) {
+  const servers = chat.value.mcp?.servers;
+  if (!mcpSurfaceShown(features.value.mcp, mcpComposerButton.value, servers) || !servers) return null;
+  const c = mcpCounts(servers);
+  return (
+    <span class="pop mcpw" onKeyDown={menuKeys}>
+      <button
+        class="mcpb"
+        data-tip={ui.mcp.buttonTitle(c.n, c.m)}
+        aria-haspopup="dialog"
+        aria-expanded={menu === 'mcp'}
+        onClick={() => toggle('mcp')}
+      >
+        {ui.mcp.button} <b>{`${c.n}/${c.m}`}</b>
+        {c.bad > 0 && <span class="d" role="img" aria-label={ui.mcp.status['failed']} />}
+      </button>
+      {menu === 'mcp' && (
+        <div class="menu up mcpmenu" role="dialog" aria-label={ui.mcp.menuTitle}>
+          <McpSections variant="pop" />
         </div>
       )}
     </span>

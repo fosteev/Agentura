@@ -37,7 +37,7 @@ export interface PanelState {
   /** Свёрнута в полосу. */
   off?: boolean;
   /** Активная вкладка панели. */
-  tab?: 'changes' | 'git' | 'agents';
+  tab?: 'changes' | 'git' | 'agents' | 'mcp';
   /** Вкладка чата по задаче (roadmap 20): «чат» или «задача» (карточка на всю вкладку; панель и поле ввода прячутся). */
   view?: 'chat' | 'task';
   /** Вкладка «git»: файлы деревом (иначе списком путей). */
@@ -146,6 +146,7 @@ export function readPanel(): PanelState {
   if (p.tab === 'turn' || p.tab === 'changes') out.tab = 'changes';
   else if (p.tab === 'git') out.tab = 'git';
   else if (p.tab === 'agents') out.tab = 'agents';
+  else if (p.tab === 'mcp') out.tab = 'mcp';
   // вкладка «задача» ушла из правой панели (roadmap 20, решение 2): сохранённое 'task' открывает «изменения»
   else if (p.tab === 'task') out.tab = 'changes';
   if (p.view === 'chat' || p.view === 'task') out.view = p.view;
