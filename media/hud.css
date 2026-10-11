@@ -504,3 +504,13 @@ html:is([data-width="900"],[data-width="full"],[data-width="vscode"]) .body[data
 .sidebar .pop .eng + .eng { margin-top: 4px; }
 .sidebar .pop .lims { padding-left: 35px; padding-right: 10px; }
 .sidebar .pop .L { grid-template-columns: 92px 1fr 4.5ch 10ch; }
+
+/* ── вкладка «mcp» правой панели (roadmap 21, этап 3); строки .srv — в composer.css ── */
+.tabs .b.warn, .ptabs .b.warn, .rail .b.warn { background: var(--warn); color: #000; }
+html:is([data-width="900"],[data-width="full"],[data-width="vscode"]) .pane.side[data-active="mcp"] #pane-mcp:not([hidden]) { display: grid !important; align-content: start; flex: 1; min-height: 0; overflow: auto; padding: 6px 0; font-size: 12.5px; }
+.mcpp .srv { padding: 3px 14px; }
+.tabpane.mcpp h5 { margin: 8px 14px 4px; }
+.tabpane.mcpp h5.sk-head { margin-top: 12px; }
+.mcpp .exp { margin: 2px 14px 6px 32px; padding: 4px 8px; border-left: 2px solid var(--line-strong); color: var(--fg-mute); font: 11px/1.6 var(--mono); }
+.mcpp .exp b { color: var(--fg); font-weight: 400; }
+.mcpp .srv-hint { margin-left: 32px; }

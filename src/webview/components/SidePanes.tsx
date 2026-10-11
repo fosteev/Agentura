@@ -1,6 +1,7 @@
 import type { AgentDetailView, AgentMapView, MapRowView } from '../agentsView';
 import type { AgentScope, ViewsPane } from '../agentViews';
 import { AgentsCards, AgentsLanes, AgentsTree } from './AgentViews';
+import { McpSections } from './McpRows';
 import type { ChangesScope, ChangesView } from '../changesView';
 import { ui } from '../strings';
 import { formatDuration } from '../toolView';
@@ -394,5 +395,27 @@ function AgentDetail({
         ))}
       </div>
     </div>
+  );
+}
+
+/** Вкладка «mcp» (roadmap 21, этап 3): серверы с раскрытием вызовов по тулам, скиллы сессии, все доступные скиллы. */
+export function McpPane({
+  hidden,
+  labelledBy = 'tab-mcp',
+}: {
+  hidden?: boolean;
+  labelledBy?: string;
+}) {
+  return (
+    <section
+      class="tabpane mcpp"
+      id="pane-mcp"
+      role="tabpanel"
+      aria-label={ui.mcp.paneAria}
+      aria-labelledby={labelledBy}
+      hidden={hidden}
+    >
+      <McpSections variant="pane" idle={hidden} />
+    </section>
   );
 }

@@ -6,7 +6,7 @@ export interface TabItem<K extends string> {
   label: string;
   disabled?: boolean;
   /** Бейдж справа от подписи: `live` — идёт ход / живые агенты. */
-  badge?: { text: string; live: boolean };
+  badge?: { text: string; live: boolean; warn?: boolean };
 }
 
 /**
@@ -66,7 +66,7 @@ export function TabBar<K extends string>({
           onClick={() => onSelect(i.key)}
         >
           {i.label}
-          {i.badge && <span class={i.badge.live ? 'b live' : 'b'}>{i.badge.text}</span>}
+          {i.badge && <span class={i.badge.live ? 'b live' : i.badge.warn ? 'b warn' : 'b'}>{i.badge.text}</span>}
         </button>
       ))}
       {children}

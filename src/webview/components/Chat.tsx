@@ -19,6 +19,7 @@ import {
   respondPermission,
   selectedAgent,
   features,
+  mcpPanelTab,
   feedStyle,
   gitSnapshot,
   agentsView,
@@ -47,7 +48,8 @@ import { Hud, type Tab } from './Hud';
 import { TabBar, type TabItem } from './TabBar';
 import { Log, type TaskEventRef } from './Log';
 import { useStickToBottom } from '../useStickToBottom';
-import { AgentsPane, ChangesPane, type AgentsPaneModel } from './SidePanes';
+import { AgentsPane, ChangesPane, McpPane, type AgentsPaneModel } from './SidePanes';
+import { mcpCounts, mcpSurfaceShown } from '../mcpView';
 import { GitPane } from './GitPane';
 import { ChatTabs, TaskStrip, type ChatActivity } from './TaskPane';
 import { TaskView } from './TaskView';
@@ -147,6 +149,21 @@ const ICON_AGENTS = (
     <circle cx="3.5" cy="12" r="1.8" />
     <circle cx="12.5" cy="12" r="1.8" />
     <path d="M7 5l-2.5 5.3M9 5l2.5 5.3" />
+  </svg>
+);
+
+const ICON_MCP = (
+  <svg
+    class="ico"
+    viewBox="0 0 16 16"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="1.2"
+    aria-hidden="true"
+  >
+    <rect x="2.5" y="3" width="11" height="4" rx="1" />
+    <rect x="2.5" y="9" width="11" height="4" rx="1" />
+    <path d="M5 5h.01M5 11h.01" stroke-linecap="round" />
   </svg>
 );
 
@@ -265,13 +282,20 @@ export function Chat() {
   // в пустой сессии вкладки «изменения»/«агенты» отключены — после «new» возвращаемся в чат
   // вкладка «агенты» есть не у каждого движка (`features.subagents`): сохранённая или открытая — уступает «изменениям»
   const subagents = features.value.subagents;
+  // вкладка «mcp» (roadmap 21): движок отдал статус, настройка включена и серверы есть; иначе сохранённая — «изменения»
+  const mcpServers = s.mcp?.servers;
+  const mcpOn = mcpSurfaceShown(features.value.mcp, mcpPanelTab.value, mcpServers);
   // вкладка «задача» (чат по задаче, roadmap 19): доступна и в пустой сессии — карточку видно до первого сообщения
   const ts = taskState.value;
   const taskOn = taskPanelShown(taskCardMode.value, ts);
   const taskSub = panel.taskView ?? taskDefaultView(taskCardMode.value, ts);
   // вкладки «чат | задача» полосы задачи (roadmap 20, решение 1): «задача» занимает всю вкладку, правая панель и поле ввода прячутся
   const view: 'chat' | 'task' = taskOn && panel.view === 'task' ? 'task' : 'chat';
-  const t: Tab = empty ? 'chat' : !subagents && tab.value === 'agents' ? 'changes' : tab.value;
+  const t: Tab = empty
+    ? 'chat'
+    : (!subagents && tab.value === 'agents') || (!mcpOn && tab.value === 'mcp')
+      ? 'changes'
+      : tab.value;
   const now = tick.value;
   // что человек уже видел в ленте задачи: пока данных не было, «нового» нет; первая загрузка считается просмотренной
   const taskKey = ts?.taskKey;
@@ -310,6 +334,9 @@ export function Chat() {
   const gitSnap = gitSnapshot.value;
   const gitBdg = gitBadge(gitSnap);
   const agentsBdg = agentBadge(h);
+  // бейдж «mcp»: сколько серверов в сбое (жёлтый)
+  const mcpBad = mcpServers ? mcpCounts(mcpServers).bad : 0;
+  const mcpBdg = mcpOn && mcpBad > 0 ? { text: String(mcpBad), live: false, warn: true } : undefined;
   // основной ждёт своих субагентов: живая строка «ждёт N агентов» и «stop all»
   const awaited = working && s.status !== 'waiting' ? waitingAgents(s.rows, h) : [];
   // вид вкладки «агенты»: `graph` в панели показывает список (граф — вкладка редактора, этап 2 roadmap 11)
@@ -365,7 +392,7 @@ export function Chat() {
   // вкладки панели: в пустой сессии недоступны, активна «изменения»
   const panelTab: NonNullable<PanelState['tab']> = empty
     ? 'changes'
-    : !subagents && panel.tab === 'agents'
+    : (!subagents && panel.tab === 'agents') || (!mcpOn && panel.tab === 'mcp')
       ? 'changes'
       : (panel.tab ?? 'changes');
   // вкладка «задача» открыта; открыта лента изменений — бейджа нет: отметка «видел» сдвигается эффектом `TaskView`
@@ -400,7 +427,7 @@ export function Chat() {
     const id = setInterval(() => (tick.value = Date.now()), 15_000);
     return () => clearInterval(id);
   }, [taskShown]);
-  const panelAll: readonly TabItem<'changes' | 'git' | 'agents'>[] = [
+  const panelAll: readonly TabItem<'changes' | 'git' | 'agents' | 'mcp'>[] = [
     {
       key: 'changes',
       label: ui.tabs.changes,
@@ -419,8 +446,16 @@ export function Chat() {
       disabled: empty,
       ...(agentsBdg ? { badge: agentsBdg } : {}),
     },
+    {
+      key: 'mcp',
+      label: ui.tabs.mcp,
+      disabled: empty,
+      ...(mcpBdg ? { badge: mcpBdg } : {}),
+    },
   ];
-  const panelItems = panelAll.filter((i) => i.key !== 'agents' || subagents);
+  const panelItems = panelAll.filter((i) =>
+    i.key === 'agents' ? subagents : i.key === 'mcp' ? mcpOn : true,
+  );
 
   // вкладка «git» видна: широкая — активна и панель не свёрнута, узкая — открыта вкладка шапки
   const gitShown = wide.value ? panelTab === 'git' && !panelOff : t === 'git';
@@ -445,6 +480,7 @@ export function Chat() {
         }}
         sidePanesEnabled={!empty}
         agentsTab={subagents}
+        mcpTab={mcpOn}
         badges={
           empty
             ? {}
@@ -452,6 +488,7 @@ export function Chat() {
                 ...(changesBdg ? { changes: changesBdg } : {}),
                 ...(gitBdg ? { git: gitBdg } : {}),
                 ...(agentsBdg ? { agents: agentsBdg } : {}),
+                ...(mcpBdg ? { mcp: mcpBdg } : {}),
               }
         }
         sessions={recent.value}
@@ -690,6 +727,12 @@ export function Chat() {
             onTranscript={openAgentTranscript}
             onGraph={() => openGraph(selectedAgent.value)}
           />
+          {mcpOn && (
+            <McpPane
+              hidden={wide.value ? panelTab !== 'mcp' : t !== 'mcp'}
+              labelledBy={wide.value ? 'ptab-mcp' : 'tab-mcp'}
+            />
+          )}
         </aside>
         <nav class="rail" aria-label={ui.panel.railAria}>
           <button
@@ -721,6 +764,17 @@ export function Chat() {
               {agentsBdg && (
                 <span class={agentsBdg.live ? 'b live' : 'b'}>{agentsBdg.text.split(' / ')[0]}</span>
               )}
+            </button>
+          )}
+          {mcpOn && (
+            <button
+              data-tip={ui.tabs.mcp}
+              aria-label={ui.panel.openTab(ui.tabs.mcp)}
+              disabled={empty}
+              onClick={() => updatePanel({ tab: 'mcp', off: false })}
+            >
+              {ICON_MCP}
+              {mcpBdg && <span class="b warn">{mcpBdg.text}</span>}
             </button>
           )}
           <button
