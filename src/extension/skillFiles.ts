@@ -1,11 +1,11 @@
 import { realpath, stat } from 'node:fs/promises';
 import { basename, join } from 'node:path';
-import { skillDirName } from '../shared/skills';
+import { isPluginSkill, skillDirName } from '../shared/skills';
 
 /**
  * SKILL.md скилла (roadmap 21, решение 6): сначала `<cwd>/.claude/skills/<имя>/SKILL.md`, потом то же в домашней
- * папке. Имя проверяется (`SKILL_NAME_RE`), у плагинного берётся часть после `:`. Нет файла (встроенный скилл,
- * плагин со своей папкой) или имя кривое — `undefined`.
+ * папке. Имя проверяется (`SKILL_NAME_RE`). Плагинным (`a:b`) ссылки нет (решение владельца 11.10): по части после
+ * `:` легко открыть чужой одноимённый скилл. Нет файла (встроенный скилл) или имя кривое — `undefined`.
  */
 export async function findSkillFile(
   name: string,
@@ -13,6 +13,7 @@ export async function findSkillFile(
   home: string,
   isFile: (path: string) => Promise<boolean> = fileExists,
 ): Promise<string | undefined> {
+  if (isPluginSkill(name)) return undefined;
   const dir = skillDirName(name);
   if (!dir) return undefined;
   for (const root of [cwd, home]) {

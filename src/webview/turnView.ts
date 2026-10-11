@@ -132,7 +132,7 @@ export const MAX_STRIP = 40;
 const EDIT_TOOLS = new Set(['Edit', 'MultiEdit', 'Write', 'NotebookEdit']);
 
 /** Сводка свёрнутого хода по его строкам-действиям (`stepRows`). `now` — для ещё идущих think. */
-export function foldSummary(rows: readonly FeedRow[], now?: number): FoldSummary {
+export function foldSummary(rows: readonly FeedRow[], now?: number, labels = false): FoldSummary {
   const ops: FoldOp[] = [];
   const strip: StripSeg[] = [];
   let thinkMs = 0;
@@ -153,7 +153,7 @@ export function foldSummary(rows: readonly FeedRow[], now?: number): FoldSummary
       const ms = r.durationMs ?? 0;
       durationMs += ms;
       seg(EDIT_TOOLS.has(r.name) ? 'ed' : r.name === 'Bash' ? 'rn' : '', ms);
-      const op = toolView(r.name, r.input).op;
+      const op = toolView(r.name, r.input, undefined, undefined, labels).op;
       let o = ops.find((x) => x.op === op);
       if (!o) ops.push((o = { op, times: 0 }));
       o.times++;

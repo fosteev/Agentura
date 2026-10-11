@@ -2892,6 +2892,10 @@ describe('ChatController: MCP и скиллы (roadmap 21)', () => {
     await controller.handle({ type: 'skill.open', name: 'simplify' });
     expect(opened).toEqual(['/home/.claude/skills/plan/SKILL.md']);
     expect(deps.log.warn).toHaveBeenCalledWith(expect.stringContaining('simplify'));
+    // плагинному ссылки нет (владелец 11.10): файл не ищем, даже если findSkill его знает
+    await controller.handle({ type: 'skill.open', name: 'plug:mine' });
+    expect(opened).toEqual(['/home/.claude/skills/plan/SKILL.md']);
+    expect(deps.log.warn).toHaveBeenCalledWith(expect.stringContaining('plug:mine'));
     expect([...sessions, ...mcpSessions]).toHaveLength(0);
   });
 
@@ -2937,7 +2941,12 @@ describe('ChatController: MCP и скиллы (roadmap 21)', () => {
   });
 
   it('mcp.status и skill.files уходят в webview и возвращаются при пересеве', async () => {
-    const { controller, posted, mcpSessions } = mcpSetup();
+    const { controller, posted, mcpSessions, deps } = mcpSetup();
+    (deps.adapter as { loadHistory: unknown }).loadHistory = async (): Promise<SessionHistory> => ({
+      events: [],
+      turns: 0,
+      skippedTurns: 0,
+    });
     controller.start();
     await tick();
     const s = mcpSessions[0]!;
@@ -2947,13 +2956,17 @@ describe('ChatController: MCP и скиллы (roadmap 21)', () => {
     await tick();
     await tick();
     const files = () => posted.filter((m) => m.type === 'skill.files');
-    expect(files()).toEqual([{ type: 'skill.files', names: ['plan', 'plug:mine'] }]);
+    expect(files()).toEqual([{ type: 'skill.files', names: ['plan'] }]);
     expect(posted).toContainEqual({ type: 'agent.event', sessionId: 'sess-1', event: status });
     posted.length = 0;
     await controller.handle({ type: 'ready' });
     await controller.handle({ type: 'ready' });
     for (let i = 0; i < 5; i++) await tick();
     expect(posted.filter((m) => m.type === 'agent.event' && m.event.type === 'mcp.status')).toHaveLength(1);
-    expect(files()).toEqual([{ type: 'skill.files', names: ['plan', 'plug:mine'] }]);
+    expect(files()).toEqual([{ type: 'skill.files', names: ['plan'] }]);
+    // история пересева предупреждает webview: следом повтор статуса, не новость для ленты
+    const hist = posted.filter((m) => m.type === 'session.history');
+    expect(hist).toHaveLength(1);
+    expect(hist[0]).toMatchObject({ mcpReplay: true });
   });
 });

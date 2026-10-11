@@ -40,10 +40,10 @@ describe('findSkillFile', () => {
   });
   afterAll(() => rm(root, { recursive: true, force: true }));
 
-  it('сначала проект, потом домашняя папка; плагинный — по части после :', async () => {
+  it('сначала проект, потом домашняя папка; плагинному (a:b) файла нет', async () => {
     expect(await findSkillFile('both', cwd, home)).toBe(join(cwd, '.claude', 'skills', 'both', 'SKILL.md'));
     expect(await findSkillFile('mine', cwd, home)).toBe(join(home, '.claude', 'skills', 'mine', 'SKILL.md'));
-    expect(await findSkillFile('plug:mine', cwd, home)).toBe(join(home, '.claude', 'skills', 'mine', 'SKILL.md'));
+    expect(await findSkillFile('plug:mine', cwd, home)).toBeUndefined();
   });
 
   it('нет файла или кривое имя — undefined, файловую систему не трогает', async () => {

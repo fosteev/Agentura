@@ -49,7 +49,7 @@ import {
   type SessionAttach,
 } from '../shared/files';
 import { DEFAULT_MCP_VIEW, mcpWatchOf, resolveDefaultEffort, resolveDefaultMode, type AgentsView, type ComposerLayout, type FeedStyle, type GitLayout, type McpView, type TaskCardMode } from '../settings';
-import { isSkillName } from '../shared/skills';
+import { isPluginSkill, isSkillName } from '../shared/skills';
 import { hostStrings, type Lang } from '../shared/l10n';
 import { appliedSides, previewOf, proposedSides, type EditSides } from './editDiff';
 import {
@@ -505,7 +505,7 @@ export class ChatController {
   }
 
   /** `session.history` для webview: события без тяжёлых результатов (файлы целиком остались у хоста). */
-  private postHistory(history = this.resumed?.history, title = this.resumed?.title): void {
+  private postHistory(history = this.resumed?.history, title = this.resumed?.title, mcpReplay = false): void {
     const id = this.sessionId;
     if (!history || !id) return;
     this.seedPending = false;
@@ -517,6 +517,7 @@ export class ChatController {
       ...(title ? { title } : {}),
       ...(history.model ? { model: history.model } : {}),
       ...(history.mode ? { mode: history.mode } : {}),
+      ...(mcpReplay ? { mcpReplay: true as const } : {}),
     });
     this.postAttach();
   }
@@ -575,7 +576,7 @@ export class ChatController {
     );
     if (history) {
       this.tokenTally.reset(merged.history);
-      this.postHistory({ ...history, events: merged.history }, this.resumed?.title ?? this.title);
+      this.postHistory({ ...history, events: merged.history }, this.resumed?.title ?? this.title, !!this.lastMcp);
     } else this.deps.post({ type: 'session.reset' });
     this.postAttach();
     if (this.lastInit) this.forward(id, this.lastInit);
@@ -590,7 +591,8 @@ export class ChatController {
     for (const e of this.pendingRequests.values()) this.forward(id, e);
     for (const p of this.previews.values()) this.deps.post(p);
     const replay = new Set(merged.replay);
-    for (const b of buffer) if (replay.has(b.event)) this.forward(b.sessionId, b.event);
+    // `mcp.status` из накопленного уже покрыт `lastMcp` (он новее): старый повтор дал бы ложное «отключился»
+    for (const b of buffer) if (replay.has(b.event) && b.event.type !== 'mcp.status') this.forward(b.sessionId, b.event);
     void this.ensureSession()
       .then((s) => this.postCapabilities(s))
       .catch(() => undefined);
@@ -1748,6 +1750,10 @@ export class ChatController {
       this.log.warn(`skill.open: недопустимое имя скилла ${JSON.stringify(String(name).slice(0, 80))}`);
       return;
     }
+    if (isPluginSkill(name)) {
+      this.log.warn(`skill.open: у плагинного скилла ${name} ссылки на SKILL.md нет`);
+      return;
+    }
     const path = await this.deps.findSkill?.(name);
     if (!path) {
       this.log.warn(`skill.open: SKILL.md для ${name} не найден`);
@@ -1763,7 +1769,8 @@ export class ChatController {
     const seq = ++this.skillFilesSeq;
     const names: string[] = [];
     try {
-      const found = await Promise.all(skills.filter(isSkillName).map(async (n) => ((await findSkill(n)) ? n : undefined)));
+      const plain = skills.filter((n) => isSkillName(n) && !isPluginSkill(n));
+      const found = await Promise.all(plain.map(async (n) => ((await findSkill(n)) ? n : undefined)));
       for (const n of found) if (n) names.push(n);
     } catch (error) {
       this.log.warn(`поиск SKILL.md: ${String(error)}`);

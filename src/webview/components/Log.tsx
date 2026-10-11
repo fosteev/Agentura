@@ -24,7 +24,9 @@ import { agentGroupView, feedItems, type FeedItem } from '../agentsView';
 import { feedTurns, foldSummary, stepRows, type FoldSummary, type Turn } from '../turnView';
 import { initialHud, type HudState } from '../hudState';
 import { AgentGroup } from './AgentGroup';
-import { provider, taskState } from '../store';
+import { chat, mcpFeedLabels, mcpFeedStatus, provider, skillFiles, taskState } from '../store';
+import { send } from '../vscode';
+import { canOpenSkill, noteVisible, serverByPrefix, type McpNote } from '../mcpFeed';
 
 /** Событие ленты задачи, на которое ведёт «в задаче →» строки инструмента Jira (этап 8 roadmap 19). */
 export type TaskEventRef = { kind: TaskEventKind; id?: string };
@@ -269,14 +271,19 @@ export function Tool({
   onTaskEvent?: ((ref: TaskEventRef) => void) | undefined;
 }) {
   const issue = chatIssue();
-  const v = toolView(t.name, t.input, cwd, issue);
+  const labels = mcpFeedLabels.value;
+  const v = toolView(t.name, t.input, cwd, issue, labels);
   const running = t.state === 'run';
   const failed = t.state === 'err';
+  // метки B: сервер в статусе failed — красные чип и op; показываем имя из статуса (оно с пробелами/точками)
+  const srv = v.server ? serverByPrefix(chat.value.mcp?.servers, v.server) : undefined;
+  const srvDown = srv?.status === 'failed';
   // красный результат раскрывается: вывод инструмента как его увидела модель
   const expandable = failed && !!t.content;
   const [open, setOpen] = useState(false);
   const cls = ['e', v.run && 'run', v.edit && 'ed', running && 'now', failed && 'fail'].filter(Boolean).join(' ');
   const toggle = () => expandable && setOpen(!open);
+  if (v.skill) return <SkillRow name={v.skill} running={running} failed={failed} />;
   return (
     <>
       <div
@@ -303,8 +310,13 @@ export function Tool({
         <span class="p">
           {running ? <span class="spin" /> : expandable ? open ? '▾' : '▸' : '▸'}
         </span>
-        <span class="op">{v.op}</span>
+        <span class={srvDown ? 'op bad' : v.server ? 'op mcp' : 'op'}>{v.op}</span>
         <span class="what">
+          {v.server && (
+            <span class={srvDown ? 'chip2 bad' : 'chip2'} data-tip={ui.mcp.chipTip(srv?.name ?? v.server)}>
+              {srv?.name ?? v.server}
+            </span>
+          )}
           {v.dimAfter ? (
             <>
               {v.what} {v.dim && <span class="dim">{v.dim}</span>}
@@ -325,6 +337,107 @@ export function Tool({
         />
       </div>
       {open && t.content && <ToolOutput content={t.content} />}
+    </>
+  );
+}
+
+/** Полоса скилла (метки B, решение 8): `◆ скилл <имя> · вызвал агент` и «открыть SKILL.md» (плагинным и без файла — нет). */
+function SkillRow({ name, running, failed }: { name: string; running: boolean; failed: boolean }) {
+  const link = canOpenSkill(name, skillFiles.value);
+  return (
+    <div class={['skrow', running && 'now', failed && 'fail'].filter(Boolean).join(' ')}>
+      <span class="p">{running ? <span class="spin" /> : '◆'}</span>
+      <span>
+        <span class="ds">{ui.mcp.skillWord}</span> <b>{name}</b> <span class="ds">· {ui.mcp.skillBy('agent')}</span>
+      </span>
+      {link && (
+        <span class="r">
+          <a
+            href="#"
+            onClick={(ev) => {
+              ev.preventDefault();
+              send({ type: 'skill.open', name });
+            }}
+          >
+            {ui.mcp.openSkill}
+          </a>
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** Системная строка MCP (решение 11): по `agentura.mcp.feedStatus`; список серверов раскрывается (при `start` — раскрыт). */
+function McpSysRow({ n, at }: { n: McpNote; at?: string | undefined }) {
+  const mode = mcpFeedStatus.value;
+  const [open, setOpen] = useState<boolean | undefined>(undefined);
+  if (!noteVisible(n, mode)) return null;
+  const expanded = open ?? (mode === 'start' && n.variant === 'start');
+  const by = (name: string) => n.servers.find((x) => x.name === name);
+  const parts: preact.ComponentChildren[] = [];
+  const bad = n.bad.filter((name) => by(name)?.status === 'failed');
+  const auth = n.bad.filter((name) => by(name)?.status === 'needs-auth');
+  const connected = n.servers.filter((x) => x.status === 'connected').length;
+  const pending = n.servers.filter((x) => x.status === 'pending').length;
+  if (n.variant === 'start') {
+    if (connected) parts.push(<b>{ui.mcp.connected(connected)}</b>);
+    if (bad.length)
+      parts.push(
+        <span class="bad">
+          {bad.length === 1 ? ui.mcp.failedOne(bad[0]!, by(bad[0]!)?.error) : ui.mcp.failedMany(bad[0]!, bad.length - 1)}
+        </span>,
+      );
+    if (auth.length) parts.push(<span class="wn">{ui.mcp.needsAuth(auth.length)}</span>);
+    if (pending) parts.push(<span>{ui.mcp.pending(pending)}</span>);
+  } else {
+    if (bad.length)
+      parts.push(
+        <span class="bad">
+          {bad.length === 1 ? ui.mcp.dropped(bad[0]!, by(bad[0]!)?.error) : ui.mcp.droppedMany(bad[0]!, bad.length - 1)}
+        </span>,
+      );
+    if (auth.length)
+      parts.push(<span class="wn">{auth.length === 1 ? ui.mcp.droppedAuth(auth[0]!) : ui.mcp.needsAuth(auth.length)}</span>);
+  }
+  return (
+    <>
+      <div class={n.bad.length ? 'sys mcp bad' : 'sys mcp'}>
+        <span class="p">{n.bad.length ? '▲' : '▸'}</span>
+        <span>
+          {ui.mcp.head}{' '}
+          {parts.map((p, i) => (
+            <Fragment key={i}>
+              {i > 0 && ' · '}
+              {p}
+            </Fragment>
+          ))}{' '}
+          <a
+            href="#"
+            aria-expanded={expanded}
+            onClick={(ev) => {
+              ev.preventDefault();
+              setOpen(!expanded);
+            }}
+          >
+            {expanded ? ui.mcp.collapse : ui.mcp.expand}
+          </a>
+        </span>
+        {at && <span class="at">{at}</span>}
+      </div>
+      {expanded && (
+        <div class="sysd">
+          {n.servers.map((x) => (
+            <div class={`srv ${x.status}`}>
+              <span class="st" />
+              <span class="nm">
+                {x.name}
+                {x.error && <small>{x.error}</small>}
+              </span>
+              <span class="n">{ui.mcp.status[x.status] ?? x.status}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </>
   );
 }
@@ -441,6 +554,7 @@ export function Log({
           />
         );
       case 'sys':
+        if (it.mcp) return <McpSysRow key={it.id} n={it.mcp} at={it.at} />;
         return (
           <div class={it.tone ? `sys ${it.tone}` : 'sys'} key={it.id}>
             <span class="p">▸</span>
@@ -554,16 +668,17 @@ export function Log({
 
 const NO_IDS: ReadonlySet<number> = new Set();
 // сводка закрытого хода не меняется — считается раз на строку итога (и режим показа рассуждений)
-const foldCache = new WeakMap<object, { thinking: boolean; f: FoldSummary | undefined }>();
+const foldCache = new WeakMap<object, { thinking: boolean; labels: boolean; f: FoldSummary | undefined }>();
 
 function turnFold(b: Turn, thinking: boolean, now: number): FoldSummary | undefined {
+  const labels = mcpFeedLabels.value;
   const hit = b.sum && foldCache.get(b.sum);
-  if (hit && hit.thinking === thinking) return hit.f;
+  if (hit && hit.thinking === thinking && hit.labels === labels) return hit.f;
   const steps = b.parts.flatMap((p) =>
     p.kind === 'steps' ? (thinking ? p.items : p.items.filter((it) => it.kind !== 'think')) : [],
   );
-  const f = steps.length ? foldSummary(stepRows(steps), now) : undefined;
-  if (b.sum) foldCache.set(b.sum, { thinking, f });
+  const f = steps.length ? foldSummary(stepRows(steps), now, labels) : undefined;
+  if (b.sum) foldCache.set(b.sum, { thinking, labels, f });
   return f;
 }
 
@@ -615,11 +730,14 @@ function UserRowView({
 }
 
 function SumView({ r }: { r: Row<'sum'> }) {
+  const labels = mcpFeedLabels.value;
   return (
     <div class="sum">
       {r.parts.map((p) => (
         <span>{p}</span>
       ))}
+      {labels && r.mcp ? <span class="mx">{ui.mcp.sumMcp(r.mcp)}</span> : null}
+      {labels && r.skill ? <span class="sx">{ui.mcp.sumSkill(r.skill)}</span> : null}
       {r.cost && <b>{r.cost}</b>}
       <span class="t">{r.time}</span>
     </div>
