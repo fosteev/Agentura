@@ -3,6 +3,7 @@ import type { GitFileView, GitRepoView, GitSnapshot } from '../shared/git';
 import {
   agentCount,
   agentPathSet,
+  clampDescH,
   cleanRepos,
   commitButton,
   commitTargets,
@@ -13,6 +14,7 @@ import {
   gitBadge,
   isAgentFile,
   pickedRepo,
+  repoDirty,
   sectionRows,
   summaryLeft,
   syncView,
@@ -256,5 +258,23 @@ describe('раскладки нескольких репозиториев', () 
     });
     // занят не отмеченный репозиторий — не мешает
     expect(unifiedButton(busy, commitTargets(busy, { '/w/a': false }), { message: 'm' }).disabled).toBe(false);
+  });
+});
+
+describe('git.hideClean и высота описания', () => {
+  it('repoDirty: файлы, неотправленные коммиты, неопубликованная ветка, merge — есть что показать', () => {
+    expect(repoDirty(repo())).toBe(false);
+    expect(repoDirty(repo({ ahead: 0, behind: 3 }))).toBe(false);
+    expect(repoDirty(repo({ unstaged: [f('a')] }))).toBe(true);
+    expect(repoDirty(repo({ ahead: 1 }))).toBe(true);
+    expect(repoDirty(repo({ published: false }))).toBe(true);
+    expect(repoDirty(repo({ op: 'rebase' }))).toBe(true);
+  });
+  it('clampDescH: не меньше двух строк, не больше 60% вкладки', () => {
+    expect(clampDescH(10, 500)).toBe(34);
+    expect(clampDescH(120.4, 500)).toBe(120);
+    expect(clampDescH(900, 500)).toBe(300);
+    // вкладка ниже минимума — всё равно минимум
+    expect(clampDescH(90, 20)).toBe(34);
   });
 });

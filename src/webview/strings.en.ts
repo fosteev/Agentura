@@ -676,6 +676,11 @@ export const en: Ui = {
     repoPick: 'Repositories',
     cleanHeading: 'clean',
     fetchAll: 'Fetch in all',
+    hiddenClean: (n: number) => `${n} clean hidden`,
+    allClean: 'No changes in any repository',
+    allCleanHint: 'Repositories without changes are hidden (the “Hide repositories without changes” setting).',
+    descGrip: 'Description field height',
+    descGripTip: 'Drag to resize the field; double-click to reset',
   },
   compose: {
     mode: 'mode',
@@ -1168,6 +1173,10 @@ export const en: Ui = {
         picker: 'picker — one repository at a time',
         unified: 'unified — one list, one commit',
       },
+    },
+    gitHideClean: {
+      name: 'Git tab: hide repositories without changes',
+      desc: 'With several repositories, skip those that have no changed files, no unpushed commits and no unpublished branch. Open tabs apply immediately.',
     },
     fontInterface: {
       name: 'Interface font',

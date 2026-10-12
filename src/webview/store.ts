@@ -135,6 +135,8 @@ export const composerLayout = signal<ComposerLayout>('classic');
 export const agentsView = signal<AgentsView>('list');
 /** Раскладка вкладки «git» при нескольких репо (`agentura.git.layout`, `chat.info`): `data-git` на корне чата. */
 export const gitLayout = signal<GitLayout>('stack');
+/** Прятать во вкладке «git» репозитории без изменений (`agentura.git.hideClean`, `chat.info`). */
+export const gitHideClean = signal(false);
 /** Где карточка задачи (`agentura.tasks.card`, `chat.info`): `strip` — без вкладки «задача» в панели. */
 export const taskCardMode = signal<TaskCardMode>('tab');
 /**
@@ -409,6 +411,7 @@ export function handleHostMessage(m: ToWebview): void {
       composerLayout.value = m.composerLayout ?? 'classic';
       agentsView.value = m.agentsView ?? 'list';
       gitLayout.value = m.gitLayout ?? 'stack';
+      gitHideClean.value = m.gitHideClean === true;
       taskCardMode.value = m.taskCard ?? 'tab';
       applyMcpView(m.mcp);
       // нет compact (Codex) — нет и порогов автосжатия: шкала без зон и засечек, «полный» — только само окно

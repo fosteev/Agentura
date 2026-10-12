@@ -189,6 +189,7 @@ export type SettingKey =
   | 'composer.layout'
   | 'agents.view'
   | 'git.layout'
+  | 'git.hideClean'
   | 'mcp.feedLabels'
   | 'mcp.composerButton'
   | 'mcp.panelTab'
@@ -230,6 +231,7 @@ export const SETTING_KEYS: readonly SettingKey[] = [
   'composer.layout',
   'agents.view',
   'git.layout',
+  'git.hideClean',
   'mcp.feedLabels',
   'mcp.composerButton',
   'mcp.panelTab',
@@ -290,6 +292,8 @@ export interface SettingsValues {
   'composer.layout': ComposerLayout;
   'agents.view': AgentsView;
   'git.layout': GitLayout;
+  /** Вкладка «git»: прятать репозитории без изменений. */
+  'git.hideClean': boolean;
   /** Метки скиллов и MCP в ленте (roadmap 21, вариант B); выключено — лента как раньше. */
   'mcp.feedLabels': boolean;
   /** Кнопка «mcp N/M» у поля ввода. */
@@ -507,6 +511,7 @@ export function validateSetting(key: SettingKey, value: unknown, lang: ErrLang =
     case 'sessionList.context':
     case 'sessionList.time':
     case 'tasks.humanChanges':
+    case 'git.hideClean':
     case 'mcp.feedLabels':
     case 'mcp.composerButton':
     case 'mcp.panelTab':
@@ -651,6 +656,7 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
     'composer.layout': isComposerLayout(cl) ? cl : DEFAULT_COMPOSER_LAYOUT,
     'agents.view': isAgentsView(agv) ? agv : DEFAULT_AGENTS_VIEW,
     'git.layout': isGitLayout(gl) ? gl : DEFAULT_GIT_LAYOUT,
+    'git.hideClean': cfg.get<unknown>('git.hideClean') === true,
     'mcp.feedLabels': mcp.feedLabels,
     'mcp.composerButton': mcp.composerButton,
     'mcp.panelTab': mcp.panelTab,

@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { uiZoom } from '../appearance';
 import type { GitCommitView, GitFileStatus, GitRepoView, GitSnapshot } from '../../shared/git';
 import type { GitLayout } from '../../settings';
 import { menuKeys } from '../a11y';
 import {
   agentCount,
+  clampDescH,
   cleanRepos,
   commitButton,
   commitMessage,
@@ -12,6 +14,7 @@ import {
   fileRows,
   pickedRepo,
   repoCount,
+  repoDirty,
   sectionRows,
   summaryLeft,
   syncView,
@@ -125,6 +128,9 @@ export function GitPane({
   hidden,
   labelledBy = 'tab-git',
   layout = 'stack',
+  hideClean = false,
+  descH,
+  onDescH,
   repoRoot,
   onTree,
   onAgentOnly,
@@ -142,6 +148,12 @@ export function GitPane({
   labelledBy?: string;
   /** Раскладка при нескольких репозиториях (`agentura.git.layout`); один репозиторий её не читает. */
   layout?: GitLayout;
+  /** `agentura.git.hideClean`: при нескольких репозиториях прятать те, где нечего показать (`repoDirty`). */
+  hideClean?: boolean;
+  /** Высота поля описания коммита, прижатого к низу вкладки (px вёрстки); нет — по умолчанию. */
+  descH?: number | undefined;
+  /** Ручка над полем коммита отпущена: новая высота, `undefined` — сброс. */
+  onDescH?: (h: number | undefined) => void;
   /** Выбранный в `picker` репозиторий (корень); нет или исчез — первый с изменениями. */
   repoRoot?: string | undefined;
   onTree: (tree: boolean) => void;
@@ -180,8 +192,12 @@ export function GitPane({
       </div>,
     );
   }
+  const all = snapshot.repos;
+  const single = all.length === 1;
+  // один репозиторий настройка не трогает: иначе пропали бы ветка, история и поле коммита
+  if (hideClean && !single) snapshot = { ...snapshot, repos: all.filter(repoDirty) };
   const repos = snapshot.repos;
-  const single = repos.length === 1;
+  const cleanHidden = all.length - repos.length;
   const bar = (
     <Bar
       total={totalCount(snapshot)}
@@ -203,6 +219,7 @@ export function GitPane({
       now={now}
     />
   );
+  const desc = { descH, onDescH };
   if (single) {
     const r = repos[0]!;
     return shell(
@@ -212,7 +229,7 @@ export function GitPane({
           {bar}
           {block(r, false)}
         </div>
-        <CommitBox repo={r} />
+        <CommitBox repo={r} {...desc} />
       </>,
     );
   }
@@ -223,7 +240,8 @@ export function GitPane({
       <span class="rp">{I.repo}</span>
       {folder && <b>{folder}/</b>}
       <span>
-        {t.repos(repos.length)} · {t.changes(totalCount(snapshot))}
+        {t.repos(all.length)} · {t.changes(totalCount(snapshot))}
+        {cleanHidden > 0 && ` · ${t.hiddenClean(cleanHidden)}`}
       </span>
       <span class="r">
         <button
@@ -237,6 +255,17 @@ export function GitPane({
       </span>
     </div>
   );
+  if (repos.length === 0) {
+    return shell(
+      <>
+        {ws}
+        <div class="empty big">
+          <b>{t.allClean}</b>
+          <div>{t.allCleanHint}</div>
+        </div>
+      </>,
+    );
+  }
   if (layout === 'picker') {
     const sel = pickedRepo(snapshot, repoRoot) ?? repos[0]!;
     return shell(
@@ -251,7 +280,7 @@ export function GitPane({
           {bar}
           {block(sel, false)}
         </div>
-        <CommitBox repo={sel} />
+        <CommitBox repo={sel} {...desc} />
       </>,
     );
   }
@@ -269,7 +298,7 @@ export function GitPane({
             agentOnly={agentOnly}
           />
         </div>
-        <UnifiedCommit snapshot={snapshot} />
+        <UnifiedCommit snapshot={snapshot} {...desc} />
       </>,
     );
   }
@@ -880,6 +909,8 @@ function CommitForm({
   compact,
   note,
   gen,
+  descH,
+  onDescH,
   onGo,
 }: {
   draftKey: string;
@@ -894,6 +925,9 @@ function CommitForm({
   targets?: preact.ComponentChildren;
   compact?: boolean;
   note?: preact.ComponentChildren;
+  /** Поле прижато к низу вкладки: высота описания (px вёрстки) и ручка над полем, которая её меняет. */
+  descH?: number | undefined;
+  onDescH?: ((h: number | undefined) => void) | undefined;
   onGo: (o: { push?: boolean; all?: boolean }) => void;
 }) {
   const t = g();
@@ -905,6 +939,9 @@ function CommitForm({
   const pop = useRef<HTMLDivElement>(null);
   const wrap = useRef<HTMLDivElement>(null);
   const sum = useRef<HTMLInputElement>(null);
+  const descRef = useRef<HTMLTextAreaElement>(null);
+  // тяга ручки: Y и высота описания на старте; во время тяги высота пишется прямо в style, в состояние — на отпускании
+  const drag = useRef<{ y: number; h: number } | null>(null);
   useEffect(() => {
     if (!menuOpen) return;
     const onDown = (e: MouseEvent) => {
@@ -974,8 +1011,68 @@ function CommitForm({
     );
   }
   const label = btn.label;
+  const sizable = !compact && !!onDescH;
+  // нативная ручка textarea у поля, прижатого к низу, тянется вниз — в край окна; поэтому ручка — над полем, тянется вверх
+  const paneH = () => (wrap.current?.closest('.gt')?.getBoundingClientRect().height ?? 0) / uiZoom();
+  const curH = () => (descRef.current?.getBoundingClientRect().height ?? 0) / uiZoom();
+  const dragH = (clientY: number) =>
+    clampDescH(drag.current!.h + (drag.current!.y - clientY) / uiZoom(), paneH());
+  const setLive = (h: number) => {
+    if (descRef.current) descRef.current.style.height = `${h}px`;
+  };
+  const endDrag = (el: HTMLElement, h: number | undefined) => {
+    drag.current = null;
+    el.classList.remove('drag');
+    document.documentElement.classList.remove('vresizing');
+    onDescH?.(h);
+  };
+  const grip = sizable && (
+    <div
+      class="vgrip"
+      role="separator"
+      aria-orientation="horizontal"
+      aria-label={t.descGrip}
+      aria-valuenow={descH}
+      data-tip={t.descGripTip}
+      tabIndex={0}
+      onPointerDown={(e) => {
+        if (e.button !== 0) return;
+        drag.current = { y: e.clientY, h: curH() };
+        const el = e.currentTarget as HTMLElement;
+        el.setPointerCapture?.(e.pointerId);
+        el.classList.add('drag');
+        document.documentElement.classList.add('vresizing');
+        e.preventDefault();
+      }}
+      onPointerMove={(e) => {
+        if (drag.current) setLive(dragH(e.clientY));
+      }}
+      onPointerUp={(e) => {
+        if (!drag.current) return;
+        const el = e.currentTarget as HTMLElement;
+        el.releasePointerCapture?.(e.pointerId);
+        endDrag(el, dragH(e.clientY));
+      }}
+      onLostPointerCapture={(e) => {
+        // захват сорвался без pointerup — оставить последнюю показанную высоту
+        if (drag.current) endDrag(e.currentTarget as HTMLElement, clampDescH(curH(), paneH()));
+      }}
+      onDblClick={() => {
+        if (descRef.current) descRef.current.style.height = '';
+        onDescH?.(undefined);
+      }}
+      onKeyDown={(e) => {
+        const step = e.key === 'ArrowUp' ? 12 : e.key === 'ArrowDown' ? -12 : 0;
+        if (step) onDescH?.(clampDescH(curH() + step, paneH()));
+        else if (e.key === 'Home') onDescH?.(undefined);
+        else return;
+        e.preventDefault();
+      }}
+    />
+  );
   return (
     <div class="cm" data-root={draftKey} ref={wrap} onFocusOut={onOut}>
+      {grip}
       {errors}
       {targets}
       <div class={focus ? 'box focus' : 'box'}>
@@ -1007,8 +1104,10 @@ function CommitForm({
           </button>
         </div>
         <textarea
-          class="desc"
+          class={sizable ? 'desc sized' : 'desc'}
+          ref={descRef}
           rows={2}
+          style={sizable && descH ? { height: `${descH}px` } : undefined}
           aria-label={t.descAria}
           placeholder={t.descPlaceholder}
           value={d.desc}
@@ -1087,7 +1186,17 @@ function CommitForm({
 }
 
 /** Поле коммита одного репозитория; в стопке (`compact`) — строкой, раскрывается на фокус. */
-function CommitBox({ repo, compact }: { repo: GitRepoView; compact?: boolean }) {
+function CommitBox({
+  repo,
+  compact,
+  descH,
+  onDescH,
+}: {
+  repo: GitRepoView;
+  compact?: boolean;
+  descH?: number | undefined;
+  onDescH?: ((h: number | undefined) => void) | undefined;
+}) {
   const t = g();
   const d = gitDrafts.value[repo.root] ?? EMPTY_DRAFT;
   const message = commitMessage(d.summary, d.desc);
@@ -1108,6 +1217,8 @@ function CommitBox({ repo, compact }: { repo: GitRepoView; compact?: boolean }) 
       tail={repo.name}
       gen={repo.staged.length > 0 ? [repo.root] : []}
       compact={compact}
+      descH={descH}
+      onDescH={onDescH}
       busy={!!repo.busy}
       btn={{
         disabled: btn.disabled,
@@ -1133,7 +1244,15 @@ function CommitBox({ repo, compact }: { repo: GitRepoView; compact?: boolean }) 
 }
 
 /** Общее поле коммита раскладки `unified`: чипы «в: ☑ repo N», одно сообщение — отдельный коммит в каждый отмеченный. */
-function UnifiedCommit({ snapshot }: { snapshot: GitSnapshot }) {
+function UnifiedCommit({
+  snapshot,
+  descH,
+  onDescH,
+}: {
+  snapshot: GitSnapshot;
+  descH?: number | undefined;
+  onDescH?: ((h: number | undefined) => void) | undefined;
+}) {
   const t = g();
   const d = gitDrafts.value[GIT_UNIFIED] ?? EMPTY_DRAFT;
   const message = commitMessage(d.summary, d.desc);
@@ -1159,6 +1278,8 @@ function UnifiedCommit({ snapshot }: { snapshot: GitSnapshot }) {
     <CommitForm
       draftKey={GIT_UNIFIED}
       gen={btn.roots}
+      descH={descH}
+      onDescH={onDescH}
       busy={snapshot.repos.some((r) => r.busy)}
       btn={{
         disabled: btn.disabled,

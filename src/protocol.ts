@@ -197,6 +197,8 @@ export type ToWebview =
       agentsView?: AgentsView;
       /** Раскладка вкладки «git» при нескольких репо (`agentura.git.layout`); нет — `stack`. */
       gitLayout?: GitLayout;
+      /** Прятать во вкладке «git» репозитории без изменений (`agentura.git.hideClean`); нет — показывать. */
+      gitHideClean?: boolean;
       /** Движок вкладки (roadmap 15, этап 3); нет — `claude` (старое сообщение). */
       provider?: AgentProvider;
       /** Что движок умеет: UI прячет остальное. Нет — Claude, все `true`. */

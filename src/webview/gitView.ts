@@ -245,6 +245,17 @@ export function cleanRepos(s: GitSnapshot): GitRepoView[] {
   return s.repos.filter((r) => repoCount(r) === 0);
 }
 
+/** Репозиторий с изменениями для `git.hideClean`: файлы, неотправленные коммиты, неопубликованная ветка, merge/rebase. */
+export function repoDirty(r: GitRepoView): boolean {
+  return repoCount(r) > 0 || (r.ahead ?? 0) > 0 || !r.published || !!r.op || !!r.busy;
+}
+
+/** Высота поля описания коммита (px вёрстки) в пределах: не меньше двух строк, не больше 60% высоты вкладки. */
+export const DESC_MIN = 34;
+export function clampDescH(h: number, paneH: number): number {
+  return Math.round(Math.min(Math.max(h, DESC_MIN), Math.max(DESC_MIN, paneH * 0.6)));
+}
+
 /** Репозиторий со своими строками секции в раскладке `unified`. */
 export interface UnifiedGroup {
   repo: GitRepoView;

@@ -24,6 +24,7 @@ import {
   gitSnapshot,
   agentsView,
   gitLayout,
+  gitHideClean,
   showThinking,
   stopAgent,
   stopAgents,
@@ -708,6 +709,9 @@ export function Chat() {
             hidden={!gitShown}
             labelledBy={wide.value ? 'ptab-git' : 'tab-git'}
             layout={gitLayout.value}
+            hideClean={gitHideClean.value}
+            descH={panel.gitDescH}
+            onDescH={(h) => updatePanel({ gitDescH: h })}
             repoRoot={panel.gitRepo}
             onRepo={(root) => updatePanel({ gitRepo: root })}
             onTree={(on) => updatePanel({ gitTree: on })}

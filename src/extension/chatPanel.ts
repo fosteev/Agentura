@@ -609,8 +609,9 @@ export class ChatPanel {
     // до этапа 7 здесь была `WebviewPanel`; поверхность отвечает теми же именами (post/title/visible/…)
     const panel = surface;
     const files = new WorkspaceFiles(folder.uri);
-    const editorColumn = (): vscode.ViewColumn =>
-      panel.viewColumn === vscode.ViewColumn.One ? vscode.ViewColumn.Two : vscode.ViewColumn.One;
+    // файлы и диффы — в группе самого чата, вкладкой рядом с ним (как Jiraffe), а не в соседней группе;
+    // чат в боковой панели — в активную группу редактора
+    const editorColumn = (): vscode.ViewColumn => panel.viewColumn ?? vscode.ViewColumn.Active;
     // инструменты Jira для агента (этап 8): задача вкладки, источник с записью, `agentura.jira.agentTools`
     const jiraTools = new AgentJiraTools({
       taskKey: () => this.taskTab?.taskKey,
@@ -667,6 +668,7 @@ export class ChatPanel {
           ),
           agentsView: ((v) => (isAgentsView(v) ? v : DEFAULT_AGENTS_VIEW))(cfg.get<unknown>('agents.view')),
           gitLayout: ((v) => (isGitLayout(v) ? v : DEFAULT_GIT_LAYOUT))(cfg.get<unknown>('git.layout')),
+          gitHideClean: cfg.get<unknown>('git.hideClean') === true,
           taskCard: readTaskCardMode(cfg.get<unknown>('tasks.card')),
           defaultPermissionMode: cfg.get<string>('defaultPermissionMode'),
           defaultEffort: cfg.get<string>('defaultEffort'),

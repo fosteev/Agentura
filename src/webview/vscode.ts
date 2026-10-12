@@ -46,6 +46,8 @@ export interface PanelState {
   gitRepo?: string;
   /** Вкладка «git»: показывать только файлы, которые правил агент. */
   gitAgent?: boolean;
+  /** Вкладка «git»: высота поля описания коммита, прижатого к низу, px вёрстки (нет — по умолчанию). */
+  gitDescH?: number;
   /** Охват вкладки «изменения»: вся сессия или последний ход. */
   changes?: 'session' | 'turn';
   /** Подвкладка карточки задачи (нет — комментарии). */
@@ -158,6 +160,7 @@ export function readPanel(): PanelState {
   if (typeof p.gitTree === 'boolean') out.gitTree = p.gitTree;
   if (typeof p.gitRepo === 'string' && p.gitRepo) out.gitRepo = p.gitRepo;
   if (typeof p.gitAgent === 'boolean') out.gitAgent = p.gitAgent;
+  if (typeof p.gitDescH === 'number' && Number.isFinite(p.gitDescH) && p.gitDescH > 0) out.gitDescH = p.gitDescH;
   if (p.changes === 'session' || p.changes === 'turn') out.changes = p.changes;
   const sc = p.agScope as Record<string, unknown> | undefined;
   if (sc && typeof sc === 'object') {

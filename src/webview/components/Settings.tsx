@@ -1030,6 +1030,9 @@ export function Settings() {
               >
                 {null}
               </Row>
+              <Row name={T.gitHideClean.name} isNew desc={T.gitHideClean.desc} k="git.hideClean">
+                <Toggle k="git.hideClean" value={v['git.hideClean']} />
+              </Row>
               <Row
                 name={T.tasksCard.name}
                 isNew

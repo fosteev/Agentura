@@ -101,6 +101,8 @@ export interface ChatDeps {
     agentsView?: AgentsView | undefined;
     /** `agentura.git.layout`: раскладка вкладки «git» при нескольких репо, уходит в `chat.info`. */
     gitLayout?: GitLayout | undefined;
+    /** `agentura.git.hideClean`: прятать репозитории без изменений, уходит в `chat.info`. */
+    gitHideClean?: boolean | undefined;
     /** `agentura.tasks.card`: где карточка задачи в чате по задаче, уходит в `chat.info`. */
     taskCard?: TaskCardMode | undefined;
     /** `agentura.defaultPermissionMode` как в настройке (`manual` | …): применяется к новым сессиям. */
@@ -277,6 +279,7 @@ export class ChatController {
       ...(s.composerLayout ? { composerLayout: s.composerLayout } : {}),
       ...(s.agentsView ? { agentsView: s.agentsView } : {}),
       ...(s.gitLayout ? { gitLayout: s.gitLayout } : {}),
+      ...(s.gitHideClean ? { gitHideClean: true } : {}),
       ...(s.taskCard ? { taskCard: s.taskCard } : {}),
       mcp: { ...(s.mcp ?? DEFAULT_MCP_VIEW) },
       provider: this.engineProvider,

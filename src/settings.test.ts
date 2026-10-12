@@ -127,6 +127,8 @@ describe('sessionList', () => {
     }
     expect(validateSetting('git.layout', 'grid').ok).toBe(false);
     expect(validateSetting('git.layout', 1).ok).toBe(false);
+    expect(validateSetting('git.hideClean', true)).toEqual({ ok: true, value: true });
+    expect(validateSetting('git.hideClean', 'yes').ok).toBe(false);
   });
 });
 
@@ -277,6 +279,7 @@ describe('readSettings', () => {
         'feed.style': 'grid',
         'agents.view': 'map',
         'git.layout': 'rows',
+        'git.hideClean': 'yes',
       }),
     );
     expect(v).toMatchObject({
@@ -295,6 +298,7 @@ describe('readSettings', () => {
       'feed.style': 'journal',
       'agents.view': 'list',
       'git.layout': 'stack',
+      'git.hideClean': false,
       defaultPermissionMode: 'manual',
       defaultEffort: '',
       contextThresholds: [120_000, 150_000],
