@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.11.0 — 2026-10-12
+
+### Added
+
+- **MCP servers and skills in the feed.** An MCP call shows a chip with its server before the tool name (red when the
+  server is down); a `Skill` call is a divider strip "skill <name> · invoked by agent" with "open SKILL.md"; the turn
+  summary gets `mcp N` and `skill N` counters (only when not zero). Works in all four feed styles. Turn it off with
+  `agentura.mcp.feedLabels`.
+- **"mcp N/M" button by the input box** (Claude and Codex), in all six composer layouts: a popover with every server —
+  status, version, tools, calls in this session, "retry" (Claude) or "reload all" (Codex) — and the skills used in the
+  session. A yellow dot means a server failed or waits for sign-in. `agentura.mcp.composerButton`.
+- **"mcp" tab in the right panel.** Servers with their calls by tool, the session's skills and the list of all available
+  skills; a badge counts the servers that need attention. `agentura.mcp.panelTab`.
+- **MCP status line in the feed.** A server that fails to start or drops mid-session is reported in the feed;
+  `agentura.mcp.feedStatus`: `failures` (default), `start` (a summary at every session start) or `off`.
+
+### Changed
+
+- Agentura asks the engine for MCP status only while one of the status views above is on.
+
 ## 0.10.0 — 2026-10-09
 
 ### Added
