@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.14.0 — 2026-10-12
+
+### Added
+
+- **Full tool details in the feed.** Clicking a tool row (a chip in the replies view) expands its full input — the
+  whole Bash command or the JSON arguments — and its output; a running tool shows its input. Failed tools keep the red
+  output card, now with the input above it.
+- **Open composer attachments.** Clicking an image or file chip above the prompt opens it in an editor tab; ✕ only
+  removes it.
+
 ## 0.13.0 — 2026-10-12
 
 ### Added
