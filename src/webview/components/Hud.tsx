@@ -5,7 +5,7 @@ import { costLabel, foreignProvider, mixedProviders, providerName, tokensLabel, 
 import { ui } from '../strings';
 import { TabBar, type TabItem } from './TabBar';
 
-export type Tab = 'chat' | 'changes' | 'git' | 'agents';
+export type Tab = 'chat' | 'changes' | 'git' | 'agents' | 'mcp';
 
 export function Hud({
   project,
@@ -14,6 +14,7 @@ export function Hud({
   onTab,
   sidePanesEnabled,
   agentsTab = true,
+  mcpTab = false,
   badges,
   sessions,
   currentId,
@@ -31,11 +32,14 @@ export function Hud({
   sidePanesEnabled: boolean;
   /** Вкладка «агенты» есть только у движка с субагентами (`features.subagents`). */
   agentsTab?: boolean;
+  /** Вкладка «mcp» (roadmap 21): есть статус MCP и включена настройка. */
+  mcpTab?: boolean;
   /** Бейджи вкладок: число файлов сессии (`live` — идёт правка) и агенты хода `идут / всего` (A6). */
   badges: {
     changes?: { count: number; live: boolean };
     git?: { count: number };
     agents?: { text: string; live: boolean };
+    mcp?: { text: string; live: boolean; warn: boolean };
   };
   /** Сессии проекта, коротко (`sessions.update`) — попап `sessions`. */
   sessions: SessionSummary[];
@@ -92,8 +96,14 @@ export function Hud({
       disabled: !sidePanesEnabled,
       ...(badges.agents ? { badge: badges.agents } : {}),
     },
+    {
+      key: 'mcp',
+      label: ui.tabs.mcp,
+      disabled: !sidePanesEnabled,
+      ...(badges.mcp ? { badge: badges.mcp } : {}),
+    },
   ];
-  const tabs = agentsTab ? allTabs : allTabs.filter((i) => i.key !== 'agents');
+  const tabs = allTabs.filter((i) => (i.key === 'agents' ? agentsTab : i.key === 'mcp' ? mcpTab : true));
   return (
     <header class="hud" aria-label={ui.hud.aria}>
       <TabBar

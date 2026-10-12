@@ -870,3 +870,7 @@ html[data-width='380'] .num.wide {
   color: var(--fg-mute);
   font-size: 11px;
 }
+
+/* подраздел страницы («MCP и скиллы», roadmap 21) */
+.st-body h3.st-sub { margin: 22px 0 2px; font-size: 13px; font-weight: 600; }
+.st-body .st-subnote { margin: 0 0 6px; color: var(--fg-mute); font-size: 12px; }

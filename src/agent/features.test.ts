@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { CLAUDE_FEATURES, CODEX_FEATURES, providerFeatures } from './features';
 
 describe('providerFeatures', () => {
-  it('Claude: все возможности включены', () => {
-    expect(Object.values(providerFeatures('claude')).every(Boolean)).toBe(true);
+  it('Claude: все возможности включены, кроме «перезапустить все MCP» (это Codex)', () => {
+    const { mcpReloadAll, ...rest } = providerFeatures('claude');
+    expect(Object.values(rest).every(Boolean)).toBe(true);
+    expect(mcpReloadAll).toBe(false);
   });
 
   it('Codex: контекст, субагенты, вопросы и картинки есть; режимов, compact, цены, плана и файлов нет', () => {
@@ -18,6 +20,10 @@ describe('providerFeatures', () => {
       images: true,
       files: false,
       remote: false,
+      mcp: true,
+      mcpReconnect: false,
+      mcpReloadAll: true,
+      skills: false,
     });
   });
 
@@ -33,6 +39,10 @@ describe('providerFeatures', () => {
       images: false,
       files: false,
       remote: false,
+      mcp: false,
+      mcpReconnect: false,
+      mcpReloadAll: false,
+      skills: false,
     });
   });
 

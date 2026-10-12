@@ -30,6 +30,8 @@ const METHODS = {
     'turn/interrupt',
     'turn/steer',
     'model/list',
+    'mcpServerStatus/list',
+    'config/mcpServer/reload',
   ],
   'ServerRequest.ts': [
     'item/commandExecution/requestApproval',
@@ -54,6 +56,7 @@ const METHODS = {
     'item/fileChange/patchUpdated',
     'serverRequest/resolved',
     'error',
+    'mcpServer/startupStatus/updated',
   ],
 };
 
@@ -110,6 +113,11 @@ const FIELDS = {
   ThreadTokenUsage: ['total', 'last', 'modelContextWindow'],
   CollabAgentState: ['status', 'message'],
   ErrorNotification: ['error', 'willRetry', 'threadId', 'turnId'],
+  ListMcpServerStatusParams: ['cursor', 'limit', 'detail', 'threadId'],
+  ListMcpServerStatusResponse: ['data', 'nextCursor'],
+  McpServerStatus: ['name', 'runtimeStatus', 'serverInfo', 'tools', 'toolsError', 'pluginId'],
+  McpServerInfo: ['name', 'version'],
+  McpServerStatusUpdatedNotification: ['threadId', 'name', 'status', 'error', 'failureReason'],
 };
 /** Значения union-ов, на которые завязан маппер. */
 const LITERALS = {
@@ -121,6 +129,18 @@ const LITERALS = {
     'acceptWithExecpolicyAmendment',
   ],
   FileChangeApprovalDecision: ['accept', 'acceptForSession', 'decline', 'cancel'],
+  McpServerStatusDetail: ['full', 'toolsAndAuthOnly'],
+  McpServerConnectionStatus: [
+    'notStarted',
+    'starting',
+    'connected',
+    'authenticationRequired',
+    'failed',
+    'cancelled',
+    'disabled',
+  ],
+  McpServerStartupState: ['starting', 'ready', 'failed', 'cancelled'],
+  McpServerStartupFailureReason: ['reauthenticationRequired'],
   TurnStatus: ['completed', 'interrupted', 'failed', 'inProgress'],
   AskForApproval: ['untrusted', 'on-request', 'never'],
   SandboxMode: ['read-only', 'workspace-write', 'danger-full-access'],

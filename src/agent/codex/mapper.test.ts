@@ -319,3 +319,99 @@ describe('CodexEventMapper: синтетический ход', () => {
     expect(start.images).toEqual([{ mediaType: 'image/png', data: 'AAAA', name: 'shot' }]);
   });
 });
+
+describe('CodexEventMapper: статус MCP (roadmap 21)', () => {
+  const srv = (name: string, runtimeStatus: string | null, extra: Record<string, unknown> = {}) => ({
+    name,
+    runtimeStatus,
+    serverInfo: null,
+    tools: {},
+    toolsError: null,
+    pluginId: null,
+    ...extra,
+  });
+  const upd = (name: string, status: string, extra: Record<string, unknown> = {}) => ({
+    threadId: fixture.threadStart.thread.id,
+    name,
+    status,
+    error: null,
+    failureReason: null,
+    ...extra,
+  });
+  const opened = () => {
+    const m = new CodexEventMapper(() => 7);
+    m.init(fixture.threadStart);
+    return m;
+  };
+
+  it('mcpList: runtimeStatus приводится к решению 1, null — pending; тулы — число, версия, ошибка тулов, плагин', () => {
+    const e = opened().mcpList([
+      srv('a', 'connected', { serverInfo: { name: 'a', version: '1.0' }, tools: { x: {}, y: {} } }),
+      srv('b', 'notStarted'),
+      srv('c', 'starting'),
+      srv('d', 'authenticationRequired'),
+      srv('e', 'failed', { toolsError: 'boom' }),
+      srv('f', 'cancelled'),
+      srv('g', 'disabled', { pluginId: 'p1' }),
+      srv('h', null),
+    ] as never);
+    expect(e).toEqual({
+      type: 'mcp.status',
+      at: 7,
+      servers: [
+        { name: 'a', status: 'connected', version: '1.0', tools: 2 },
+        { name: 'b', status: 'pending', tools: 0 },
+        { name: 'c', status: 'pending', tools: 0 },
+        { name: 'd', status: 'needs-auth', tools: 0 },
+        { name: 'e', status: 'failed', error: 'boom', tools: 0 },
+        { name: 'f', status: 'failed', tools: 0 },
+        { name: 'g', status: 'disabled', tools: 0, scope: 'plugin' },
+        { name: 'h', status: 'pending', tools: 0 },
+      ],
+    });
+  });
+
+  it('startupStatus/updated правит один сервер и шлёт полный список; новый сервер добавляется', () => {
+    const m = opened();
+    m.mcpList([srv('a', 'starting'), srv('b', 'connected', { tools: { t: {} } })] as never);
+    const [ready] = m.map('mcpServer/startupStatus/updated', upd('a', 'ready'));
+    expect(ready).toEqual({
+      type: 'mcp.status',
+      at: 7,
+      servers: [
+        { name: 'a', status: 'connected', tools: 0 },
+        { name: 'b', status: 'connected', tools: 1 },
+      ],
+    });
+    const [failed] = m.map('mcpServer/startupStatus/updated', upd('b', 'failed', { error: 'exit 1' }));
+    expect(ofType([failed!], 'mcp.status')[0]!.servers[1]).toEqual({ name: 'b', status: 'failed', error: 'exit 1', tools: 1 });
+    const [auth] = m.map(
+      'mcpServer/startupStatus/updated',
+      upd('c', 'failed', { failureReason: 'reauthenticationRequired', error: 'login' }),
+    );
+    expect(ofType([auth!], 'mcp.status')[0]!.servers.map((s) => [s.name, s.status])).toEqual([
+      ['a', 'connected'],
+      ['b', 'failed'],
+      ['c', 'needs-auth'],
+    ]);
+    // сервер поднялся снова — старая ошибка уходит
+    const [again] = m.map('mcpServer/startupStatus/updated', upd('b', 'starting'));
+    expect(ofType([again!], 'mcp.status')[0]!.servers[1]).toEqual({ name: 'b', status: 'pending', tools: 1 });
+    expect(ofType(m.map('mcpServer/startupStatus/updated', upd('a', 'cancelled')), 'mcp.status')[0]!.servers[0]!.status).toBe(
+      'failed',
+    );
+  });
+
+  it('чужой threadId — игнор; threadId null (не про тред) — применяется', () => {
+    const m = opened();
+    expect(m.map('mcpServer/startupStatus/updated', upd('a', 'ready', { threadId: 'other-thread' }))).toEqual([]);
+    const events = m.map('mcpServer/startupStatus/updated', upd('a', 'ready', { threadId: null }));
+    expect(ofType(events, 'mcp.status')[0]!.servers).toEqual([{ name: 'a', status: 'connected' }]);
+  });
+
+  it('уведомление до списка, потом список — список заменяет всё', () => {
+    const m = opened();
+    m.map('mcpServer/startupStatus/updated', upd('x', 'failed', { error: 'e' }));
+    expect(m.mcpList([srv('a', 'connected')] as never).servers).toEqual([{ name: 'a', status: 'connected', tools: 0 }]);
+  });
+});

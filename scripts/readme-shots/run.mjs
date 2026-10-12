@@ -55,7 +55,7 @@ let n = 0;
 const name = (p) => `${p}-${++n}`;
 
 function chatPage(theme, events, panel, opts) {
-  return put(TMP, `${name('chat')}.html`, surfaceHtml({ surface: 'chat', theme, state: { panel }, messages: chatMessages(events, opts) }));
+  return put(TMP, `${name('chat')}.html`, surfaceHtml({ surface: 'chat', theme, state: { panel }, click: opts?.click, messages: chatMessages(events, opts) }));
 }
 
 function sidebarPage(theme, opts) {
@@ -242,10 +242,47 @@ taskJobs.push(async () => {
   await single(await shot(page, png('tshero'), 1324, 760), join(OUT, 'jira-tasks.png'));
 });
 
+// ---- 9. MCP and skills (roadmap 21, stage 4): `node scripts/readme-shots/run.mjs mcp` renders only these -----------
+// Frames of both themes go to MCP_SHOTS_DIR (tools-real-<frame>-<theme>.png); the README picture is docs/images/skills-mcp.png.
+
+const MCP_SHOTS = process.env.MCP_SHOTS_DIR;
+if (MCP_SHOTS) mkdirSync(MCP_SHOTS, { recursive: true });
+const mcpJobs = [];
+const mcpOut = (frame, theme) => join(MCP_SHOTS ?? TMP, `tools-real-${frame}-${theme}.png`);
+const mcpChat = (theme, panel, extra = [], opts = {}) => chatPage(theme, data.mcpTurn(), panel, { extra: [{ type: 'skill.files', names: data.mcpSkills.slice(0, 2) }, ...extra], ...opts });
+
+for (const theme of ['dark', 'light']) {
+  const wide = { ...WIDE, tab: 'mcp' };
+  for (const [frame, style] of [['feed', 'journal']]) {
+    mcpJobs.push(async () => {
+      await single(await shot(mcpChat(theme, { ...WIDE, tab: 'changes' }, [], { feedStyle: style }), png('mfeed'), 1100, 760), mcpOut(frame, theme));
+    });
+  }
+  mcpJobs.push(async () => {
+    await single(await shot(mcpChat(theme, { ...WIDE, tab: 'changes' }, [], { click: '.compose .mcpb' }), png('mpop'), 1100, 760), mcpOut('popover', theme));
+  });
+  mcpJobs.push(async () => {
+    await single(await shot(mcpChat(theme, wide), png('mpanel'), 1100, 760), mcpOut('panel', theme));
+  });
+  mcpJobs.push(async () => {
+    // the system line is at the start of the turn: cut the turn after the first reads so it is not scrolled away
+    const ev = data.mcpTurn();
+    const t0 = ev.find((e) => e.type === 'turn.start').at;
+    const head = ev.filter((e) => e.type === 'session.init' || e.type === 'session.title' || e.type === 'mcp.status' || (e.at ?? 0) < t0 + 7000);
+    const page = chatPage(theme, head, { ...WIDE, tab: 'mcp' }, { extra: [{ type: 'skill.files', names: [] }] });
+    await single(await shot(page, png('msys'), 1100, 760), mcpOut('sys', theme));
+  });
+}
+
+// README picture: the feed with chips and the skill strip + the "mcp" tab (dark)
+mcpJobs.push(async () => {
+  await single(await shot(mcpChat('dark', { ...WIDE, tab: 'mcp' }), png('mhero'), 1100, 760), join(OUT, 'skills-mcp.png'));
+});
+
 // ---- go --------------------------------------------------------------------------------------------------------
 
 try {
-  await pool(process.argv[2] === 'tasks' ? taskJobs : [...jobs, ...taskJobs], 4);
+  await pool(process.argv[2] === 'tasks' ? taskJobs : process.argv[2] === 'mcp' ? mcpJobs : [...jobs, ...taskJobs, ...mcpJobs], 4);
   console.log(`done: ${OUT}`);
 } finally {
   if (!process.env.KEEP_TMP) rmSync(TMP, { recursive: true, force: true });

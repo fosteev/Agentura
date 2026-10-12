@@ -988,3 +988,157 @@ describe('CodexAdapter: история (этап 5)', () => {
     });
   });
 });
+
+describe('CodexAdapter: статус MCP (roadmap 21)', () => {
+  const srv = (name: string, runtimeStatus: string | null) => ({
+    name,
+    runtimeStatus,
+    serverInfo: null,
+    tools: {},
+    toolsError: null,
+    pluginId: null,
+  });
+  const mcpOf = (events: AgentEvent[]) =>
+    events.filter((e): e is AgentEventOf<'mcp.status'> => e.type === 'mcp.status');
+  /** Сессия с открытым тредом (`thread/resume` ответил): только тогда `mcpStatus`/`mcpReloadAll` что-то делают. */
+  async function opened(s: ReturnType<typeof server>) {
+    const o = open(s);
+    const session = await o.adapter.resumeSession(THREAD, { cwd: '/work' });
+    const events = collect(session);
+    await until(() => types(events).includes('session.init'), 'тред открыт');
+    return { session, events, logs: o.logs };
+  }
+
+  it('mcpStatus листает страницы по cursor (две), detail toolsAndAuthOnly, threadId треда; одно событие с полным списком', async () => {
+    const s = server();
+    s.handle('mcpServerStatus/list', (p) =>
+      p.cursor === 'p2'
+        ? { data: [srv('c', 'failed')], nextCursor: null }
+        : { data: [srv('a', 'connected'), srv('b', 'starting')], nextCursor: 'p2' },
+    );
+    const session = await open(s).adapter.resumeSession(THREAD, { cwd: '/work' });
+    const events = collect(session);
+    await until(() => s.methods().includes('thread/resume'));
+    await session.mcpStatus!();
+    expect(s.methods().filter((m) => m === 'mcpServerStatus/list')).toHaveLength(2);
+    expect(s.paramsOf('mcpServerStatus/list', 0)).toEqual({ detail: 'toolsAndAuthOnly', threadId: THREAD });
+    expect(s.paramsOf('mcpServerStatus/list', 1)).toEqual({ detail: 'toolsAndAuthOnly', threadId: THREAD, cursor: 'p2' });
+    expect(mcpOf(events)).toHaveLength(1);
+    expect(mcpOf(events)[0]!.servers.map((x) => [x.name, x.status])).toEqual([
+      ['a', 'connected'],
+      ['b', 'pending'],
+      ['c', 'failed'],
+    ]);
+    session.dispose();
+  });
+
+  it('вечный nextCursor — не больше 10 страниц', async () => {
+    const s = server();
+    let n = 0;
+    s.handle('mcpServerStatus/list', () => ({ data: [srv(`s${++n}`, 'connected')], nextCursor: `c${n}` }));
+    const { session, events } = await opened(s);
+    await session.mcpStatus!();
+    expect(s.methods().filter((m) => m === 'mcpServerStatus/list')).toHaveLength(10);
+    expect(mcpOf(events)[0]!.servers).toHaveLength(10);
+    session.dispose();
+  });
+
+  it('тот же nextCursor повторился — листание останавливается, страница не дублируется', async () => {
+    const s = server();
+    let n = 0;
+    s.handle('mcpServerStatus/list', () => ({ data: [srv(`s${++n}`, 'connected')], nextCursor: 'same' }));
+    const { session, events } = await opened(s);
+    await session.mcpStatus!();
+    expect(s.methods().filter((m) => m === 'mcpServerStatus/list')).toHaveLength(2);
+    expect(mcpOf(events)[0]!.servers.map((x) => x.name)).toEqual(['s1', 's2']);
+    session.dispose();
+  });
+
+  it('mcpWatch: список после открытия треда; без mcpWatch — не спрашивает; startupStatus/updated — точечно', async () => {
+    const s = server();
+    s.handle('mcpServerStatus/list', () => ({ data: [srv('a', 'starting'), srv('b', 'connected')], nextCursor: null }));
+    const quiet = await open(s).adapter.createSession({ cwd: '/work' });
+    quiet.send('hi');
+    await until(() => s.methods().includes('turn/start'));
+    expect(s.methods()).not.toContain('mcpServerStatus/list');
+    quiet.dispose();
+
+    const s2 = server();
+    s2.handle('mcpServerStatus/list', () => ({ data: [srv('a', 'starting'), srv('b', 'connected')], nextCursor: null }));
+    const session = await open(s2).adapter.createSession({ cwd: '/work', mcpWatch: true });
+    const events = collect(session);
+    session.send('hi');
+    await until(() => mcpOf(events).length === 1, 'mcp.status после thread/start');
+    s2.notify('mcpServer/startupStatus/updated', { threadId: THREAD, name: 'a', status: 'ready', error: null, failureReason: null });
+    s2.notify('mcpServer/startupStatus/updated', { threadId: 'other', name: 'b', status: 'failed', error: 'x', failureReason: null });
+    await until(() => mcpOf(events).length === 2, 'обновление сервера a');
+    await new Promise((r) => setTimeout(r, 20));
+    expect(mcpOf(events)).toHaveLength(2);
+    expect(mcpOf(events)[1]!.servers.map((x) => [x.name, x.status])).toEqual([
+      ['a', 'connected'],
+      ['b', 'connected'],
+    ]);
+    session.dispose();
+  });
+
+  it('mcpReloadAll → config/mcpServer/reload, затем список; ошибки — в лог, без исключения', async () => {
+    const s = server();
+    let fail = false;
+    s.handle('config/mcpServer/reload', () => (fail ? Promise.reject(new Error('nope')) : {}));
+    s.handle('mcpServerStatus/list', () => (fail ? Promise.reject(new Error('down')) : { data: [], nextCursor: null }));
+    const { session, events, logs } = await opened(s);
+    await session.mcpReloadAll!();
+    expect(s.methods().filter((m) => m === 'config/mcpServer/reload' || m === 'mcpServerStatus/list')).toEqual([
+      'config/mcpServer/reload',
+      'mcpServerStatus/list',
+    ]);
+    expect(mcpOf(events)).toEqual([{ type: 'mcp.status', servers: [], at: expect.any(Number) }]);
+    fail = true;
+    await expect(session.mcpReloadAll!()).resolves.toBeUndefined();
+    expect(logs.filter((l) => /config\/mcpServer\/reload failed|mcpServerStatus\/list failed/.test(l))).toHaveLength(2);
+    expect(types(events)).not.toContain('error');
+    session.dispose();
+  });
+
+  it('до открытия треда mcpStatus/mcpReloadAll ничего не шлют (без threadId Codex поднял бы все серверы)', async () => {
+    const s = server();
+    s.handle('mcpServerStatus/list', () => ({ data: [], nextCursor: null }));
+    const session = await open(s).adapter.createSession({ cwd: '/work', mcpWatch: true });
+    await session.mcpStatus!();
+    await session.mcpReloadAll!();
+    expect(s.methods().filter((m) => m === 'mcpServerStatus/list' || m === 'config/mcpServer/reload')).toEqual([]);
+    session.dispose();
+  });
+
+  it('dispose, пока список в пути, — ни события, ни предупреждения', async () => {
+    const s = server();
+    let fail: (e: Error) => void = () => {};
+    s.handle('mcpServerStatus/list', () => new Promise((_, reject) => (fail = reject)));
+    const { session, events, logs } = await opened(s);
+    const pending = session.mcpStatus!();
+    await until(() => s.methods().includes('mcpServerStatus/list'));
+    session.dispose();
+    fail(new Error('closed'));
+    await pending;
+    expect(mcpOf(events)).toEqual([]);
+    expect(logs.filter((l) => /mcpServerStatus\/list failed/.test(l))).toEqual([]);
+  });
+
+  it('уведомление «ready», пришедшее, пока список в пути, ответ списка (снятый раньше) не откатывает', async () => {
+    const s = server();
+    let answer: (v: unknown) => void = () => {};
+    s.handle('mcpServerStatus/list', () => new Promise((resolve) => (answer = resolve)));
+    const { session, events } = await opened(s);
+    const pending = session.mcpStatus!();
+    await until(() => s.methods().includes('mcpServerStatus/list'));
+    s.notify('mcpServer/startupStatus/updated', { threadId: THREAD, name: 'a', status: 'ready', error: null, failureReason: null });
+    await until(() => mcpOf(events).length === 1, 'уведомление');
+    answer({ data: [srv('a', 'starting'), srv('b', 'connected')], nextCursor: null });
+    await pending;
+    expect(mcpOf(events).at(-1)!.servers.map((x) => [x.name, x.status])).toEqual([
+      ['a', 'connected'],
+      ['b', 'connected'],
+    ]);
+    session.dispose();
+  });
+});

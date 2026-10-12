@@ -130,6 +130,39 @@ describe('sessionList', () => {
   });
 });
 
+describe('MCP и скиллы (roadmap 21)', () => {
+  it('validateSetting: три флажка — только boolean, feedStatus — failures|start|off', () => {
+    for (const k of ['mcp.feedLabels', 'mcp.composerButton', 'mcp.panelTab'] as const) {
+      expect(validateSetting(k, false)).toEqual({ ok: true, value: false });
+      expect(validateSetting(k, 'yes').ok).toBe(false);
+    }
+    for (const v of ['failures', 'start', 'off']) {
+      expect(validateSetting('mcp.feedStatus', v)).toEqual({ ok: true, value: v });
+    }
+    expect(validateSetting('mcp.feedStatus', 'always').ok).toBe(false);
+    expect(validateSetting('mcp.feedStatus', true).ok).toBe(false);
+  });
+  it('readSettings: по умолчанию всё включено и failures; мусор — по умолчанию, false — выключено', () => {
+    expect(readSettings(cfgOf({}))).toMatchObject({
+      'mcp.feedLabels': true,
+      'mcp.composerButton': true,
+      'mcp.panelTab': true,
+      'mcp.feedStatus': 'failures',
+    });
+    expect(
+      readSettings(
+        cfgOf({ 'mcp.feedLabels': false, 'mcp.composerButton': 'x', 'mcp.panelTab': false, 'mcp.feedStatus': 'loud' }),
+      ),
+    ).toMatchObject({
+      'mcp.feedLabels': false,
+      'mcp.composerButton': true,
+      'mcp.panelTab': false,
+      'mcp.feedStatus': 'failures',
+    });
+    expect(readSettings(cfgOf({ 'mcp.feedStatus': 'off' }))['mcp.feedStatus']).toBe('off');
+  });
+});
+
 describe('шрифты и размер ленты', () => {
   it('validateSetting: имя шрифта обрезается, без ; { } < >', () => {
     expect(validateSetting('font.code', '  JetBrains Mono ')).toEqual({

@@ -25,6 +25,17 @@ export interface ProviderFeatures {
   files: boolean;
   /** Remote Control (roadmap 17): кнопка «rc», `/rc` — сессия на claude.ai и в телефоне. Только Claude. */
   remote: boolean;
+  /**
+   * MCP (roadmap 21): движок сообщает статус серверов (`mcp.status`); нет — кнопка «mcp», вкладка «mcp» и
+   * системная строка скрыты. Claude и Codex.
+   */
+  mcp: boolean;
+  /** «повторить» у сервера (`mcp.reconnect`): Claude (`reconnectMcpServer`). */
+  mcpReconnect: boolean;
+  /** «перезапустить все» (`mcp.reloadAll`): Codex (`mcpServer/reload`, по одному серверу не умеет). */
+  mcpReloadAll: boolean;
+  /** Скиллы движка известны (`skills` в init, вызовы `Skill`): раздел скиллов. Только Claude. */
+  skills: boolean;
 }
 
 export const CLAUDE_FEATURES: Readonly<ProviderFeatures> = {
@@ -38,6 +49,10 @@ export const CLAUDE_FEATURES: Readonly<ProviderFeatures> = {
   images: true,
   files: true,
   remote: true,
+  mcp: true,
+  mcpReconnect: true,
+  mcpReloadAll: false,
+  skills: true,
 };
 
 /**
@@ -59,6 +74,10 @@ export const CODEX_FEATURES: Readonly<ProviderFeatures> = {
   images: true,
   files: false,
   remote: false,
+  mcp: true,
+  mcpReconnect: false,
+  mcpReloadAll: true,
+  skills: false,
 };
 
 /**
@@ -77,6 +96,10 @@ export const ANTIGRAVITY_FEATURES: Readonly<ProviderFeatures> = {
   images: false,
   files: false,
   remote: false,
+  mcp: false,
+  mcpReconnect: false,
+  mcpReloadAll: false,
+  skills: false,
 };
 
 export function providerFeatures(provider: AgentProvider): ProviderFeatures {

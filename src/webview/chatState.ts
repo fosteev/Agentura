@@ -13,7 +13,7 @@ import type {
   PermissionMode,
   Question,
 } from '../agent/types';
-import type { AgentProvider } from '../agent/types';
+import type { AgentProvider, McpServerInfo } from '../agent/types';
 import { nextStatus, updateInTurn, updatePending, type ChatStatus } from '../agent/status';
 import type { EditPreview, PlanChoice } from '../protocol';
 import { splitPrompt } from '../shared/prompt';
@@ -21,6 +21,7 @@ import type { Seg } from './fixtures/chat';
 import { compactTokens, formatCost, formatDuration, formatInt } from './toolView';
 import { imagesTokens } from '../shared/images';
 import { ui } from './strings';
+import { mcpNote, settlingStart, turnCounts, type McpNote } from './mcpFeed';
 
 export type FeedRow =
   | {
@@ -34,6 +35,8 @@ export type FeedRow =
        * `fail` — погашенная карточка ошибки (ею кончается оборванный ход, см. `feedTurns`).
        */
       tag?: 'limit' | 'retry' | 'fail';
+      /** Строка состояния MCP (roadmap 21, решение 11): рисует Log по `agentura.mcp.feedStatus`, не `text`. */
+      mcp?: McpNote;
     }
   | {
       id: number;
@@ -71,7 +74,16 @@ export type FeedRow =
       result?: unknown;
     }
   | { id: number; kind: 'text'; messageId: string; text: string; streaming: boolean }
-  | { id: number; kind: 'sum'; parts: string[]; cost?: string; time: string }
+  | {
+      id: number;
+      kind: 'sum';
+      parts: string[];
+      cost?: string;
+      time: string;
+      /** Вызовов MCP и скиллов в ходе (рисуются при `agentura.mcp.feedLabels`, только ненулевые). */
+      mcp?: number;
+      skill?: number;
+    }
   | PermCard
   | QuestionCard
   | PlanCard
@@ -191,6 +203,18 @@ export interface ChatState {
   remote?: RemoteView;
   /** Реплики с claude.ai/телефона, ещё не показанные в ленте (`remote.prompt` → `turn.start`): текст → откуда. */
   remotePrompts?: { text: string; from: 'phone' | 'web' }[];
+  /**
+   * Статус MCP-серверов (`mcp.status`, roadmap 21): последний полный список и предыдущий (для «отключился»). Нет —
+   * статус неизвестен. Счётчики вызовов и скиллы сессии не хранятся: `mcpUsage`/`sessionSkills` (mcpFeed.ts) считают
+   * их по `rows`, так что пересев и история их восстанавливают сами.
+   */
+  mcp?: { servers: McpServerInfo[]; prev?: McpServerInfo[]; at: number };
+  /**
+   * Пересев живой сессии (`session.history` с `mcpReplay`): следующий `mcp.status` — повтор хоста (`lastMcp`), а не
+   * новость; строку в ленту не пишем (решение 11). Сессия, открытая из истории, флага не получает — её первый статус
+   * (init движка) пишется. Снимает первый `mcp.status` или `turn.start`.
+   */
+  mcpQuiet?: boolean;
 }
 
 export interface RemoteView {
@@ -250,6 +274,8 @@ function replaceAt(s: ChatState, index: number, row: FeedRow): ChatState {
   rows[index] = row;
   return { ...s, rows };
 }
+
+const isMcpSys = (r: FeedRow): boolean => r.kind === 'sys' && !!r.mcp;
 
 function lastIndex(rows: FeedRow[], pred: (r: FeedRow) => boolean): number {
   for (let i = rows.length - 1; i >= 0; i--) if (pred(rows[i]!)) return i;
@@ -414,6 +440,8 @@ export interface HistorySeed {
   model?: string;
   mode?: PermissionMode;
   skippedTurns: number;
+  /** Следом придёт повтор последнего `mcp.status` хоста (пересев): строку в ленту он не пишет. */
+  mcpReplay?: true;
 }
 
 /**
@@ -444,7 +472,7 @@ export function seedHistory(
   const { limitResetsAt: _l, closed: _c, ...rest } = out;
   void _l;
   void _c;
-  return { ...rest, status: rest.inTurn ? 'working' : 'idle', pending: [] };
+  return { ...rest, status: rest.inTurn ? 'working' : 'idle', pending: [], ...(seed.mcpReplay ? { mcpQuiet: true } : {}) };
 }
 
 export function applyEvent(s: ChatState, event: AgentEvent, now = Date.now()): ChatState {
@@ -487,6 +515,19 @@ function reduce(s: ChatState, e: AgentEvent, now: number): ChatState {
     }
     case 'session.title':
       return { ...s, title: e.title };
+    case 'mcp.status': {
+      const { mcpQuiet, ...rest } = s;
+      const mcp = { servers: e.servers, ...(s.mcp ? { prev: s.mcp.servers } : {}), at: e.at };
+      const out: ChatState = { ...rest, mcp };
+      if (mcpQuiet) return out;
+      // старт оседает (pending → итог в том же ходе) — уточняем его сводку на месте, без «отключился»
+      const settling = settlingStart(s.rows);
+      const start = settling >= 0 ? mcpNote(undefined, e.servers) : undefined;
+      if (start)
+        return { ...out, rows: s.rows.map((r, i) => (i === settling && r.kind === 'sys' ? { ...r, mcp: start } : r)) };
+      const note = mcpNote(s.mcp?.servers, e.servers);
+      return note ? push(out, { kind: 'sys', text: [], at: clock(now), mcp: note }) : out;
+    }
     case 'mode.changed': {
       // режим, выбранный из интерфейса, уже стоит в состоянии — строка только для смены движком
       if (e.mode === s.mode) return s;
@@ -515,7 +556,8 @@ function reduce(s: ChatState, e: AgentEvent, now: number): ChatState {
         now,
       );
     case 'turn.start': {
-      const { limitResetsAt: _l, turnImageTokens: _i, ...base } = s;
+      const { limitResetsAt: _l, turnImageTokens: _i, mcpQuiet: _q, ...base } = s;
+      void _q;
       void _l;
       void _i;
       // начался ход — старые карточки ошибки больше не повторяются
@@ -528,14 +570,21 @@ function reduce(s: ChatState, e: AgentEvent, now: number): ChatState {
       const own = prompts.some((p) => queuedRow(out, p) >= 0);
       const images = own ? undefined : e.images;
       const files = own ? undefined : e.files;
+      // MCP-строка из init (у Claude `mcp.status` приходит раньше `turn.start`) встала за «в очереди»: реплика
+      // переедет в конец, а строка должна остаться в её ходе (решение 11) — снимаем хвост и возвращаем после
+      let n = out.rows.length;
+      while (n > 0 && isMcpSys(out.rows[n - 1]!)) n--;
+      const prev = out.rows[n - 1];
+      const tail = n < out.rows.length && prev?.kind === 'user' && prev.queued ? out.rows.slice(n) : [];
       // строка «в очереди», отправленная посреди прошлого хода, переезжает в конец — туда, где начался её ход
-      return prompts.reduce(
+      const delivered = prompts.reduce(
         (acc, p, i) =>
           i === prompts.length - 1
             ? deliverUser(acc, p, e.at, images, files, true)
             : deliverUser(acc, p, e.at, undefined, undefined, true),
-        out,
+        tail.length ? { ...out, rows: out.rows.slice(0, n) } : out,
       );
+      return tail.length ? { ...delivered, rows: [...delivered.rows, ...tail] } : delivered;
     }
     case 'turn.input':
       return deliverUser(s, e.prompt, e.at, e.images, e.files);
@@ -671,10 +720,14 @@ function reduce(s: ChatState, e: AgentEvent, now: number): ChatState {
             ...(imageTokens ? [ui.log.imagesTokens(compactTokens(imageTokens))] : []),
             `cache r${formatInt(u.cacheRead)} w${formatInt(u.cacheWrite)}`,
           ];
+      const lastSum = lastIndex(out.rows, (r) => r.kind === 'sum');
+      const counts = turnCounts(out.rows.slice(lastSum + 1));
       const sum: DistributiveOmit<FeedRow, 'id'> = {
         kind: 'sum',
         parts,
         time: formatDuration(e.durationMs),
+        ...(counts.mcp ? { mcp: counts.mcp } : {}),
+        ...(counts.skill ? { skill: counts.skill } : {}),
         ...(e.costUsd !== undefined ? { cost: formatCost(e.costUsd) } : {}),
       };
       out = push(out, sum);

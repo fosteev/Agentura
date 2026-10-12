@@ -1,5 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { isAbsolute } from 'node:path';
+import { homedir } from 'node:os';
+import { findSkillFile } from './skillFiles';
 import { samePath } from './pathKey';
 import * as vscode from 'vscode';
 import { EngineLocator } from './engineLocator';
@@ -21,6 +23,7 @@ import {
   DEFAULT_GIT_LAYOUT,
   readTaskCardMode,
   readSettings,
+  readMcpView,
   isFeedStyle,
   isComposerLayout,
   DEFAULT_COMPOSER_LAYOUT,
@@ -668,6 +671,7 @@ export class ChatPanel {
           defaultPermissionMode: cfg.get<string>('defaultPermissionMode'),
           defaultEffort: cfg.get<string>('defaultEffort'),
           remoteControl: cfg.get<boolean>('remoteControl', false),
+          mcp: readMcpView(cfg),
         };
       },
       usage: services.usage,
@@ -777,6 +781,11 @@ export class ChatPanel {
       openChanges: (title, files) => services.diffs.openChanges(title, files, editorColumn()),
       openText: (d) => services.diffs.openText(d, editorColumn()),
       openPreview: (p) => services.previews.open(p, editorColumn()),
+      // SKILL.md (roadmap 21, решение 6): проект, затем домашняя папка; открывается обычной вкладкой редактора
+      findSkill: (name) => findSkillFile(name, folder.uri.fsPath, homedir()),
+      openPath: async (p) => {
+        await vscode.window.showTextDocument(vscode.Uri.file(p), { viewColumn: editorColumn(), preview: true });
+      },
       openExternal: (u) => void vscode.env.openExternal(vscode.Uri.parse(u)),
       ...(open.resumeId ? { resumeId: open.resumeId } : {}),
       openSession: (id, provider) => ChatPanel.resume(context, log, services, { provider, id }, this),

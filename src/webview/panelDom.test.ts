@@ -13,7 +13,9 @@ import { agentsParallelEvents } from '../agent/claude/__fixtures__/agentsParalle
 import { initialState } from './chatState';
 import { Chat } from './components/Chat';
 import { initialHud } from './hudState';
-import { chat, dispatchEvent, hudState, selectedAgent, tick } from './store';
+import { chat, dispatchEvent, features, hudState, mcpPanelTab, selectedAgent, tick } from './store';
+import { providerFeatures } from '../agent/features';
+import type { McpServerInfo } from '../agent/types';
 import * as vscode from './vscode';
 
 // состояние webview — в переменной: `host()` кэширует api, поэтому заглушка ставится один раз до первого вызова
@@ -88,6 +90,8 @@ beforeEach(() => {
   chat.value = initialState();
   hudState.value = initialHud();
   selectedAgent.value = undefined;
+  features.value = providerFeatures('claude');
+  mcpPanelTab.value = true;
 });
 
 afterEach(() => vi.restoreAllMocks());
@@ -497,5 +501,107 @@ describe('узкий режим', () => {
     expect(q(host, '#pane-changes').getAttribute('aria-labelledby')).toBe('tab-changes');
     expect(q(host, '#pane-changes').hidden).toBe(false);
     expect(stored).toEqual({ panel: { w: 420, off: true } });
+  });
+});
+
+describe('вкладка «mcp» (roadmap 21, этап 3)', () => {
+  const LIST: McpServerInfo[] = [
+    { name: 'serena', status: 'connected', version: '1.2.0', tools: 21 },
+    { name: 'webstorm', status: 'failed', error: 'spawn ENOENT' },
+    { name: 'sentry', status: 'needs-auth' },
+  ];
+  const seed = (status = true) => {
+    // непустая лента (в пустой сессии вкладки отключены): два вызова serena и один Skill
+    dispatchEvent({ type: 'tool.start', toolUseId: 'a', name: 'mcp__serena__find_symbol', input: {} }, 1);
+    dispatchEvent({ type: 'tool.start', toolUseId: 'b', name: 'mcp__serena__find_symbol', input: {} }, 2);
+    dispatchEvent({ type: 'tool.start', toolUseId: 'c', name: 'mcp__serena__get_symbols_overview', input: {} }, 3);
+    if (status) dispatchEvent({ type: 'mcp.status', servers: LIST, at: 4 }, 4);
+  };
+  const tabIds = (host: Element) => tabs(host).map((x) => x.id);
+
+  it('четвёртая вкладка после «агентов», бейдж — число сбоев (жёлтый), тело и рейл-иконка', async () => {
+    const host = mount();
+    seed();
+    await flush();
+    expect(tabIds(host)).toEqual(['ptab-changes', 'ptab-git', 'ptab-agents', 'ptab-mcp']);
+    const mcpTab = q(host, '#ptab-mcp');
+    expect(mcpTab.textContent).toContain('mcp');
+    expect([mcpTab.querySelector('.b')?.textContent, mcpTab.querySelector('.b')?.className]).toEqual(['2', 'b warn']);
+    expect(q(host, '#pane-mcp').hidden).toBe(true);
+    mcpTab.click();
+    await flush();
+    expect(q(host, '.pane.side').getAttribute('data-active')).toBe('mcp');
+    expect(q(host, '#pane-mcp').hidden).toBe(false);
+    expect(q(host, '#pane-mcp').getAttribute('aria-labelledby')).toBe('ptab-mcp');
+    expect((stored as { panel: { tab: string } }).panel.tab).toBe('mcp');
+    const rows = [...host.querySelectorAll<HTMLElement>('#pane-mcp .srv[data-name]')];
+    expect(rows.map((r) => r.dataset.name)).toEqual(['serena', 'webstorm', 'sentry']);
+    expect(rows[0]!.textContent).toContain('3'); // вызовов serena
+    // рейл (панель скрыта): иконка mcp с бейджем
+    q(host, '.phide').click();
+    await flush();
+    const rail = q(host, '.rail [aria-label="Открыть панель: mcp"]');
+    expect(rail.querySelector('.b.warn')?.textContent).toBe('2');
+  });
+
+  it('клик по серверу с вызовами раскрывает вызовы по тулам', async () => {
+    stored = { panel: { tab: 'mcp' } };
+    const host = mount();
+    seed();
+    await flush();
+    expect(host.querySelector('#pane-mcp .exp')).toBeNull();
+    q(host, '#pane-mcp .srv[data-name="serena"] .nmb').click();
+    await flush();
+    expect(q(host, '#pane-mcp .exp').textContent).toBe('find_symbol ×2 · get_symbols_overview ×1');
+    // у сервера без вызовов раскрытия нет
+    expect(host.querySelector('#pane-mcp .srv[data-name="webstorm"] .nmb')).toBeNull();
+  });
+
+  it('вкладки нет до статуса, при выключенной настройке и у движка без features.mcp; сохранённое «mcp» уступает «изменениям»', async () => {
+    stored = { panel: { tab: 'mcp' } };
+    const host = mount();
+    seed(false);
+    await flush();
+    expect(tabIds(host)).toEqual(['ptab-changes', 'ptab-git', 'ptab-agents']);
+    expect(q(host, '.pane.side').getAttribute('data-active')).toBe('changes');
+    expect(host.querySelector('#pane-mcp')).toBeNull();
+    dispatchEvent({ type: 'mcp.status', servers: LIST, at: 5 }, 5);
+    await flush();
+    expect(q(host, '.pane.side').getAttribute('data-active')).toBe('mcp');
+    mcpPanelTab.value = false;
+    await flush();
+    expect(tabIds(host)).not.toContain('ptab-mcp');
+    expect(q(host, '.pane.side').getAttribute('data-active')).toBe('changes');
+    mcpPanelTab.value = true;
+    features.value = providerFeatures('antigravity');
+    await flush();
+    expect(tabIds(host)).not.toContain('ptab-mcp');
+  });
+
+  it('readPanel: tab «mcp» сохраняется, чужое значение отбрасывается', () => {
+    stored = { panel: { tab: 'mcp' } };
+    expect(vscode.readPanel().tab).toBe('mcp');
+    stored = { panel: { tab: 'mcpx' } };
+    expect(vscode.readPanel().tab).toBeUndefined();
+  });
+
+  it('узкий режим: вкладка «mcp» в шапке с бейджем открывает то же тело', async () => {
+    Object.defineProperty(window, 'innerWidth', { value: 500, configurable: true });
+    const host = mount();
+    seed();
+    await flush();
+    const t = q(host, '.hud .tabs #tab-mcp');
+    expect(t.querySelector('.b.warn')?.textContent).toBe('2');
+    t.click();
+    await flush();
+    expect(q(host, '#pane-mcp').hidden).toBe(false);
+    expect(q(host, '#pane-mcp').getAttribute('aria-labelledby')).toBe('tab-mcp');
+    // настройка гаснет при открытой вкладке: вкладки и тела нет, видна «изменения», не пустая панель
+    mcpPanelTab.value = false;
+    await flush();
+    expect(host.querySelector('.hud .tabs #tab-mcp')).toBeNull();
+    expect(host.querySelector('#pane-mcp')).toBeNull();
+    expect(q(host, '.hud .tabs #tab-changes').getAttribute('aria-selected')).toBe('true');
+    expect(q(host, '#pane-changes').hidden).toBe(false);
   });
 });

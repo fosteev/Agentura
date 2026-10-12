@@ -342,6 +342,40 @@ export interface ModelListResponse {
   nextCursor: string | null;
 }
 
+/**
+ * MCP (roadmap 21). `mcpServerStatus/list`: с `threadId` — состояние подключений этого треда (без него
+ * `runtimeStatus` пуст); `toolsAndAuthOnly` — без ресурсов и шаблонов.
+ */
+export interface ListMcpServerStatusParams {
+  cursor?: string | null;
+  limit?: number | null;
+  detail?: 'full' | 'toolsAndAuthOnly' | null;
+  threadId?: string | null;
+}
+export type McpServerConnectionStatus =
+  | 'notStarted'
+  | 'starting'
+  | 'connected'
+  | 'authenticationRequired'
+  | 'failed'
+  | 'cancelled'
+  | 'disabled';
+/** Сервер в `mcpServerStatus/list`: читаем только эти поля (остальное — ресурсы, capabilities, httpOrigin…). */
+export interface CodexMcpServerStatus {
+  name: string;
+  /** `null` — нет данных или конфиг изменился. */
+  runtimeStatus: McpServerConnectionStatus | null;
+  serverInfo: { name: string; version: string } | null;
+  /** Тулы по имени. */
+  tools: Record<string, unknown>;
+  toolsError: string | null;
+  pluginId: string | null;
+}
+export interface ListMcpServerStatusResponse {
+  data: CodexMcpServerStatus[];
+  nextCursor: string | null;
+}
+
 /** Окно лимита `account/rateLimits/read`: `usedPercent` 0…100, `resetsAt` — epoch в секундах. */
 export interface CodexRateLimitWindow {
   usedPercent: number;
@@ -378,6 +412,9 @@ export interface CodexRequests {
   'turn/interrupt': [TurnInterruptParams, Record<string, never>];
   'turn/steer': [TurnSteerParams, { turnId: string }];
   'model/list': [ModelListParams, ModelListResponse];
+  'mcpServerStatus/list': [ListMcpServerStatusParams, ListMcpServerStatusResponse];
+  /** Перечитать конфиг и перезапустить все MCP-серверы (по одному сервер не умеет). */
+  'config/mcpServer/reload': [undefined, Record<string, never>];
   'account/rateLimits/read': [Record<string, never> | undefined, CodexRateLimitsResponse];
   'account/read': [{ refreshToken: boolean }, CodexAccountResponse];
 }
@@ -424,6 +461,14 @@ export interface CodexNotifications {
   };
   'serverRequest/resolved': { threadId: string; requestId: RequestId };
   error: { error: TurnError; willRetry: boolean; threadId: string; turnId: string };
+  /** Запуск одного MCP-сервера (roadmap 21). `threadId: null` — не привязано к треду. */
+  'mcpServer/startupStatus/updated': {
+    threadId: string | null;
+    name: string;
+    status: 'starting' | 'ready' | 'failed' | 'cancelled';
+    error: string | null;
+    failureReason: 'reauthenticationRequired' | null;
+  };
 }
 export type CodexNotificationMethod = keyof CodexNotifications;
 
@@ -447,6 +492,7 @@ const NOTIFICATION_METHODS: Record<CodexNotificationMethod, true> = {
   'item/fileChange/patchUpdated': true,
   'serverRequest/resolved': true,
   error: true,
+  'mcpServer/startupStatus/updated': true,
 };
 
 // ---- запросы сервера (approval) и ответы на них -----------------------------------------------

@@ -5,10 +5,14 @@ import { Composer } from './components/Composer';
 import {
   capabilities,
   chat,
+  composerLayout,
   dispatchEvent,
   editor,
   extra,
+  features,
   history,
+  mcpComposerButton,
+  skillFiles,
   handleHostMessage,
   hudState,
   limits,
@@ -17,6 +21,8 @@ import {
 } from './store';
 import { initialHud } from './hudState';
 import { initialState } from './chatState';
+import { providerFeatures } from '../agent/features';
+import type { McpServerInfo } from '../agent/types';
 import * as vscode from './vscode';
 
 const posted: unknown[] = [];
@@ -62,6 +68,10 @@ beforeEach(() => {
   history.value = [];
   hudState.value = initialHud();
   limits.value = { windows: [], updatedAt: 0 };
+  composerLayout.value = 'classic';
+  features.value = providerFeatures('claude');
+  mcpComposerButton.value = true;
+  skillFiles.value = new Set();
 });
 
 describe('поле ввода', () => {
@@ -358,5 +368,210 @@ describe('приборы у поля ввода — живые значения'
     expect(m[1]!.querySelector('b')!.className).toBe('pct full');
     expect(m[1]!.querySelectorAll('.cells i.on.f')).toHaveLength(10);
     expect(m[1]!.className).toContain('lim-full');
+  });
+});
+
+describe('кнопка «mcp N/M» (roadmap 21, этап 3)', () => {
+  const srv = (name: string, status: McpServerInfo['status'], extra: Partial<McpServerInfo> = {}): McpServerInfo => ({
+    name,
+    status,
+    ...extra,
+  });
+  const LIST = [
+    srv('serena', 'connected', { version: '1.2.0', tools: 21 }),
+    srv('jira', 'connected', { builtin: true }),
+    srv('webstorm', 'failed', { error: 'spawn ENOENT' }),
+    srv('sentry', 'needs-auth'),
+    srv('old', 'disabled'),
+  ];
+  const withStatus = (servers: McpServerInfo[]) =>
+    dispatchEvent({ type: 'mcp.status', servers, at: 1 }, 1);
+  const btn = (host: HTMLElement) => host.querySelector<HTMLButtonElement>('.mcpb');
+
+  it('в каждой из шести раскладок: «mcp N/M» (N подключено, M без выключенных) и жёлтая точка при сбое', async () => {
+    for (const layout of ['classic', 'card', 'gauges', 'minimal', 'statusline', 'shell'] as const) {
+      composerLayout.value = layout;
+      chat.value = { ...initialState(), project: 'p', cwd: '/p' };
+      withStatus(LIST);
+      const host = mount();
+      await flush();
+      expect(host.querySelectorAll('.mcpb'), layout).toHaveLength(1);
+      expect(btn(host)!.textContent, layout).toContain('mcp 2/4');
+      expect(btn(host)!.querySelector('.d'), layout).not.toBeNull();
+      host.remove();
+      document.body.innerHTML = '';
+    }
+  });
+
+  it('без сбоев точки нет; скрыта до статуса, при пустом списке, без features.mcp и при выключенной настройке', async () => {
+    const host = mount();
+    await flush();
+    expect(btn(host)).toBeNull(); // статуса ещё нет
+    withStatus([srv('a', 'connected'), srv('b', 'pending')]);
+    await flush();
+    expect(btn(host)!.textContent).toContain('mcp 1/2');
+    expect(btn(host)!.querySelector('.d')).toBeNull();
+    withStatus([]);
+    await flush();
+    expect(btn(host)).toBeNull();
+    withStatus(LIST);
+    await flush();
+    expect(btn(host)).not.toBeNull();
+    mcpComposerButton.value = false;
+    await flush();
+    expect(btn(host)).toBeNull();
+    mcpComposerButton.value = true;
+    features.value = providerFeatures('antigravity');
+    await flush();
+    expect(btn(host)).toBeNull();
+  });
+
+  it('всплывашка: серверы со статусом, версией, «встроенный», ошибкой; «повторить» шлёт mcp.reconnect; ↻ — mcp.refresh', async () => {
+    withStatus(LIST);
+    const host = mount();
+    await flush();
+    btn(host)!.click();
+    await flush();
+    const rows = [...host.querySelectorAll<HTMLElement>('.mcpmenu .srv[data-name]')];
+    expect(rows.map((r) => [r.dataset.name, r.dataset.status])).toEqual([
+      ['serena', 'connected'],
+      ['jira', 'connected'],
+      ['webstorm', 'failed'],
+      ['sentry', 'needs-auth'],
+      ['old', 'disabled'],
+    ]);
+    expect(rows[0]!.textContent).toContain('v1.2.0');
+    expect(rows[0]!.textContent).toContain('21 тул.');
+    expect(rows[1]!.textContent).toContain('встроенный');
+    expect(rows[2]!.querySelector('.st.fail')).not.toBeNull();
+    expect(rows[2]!.querySelector('small.err')!.textContent).toBe('spawn ENOENT');
+    rows[2]!.querySelector<HTMLElement>('.act')!.click();
+    host.querySelector<HTMLElement>('.mcpmenu .rf')!.click();
+    expect(posted).toContainEqual({ type: 'mcp.reconnect', name: 'webstorm' });
+    expect(posted).toContainEqual({ type: 'mcp.refresh' });
+    // у Claude «перезапустить все» нет
+    expect(host.querySelector('.mcpmenu h5 .act')).toBeNull();
+  });
+
+  it('needs-auth: подсказка входа и «скопировать команду» кладёт команду в буфер; у Codex — codex mcp login', async () => {
+    const written: string[] = [];
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: (t: string) => (written.push(t), Promise.resolve()) },
+      configurable: true,
+    });
+    withStatus(LIST);
+    let host = mount();
+    await flush();
+    btn(host)!.click();
+    await flush();
+    expect(host.querySelector('.srv-hint')!.textContent).toContain('/mcp');
+    host.querySelector<HTMLElement>('.srv-hint .act')!.click();
+    await flush();
+    expect(written).toEqual(['/mcp']);
+    host.remove();
+    document.body.innerHTML = '';
+    chat.value = { ...initialState(), project: 'p', cwd: '/p', engine: 'codex' };
+    features.value = providerFeatures('codex');
+    withStatus([srv('sentry', 'needs-auth'), srv('x', 'failed')]);
+    host = mount();
+    await flush();
+    btn(host)!.click();
+    await flush();
+    expect(host.querySelector('.srv-hint')!.textContent).toContain('codex mcp login sentry');
+    host.querySelector<HTMLElement>('.srv-hint .act')!.click();
+    await flush();
+    expect(written).toEqual(['/mcp', 'codex mcp login sentry']);
+    // Codex: «повторить» по серверу нет, есть «перезапустить все»
+    expect(host.querySelector('.srv[data-name="x"] .act')).toBeNull();
+    host.querySelector<HTMLElement>('.mcpmenu h5 .act')!.click();
+    expect(posted).toContainEqual({ type: 'mcp.reloadAll' });
+    // скиллов у Codex нет
+    expect(host.querySelector('.mcpmenu .sk')).toBeNull();
+  });
+
+  it('«скопировать команду» без буфера: команда строкой в ленту (как ссылка RC)', async () => {
+    Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true });
+    withStatus(LIST);
+    const host = mount();
+    await flush();
+    btn(host)!.click();
+    await flush();
+    host.querySelector<HTMLElement>('.srv-hint .act')!.click();
+    await flush();
+    const last = chat.value.rows[chat.value.rows.length - 1];
+    expect(last).toMatchObject({ kind: 'sys' });
+    expect(JSON.stringify(last)).toContain('команда: /mcp');
+    // подпись не сменилась на «скопировано»
+    expect(host.querySelector('.srv-hint .act')!.textContent).toBe('скопировать команду');
+  });
+
+  it('раздел скиллов (Claude): вызванные в сессии, «доступно N», «открыть SKILL.md» только при найденном файле', async () => {
+    dispatchEvent(
+      {
+        type: 'session.init',
+        sessionId: 's1',
+        model: 'm',
+        cwd: '/p',
+        permissionMode: 'default',
+        tools: [],
+        slashCommands: [],
+        skills: ['plan', 'pohuy:pohuy', 'other'],
+        agents: [],
+        apiKeySource: 'none',
+        engineVersion: '1',
+      },
+      1,
+    );
+    withStatus(LIST);
+    dispatchEvent({ type: 'tool.start', toolUseId: 'u1', name: 'Skill', input: { skill: 'plan' } }, 2);
+    dispatchEvent({ type: 'tool.start', toolUseId: 'u2', name: 'Skill', input: { skill: 'pohuy:pohuy' } }, 3);
+    skillFiles.value = new Set(['plan', 'pohuy']);
+    const host = mount();
+    await flush();
+    btn(host)!.click();
+    await flush();
+    const sk = [...host.querySelectorAll<HTMLElement>('.mcpmenu .srv.sk')];
+    expect(sk.map((r) => r.dataset.skill)).toEqual(['plan', 'pohuy:pohuy']);
+    expect(host.querySelectorAll('.mcpmenu h5')[1]!.textContent).toContain('доступно 3');
+    expect(sk[0]!.querySelector('.act')?.textContent).toBe('открыть SKILL.md');
+    expect(sk[1]!.querySelector('.act')).toBeNull(); // плагинному ссылки нет
+    sk[0]!.querySelector<HTMLElement>('.act')!.click();
+    expect(posted).toContainEqual({ type: 'skill.open', name: 'plan' });
+    host.querySelector<HTMLElement>('.mcpmenu .more')!.click();
+    await flush();
+    expect([...host.querySelectorAll('.mcpmenu .allsk .sk1')].map((e) => e.textContent)).toEqual([
+      'plan',
+      'pohuy:pohuy',
+      'other',
+    ]);
+  });
+
+  it('кнопка пропала при открытой всплывашке — меню закрыто и не открывается само, когда кнопка вернётся', async () => {
+    withStatus(LIST);
+    const host = mount();
+    await flush();
+    btn(host)!.click();
+    await flush();
+    expect(host.querySelector('.mcpmenu')).not.toBeNull();
+    mcpComposerButton.value = false;
+    await flush();
+    expect(btn(host)).toBeNull();
+    mcpComposerButton.value = true;
+    await flush();
+    expect(btn(host)).not.toBeNull();
+    expect(host.querySelector('.mcpmenu')).toBeNull();
+    expect(btn(host)!.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('Escape закрывает всплывашку', async () => {
+    withStatus(LIST);
+    const host = mount();
+    await flush();
+    btn(host)!.click();
+    await flush();
+    expect(host.querySelector('.mcpmenu')).not.toBeNull();
+    key(document.body, 'Escape');
+    await flush();
+    expect(host.querySelector('.mcpmenu')).toBeNull();
   });
 });

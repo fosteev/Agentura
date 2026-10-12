@@ -844,3 +844,151 @@ describe('ClaudeSession: инструменты задачи Jira (roadmap 19, �
     expect(m.fake.calls[0]!.options['mcpServers']).toBeUndefined();
   });
 });
+
+describe('ClaudeSession: статус MCP (roadmap 21)', () => {
+  const STATUS = [
+    {
+      name: 'github',
+      status: 'connected',
+      serverInfo: { name: 'gh', version: '1.2.0' },
+      scope: 'user',
+      tools: [{ name: 'a' }, { name: 'b' }],
+    },
+    { name: 'agentura_jira', status: 'connected', source: 'sdk', tools: [{ name: 'comment' }] },
+    { name: 'sentry', status: 'failed', error: 'ECONNREFUSED', scope: 'project' },
+  ];
+  const result = { type: 'result', subtype: 'success', is_error: false, result: 'ok', session_id: 's-1' };
+
+  function setup(opts: { watch?: boolean; status?: () => Promise<unknown>; reconnect?: (n: string) => Promise<void> } = {}) {
+    const control: string[] = [];
+    const fake = fakeSdk({
+      mcpServerStatus: async () => {
+        control.push('status');
+        return opts.status ? opts.status() : STATUS;
+      },
+      reconnectMcpServer: async (n: string) => {
+        control.push(`reconnect:${n}`);
+        if (opts.reconnect) await opts.reconnect(n);
+      },
+    });
+    const log: string[] = [];
+    const adapter = new ClaudeAdapter({ loadSdk: async () => fake.sdk, log: (_l, m) => void log.push(m) });
+    return { fake, control, log, adapter, create: () => adapter.createSession({ cwd: '/w', ...(opts.watch ? { mcpWatch: true } : {}) }) };
+  }
+
+  it('init с mcp_servers даёт mcp.status без запроса; без mcpWatch control-запроса нет', async () => {
+    const s = setup();
+    const session = await s.create();
+    const events: AgentEvent[] = [];
+    session.events.on((e) => events.push(e));
+    s.fake.push({ ...init, mcp_servers: [{ name: 'github', status: 'connected' }] }, result);
+    await tick();
+    expect(events.filter((e) => e.type === 'mcp.status').map((e) => (e as { servers: unknown }).servers)).toEqual([
+      [{ name: 'github', status: 'connected' }],
+    ]);
+    expect(s.control).toEqual([]);
+  });
+
+  it('mcpWatch: mcpServerStatus после init и после хода; tools → число, version, error, scope, sdk → builtin', async () => {
+    const s = setup({ watch: true });
+    const session = await s.create();
+    const events: AgentEvent[] = [];
+    session.events.on((e) => events.push(e));
+    s.fake.push({ ...init, mcp_servers: [{ name: 'github', status: 'connected' }] });
+    await tick();
+    expect(s.control).toEqual(['status']);
+    const statuses = () => events.filter((e): e is Extract<AgentEvent, { type: 'mcp.status' }> => e.type === 'mcp.status');
+    expect(statuses().at(-1)!.servers).toEqual([
+      { name: 'github', status: 'connected', version: '1.2.0', tools: 2, scope: 'user' },
+      { name: 'agentura_jira', status: 'connected', tools: 1, builtin: true },
+      { name: 'sentry', status: 'failed', error: 'ECONNREFUSED', scope: 'project' },
+    ]);
+    const before = statuses().length;
+    s.fake.push(result);
+    await tick();
+    expect(s.control).toEqual(['status', 'status']);
+    // после хода ничего не изменилось — повторного события нет
+    expect(statuses()).toHaveLength(before);
+    // следующий init с тем же статусом не затирает версию и тулы
+    s.fake.push({ ...init, mcp_servers: STATUS.map(({ name, status }) => ({ name, status })) });
+    await tick();
+    expect(statuses()).toHaveLength(before);
+  });
+
+  it('mcpStatus() по запросу: событие и без изменений; mcpReconnect → reconnectMcpServer, затем статус', async () => {
+    const s = setup();
+    const session = await s.create();
+    const events: AgentEvent[] = [];
+    session.events.on((e) => events.push(e));
+    await session.mcpStatus!();
+    await session.mcpStatus!();
+    expect(events.filter((e) => e.type === 'mcp.status')).toHaveLength(2);
+    await session.mcpReconnect!('sentry');
+    expect(s.control).toEqual(['status', 'status', 'reconnect:sentry', 'status']);
+    expect(events.filter((e) => e.type === 'mcp.status')).toHaveLength(3);
+  });
+
+  it('ошибка control-запроса — в лог, без исключения и без падения сессии', async () => {
+    const s = setup({
+      watch: true,
+      status: () => Promise.reject(new Error('control timeout')),
+      reconnect: () => Promise.reject(new Error('no such server')),
+    });
+    const session = await s.create();
+    const events: AgentEvent[] = [];
+    session.events.on((e) => events.push(e));
+    s.fake.push(init, result);
+    await tick();
+    await expect(session.mcpStatus!()).resolves.toBeUndefined();
+    await expect(session.mcpReconnect!('x')).resolves.toBeUndefined();
+    expect(s.log.filter((m) => /mcpServerStatus|reconnectMcpServer/.test(m)).length).toBeGreaterThanOrEqual(3);
+    expect(events.map((e) => e.type)).not.toContain('error');
+    expect(events.map((e) => e.type)).toContain('turn.result');
+    expect(session.send('дальше')).toBe(true);
+  });
+
+  it('ответ mcpServerStatus() после dispose — ни события, ни предупреждения в логе', async () => {
+    let fail: (e: Error) => void = () => {};
+    const s = setup({ status: () => new Promise((_, reject) => (fail = reject)) });
+    const session = await s.create();
+    const events: AgentEvent[] = [];
+    session.events.on((e) => events.push(e));
+    const pending = session.mcpStatus!();
+    session.dispose();
+    fail(new Error('session closed'));
+    await pending;
+    expect(events.filter((e) => e.type === 'mcp.status')).toEqual([]);
+    expect(s.log.filter((m) => /mcpServerStatus/.test(m))).toEqual([]);
+  });
+
+  it('перекрытые опросы: поздний ответ старого запроса не перетирает свежий, событие запроса пользователя не теряется', async () => {
+    const answers: Array<(v: unknown) => void> = [];
+    const s = setup({ status: () => new Promise((resolve) => answers.push(resolve)) });
+    const session = await s.create();
+    const events: AgentEvent[] = [];
+    session.events.on((e) => events.push(e));
+    const first = session.mcpStatus!();
+    const second = session.mcpStatus!();
+    answers[1]!([{ name: 'github', status: 'connected' }]);
+    await second;
+    answers[0]!([{ name: 'github', status: 'failed' }]);
+    await first;
+    const statuses = events.filter((e): e is Extract<AgentEvent, { type: 'mcp.status' }> => e.type === 'mcp.status');
+    expect(statuses.map((e) => e.servers)).toEqual([[{ name: 'github', status: 'connected' }]]);
+  });
+
+  it('setMcpWatch(true) посреди сессии — статус сразу; выключено — после хода не спрашивает', async () => {
+    const s = setup();
+    const session = await s.create();
+    s.fake.push(init, result);
+    await tick();
+    expect(s.control).toEqual([]);
+    session.setMcpWatch!(true);
+    await tick();
+    expect(s.control).toEqual(['status']);
+    session.setMcpWatch!(false);
+    s.fake.push(init, result);
+    await tick();
+    expect(s.control).toEqual(['status']);
+  });
+});

@@ -62,6 +62,10 @@ const values: SettingsValues = {
   'composer.layout': 'classic',
   'agents.view': 'list',
   'git.layout': 'stack',
+  'mcp.feedLabels': true,
+  'mcp.composerButton': true,
+  'mcp.panelTab': true,
+  'mcp.feedStatus': 'failures',
   'feed.fontSize': 13,
   'ui.fontSize': 13,
   'font.interface': '',
@@ -153,6 +157,10 @@ describe('вкладка настроек', () => {
       'agentura.font.panels',
       'agentura.font.code',
       'agentura.language',
+      'agentura.mcp.feedLabels',
+      'agentura.mcp.composerButton',
+      'agentura.mcp.panelTab',
+      'agentura.mcp.feedStatus',
       'agentura.jira.source',
       'fosteev.jiraffe',
       'agentura.jira.connect',
@@ -204,6 +212,29 @@ describe('вкладка настроек', () => {
         .querySelector('.set[data-key$="remoteControlNamePrefix"] input')
         ?.getAttribute('placeholder'),
     ).toBe('пусто — имя машины');
+  });
+
+  it('«MCP и скиллы» (Внешний вид): три переключателя и выбор feedStatus пишут через settings.set', async () => {
+    const host = mount(Settings);
+    state();
+    await flush();
+    const look = host.querySelector('#look')!;
+    expect(look.querySelector('h3.st-sub')?.textContent).toBe('MCP и скиллы');
+    for (const k of ['feedLabels', 'composerButton', 'panelTab']) {
+      expect(look.querySelector(`.set[data-key="agentura.mcp.${k}"] .tg.on`)).not.toBeNull();
+      look.querySelector<HTMLElement>(`.set[data-key="agentura.mcp.${k}"] .tg`)!.click();
+      await flush();
+    }
+    const sel = look.querySelector<HTMLSelectElement>('.set[data-key="agentura.mcp.feedStatus"] select')!;
+    expect([...sel.options].map((o) => o.value)).toEqual(['failures', 'start', 'off']);
+    expect(sel.value).toBe('failures');
+    change(sel, 'start');
+    expect(sets()).toEqual([
+      { type: 'settings.set', key: 'mcp.feedLabels', value: false },
+      { type: 'settings.set', key: 'mcp.composerButton', value: false },
+      { type: 'settings.set', key: 'mcp.panelTab', value: false },
+      { type: 'settings.set', key: 'mcp.feedStatus', value: 'start' },
+    ]);
   });
 
   it('разделы — страницы: видна одна, клик и стрелки переключают', async () => {

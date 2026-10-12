@@ -2,13 +2,17 @@ import type {
   AgentEvent,
   AgentEventOf,
   ImageRef,
+  McpServerInfo,
+  McpServerStatus,
   PromptImage,
   TokenUsage,
 } from '../types';
 import { CodexToolMapper } from './tools';
 import type {
+  CodexMcpServerStatus,
   CodexNotifications,
   FileUpdateChange,
+  McpServerConnectionStatus,
   CollabAgentState,
   ThreadItem,
   ThreadSession,
@@ -84,6 +88,26 @@ function errorCode(info: TurnError['codexErrorInfo']): string | undefined {
   return undefined;
 }
 
+/** Уведомления о запуске серверов, пришедшие, пока `mcpServerStatus/list` был в пути: имя → статус и ошибка. */
+export type McpListing = Map<string, Pick<McpServerInfo, 'status' | 'error'>>;
+
+/** `runtimeStatus` Codex → общий статус (roadmap 21, решение 1); `null` и неизвестное — `pending`. */
+export function mcpRuntimeStatus(s: McpServerConnectionStatus | null | undefined): McpServerStatus {
+  switch (s) {
+    case 'connected':
+      return 'connected';
+    case 'authenticationRequired':
+      return 'needs-auth';
+    case 'failed':
+    case 'cancelled':
+      return 'failed';
+    case 'disabled':
+      return 'disabled';
+    default:
+      return 'pending';
+  }
+}
+
 /**
  * Notifications app-server → `AgentEvent`. Работает на один тред: `session.init` строится из ответа
  * `thread/start|resume`, `turn.start` — из `turn/started` и промпта, который адаптер объявил через
@@ -114,6 +138,10 @@ export class CodexEventMapper {
   private readonly subagents = new Map<string, { parentThreadId: string; prompt?: string; model?: string }>();
   private readonly startedSubagents = new Set<string>();
   private readonly endedSubagents = new Set<string>();
+  /** MCP-серверы (roadmap 21): последний список; уведомление о запуске правит один сервер в нём. */
+  private mcp: McpServerInfo[] = [];
+  /** `mcpServerStatus/list` в пути (`mcpListStart`): уведомления, пришедшие до ответа. */
+  private readonly mcpListings = new Set<McpListing>();
 
   constructor(private readonly now: () => number = Date.now) {
     this.tools = new CodexToolMapper(now);
@@ -282,9 +310,76 @@ export class CodexEventMapper {
         if (code) event.code = code;
         return [event];
       }
+      case 'mcpServer/startupStatus/updated':
+        return [this.mcpStartup(params as CodexNotifications['mcpServer/startupStatus/updated'])];
       default:
         return [];
     }
+  }
+
+  /**
+   * Ответ `mcpServerStatus/list` (все страницы) → полный `mcp.status`; список заменяет прежний целиком.
+   * Ошибку и версию из прежнего списка не тянем: ответ свежее уведомлений.
+   */
+  mcpList(servers: readonly CodexMcpServerStatus[], listing?: McpListing): AgentEventOf<'mcp.status'> {
+    if (listing) this.mcpListings.delete(listing);
+    this.mcp = servers.map((s) => {
+      const info: McpServerInfo = { name: s.name, status: mcpRuntimeStatus(s.runtimeStatus) };
+      if (s.toolsError) info.error = s.toolsError;
+      if (s.serverInfo?.version) info.version = s.serverInfo.version;
+      if (s.tools && typeof s.tools === 'object') info.tools = Object.keys(s.tools).length;
+      if (s.pluginId) info.scope = 'plugin';
+      // уведомление пришло, пока список был в пути: снимок мог быть снят раньше — статус берём из уведомления
+      const fresh = listing?.get(s.name);
+      if (fresh) {
+        info.status = fresh.status;
+        if (fresh.error) info.error = fresh.error;
+        else delete info.error;
+      }
+      return info;
+    });
+    return this.mcpEvent();
+  }
+
+  /**
+   * Начало `mcpServerStatus/list`: до ответа уведомления о запуске серверов запоминаются, ответ их не откатит
+   * (Codex после хода статус не переспрашивает — сервер застрял бы в `pending`). Отдать в `mcpList`.
+   */
+  mcpListStart(): McpListing {
+    const listing: McpListing = new Map();
+    this.mcpListings.add(listing);
+    return listing;
+  }
+
+  /** Список не пришёл (ошибка): запомненное больше не нужно. */
+  mcpListFailed(listing: McpListing): void {
+    this.mcpListings.delete(listing);
+  }
+
+  /** `mcpServer/startupStatus/updated`: один сервер в сохранённом списке (нет — добавить), наружу — весь список. */
+  private mcpStartup(m: CodexNotifications['mcpServer/startupStatus/updated']): AgentEventOf<'mcp.status'> {
+    const status: McpServerStatus =
+      m.failureReason === 'reauthenticationRequired'
+        ? 'needs-auth'
+        : m.status === 'ready'
+          ? 'connected'
+          : m.status === 'starting'
+            ? 'pending'
+            : m.status === 'failed' || m.status === 'cancelled'
+              ? 'failed'
+              : 'pending';
+    const i = this.mcp.findIndex((s) => s.name === m.name);
+    const next: McpServerInfo = { ...(i >= 0 ? this.mcp[i] : undefined), name: m.name, status };
+    if (m.error) next.error = m.error;
+    else delete next.error;
+    if (i >= 0) this.mcp[i] = next;
+    else this.mcp.push(next);
+    for (const listing of this.mcpListings) listing.set(m.name, { status, ...(m.error ? { error: m.error } : {}) });
+    return this.mcpEvent();
+  }
+
+  private mcpEvent(): AgentEventOf<'mcp.status'> {
+    return { type: 'mcp.status', servers: this.mcp.map((s) => ({ ...s })), at: this.now() };
   }
 
   /** Точный размер контекста по последнему ответу модели; нет данных — `undefined`. */

@@ -4,6 +4,8 @@ import type {
   FileRef,
   ImageRef,
   LimitWindow,
+  McpServerInfo,
+  McpServerStatus,
   PermissionMode,
   TokenUsage,
 } from '../types';
@@ -112,6 +114,9 @@ export class ClaudeEventMapper {
   private turnUsage: TokenUsage = emptyUsage();
   private lastTotalCost: number | undefined;
   private readonly contextWindows = new Map<string, number>();
+  /** Последний список MCP-серверов (roadmap 21) и его ключ: `mcp.status` уходит, только когда список изменился. */
+  private mcp: McpServerInfo[] | undefined;
+  private mcpKey: string | undefined;
   private readonly lang: () => Lang;
 
   constructor(options: MapperOptions = {}) {
@@ -395,8 +400,70 @@ export class ClaudeEventMapper {
         engineVersion: str(m['claude_code_version']) ?? '',
       });
     }
+    // `mcp_servers` есть в каждом init, а `session.init` выше уходит не каждый раз — список сравниваем отдельно
+    if (Array.isArray(m['mcp_servers'])) this.mcpFromInit(m['mcp_servers'], out);
     this.mode = mode;
     this.openTurn();
+  }
+
+  /**
+   * `mcp_servers` из init: только имя, статус и `source`. Сервер с прежним статусом сохраняет то, что сообщил
+   * `mcpServerStatus()` (версия, тулы, ошибка), — иначе каждый ход затирал бы подробности.
+   */
+  private mcpFromInit(raw: unknown[], out: AgentEvent[]): void {
+    const known = new Map((this.mcp ?? []).map((s) => [s.name, s]));
+    const servers: McpServerInfo[] = [];
+    for (const item of raw) {
+      if (!isObj(item)) continue;
+      const name = str(item['name']);
+      if (!name) continue;
+      const status = mcpStatusOf(item['status']);
+      const prev = known.get(name);
+      if (prev && prev.status === status) {
+        servers.push(prev);
+        continue;
+      }
+      const info: McpServerInfo = { name, status };
+      if (prev?.scope) info.scope = prev.scope;
+      if (item['source'] === 'sdk') info.builtin = true;
+      servers.push(info);
+    }
+    const event = this.mcpEvent(servers, false);
+    if (event) out.push(event);
+  }
+
+  /**
+   * Ответ `Query.mcpServerStatus()` → `mcp.status`. `force` — запрос пользователя (↻, «повторить»): событие уходит
+   * и без изменений; иначе (после init и хода) — только если список изменился.
+   */
+  mcpFromEngine(raw: unknown, force = false): AgentEventOf<'mcp.status'> | undefined {
+    if (!Array.isArray(raw)) return undefined;
+    const servers: McpServerInfo[] = [];
+    for (const item of raw) {
+      if (!isObj(item)) continue;
+      const name = str(item['name']);
+      if (!name) continue;
+      const info: McpServerInfo = { name, status: mcpStatusOf(item['status']) };
+      const error = str(item['error']);
+      if (error) info.error = error;
+      const version = str(obj(item['serverInfo'])?.['version']);
+      if (version) info.version = version;
+      if (Array.isArray(item['tools'])) info.tools = item['tools'].length;
+      const scope = str(item['scope']);
+      if (scope) info.scope = scope;
+      if (item['source'] === 'sdk') info.builtin = true;
+      servers.push(info);
+    }
+    return this.mcpEvent(servers, force);
+  }
+
+  private mcpEvent(servers: McpServerInfo[], force: boolean): AgentEventOf<'mcp.status'> | undefined {
+    // init и `mcpServerStatus()` могут перечислять серверы в разном порядке — ключ от порядка не зависит
+    const key = JSON.stringify([...servers].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0)));
+    if (!force && key === this.mcpKey) return undefined;
+    this.mcpKey = key;
+    this.mcp = servers;
+    return { type: 'mcp.status', servers: servers.map((s) => ({ ...s })), at: this.now() };
   }
 
   // ——— поток основного агента ———
@@ -842,6 +909,19 @@ function isZero(u: TokenUsage): boolean {
 
 function round6(n: number): number {
   return Math.round(n * 1e6) / 1e6;
+}
+
+const MCP_STATUSES: ReadonlySet<string> = new Set<McpServerStatus>([
+  'connected',
+  'pending',
+  'failed',
+  'needs-auth',
+  'disabled',
+]);
+
+/** Статус MCP-сервера Claude → `McpServerStatus`; неизвестный (новый CLI) — `pending`. */
+export function mcpStatusOf(value: unknown): McpServerStatus {
+  return typeof value === 'string' && MCP_STATUSES.has(value) ? (value as McpServerStatus) : 'pending';
 }
 
 function permissionMode(value: unknown): PermissionMode | undefined {

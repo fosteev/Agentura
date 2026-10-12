@@ -27,6 +27,7 @@ import type {
   AskForApproval,
   CodexRequestMethod,
   CodexRequests,
+  ListMcpServerStatusResponse,
   Model,
   SandboxMode,
   Thread,
@@ -85,6 +86,8 @@ const DEFAULT_GRACE_MS = 2000;
 /** Список тредов: страница и потолок страниц (500 тредов проекта — дальше не листаем). */
 const LIST_PAGE = 100;
 const LIST_MAX_PAGES = 5;
+/** `mcpServerStatus/list`: страниц не больше (roadmap 21) — сервер с вечным `nextCursor` не зациклит запрос. */
+const MCP_PAGES = 10;
 /** Один запрос короткого сервера (`thread/read` длинного треда читает rollout целиком). */
 const QUERY_TIMEOUT_MS = 30_000;
 /** `thread/resume` сразу после выхода процесса того же треда: писатель ещё не освобождён — ждём и повторяем. */
@@ -301,6 +304,8 @@ class CodexSession implements AgentSession {
     | { done: Deferred; prompt: NotedPrompt; id?: string; started?: Promise<string | undefined> }
     | undefined;
   private modelsCache: Promise<ModelOption[]> | undefined;
+  /** Статус MCP запрашивается сам после открытия треда (`SessionOptions.mcpWatch`, roadmap 21). */
+  private mcpWatch: boolean;
 
   constructor(
     private readonly config: CodexAdapterConfig,
@@ -313,6 +318,7 @@ class CodexSession implements AgentSession {
     this.resumedId = resume;
     this.model = options.model;
     this.effort = options.effort;
+    this.mcpWatch = options.mcpWatch === true;
     this.graceMs = config.graceMs ?? DEFAULT_GRACE_MS;
     this.events = new EventHub<AgentEvent>((e) =>
       this.log('error', `event subscriber failed: ${String(e)}`),
@@ -437,6 +443,55 @@ class CodexSession implements AgentSession {
     return this.mapper.contextEvent();
   }
 
+  /**
+   * `mcpServerStatus/list` треда по всем страницам (не больше `MCP_PAGES`) → `mcp.status`. Ошибка — в лог. До
+   * открытия треда — ничего: без `threadId` `runtimeStatus` пуст, а Codex ради списка поднимает все серверы.
+   */
+  async mcpStatus(): Promise<void> {
+    if (this.closed || !this.threadReady) return;
+    const listing = this.mapper.mcpListStart();
+    try {
+      await this.ready;
+      const servers: ListMcpServerStatusResponse['data'] = [];
+      let cursor: string | null = null;
+      for (let page = 0; page < MCP_PAGES; page++) {
+        const res: ListMcpServerStatusResponse = await this.rpc('mcpServerStatus/list', {
+          detail: 'toolsAndAuthOnly',
+          ...(this.mapper.threadId ? { threadId: this.mapper.threadId } : {}),
+          ...(cursor ? { cursor } : {}),
+        });
+        servers.push(...(Array.isArray(res?.data) ? res.data : []));
+        const next: string | null = res?.nextCursor ?? null;
+        // тот же cursor ещё раз — сервер зациклился: страница повторилась бы в списке
+        if (!next || next === cursor) break;
+        cursor = next;
+      }
+      if (this.closed) return;
+      this.emit(this.mapper.mcpList(servers, listing));
+    } catch (error) {
+      this.mapper.mcpListFailed(listing);
+      if (!this.closed) this.log('warn', `mcpServerStatus/list failed: ${String(error)}`);
+    }
+  }
+
+  /** «перезапустить все»: `config/mcpServer/reload` (по одному серверу Codex не умеет), затем свежий список. */
+  async mcpReloadAll(): Promise<void> {
+    if (this.closed || !this.threadReady) return;
+    try {
+      await this.ready;
+      await this.rpc('config/mcpServer/reload', undefined);
+    } catch (error) {
+      this.log('warn', `config/mcpServer/reload failed: ${String(error)}`);
+    }
+    await this.mcpStatus();
+  }
+
+  setMcpWatch(on: boolean): void {
+    const was = this.mcpWatch;
+    this.mcpWatch = on;
+    if (on && !was && this.threadReady) void this.mcpStatus();
+  }
+
   dispose(): void {
     if (this.closed) return;
     this.close('disposed');
@@ -480,6 +535,7 @@ class CodexSession implements AgentSession {
       : await this.rpc('thread/start', settings, this.config.startTimeoutMs ?? START_TIMEOUT_MS);
     this.threadReady = true;
     this.emit(this.mapper.init(session, this.effort));
+    if (this.mcpWatch) void this.mcpStatus();
   }
 
   /**

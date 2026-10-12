@@ -1,0 +1,582 @@
+# 21 — Скиллы и MCP-серверы: метки в ленте, статус серверов
+
+> **Статус:** план 2026-10-10, ветка `feature/skills-mcp` от `main` (0.10.0). Этап 1 принят 2026-10-10 (ветка
+> `stage-1-mcp-protocol`), этап 2 принят 2026-10-11 (ветка `stage-2-feed`, вид глазами — на владельце), этап 3 принят 2026-10-11
+> (ветка `stage-3-mcp-ui`, вид глазами — на владельце), этап 4 (релиз 0.11.0) принят 2026-10-12 (ветка `stage-4-release`).
+> **Roadmap пройден** 2026-10-12 (галерея v43 — раздел `#tools-real`); остались ручные проверки владельца (pending, «Проверить руками»).
+> Прототип — `prototype/screens/tools-mcp.html` (`#feed-b|#popover|#panel|#sys`); галерея v42, раздел «Скиллы и
+> MCP-серверы». **Выбраны: лента B, кнопка у поля (3), вкладка «mcp» (4), системная строка (5).** Вариант A (`#feed-a`)
+> не берём.
+> Исполнитель отмечает чекбоксы по ходу работы — по факту проверки. Ручные проверки и решения на подтверждение —
+> `21-skills-mcp.pending.md` (пополняется приёмкой каждого этапа).
+
+## Цель
+
+По чату видно, какие скиллы использованы и через какие MCP-серверы шли вызовы, а также какие серверы подняты, какие
+упали или ждут входа. Четыре отображения: метки в ленте, кнопка «mcp N/M» со всплывашкой, вкладка «mcp» в правой
+панели и системная строка в ленте. Каждое включается и выключается в настройках.
+
+## Контекст (разведка 2026-10-10)
+
+**Движок и протокол**
+- `src/agent/types.ts:150`: в `session.init` есть `skills[]`, но нет MCP. Строки `:197`/`:206`: `tool.start {toolUseId, name, input}`
+  и `tool.result`. На `:474` — `AgentSession`, необязательные методы добавляются по образцу `setRemote`.
+- `src/agent/claude/mapper.ts:375`, `init()`: `mcp_servers`, `plugins` и `plugin_errors` не читает. Событие
+  шлётся только при смене `sessionId|model|mode` (`lastInitKey`). Неизвестные system-subtype молча отбрасываются (`:248`).
+- `src/agent/claude/adapter.ts:530`: `ClaudeSession.q: Query`. Образцы вызова control-методов — `contextUsage()` `:755`
+  и `capabilities()` `:764`.
+- SDK (`node_modules/@anthropic-ai/claude-agent-sdk/sdk.d.ts`):
+  - init: `mcp_servers[{name, status, source?}]` (`:5843`);
+  - `Query.mcpServerStatus(): McpServerStatus[]` (`:3012`) с полями `{name, status:
+    connected|failed|needs-auth|pending|disabled, serverInfo?{name,version}, error?, scope?, source?, tools?[]}` (`:1226`);
+  - `reconnectMcpServer(name)` `:3144`, `toggleMcpServer(name, enabled)` `:3152`.
+  - Метода авторизации MCP в SDK нет.
+- Инструмент `Skill` в Claude Code: вход `{skill: string, args?: string}`. Плагинные скиллы называются `plugin:skill`.
+  В пробах `spikes/sdk-probe/logs` вызовов `Skill` нет, а `mcp_servers` есть.
+- Codex 0.160.0 (схема `npm run codex:protocol -- --keep`, проверено 2026-10-10):
+  - запрос `mcpServerStatus/list` (`ListMcpServerStatusParams {cursor?, limit?, detail?: full|toolsAndAuthOnly}`) →
+    `McpServerStatus {name, runtimeStatus: notStarted|starting|connected|authenticationRequired|failed|cancelled|disabled
+    | null, serverInfo, httpOrigin, pluginId, …}`;
+  - уведомление `mcpServer/startupStatus/updated {threadId, name, status: starting|ready|failed|cancelled, error,
+    failureReason: reauthenticationRequired|null}`;
+  - запрос `mcpServer/reload` (на деле `config/mcpServer/reload`, без параметров — см. решения сессии 1);
+  - у скиллов `skills/list` и `skills/changed`.
+  - В `src/agent/codex/protocol.ts:388/433` всего этого нет. Неизвестные уведомления — `return []`
+    (`codex/mapper.ts:285`). Вызовы MCP приходят как `mcpToolCall` и превращаются в `mcp__server__tool` (`codex/tools.ts:74/91`).
+- Antigravity: данных про MCP нет (`src/agent/antigravity`, только `mcpCapabilities` в пробе ACP).
+
+**Webview**
+- `src/webview/toolView.ts:41`, `shortName()`: режет `mcp__server__tool` до `tool`. Своей ветки у `Skill` нет (`:148`,
+  default → op `skill`).
+- Строку инструмента рендерит единственный компонент — `Log.tsx:254` (`Tool`, `toolView()` на `:272`). Итог хода —
+  `SumView` `Log.tsx:617`, собирается в `chatState.ts:674` (`kind:'sum'`, тип `:74`). Скиллы из init хранятся в
+  `chatState.ts:175/483`.
+- Вид ленты задаёт только CSS: `data-feed` (`Chat.tsx:432`, правила в `media/feed.css`). Отдельный компонент есть лишь у
+  `FoldRow` (`Log.tsx:630`, вид `folded`).
+- Composer — один компонент `Composer.tsx:272`, шесть раскладок: card `:683`, gauges `:715`, minimal `:745`,
+  statusline `:771`, shell `:800`, classic. В каждой есть `<RemoteMenu {...menuProps}/>`. Образец всплывашки —
+  `RemoteMenu` `:1459` (`.pop` + `.menu up`, `ItemButton`, `Switch` `:268`), меню перечислены в `MenuName` `:79`.
+- Правая панель:
+  - `vscode.ts:40` (`PanelState.tab`) и `readPanel()` `:135`;
+  - `Chat.tsx:403` (`panelAll` с бейджами), фильтр `:421`, иконки полосы-рейла `Chat.tsx:~700–730`;
+  - узкий режим — `Hud.tsx:8/~70–100`;
+  - подписи — `strings.ts:24`, `strings.en.ts:20`;
+  - тела вкладок — `SidePanes.tsx`.
+
+**Настройки** (образец end-to-end — `agentura.remoteControl`)
+- Объявление и описания: `package.json:275`, `package.nls*.json:31`.
+- `src/settings.ts`: `SettingKey` `:143`, список `:180`, `SettingsValues` `:234`, валидация `:462`, чтение `:574`.
+- Протокол: `src/protocol.ts:164/422/579`.
+- В чат значение идёт через `chat.info`: `chatPanel.ts:~660` → `chatController.ts:96/110/269` → `protocol.ts:181` →
+  `store.ts:~390`.
+- Страницы настроек: `SETTINGS_SECTIONS` (`vscode.ts:86`), `Settings.tsx` (`Row` `:79`, `Toggle` `:125`, страница
+  look `:961`), строки `strings.ts:918` / `strings.en.ts:899`.
+
+**Проверки и тесты**
+- `npm run check` = typecheck + lint + vitest + build.
+- Фикстуры маппера `src/agent/claude/__fixtures__/*.expected.json` перегенерирует `node scripts/gen-adapter-fixtures.mjs`
+  (дифф смотреть глазами).
+- Тесты webview: `toolView.test.ts`, `taskPaneDom.test.ts` (mount + `tool.start`, пример с `mcp__agentura_jira__` на `:603`),
+  `feedDom`, `composerDom`, `panelDom`, `settingsDom`. Для настроек — `settings.test.ts` и `manifest.test.ts`.
+- Скриншоты README: `scripts/readme-shots/run.mjs` (группа по `process.argv[2]`, данные в `data.mjs`).
+
+## Решения (2026-10-10)
+
+1. **Одно событие статуса:** `mcp.status {servers: McpServerInfo[], at}`, где `McpServerInfo = {name, status:
+   'connected'|'pending'|'failed'|'needs-auth'|'disabled', error?, version?, tools?: number, scope?, builtin?: boolean}`.
+   Событие всегда несёт полный список. Нормализация Codex:
+   - `connected`/`ready` → `connected`;
+   - `starting`/`notStarted` → `pending`;
+   - `authenticationRequired` или `failureReason: reauthenticationRequired` → `needs-auth`;
+   - `failed`/`cancelled` → `failed`;
+   - `disabled` → `disabled`.
+   `builtin` — in-process серверы самого Agentura (Claude `source: 'sdk'`, например jira); в списке подписываются
+   «встроенный».
+2. **Когда приходит статус.**
+   - Claude: из `mcp_servers` в init (только имя и статус); затем `mcpServerStatus()` сразу после init, после каждого
+     `turn.result` и по ↻. Polling по таймеру не делаем.
+   - Codex: `mcpServerStatus/list` (`detail: toolsAndAuthOnly`) после старта треда и по ↻, плюс
+     `mcpServer/startupStatus/updated` — точечное обновление одного сервера в сохранённом списке, наружу снова уходит
+     полный `mcp.status`.
+   - Antigravity: событий нет, все четыре отображения скрыты.
+3. **Действия по серверу.**
+   - «повторить» есть только у Claude (`reconnectMcpServer`). У Codex `mcpServer/reload` перезагружает все серверы
+     сразу — кнопка «перезапустить все» в шапке всплывашки и вкладки только для Codex.
+   - «войти» в SDK нет. Для `needs-auth` выводим подсказку текстом: «войдите через `/mcp` в Claude Code или в
+     настройках коннекторов claude.ai» (Codex — `codex mcp login <name>`), с кнопкой «скопировать команду».
+   - Вкл/выкл сервера (`toggleMcpServer`) — не в этом roadmap.
+4. **Счётчики вызовов** считает webview по ленте: `tool.start` с `mcp__<server>__` — плюс один серверу и туле. Хост их
+   не хранит. После reseed/истории считаются заново по загруженной ленте.
+5. **Скиллы в сессии** — тоже из ленты:
+   - вызов `Skill` (`input.skill`; у плагинного берём часть после `:` для поиска файла, показываем полное имя);
+   - сообщение пользователя, начинающееся с `/<имя>`, где имя есть в `skills` из init (как вызвал: `/имя` или «сам
+     агент»).
+   Доступные скиллы — `skills` из init, число «доступно N». У Codex список скиллов в этом roadmap не показываем
+   (раздел скрыт).
+6. **«открыть SKILL.md».** Хост ищет `<cwd>/.claude/skills/<имя>/SKILL.md`, потом `~/.claude/skills/<имя>/SKILL.md` и
+   открывает найденный файл в редакторе. Не нашёл (плагинный, встроенный) — ссылки нет. Webview шлёт только имя, путь
+   собирает хост, имя проверяется по `^[a-z0-9][a-z0-9:_-]{0,63}$`.
+7. **Число токенов скилла** в строке не показываем: надёжного источника нет (допущение — результат `Skill` содержит
+   только «Launching skill», а текст приходит отдельным сообщением). В прототипе «3.1k» — не делаем.
+8. **Лента, вариант B.**
+   - Строка MCP: op `mcp`, перед именем тула чип сервера (`.chip2`); если сервер в статусе `failed`, чип и op красные.
+   - Строка `Skill` — полоса-разделитель (`◆ скилл <имя> · вызвал <как>` · «открыть SKILL.md»).
+   - В итоге хода счётчики `mcp N` и `скилл N` — только если они не ноль.
+   - Касается всех четырёх видов ленты: journal, folded, replies, cards. В `FoldRow` (folded) в сводку добавляются
+     «mcp N».
+9. **Кнопка «mcp N/M» у поля ввода** — во всех шести раскладках, рядом с `RemoteMenu`. N — число `connected`, M — все,
+   кроме `disabled`. Жёлтая точка — есть `failed` или `needs-auth`. По клику открывается всплывашка по образцу
+   `RemoteMenu`: серверы (статус, версия, тулов, вызовов в сессии, действие), затем «Скиллы в этой сессии», «доступно
+   N», ↻. Пока статуса нет (до init) — кнопки нет.
+10. **Вкладка «mcp» в правой панели** — после «агенты»: серверы с раскрытием вызовов по тулам (клик по строке), скиллы
+    сессии, «все доступные скиллы…» (раскрывает список имён). Бейдж — число `failed`+`needs-auth` (жёлтый). Есть иконка
+    в полосе-рейле и вкладка в узком режиме (`Hud.tsx`). Сохранённое `tab: 'mcp'` при выключенной настройке нормализуется
+    в `changes`.
+11. **Системная строка в ленте** ставится в ход, в который пришёл `mcp.status`:
+    - «при старте» — сводка «MCP: N подключены · X не подключился (ошибка) · K ждут входа» и раскрываемый список;
+    - «при сбое» — сервер был `connected`, а стал `failed`/`needs-auth`: строка «MCP: X отключился (ошибка)».
+    В историю сессии строка не пишется: при reseed её нет, это живое состояние.
+12. **Настройки** (`agentura.mcp.*`, страница «Внешний вид», подраздел «MCP и скиллы»):
+    - `agentura.mcp.feedLabels`: boolean, по умолчанию `true` — метки B в ленте; `false` — как сейчас (короткое имя,
+      `Skill` обычной строкой, без счётчиков);
+    - `agentura.mcp.composerButton`: boolean, `true`;
+    - `agentura.mcp.panelTab`: boolean, `true`;
+    - `agentura.mcp.feedStatus`: enum `failures|start|off`, по умолчанию `failures`. `failures` — строка, только если
+      что-то не подключено (при старте или по ходу); `start` — сводка при каждом старте сессии плюс сбои; `off` — никогда.
+    Хост статус запрашивает, только если включено хотя бы одно из трёх статусных отображений. `feedLabels` от статуса
+    не зависит, кроме красного чипа.
+
+## Этапы
+
+### 1. Движки и протокол — **opus, high** (два движка, нормализация статусов, новый путь webview→хост)
+
+- [x] `src/agent/types.ts`: `McpServerInfo`, событие `mcp.status {servers, at}` в `AgentEvent`; в `AgentSession` —
+      необязательные `mcpStatus?(): Promise<void>` (запросить, ответ придёт событием) и `mcpReconnect?(name)`,
+      `mcpReloadAll?()`. Флаги возможностей (`canReconnect`, `canReloadAll`, `skillsKnown`) — в `capabilities()` или в
+      `session.init`, по месту.
+- [x] Claude, mapper: `init()` читает `mcp_servers` и шлёт `mcp.status` (статус приводится к решению 1, неизвестный →
+      `pending`, `source:'sdk'` → `builtin`). Событие идёт и тогда, когда `lastInitKey` не изменился, но список изменился.
+- [x] Claude, adapter: `mcpStatus()` через `q.mcpServerStatus()` (tools → число, `serverInfo.version`, `error`, `scope`);
+      вызов после init и после каждого `turn.result` — только если хост просил (флаг от контроллера, решение 12);
+      `mcpReconnect(name)` → `q.reconnectMcpServer`, затем `mcpStatus()`. Ошибки control-запроса — в лог, без падения хода.
+- [x] Codex: в `protocol.ts` — запрос `mcpServerStatus/list`, уведомление `mcpServer/startupStatus/updated`, запрос
+      `mcpServer/reload`; списки в `scripts/codex-protocol.mjs` пополнить (скрипт сверяет их со схемой CLI). Маппер:
+      держит последний список, на уведомление обновляет один сервер (`threadId` чужого треда игнорирует) и шлёт полный
+      `mcp.status`. `mcpStatus()` листает страницы по `cursor` до конца, максимум 10 страниц.
+- [x] Antigravity: ничего не реализует; `mcpStatus` отсутствует.
+- [x] Контроллер чата: передаёт `mcp.status` в webview (через существующий поток событий); запросы webview →
+      `mcp.refresh`, `mcp.reconnect {name}`, `mcp.reloadAll`, `skill.open {name}` — в `FROM_WEBVIEW_TYPES` и
+      `FIELD_CHECKS` (имя сервера ≤ 128, имя скилла по regex из решения 6). `skill.open` ищет файл по решению 6 и
+      открывает его через `vscode.window.showTextDocument`.
+- [x] Настройки 4 ключа (решение 12) end-to-end по образцу `remoteControl`: `package.json` + nls ru/en, `settings.ts`
+      (ключи, типы, валидация enum, чтение), `chat.info` → `store.ts` (signals `mcpFeedLabels`, `mcpComposerButton`,
+      `mcpPanelTab`, `mcpFeedStatus`). Строки на странице «Внешний вид» рисует этап 3 — здесь только данные.
+- [x] Тесты:
+      - `mapper.unit.test.ts`: init с `mcp_servers`, в том числе неизвестный статус и `source:'sdk'`;
+      - `adapter.test.ts`: fake `mcpServerStatus`/`reconnectMcpServer`, ошибка control-запроса;
+      - Codex `mapper.test.ts` + `fakeServer.ts`: list с двумя страницами, updated по одному серверу, чужой `threadId`;
+      - контроллер: `skill.open` с плохим именем отклоняется, с `../` — отклоняется;
+      - `settings.test.ts` и `manifest.test.ts` — новые ключи.
+- [x] Перегенерировать фикстуры `node scripts/gen-adapter-fixtures.mjs`. В `expected.json` должно добавиться только
+      событие `mcp.status` (дифф глазами).
+
+**Готово, когда:** `npm run check` зелёный; в фикстуре с `mcp_servers` есть `mcp.status`; тесты Codex на
+`startupStatus/updated` и пагинацию проходят; `skill.open` с `../x` или пустым именем отклоняется тестом.
+
+**Решения (2026-10-10, по итогам сессии 1):**
+
+*Раскладка файлов.*
+- `src/agent/types.ts` — `McpServerStatus` (union статусов), `McpServerInfo`, событие `mcp.status`;
+  `SessionOptions.mcpWatch`; в `AgentSession` — `mcpStatus?`, `mcpReconnect?`, `mcpReloadAll?`, `setMcpWatch?`.
+- `src/agent/features.ts` — флаги возможностей (см. ниже).
+- Claude: `claude/mapper.ts` (`mcpFromInit`, `mcpFromEngine`, `mcpStatusOf`), `claude/adapter.ts` (`mcpStatus`,
+  `mcpReconnect`, `setMcpWatch`, `refreshMcp`).
+- Codex: `codex/protocol.ts` (`ListMcpServerStatusParams/Response`, `CodexMcpServerStatus`, уведомление, запрос
+  reload), `codex/mapper.ts` (`mcpList`, `mcpStartup`, `mcpRuntimeStatus`), `codex/adapter.ts` (`mcpStatus`,
+  `mcpReloadAll`, `setMcpWatch`), `scripts/codex-protocol.mjs` (методы, поля, литералы).
+- `src/shared/skills.ts` — `SKILL_NAME_RE`, `isSkillName`, `skillDirName` (общие для хоста и webview).
+- `src/extension/skillFiles.ts` — `findSkillFile(name, cwd, home)`; `chatPanel.ts` — deps `findSkill`, `openPath`
+  (`vscode.window.showTextDocument`).
+- `src/protocol.ts`, `src/extension/chatController.ts`, `src/settings.ts`, `package.json` + nls, `src/webview/store.ts`.
+
+*Контракт для этапов 2–3.*
+- Событие (через `agent.event`, как все): `{type: 'mcp.status', servers: McpServerInfo[], at: number}`;
+  `McpServerInfo = {name, status: 'connected'|'pending'|'failed'|'needs-auth'|'disabled', error?, version?, tools?,
+  scope?, builtin?}`. Всегда полный список; поля, которых движок не сообщил, отсутствуют (init Claude — только
+  `name`/`status`/`builtin`). У Codex `scope: 'plugin'` — сервер плагина (`pluginId`), других scope Codex не даёт.
+  Пустой список (`servers: []`) — статус известен, серверов нет; события нет вовсе — статус неизвестен.
+- Когда приходит. Claude: из каждого init, но только если список изменился (сервер с тем же статусом сохраняет
+  версию/тулы из `mcpServerStatus()`); при `mcpWatch` — `mcpServerStatus()` после первого init, после каждого
+  `turn.result` основного агента и после `setMcpServers` (смена инструментов Jira) — тоже только при изменении.
+  Явный запрос (`mcp.refresh`, `mcp.reconnect`) шлёт событие всегда. Codex: `mcpServerStatus/list` при `mcpWatch`
+  после открытия треда (у новой вкладки — после первого сообщения: тред открывается с ним), по ↻ и после reload;
+  до открытия треда ↻ и reload ничего не делают (приёмка);
+  уведомление о запуске сервера шлёт полный список всегда.
+- Флаги возможностей — в `ProviderFeatures` (`chat.info.features`), а не в `capabilities()`/`session.init`: так
+  уже устроены остальные флаги движков, и webview прячет UI по ним. `mcp` (Claude, Codex) — статус есть, иначе
+  кнопка/вкладка/системная строка скрыты; `mcpReconnect` (Claude) — «повторить»; `mcpReloadAll` (Codex) —
+  «перезапустить все»; `skills` (Claude) — раздел скиллов. У Antigravity все четыре `false`.
+- Webview → хост: `{type: 'mcp.refresh'}`, `{type: 'mcp.reconnect', name}` (1…128 символов), `{type: 'mcp.reloadAll'}`,
+  `{type: 'skill.open', name}` (`SKILL_NAME_RE`). Без `sessionId`: у вкладки одна сессия. `mcp.*` без живой
+  сессии ничего не делают (движок не поднимается); движок без метода — предупреждение в лог.
+- Хост → webview, новое: `{type: 'skill.files', names: string[]}` — скиллы из `session.init`, у которых найден
+  SKILL.md. Приходит после каждого `session.init` и при пересеве; `session.reset` в webview его очищает. Нужен
+  решению 6 («не нашёл — ссылки нет»): иначе webview не знает, рисовать ли ссылку. Store: `skillFiles`
+  (`ReadonlySet<string>`).
+- Настройки: `chat.info.mcp = {feedLabels, composerButton, panelTab, feedStatus}` (тип `McpView` в `settings.ts`,
+  чтение `readMcpView`); нет поля — `DEFAULT_MCP_VIEW`. Store: `mcpFeedLabels`, `mcpComposerButton`, `mcpPanelTab`,
+  `mcpFeedStatus`. Решение 12 «хост запрашивает, только если…» — `mcpWatchOf(view)` = кнопка или вкладка или
+  `feedStatus != off`; уходит в `SessionOptions.mcpWatch` (только движкам с `features.mcp`), смена настроек —
+  `setMcpWatch` живой сессии из `pushInfo()`. Init Claude и уведомления Codex приходят и при выключенном
+  слежении: они бесплатные.
+- Пересев webview: контроллер держит последний `mcp.status` (без `agentId`) и `skill.files` и шлёт их после истории.
+
+*Отступления от плана.*
+- Codex reload — `config/mcpServer/reload` (params нет), а не `mcpServer/reload`: так в схеме CLI 0.160.0.
+- В `mcpServerStatus/list` передаём `threadId` треда, когда он открыт: без него `runtimeStatus` пуст (по схеме).
+  Уведомление с `threadId: null` применяется (оно не про чужой тред).
+- `toolsError` Codex идёт в `error`, `tools` — число ключей карты тулов.
+- `mcpReconnect`: ошибка `reconnectMcpServer` — в лог, затем всё равно `mcpStatus()` (ошибку покажет статус сервера).
+- SKILL.md открывается `showTextDocument` (обычная вкладка редактора, preview), а не `vscode.open` (тот может открыть
+  превью Markdown).
+
+*Не проверено.* Живой SDK/Codex с настоящими MCP-серверами (это приёмка): что `mcpServerStatus()` быстрый
+(риск «после каждого хода»), что Codex при `toolsAndAuthOnly` отдаёт `serverInfo.version`, как часто
+`runtimeStatus: null`. Фикстуры проб содержат только `mcp_servers: []` — в `expected.json` добавилось
+`mcp.status {servers: []}` (по одному на фикстуру, дифф просмотрен), непустой список покрыт юнит-тестами.
+Плагинный скилл `a:b` ищется как `<…>/.claude/skills/b/SKILL.md` (решение 5) — если у пользователя есть свой скилл
+с тем же именем, откроется он, а не плагинный.
+
+**Приёмка (2026-10-10).**
+- Починено (свой проход + независимый ревьюер, у каждого пункта тест):
+  - Codex: пагинация останавливается, если `nextCursor` повторился (раньше страница дублировалась до 10 раз);
+  - Codex: уведомление `startupStatus/updated`, пришедшее, пока `mcpServerStatus/list` в пути, ответом списка не
+    откатывается (`mcpListStart`/`mcpList(servers, listing)` в маппере) — иначе сервер застревал в `pending`: после
+    хода Codex статус не переспрашивает;
+  - Codex: `mcpStatus()`/`mcpReloadAll()` до открытия треда ничего не делают — без `threadId` Codex ради списка
+    поднимает все серверы (discovery, до 15 с), а `runtimeStatus` всё равно пуст;
+  - Claude: перекрытые опросы `mcpServerStatus()` (конец хода, ↻, смена Jira) — ответ старше последнего запроса
+    отбрасывается, «событие обязательно» запроса пользователя переходит к последнему;
+  - Claude: ключ «список изменился» не зависит от порядка серверов (init и `mcpServerStatus()` могут перечислять
+    по-разному — было бы событие на каждый ход);
+  - отказ control-запроса после закрытия сессии (оба движка) не пишет предупреждение в лог;
+  - `findSkillFile`: симлинк разрешён, но его цель должна называться `SKILL.md` — репозиторий не подсунет ссылкой
+    произвольный файл (`~/.ssh/id_rsa`) во вкладку редактора; папка-ссылка на свой скилл работает.
+- Не брали: Codex `authStatus: notLoggedIn` при `runtimeStatus: null` → `needs-auth` (вне решения 1; см. «Риски»).
+- Живая проба (SDK 0.3.285, haiku, временная папка с `.claude/skills/probe-skill`, SDK-сервер и сломанный stdio,
+  ~$0.06):
+  - вызов скилла агентом — `tool_use` `Skill` с `input: {skill: "probe-skill"}` (без `args`), `tool_result` —
+    `Launching skill: probe-skill`, текст скилла — отдельное синтетическое сообщение пользователя
+    (`isSynthetic`, «Base directory for this skill: <абсолютный путь>…»; маппер текстовые user-сообщения
+    отбрасывает — в ленте его нет). Решения 5 и 7 подтверждены;
+  - `/probe-skill` от пользователя — вызова `Skill` нет, скилл разворачивается движком молча; узнаём только по
+    тексту своего промпта (решение 5, «/имя»);
+  - init приходит на каждый ход; `mcp_servers` несёт и коннекторы claude.ai (`claude.ai Gmail`, `source:
+    'claudeai'`), серверы из `options.mcpServers` — `scope: 'dynamic'`, in-process — `source: 'sdk'`;
+    `needs-auth` приходит без `error`; у `failed` в `mcpServerStatus()` есть `error`;
+  - `mcpServerStatus()` — 17 мс сразу после init, 1–2 мс после хода: риск «после каждого хода» снят;
+  - `serverInfo` бывает огромным (иконки data:URI) — берём только `version`, как и сделано.
+- **Имя сервера ≠ префикс инструмента.** Инструменты сервера `claude.ai Gmail` приходят как
+  `mcp__claude_ai_Gmail__<тул>`: CLI заменяет в имени сервера всё, кроме `[A-Za-z0-9_-]`, на `_`. Этап 2
+  сопоставляет чип/счётчики со статусом по нормализованному имени (см. промт 2); `mcp.reconnect` шлёт исходное имя
+  из `mcp.status`.
+
+### 2. Лента: метки B и системная строка — **sonnet, high**, после 1
+
+- [x] `chatState.ts`: хранит последний `mcp.status` и предыдущий (для «отключился»), счётчики вызовов по серверам и
+      тулам, список скиллов сессии `{name, how: 'agent'|'slash', at}` — по решениям 4–5, в том числе при reseed/истории.
+- [x] `toolView.ts`: при `feedLabels` для `mcp__s__t` — `op: 'mcp'`, поле `server: s`, `what` — тул и аргумент; для
+      `Skill` — `kind: 'skill'`, `name`, `how`. При выключенной настройке — как сейчас (`shortName`).
+- [x] `Log.tsx`: чип сервера в `Tool` (красный, если сервер `failed`); компонент строки скилла (полоса по прототипу
+      `#feed-b`), «открыть SKILL.md» шлёт `skill.open`. В `SumView` — `mcp N` и `скилл N` (только ненулевые). В
+      `FoldRow` — «mcp N» в сводке.
+- [x] Системная строка (решение 11) по `mcpFeedStatus`: при старте или при сбое, со списком серверов (раскрывается, по
+      умолчанию свёрнут при `failures`, раскрыт при `start`). Встаёт в текущий ход; в историю не пишется.
+- [ ] CSS (написан в `media/feed.css`, DOM-тесты проверяют структуру, не вид; **пользователь**: глазами во всех четырёх видах) для всех четырёх видов ленты (`media/feed.css` и стили ленты): journal/cards как прототип; replies — чипы
+      внутри строки инструментов; folded — полоса скилла видна и в свёрнутом ходе. Цвета — только переменные темы
+      VS Code (как остальная лента).
+- [x] Строки ru/en в `strings.ts`/`strings.en.ts`.
+- [x] Тесты: `toolView.test.ts` (mcp с флагом и без, Skill, плагинный `a:b`); DOM-тест ленты (`feedDom`/по образцу
+      `taskPaneDom.test.ts:603`): чип, полоса скилла, счётчики в итоге, системная строка в режимах
+      `failures`/`start`/`off`, «отключился» при переходе `connected → failed`.
+
+- [x] Плагинные скиллы (`a:b`) без ссылки «открыть SKILL.md» (решение владельца 11.10): в ленте ссылку не рисуем,
+      `findSkillFile` и `skill.files` плагинные имена не включают, `skill.open` с `:` отклоняется контроллером
+      (этап-1 код `skillFiles.ts`/`chatController.ts` + тесты).
+
+**Готово, когда:** `npm run check` зелёный; DOM-тесты на все пункты выше проходят; `feedLabels=false` даёт ленту без
+изменений (тест сравнивает с текущим выводом).
+
+**Решения (2026-10-11, по итогам сессии 2):**
+
+*Раскладка файлов.*
+- `src/webview/mcpFeed.ts` (новый, чистые функции): `mcpPrefix`/`serverByPrefix` (имя сервера ↔ префикс инструмента),
+  `mcpUsage(rows)` (вызовы по серверам и тулам), `sessionSkills(rows, available)`, `turnCounts`, `canOpenSkill`,
+  `mcpNote`/`noteVisible` (что писать в ленту по новому статусу).
+- `toolView.ts`: пятый параметр `labels` (по умолчанию `false` — старое поведение), `mcpToolParts`, поля `ToolView.server`
+  и `ToolView.skill`. `turnView.foldSummary(rows, now, labels)`. `Log.tsx`: чип в `Tool`, `SkillRow`, `McpSysRow`,
+  счётчики в `SumView`. Остальные вызовы `toolView` (hud, агенты, карточки, задача) метки не включают.
+- CSS — в конце `media/feed.css` (общий для всех видов + правки replies/folded/cards). Строки — `ui.mcp` в `strings*.ts`.
+
+*Форма состояния в `chatState` (опора для этапа 3).*
+- `ChatState.mcp?: {servers: McpServerInfo[]; prev?: McpServerInfo[]; at}` — последний полный список и предыдущий; нет —
+  статус неизвестен. Сбрасывается вместе с сессией (`resetSession`).
+- Счётчики вызовов и скиллы сессии **не хранятся**, а считаются по `rows`: `mcpUsage(chat.value.rows)` →
+  `Map<префикс сервера, {total, tools: Map<тул, число>}>` (сопоставлять со статусом через `serverByPrefix(servers, prefix)`
+  или `mcpPrefix(server.name)`); `sessionSkills(rows, chat.value.skills)` → `{name, how: 'agent'|'slash', id}[]` (один скилл —
+  одна запись, первое использование; `at` нет, только `id` строки). Так пересев и история восстанавливают их сами.
+- Строка итога: `sum.mcp`/`sum.skill` (числа, только ненулевые); рисуются при `mcpFeedLabels`.
+- Системная строка — обычный `sys` с полем `mcp: McpNote` (`variant: 'start'|'fail'`, список серверов, `bad`), поэтому
+  `feedTurns` ведёт себя как с остальными `sys`. В ленту строка пишется всегда, **показ** решает `agentura.mcp.feedStatus`
+  при рендере: смена настройки посреди сессии действует и на уже накопленные строки.
+- `ChatState.mcpQuiet` — ставит `seedHistory`, только если в `session.history` есть `mcpReplay` (хост шлёт его при
+  пересеве, когда следом повторит `lastMcp`): этот повтор обновляет `mcp`, но строки не пишет; флаг снимает первый
+  `mcp.status` или `turn.start`. *Приёмка 2026-10-11:* у исполнителя флаг ставился на любой `seedHistory`, в том числе
+  при открытии сессии из истории (там `lastMcp` сброшен, повтора нет) — глотался свежий init движка (у Claude
+  `mcp.status` из init приходит раньше `turn.start`), и сбой при старте в ленту не попадал. Ещё: при пересеве хост
+  больше не доигрывает `mcp.status` из накопленного буфера — его покрывает `lastMcp` (новее), а старый повтор дал бы
+  ложное «отключился».
+- *Приёмка 2026-10-11:* MCP-строка из init встаёт за реплику «в очереди», а `turn.start` переносит реплику в конец —
+  строка выпадала из хода. Теперь `turn.start` снимает хвост MCP-строк за «в очереди» и возвращает их после реплики.
+- *Приёмка 2026-10-11:* старт «оседает» (`settlingStart` в `mcpFeed.ts`): пока последняя MCP-строка — сводка `start` с
+  серверами в `pending` и ход не закончился, следующий статус **переписывает эту сводку на месте**, а не пишет
+  «отключился». Claude: init даёт `pending`, сразу за ним `mcpServerStatus` даёт `connected`/`failed` — одна строка
+  «X не подключился», а не «запускаются» + «отключился». После итога хода окно закрыто, дальше — обычные `fail`.
+- *Приёмка 2026-10-11:* `serverByPrefix` нормализует обе стороны — Codex кладёт в имя инструмента сырое имя сервера
+  (`codex/tools.ts`), Claude — нормализованное. `mcpPrefix` для имён `claude.ai …` ещё схлопывает `_+` и срезает `_` по
+  краям (так в SDK). Пустой прошлый список считается стартом. Упавший `Skill` — полоса `.skrow.fail`. Числа в
+  системной строке — с падежами («1 подключён»).
+
+*Решения и отступления.*
+- «Сбой» для строки «отключился» — переход в `failed`/`needs-auth` из любого другого состояния (в том числе `pending` →
+  `failed`), а не только из `connected`: init Claude часто даёт `pending`, и сбой при подключении иначе остался бы без
+  строки. Повторный сбой того же сервера строки не даёт. `start` — первый `mcp.status` сессии; пустой список — без строки.
+- `failures` при старте: строка только если есть `failed`/`needs-auth` (`pending` сбоем не считается).
+- «Красный» чип/op — только статус `failed` (не `needs-auth`); имя в чипе — из `mcp.status` (с пробелами/точками),
+  если сервер нашёлся по нормализованному префиксу, иначе префикс.
+- Скилл `/имя` от пользователя полосой не рисуется (это не вызов `Skill`) — только в `sessionSkills` для этапа 3.
+  Полоса у `Skill` всегда «вызвал агент».
+- Токены скилла не показываем (решение 7); ссылка «открыть SKILL.md» — только если имя в `skillFiles` и без `:`.
+- В сводке свёрнутого хода счётчик — общим механизмом ops: «mcp ×3», а не «mcp 3».
+- Folded: `.steps` свёрнутого хода с полосой скилла (`:has(> .skrow)`, правка приёмки — иначе пустой grid у каждого
+  свёрнутого хода) остаётся `grid`, скрыты все дочерние, кроме `.skrow`, — полосы скиллов видны.
+- Проверка `feedLabels=false` — тест на отсутствие `.chip2`/`.skrow`/счётчиков и на прежние `op` (`find_sy`, `skill`),
+  а не побайтное сравнение DOM.
+
+*Не проверено.* Вид в VS Code глазами (все четыре вида, светлая/тёмная тема) — **пользователь**. Остатки (не чинили,
+редкие): сервер, висевший `pending` дольше хода и упавший позже, получит «отключился», а не «не подключился»; сервер
+с `__` в имени (`mcpToolParts` режет по первому `__`, как CLI) не сопоставится со статусом — чип покажет префикс;
+вызовы MCP хода, оборванного без итога, попадут в счётчик следующего итога.
+
+### 3. Кнопка у поля, вкладка «mcp», страница настроек — **sonnet, high**, после 2
+
+- [x] `Composer.tsx`: `McpMenu` по образцу `RemoteMenu` (новое имя в `MenuName`, Escape через `menuKeys`) во всех
+      шести раскладках рядом с `RemoteMenu`. Кнопка `mcp N/M` + точка (решение 9). Во всплывашке — серверы, «повторить»
+      (Claude) / «перезапустить все» (Codex), подсказка входа с «скопировать команду», раздел скиллов (для Claude), ↻
+      шлёт `mcp.refresh`. Скрыта, если `!mcpComposerButton` или статуса нет.
+- [x] Правая панель: вкладка `mcp` (`vscode.ts` тип + `readPanel` нормализация, `Chat.tsx` `panelAll`/фильтр по
+      `mcpPanelTab` и наличию статуса/рейл-иконка, `Hud.tsx` узкий режим, `SidePanes.tsx` тело, `strings`). Тело —
+      по прототипу `#panel`: серверы с раскрытием тулов, скиллы сессии, «все доступные скиллы…».
+- [x] Общий компонент строки сервера/скилла для всплывашки и вкладки (одна вёрстка, как в прототипе `.srv`).
+- [x] `Settings.tsx`, страница look: подраздел «MCP и скиллы» — три `Toggle` и выбор `feedStatus` (как другие enum на
+      странице); превью в `SettingsPreview.tsx` — если для соседних настроек оно есть.
+- [x] Тесты: `composerDom` (кнопка в каждой раскладке, точка при `failed`, скрыта при выключенной настройке и до
+      статуса, «повторить» шлёт `mcp.reconnect`), `panelDom` (вкладка, бейдж, нормализация сохранённого `mcp`),
+      `settingsDom` (новые строки пишут `settings.set`).
+
+**Готово, когда:** `npm run check` зелёный; DOM-тесты выше проходят; кадры `node scripts/readme-shots/run.mjs mcp`
+(сценарий добавляет этап 4) — или, до него, ручной mount в тесте — показывают всплывашку и вкладку как в прототипе.
+
+**Решения (2026-10-11, по итогам сессии 3):**
+
+*Раскладка файлов.*
+- `src/webview/mcpView.ts` (новый, чистые функции): `mcpCounts` (N/M/bad), `usageByServer` (вызовы из `mcpUsage`, ключ — имя
+  сервера из статуса через `serverByPrefix`), `loginCommand`, `mcpSurfaceShown` (`features.mcp` + настройка + статус непуст).
+- `components/McpRows.tsx` (новый): `McpServerRow`, `McpSkillRow`, `McpAllSkills` — одна вёрстка `.srv`; `McpSections`
+  (`variant: 'pop' | 'pane'`) — общее тело всплывашки и вкладки (серверы, подсказка входа, скиллы сессии). Вызовы и скиллы
+  считаются `useMemo` по `rows` и только пока блок виден (`idle` у скрытой вкладки).
+- `Composer.tsx`: `McpMenu` (`MenuName 'mcp'`, обёртка `.pop.mcpw`, меню `.menu.up.mcpmenu`) после `RemoteMenu` во всех шести
+  раскладках. `SidePanes.tsx`: `McpPane`. `Chat.tsx`: вкладка `mcp` в `panelAll`/фильтре, бейдж (число сбоев, `warn`),
+  иконка рейла, нормализация сохранённого `mcp` в «изменения»; `Hud.tsx`: `mcpTab`/`badges.mcp`; `TabBar.tsx`: `badge.warn`;
+  `vscode.ts`: `PanelState.tab` + `readPanel` принимают `'mcp'`. Строки — `ui.mcp.*`, `ui.tabs.mcp`, `ui.settings.mcp*`.
+- CSS: `.srv`, `.mcpmenu`, `.mcpb` — `media/composer.css`; вкладка, бейдж и правило `data-active="mcp"` — `media/hud.css`;
+  подраздел — `media/settings.css`. Прототип `prototype/screens/settings.html` дополнен четырьмя строками (на него смотрит
+  тест «разметка как в прототипе»).
+
+*Отступления и решения.*
+- Кнопка и вкладка скрыты и при **пустом** списке серверов (`servers: []`): «mcp 0/0» ничего не говорит. Это шире буквы
+  решений 9–10 (там только «нет статуса») — обратимо одной строкой в `mcpSurfaceShown`.
+- «Войти» у `needs-auth` — подсказка-строка под сервером (не в правой колонке, как «войти» в прототипе) с «скопировать
+  команду»: Claude — `/mcp`, Codex — `codex mcp login <имя>`. Без токенов скилла и времени вызова (решение 7, `at` в
+  `sessionSkills` нет): строка скилла — имя, «вызвал агент / вызван вами», «открыть SKILL.md» (только `canOpenSkill`).
+- Счётчик «выз.» показан у `connected` (или если вызовы были): «—» при нуле; число тулов — только если движок его отдал.
+- Раскрытие по тулам — только во вкладке и только у серверов с вызовами; во всплывашке строки не раскрываются.
+- Вкладка в пустой сессии отключена (как «изменения»/«агенты»); кнопка у поля от `empty` не зависит (по статусу).
+- Превью в `SettingsPreview.tsx` не делал: у соседних переключателей (`remoteControl`, `tasks.humanChanges`) его нет, превью
+  есть только у карточек выбора вида. Подраздел — `h3.st-sub` с пояснением (отдельного паттерна подразделов на страницах не было).
+- «перезапустить все» (Codex) — в заголовке секции серверов; «↻» — `mcp.refresh` там же.
+
+*Проверено.* `npm run check` зелёный (141 файл, 1958 тестов): `composerDom` (все шесть раскладок, точка при сбое, скрыта до
+статуса / при `servers: []` / без `features.mcp` / при выключенной настройке, «повторить» → `mcp.reconnect`, ↻, подсказка входа
+и копирование для Claude и Codex, «перезапустить все», скиллы сессии и `skill.open`, Escape), `panelDom` (вкладка, бейдж
+`b warn`, рейл, раскрытие по тулам, нормализация сохранённого `mcp`, `readPanel`, узкий режим), `settingsDom` (три `Toggle` и
+`feedStatus` пишут `settings.set`), `mcpView.test.ts`.
+
+*Не проверено.* Вид в VS Code глазами (всплывашка в шести раскладках, вкладка, бейдж, рейл, узкий режим, светлая и тёмная
+тема) — **пользователь**; кадры `run.mjs mcp` — этап 4. CSS сверен с прототипом по коду, не по картинке. Живые Codex/Claude с
+настоящими серверами — ручные чеклисты в `21-skills-mcp.pending.md`.
+
+**Приёмка (2026-10-11).** Принято с правками (два прохода, второй — независимый ревьюер):
+- В classic/gauges всплывашка держится за ряд (`.opts`/`.sets`, `right: 0`), а не за кнопку: ряд переносится, и меню
+  342 px от кнопки уходило за край узкой вкладки. Без `html[data-width="380"]` — в расширении этого атрибута нет
+  (`Chat.tsx` ставит только `900`), узкий режим там — «не широкий». У `.rcmenu` та же привязка к кнопке (уже, 320 px) —
+  не трогали.
+- Высота — общий `.compose .menu` (45vh, `webview.css` грузится после `composer.css`), свой `max-height: 70vh` убран.
+- Кнопка пропала при открытой всплывашке (↻ дал пустой список, выключили настройку, сменился движок) — меню закрывается
+  эффектом в `Composer`: иначе невидимое меню съедало следующий Esc (стоп хода) и открывалось само при возврате кнопки.
+- Всплывашка — `role="dialog"` (пунктов `.it` нет, `menuKeys` в ней не работает; Tab по кнопкам).
+- «скопировать команду» без буфера пишет команду строкой в ленту (`ui.sys.mcpCommand`, как ссылка RC в `copyLink`);
+  «скопировано» гаснет через 1,5 с (таймер чистится). Ошибка сервера обрезается многоточием — полный текст в `data-tip`.
+- Отступы заголовков вкладки (`.tabpane.mcpp h5`) не применялись: `composer.css` грузится позже `hud.css`.
+- Тесты: залипшее меню (`composerDom`), гашение `mcpPanelTab` при открытой вкладке в узком режиме (`panelDom`), фолбэк
+  копирования. Решение «скрыто при `servers: []`» — в pending на подтверждение.
+
+### 4. Релиз 0.11.0 — **sonnet, medium**, после 3
+
+- [x] `scripts/readme-shots`: группа `mcp` (`process.argv[2] === 'mcp'`), данные в `data.mjs` — init с 8 серверами
+      (как в прототипе), ход с `Skill`, тремя вызовами MCP и вызовом к упавшему серверу. Кадры: лента B, всплывашка
+      открыта, вкладка «mcp», системная строка; одна картинка в README — `docs/images/skills-mcp.png`.
+- [x] `README.md`, `README.ru.md` — раздел про скиллы и MCP (что видно, где отключить).
+- [x] `CHANGELOG.md` (английский) `## 0.11.0 — <дата>`, `### Added`; `package.json` версия 0.11.0; `npm run package`.
+- [x] `docs/features.md` — B12 (MCP) из «Потом» в сделанное; `docs/feature-inventory.md` раздел 12 — отметить.
+- [x] (оркестратор, галерея v43, 12.10) Галерея прототипа: раздел `#tools` — тег «выбрано B, 3, 4, 5 · реализовано», добавить «настоящий webview» из
+      кадров run.mjs (по образцу `#task-real`).
+
+**Готово, когда:** `npm run check` зелёный, `agentura-0.11.0.vsix` собран, README-картинка обновлена, CHANGELOG на
+английском.
+
+**Решения (2026-10-12, по итогам сессии 4):**
+
+- Кадры: группа `mcp` в `run.mjs` (`node scripts/readme-shots/run.mjs mcp`; `MCP_SHOTS_DIR` — куда класть
+  `tools-real-<вид>-<dark|light>.png`: feed, popover, panel, sys). Данные — `mcpTurn()`/`mcpServers` в `data.mjs`
+  (8 серверов, `Skill`, 3 вызова MCP, вызов к упавшему webstorm). Всплывашка открывается кликом по `.compose .mcpb`:
+  в `surfaceHtml` добавлен необязательный параметр `click` (селектор, клик через 1,5 с после ready).
+- Кадр `sys` — ход обрезан до первых чтений, иначе строка «MCP: 5 подключены · …» уезжает за верх ленты. README-картинка
+  (`docs/images/skills-mcp.png`) — лента B и вкладка «mcp» вместе, тёмная тема; строки статуса нет (виден её итог —
+  красный чип и красная точка).
+- `docs/features.md`: B12 — «Диалог MCP» помечен «Сделано (0.11.0, только просмотр)» с оговоркой, что управление
+  серверами остаётся в `/mcp`; в `feature-inventory.md` раздел 12 — пометки у MCP и скиллов. Отдельную строку A17 не заводил.
+- README: картинка и раздел «MCP servers and skills» перед «Remote Control»; баннер «New in 0.11» с сохранением 0.10.
+- `package-lock.json` поднят вручную (`npm run package` его не трогает). vsix без `.codex/` и `AGENTS.md` (проверено `unzip -l`).
+- `npm run check`: первый прогон — 1 падение `composerLayouts.test.ts` (Hook timed out 10000ms под нагрузкой, к этапу не
+  относится); файл отдельно 42/42, повторный полный прогон зелёный: 141 файл, 1960 тестов.
+- Галерея claude.ai не публиковалась (поручено оркестратору); кадры лежат в scratchpad `real-shots/`.
+- Глазами (пользователь): vsix 0.11.0 в живом VS Code — кнопка и вкладка на реальных MCP-серверах.
+
+**Приёмка (2026-10-12).** Принято. Правки: README/README.ru — Antigravity: скрыты кнопка, вкладка и строка статуса
+(метки ленты от статуса не зависят), было «всё скрыто»; лишняя пустая строка в CHANGELOG. CHANGELOG/README сверены с
+`package.json` (`agentura.mcp.*`, дефолт `feedStatus` — `failures`) и решениями 2–12. `npm ls --depth=0` чистый.
+Правка `lib.mjs` без `click` даёт прежний html; `run.mjs tasks` отработал. Картинка без приватных данных.
+
+## Промты сессий
+
+Общая шапка (в начало каждого промта):
+
+```
+Работаем в /Users/fost/Projects/Agentura, ветка feature/skills-mcp. Правила репо — стиль окружающего кода
+(комментарии по-русски, их плотность — как рядом).
+Читай: docs/roadmap/21-skills-mcp.md — «Контекст», «Решения» и свой этап; прототип prototype/screens/tools-mcp.html.
+Точки входа в «Контексте» проверены при планировании — не перечитывать их ради подтверждения, открывать только
+фрагмент, который правишь. Файлы > 300 строк целиком не читать: grep -n по сигнатурам, потом кусок.
+Длинный вывод команд — в файл ($TMPDIR/x.log), в контекст только tail -30 и grep FAIL|error.
+Решения не переспрашивать и не менять. Вопрос без ответа в roadmap — в отчёт, не додумывать.
+Галочки в roadmap — по факту проверки.
+Не делать: «заодно улучшить», правки вне этапа, чужие незакоммиченные файлы (.codex/, AGENTS.md).
+Не коммитить, не пушить — это сделает приёмка.
+Последним сообщением — отчёт: сделано (файлы) / отклонения от плана / не проверено / открытые вопросы.
+```
+
+### Промт 1
+
+```
+Сессия 1 — движки и протокол MCP-статуса · Модель: opus, effort: high · первая
+<общая шапка>
+Задача: этап 1 roadmap 21 — событие mcp.status, Claude (init + mcpServerStatus/reconnectMcpServer), Codex
+(mcpServerStatus/list, mcpServer/startupStatus/updated, mcpServer/reload), запросы webview mcp.refresh/mcp.reconnect/
+mcp.reloadAll/skill.open, 4 настройки agentura.mcp.* до store.ts. Решения 1–3, 6, 12.
+Эталоны: control-метод SDK — adapter.ts:755 contextUsage(); необязательный метод сессии — setRemote в types.ts:474;
+уведомления Codex — codex/protocol.ts:388/433 и codex/mapper.ts:285; проверка полей webview — FIELD_CHECKS в
+src/protocol.ts; настройка end-to-end — agentura.remoteControl (пути в «Контексте»). Схема Codex:
+npm run codex:protocol -- --keep.
+Порядок — чекбоксы этапа 1 сверху вниз. DoD: «Готово, когда» этапа 1. Проверка: npm run check.
+```
+
+### Промт 2
+
+```
+Сессия 2 — лента: метки B и системная строка · Модель: sonnet, effort: high · после сессии 1
+<общая шапка>
+Задача: этап 2 roadmap 21 — чип сервера у MCP-вызовов, полоса скилла, счётчики mcp/скилл в итоге хода и FoldRow,
+системная строка MCP по agentura.mcp.feedStatus, всё под agentura.mcp.feedLabels. Решения 4, 5, 7, 8, 11, 12.
+Событие mcp.status и signals настроек уже есть (этап 1): src/agent/types.ts (McpServerInfo), store.ts
+(mcpFeedLabels, mcpFeedStatus, skillFiles — у кого есть SKILL.md, только им ссылка «открыть SKILL.md»);
+флаги движка — features.mcp/skills (src/agent/features.ts). Контракт — «Решения по итогам сессии 1» этапа 1.
+По реальному коду (приёмка этапа 1): префикс инструмента — нормализованное имя сервера (`claude.ai Gmail` →
+mcp__claude_ai_Gmail__…, всё кроме [A-Za-z0-9_-] → `_`); чип и красный цвет — по совпадению нормализованных имён,
+показывать исходное имя из mcp.status, если оно нашлось. `/имя` от пользователя вызова Skill не даёт — только текст
+промпта; init (и mcp.status из него) приходит на каждый ход, но событие — только при изменении списка.
+Эталоны: toolView.ts:41/148, Log.tsx:254 (Tool), :617 (SumView), :630 (FoldRow), chatState.ts:674 (sum), :175/483
+(skills); DOM-тест — taskPaneDom.test.ts:603; вёрстка — prototype/screens/tools-mcp.html#feed-b и #sys.
+Порядок — чекбоксы этапа 2. DoD: «Готово, когда» этапа 2. Проверка: npm run check.
+```
+
+### Промт 3
+
+```
+Сессия 3 — кнопка «mcp N/M», вкладка «mcp», страница настроек · Модель: sonnet, effort: high · после сессии 2
+<общая шапка>
+Задача: этап 3 roadmap 21 — McpMenu в шести раскладках composer, вкладка mcp в правой панели (рейл, узкий режим),
+общий компонент строки сервера/скилла, подраздел «MCP и скиллы» на странице «Внешний вид». Решения 3, 5, 9, 10, 12.
+Состояние MCP — `chat.value.mcp` (chatState), счётчики и скиллы сессии считают `mcpUsage`/`sessionSkills` из `src/webview/mcpFeed.ts` по `chat.value.rows` (этап 2; ключ `mcpUsage` — префикс из имени инструмента, со статусом сопоставлять только через `serverByPrefix`, он нормализует обе стороны — Codex кладёт сырое имя; `isBadServer`, строки `ui.mcp.status`/`ui.mcp.connected…` — переиспользовать; в рендере считать через `computed`/`useMemo`, не на каждую строку); плагинным скиллам (`a:b`) «открыть SKILL.md» нет (решение владельца 11.10); запросы mcp.refresh/mcp.reconnect/mcp.reloadAll —
+в протоколе (этап 1); показывать «повторить» по features.mcpReconnect, «перезапустить все» по features.mcpReloadAll,
+кнопку/вкладку — по features.mcp, раздел скиллов — по features.skills; signals mcpComposerButton/mcpPanelTab, skillFiles
+(store.ts). Контракт — «Решения по итогам сессии 1» этапа 1.
+Эталоны: RemoteMenu — Composer.tsx:1459, MenuName :79, menuProps :616; вкладка панели — vscode.ts:40/135,
+Chat.tsx:403/421/~700, Hud.tsx:8, SidePanes.tsx; строка настроек — Settings.tsx:825 (remoteControl), Row :79,
+Toggle :125; вёрстка — prototype/screens/tools-mcp.html#popover и #panel.
+Порядок — чекбоксы этапа 3. DoD: «Готово, когда» этапа 3. Проверка: npm run check.
+```
+
+### Промт 4
+
+```
+Сессия 4 — релиз 0.11.0 · Модель: sonnet, effort: medium · после сессии 3
+<общая шапка>
+Задача: этап 4 roadmap 21 — группа mcp в scripts/readme-shots (run.mjs, data.mjs), картинка docs/images/skills-mcp.png,
+README/README.ru, CHANGELOG (англ.), версия 0.11.0, vsix, docs/features.md B12, раздел галереи #tools.
+Эталон — релиз 0.10.0 (коммит 9300ecf) и группа tasks в run.mjs:181–248.
+Селекторы для кадров (этап 3): кнопка `.compose .mcpb` (клик открывает `.mcpmenu`), вкладка панели `#ptab-mcp` (`.pane.side[data-active="mcp"]`), статус в webview — событие `mcp.status` (нужны `features.mcp`, непустой список). Галерея — память agentura-prototype-artifact
+(перед публикацией прочитать живую версию). DoD: «Готово, когда» этапа 4.
+```
+
+## Риски и открытые вопросы
+
+- ~~**Форма `Skill`.**~~ Проверено живой пробой на приёмке этапа 1: `input.skill`, `/имя` вызова `Skill` не даёт
+  (подробности — «Приёмка» этапа 1). Решение 5 в силе.
+- ~~**`mcpServerStatus()` после каждого хода**~~ — 1–17 мс на живом SDK (приёмка этапа 1), риск снят.
+- **Путь к SKILL.md из сообщения движка.** Синтетическое сообщение после `Skill` несёт точную папку скилла
+  («Base directory for this skill: …»), в том числе плагинного. Сейчас её не читаем (решение 6 ищет по имени, у
+  плагинного возможна подмена одноимённым пользовательским). Если коллизия станет проблемой — брать путь оттуда.
+- **Сбой сервера посреди хода у Claude** виден только после конца хода. Push-события об этом в SDK не нашли — принято.
+- **Codex `runtimeStatus: null`** («конфиг изменился») — считаем `pending`. Если на живом Codex это частое состояние,
+  пересмотреть. Кандидат: при `null` и `authStatus: notLoggedIn` (поле `McpServerStatus` в схеме 0.160.0) —
+  `needs-auth`; это правка решения 1.
+- **Скиллы у Codex** (`skills/list`, вызов через `$skill`) не показываем. Отдельной задачей — если понадобится.
+- **«войти» для `needs-auth`** — только подсказка: в SDK нет авторизации MCP. Если владельцу нужна настоящая кнопка,
+  это отдельная работа через терминал `claude /mcp`.
+
+## Порядок работы
+
+1 → 2 → 3 → 4, последовательно (одно репо, общий webview). Каждый этап — исполнитель-субагент, затем приёмка
+`/plan-review` с коммитом в `feature/skills-mcp`. До старта этапа 1 ветка `feature/skills-mcp` от `main`; первым
+коммитом — прототип (`prototype/screens/tools-mcp.html`) и этот файл.

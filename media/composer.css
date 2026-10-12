@@ -191,3 +191,40 @@ html[data-width="380"] .compose[data-layout="gauges"] .top .g { margin-left: 0; 
 .rcmenu .qr p b { color: var(--fg); font-weight: 500; }
 .rcmenu .nt { padding: 4px 8px 6px; color: var(--fg-mute); font-size: 11px; line-height: 1.45; }
 .rcmenu .nt.err { color: var(--del); }
+
+/* ── «mcp N/M» у поля ввода и всплывашка (roadmap 21, этап 3); строки .srv — общие с вкладкой панели, ниже ── */
+.compose .mcpb .d { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--warn); margin-left: 5px; vertical-align: 1px; }
+.compose .mcpmenu { right: -60px; left: auto; width: 420px; max-width: min(420px, 90vw); padding: 6px 0; font-size: 12.5px; }
+.compose:is([data-layout="card"], [data-layout="minimal"], [data-layout="statusline"], [data-layout="shell"]) .mcpmenu { right: 0; }
+/* classic/gauges: ряд переносится, кнопка может стоять где угодно — всплывашка держится за ряд, а не за кнопку (как в остальных
+   раскладках); атрибута data-width="380" в расширении нет, поэтому без привязки к ширине. max-height — общий .compose .menu */
+.compose:is([data-layout="classic"], [data-layout="gauges"]) :is(.opts, .sets) { position: relative; }
+.compose:is([data-layout="classic"], [data-layout="gauges"]) .mcpw { position: static; }
+.compose:is([data-layout="classic"], [data-layout="gauges"]) .mcpmenu { right: 0; }
+.mcpmenu hr { border: 0; border-top: 1px solid var(--line); margin: 6px 0; }
+
+/* строки сервера и скилла — одна вёрстка во всплывашке и во вкладке */
+.srv { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 3px 12px; }
+.srv .st { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
+.srv .st.fail { background: var(--del); }
+.srv .st.auth { background: var(--warn); }
+.srv .st.off { background: none; border: 1px solid var(--fg-faint); }
+.srv .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; color: inherit; }
+.srv .nm small { color: var(--fg-mute); margin-left: 6px; font-size: 11.5px; }
+.srv .nm small.err { color: var(--del); font-family: var(--mono); font-size: 11px; }
+.srv .n { font: 11px var(--mono); color: var(--fg-mute); white-space: nowrap; }
+.srv .n b { color: var(--fg); font-weight: 500; }
+.srv .act, .mcpmenu h5 .act, .mcpp h5 .act, .srv-hint .act { font-size: 11.5px; color: var(--link); white-space: nowrap; background: none; border: 0; padding: 0; cursor: pointer; }
+.srv .act:hover, .srv-hint .act:hover { text-decoration: underline; }
+.srv.dim { color: var(--fg-mute); }
+.srv.sk .st { background: var(--accent); border-radius: 2px; }
+.srv .nmb { background: none; border: 0; padding: 0; cursor: pointer; font: inherit; }
+.srv .nmb::before { content: "▸ "; color: var(--fg-faint); }
+.srv .nmb[aria-expanded="true"]::before { content: "▾ "; }
+.srv-hint { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; margin: 0 12px 4px 30px; color: var(--fg-mute); font-size: 11.5px; }
+.mcpmenu h5, .mcpp h5 { margin: 6px 12px 4px; font-size: 10.5px; font-weight: 600; color: var(--fg-mute); text-transform: uppercase; letter-spacing: .04em; display: flex; align-items: baseline; }
+.mcpmenu h5 em, .mcpp h5 em { margin-left: auto; font-style: normal; text-transform: none; letter-spacing: 0; font-weight: 400; display: inline-flex; gap: 8px; align-items: baseline; }
+.mcpmenu h5 .rf, .mcpp h5 .rf { background: none; border: 0; padding: 0 2px; color: var(--fg-mute); cursor: pointer; font-size: 13px; }
+.mcpmenu h5 .rf:hover, .mcpp h5 .rf:hover { color: var(--fg); }
+.more { display: block; padding: 3px 12px 2px 30px; color: var(--link); font-size: 12px; background: none; border: 0; cursor: pointer; text-align: left; }
+.allsk { display: flex; flex-wrap: wrap; gap: 2px 10px; padding: 2px 12px 4px 30px; color: var(--fg-mute); font: 11px/1.6 var(--mono); }

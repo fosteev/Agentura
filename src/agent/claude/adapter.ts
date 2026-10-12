@@ -549,6 +549,11 @@ class ClaudeSession implements AgentSession {
   /** Когда `comment` прошёл без вопроса (окно `AUTO_WINDOW_MS`). */
   private autoComments: number[] = [];
   private readonly taskTools: TaskTools | undefined;
+  /** Статус MCP запрашивается сам после старта и каждого хода (`SessionOptions.mcpWatch`, roadmap 21). */
+  private mcpWatch: boolean;
+  /** Номер последнего `mcpServerStatus()` и «ответ обязан дать событие» (`refreshMcp`). */
+  private mcpSeq = 0;
+  private mcpForce = false;
 
   constructor(
     sdk: SdkModule,
@@ -568,6 +573,7 @@ class ClaudeSession implements AgentSession {
     this.cwd = options.cwd;
     this.title = options.title;
     this.model = options.model;
+    this.mcpWatch = options.mcpWatch === true;
     this.mapper = new ClaudeEventMapper({
       baselineCostUsd: resume ? options.baselineCostUsd : 0,
       ...(config.lang ? { lang: config.lang } : {}),
@@ -675,6 +681,7 @@ class ClaudeSession implements AgentSession {
     this.q
       .setMcpServers(servers)
       .then((r) => {
+        if (this.mcpWatch) void this.refreshMcp(false);
         const err = r.errors[JIRA_SERVER];
         if (!err) return;
         this.log('warn', `инструменты Jira: сервер не подключился: ${err}`);
@@ -787,6 +794,47 @@ class ClaudeSession implements AgentSession {
     return result;
   }
 
+  /** Статус MCP-серверов (`mcpServerStatus()`) → `mcp.status`; запрос пользователя — событие и без изменений. */
+  async mcpStatus(): Promise<void> {
+    await this.refreshMcp(true);
+  }
+
+  /** «повторить» у сервера: `reconnectMcpServer`, затем свежий статус (и при ошибке — она уже в статусе сервера). */
+  async mcpReconnect(name: string): Promise<void> {
+    if (this.closed) return;
+    try {
+      await this.q.reconnectMcpServer(name);
+    } catch (error) {
+      this.log('warn', `reconnectMcpServer(${name}) не ответил: ${String(error)}`);
+    }
+    await this.refreshMcp(true);
+  }
+
+  setMcpWatch(on: boolean): void {
+    const was = this.mcpWatch;
+    this.mcpWatch = on;
+    // включили настройку посреди сессии: статус сразу, не ждать конца хода
+    if (on && !was && this.mapper.sessionId) void this.refreshMcp(false);
+  }
+
+  private async refreshMcp(force: boolean): Promise<void> {
+    if (this.closed) return;
+    // опросы могут перекрыться (конец хода, ↻, смена Jira): ответ старше последнего запроса отбрасываем, а
+    // «событие обязательно» запроса пользователя переходит к последнему
+    const seq = ++this.mcpSeq;
+    if (force) this.mcpForce = true;
+    try {
+      const raw = await this.q.mcpServerStatus();
+      if (seq !== this.mcpSeq || this.closed) return;
+      const event = this.mapper.mcpFromEngine(raw, this.mcpForce);
+      this.mcpForce = false;
+      if (event) this.emit(event);
+    } catch (error) {
+      // сессию закрыли, пока шёл запрос: отказ control-запроса ожидаем, не шумим
+      if (!this.closed) this.log('warn', `mcpServerStatus не ответил: ${String(error)}`);
+    }
+  }
+
   /** Remote Control вкладки: включение — мост к claude.ai (лениво), выключение — досылка и закрытие. */
   async setRemote(on: boolean): Promise<void> {
     if (!on) {
@@ -866,8 +914,12 @@ class ClaudeSession implements AgentSession {
           if (event.type === 'session.init' && first) {
             first = false;
             void this.emitContext();
+            if (this.mcpWatch) void this.refreshMcp(false);
           }
-          if (event.type === 'turn.result') void this.emitContext();
+          if (event.type === 'turn.result') {
+            void this.emitContext();
+            if (this.mcpWatch && !event.agentId) void this.refreshMcp(false);
+          }
         }
       }
       this.close('exit');
