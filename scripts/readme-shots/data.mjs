@@ -284,3 +284,39 @@ export const tabChats = () => ({
 });
 export const integrations = { jiraffe: { state: 'ready', version: '0.8.0', instances: [{ id: 'inst', name: 'Jira DC', baseUrl: 'https://jira.example.com', kind: 'dc' }] },
   own: [{ id: 'cloud', name: 'Team Cloud', baseUrl: 'https://example.atlassian.net', kind: 'cloud' }], active: 'jiraffe', writes: true };
+
+// ---- MCP and skills (roadmap 21, stage 4) ----------------------------------------------------------------------
+
+const srv = (name, status, extra = {}) => ({ name, status, ...extra });
+/** Eight servers, as in the prototype: working, built-in, failed, waiting for sign-in, disabled. */
+export const mcpServers = [
+  srv('serena', 'connected', { version: '1.2.0', tools: 21 }),
+  srv('agentura_jira', 'connected', { builtin: true, tools: 3 }),
+  srv('context7', 'connected', { version: '2.0.1', tools: 2 }),
+  srv('figma', 'connected', { version: '1.4.0', tools: 9 }),
+  srv('github', 'connected', { version: '0.9.3', tools: 14 }),
+  srv('webstorm', 'failed', { error: 'connect ECONNREFUSED 127.0.0.1:64342' }),
+  srv('sentry', 'needs-auth'),
+  srv('postgres', 'disabled'),
+];
+export const mcpSkills = ['review-diff', 'run-tests', 'jira-flow', 'commit-style'];
+
+/** Claude order: init (with skills), then mcp.status, then the turn. */
+export function mcpTurn() {
+  const ev = finishedTurn();
+  const t0 = ev.find((e) => e.type === 'turn.start').at;
+  const initIdx = ev.findIndex((e) => e.type === 'session.init');
+  ev[initIdx] = { ...ev[initIdx], skills: mcpSkills };
+  ev.splice(initIdx + 1, 0, { type: 'mcp.status', servers: mcpServers, at: t0 - 500 });
+  const i = ev.findIndex((e) => e.type === 'usage.message');
+  const extra = [
+    ...tool(t0 + 3000, 'Skill', { skill: 'review-diff' }, 'Launching skill: review-diff', { ms: 90 }),
+    ...tool(t0 + 9000, 'mcp__serena__find_symbol', { name_path_pattern: 'onOpen' }, '[{"name":"onOpen","kind":"Function","file":"ws-client/src/reconnect.ts"}]', { ms: 180 }),
+    ...tool(t0 + 16_000, 'mcp__serena__find_referencing_symbols', { name_path: 'onOpen', relative_path: 'ws-client/src/reconnect.ts' }, '3 references', { ms: 240 }),
+    ...tool(t0 + 27_000, 'mcp__context7__query-docs', { libraryId: '/mdn/web-api', query: 'WebSocket close codes' }, 'Close codes: 1000, 1001, 1006', { ms: 520 }),
+    ...tool(t0 + 33_000, 'mcp__webstorm__get_file_problems', { filePath: 'board/src/Counter.tsx' }, 'MCP server "webstorm" is not connected', { ms: 60, isError: true }),
+    ...tool(t0 + 36_000, 'mcp__agentura_jira__comment', { text: 'Fixed: the counter keeps the last snapshot on reconnect.' }, 'Comment added to QUE-214', { ms: 700 }),
+  ];
+  ev.splice(i, 0, ...extra);
+  return ev;
+}

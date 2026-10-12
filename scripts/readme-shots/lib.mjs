@@ -44,7 +44,7 @@ const APPEARANCE = { type: 'appearance', fontInterface: '', fontPanels: '', font
  * html of one webview surface. `messages` are posted to the page after its `ready`, one by one (50 ms apart);
  * `state` is what `getState()` returns; `relay` forwards `agents.snapshot` to the parent page.
  */
-export function surfaceHtml({ surface, theme, messages = [], state, relay = false, bg }) {
+export function surfaceHtml({ surface, theme, messages = [], state, relay = false, bg, click }) {
   const t = THEMES[theme];
   const seq = [{ type: 'init', surface, version: '0.3.0' }, APPEARANCE, ...messages];
   const links = cssFor(surface).map((c) => `<link rel="stylesheet" href="${furl(join(ROOT, 'media', c))}">`).join('');
@@ -60,7 +60,7 @@ window.acquireVsCodeApi=function(){return{
  getState:function(){return __state},setState:function(s){__state=s}}};
 </script></head>
 <body class="vscode-${theme}" data-vscode-theme-kind="vscode-${theme}" style="margin:0;background:${bg ?? t.bg};color:${t.fg};font-family:var(--vscode-font-family);font-size:13px">
-<div id="root"></div><script type="module" src="${furl(join(ROOT, 'dist', 'webview', `${surface}.js`))}"></script></body></html>`;
+<div id="root"></div><script type="module" src="${furl(join(ROOT, 'dist', 'webview', `${surface}.js`))}"></script>${click ? `<script>setTimeout(function(){var e=document.querySelector(${json(click)});if(e)e.click()},1500)</script>` : ''}</body></html>`;
 }
 
 /** Wrapper page: iframes side by side, plain `rows` of [file, width] with 1 px dividers. */

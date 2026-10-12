@@ -14,7 +14,11 @@ engine as Claude Code, through your installed `claude` and its login. Codex CLI 
 
 Personal project, not on the Marketplace. Install it from a `.vsix` (see [Install](#install)).
 
-> **New in 0.10 — a "task" tab beside the chat.** A chat on a Jira issue gets "chat | task" tabs: the full issue card
+> **New in 0.11 — MCP servers and skills in view.** MCP calls carry a server chip in the feed, a skill call is a strip
+> with "open SKILL.md", and an "mcp N/M" button by the input box (plus an "mcp" tab in the right panel) shows which
+> servers are up. See [MCP servers and skills](#mcp-servers-and-skills).
+>
+> **0.10 — a "task" tab beside the chat.** A chat on a Jira issue gets "chat | task" tabs: the full issue card
 > (description, fields, comments, history, worklogs) and the live change feed, and you can change status, comment and
 > log work right there. Since 0.9: chats grouped by Jira issue; one tab per task with its chats inside; Jira connected
 > in Agentura or through [Jiraffe](https://github.com/fosteev/jiraffe) 0.8; and Claude can comment, change status and
@@ -31,6 +35,8 @@ Personal project, not on the Marketplace. Install it from a `.vsix` (see [Instal
   in the native diff.
 - **Remote Control.** Keep driving a Claude session from claude.ai/code or the Claude mobile app: `rc` under the
   input box or `/rc`. See [Remote Control](#remote-control).
+- **MCP and skills.** A server chip on every MCP call, a strip for each skill, an "mcp N/M" button and an "mcp" tab
+  with server status. See [MCP servers and skills](#mcp-servers-and-skills).
 - **Jira tasks.** Chats grouped by Jira issue, a "task" tab with the full card and change feed beside the chat, and Claude can comment,
   change status and log work on the issue. See [Jira tasks](#jira-tasks).
 - **Sidebar.** The project's sessions: search, resume, rename. Account and limits are shown above the list — for every
@@ -191,6 +197,25 @@ Start one with "Agentura: Chat for Issue…" (a key or a link), "Open in Agentur
   feed are polled by the extension and are not sent anywhere else.
 
 ![Jira tasks: a task group in the sidebar, the "chat | task" tabs with the full issue card](docs/images/jira-tasks.png)
+
+## MCP servers and skills
+
+What the agent reaches for is visible without opening `/mcp`.
+
+- **In the feed.** An MCP call shows a chip with its server before the tool name, red when the server is down; a
+  `Skill` call is a strip "skill <name> · invoked by agent" with "open SKILL.md" (for skills found in the project's or
+  your `.claude/skills`). The turn summary adds `mcp N` and `skill N` when they are not zero.
+- **"mcp N/M" by the input box.** A popover with every server: status, version, tools, calls in this session, the
+  skills used, and "retry" (Claude) or "reload all" (Codex). A yellow dot means a server failed or needs sign-in;
+  Agentura only shows how to sign in (`/mcp` in Claude Code, `codex mcp login <name>`), it does not do it.
+- **"mcp" tab.** In the right panel: servers with their calls by tool, the session's skills and all available skills.
+- **A line in the feed** when a server fails to start or drops.
+- **Where to turn it off.** Settings, "Appearance", "MCP and skills": `agentura.mcp.feedLabels`,
+  `agentura.mcp.composerButton`, `agentura.mcp.panelTab`, `agentura.mcp.feedStatus` (`failures`, `start`, `off`).
+  Server status is for Claude and Codex; Antigravity reports none, so the button, the tab and the status line are
+  hidden for it.
+
+![MCP and skills: server chips and a skill strip in the feed, the "mcp" tab with server status](docs/images/skills-mcp.png)
 
 ## Remote Control
 
