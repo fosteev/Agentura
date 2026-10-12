@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.12.0 — 2026-10-12
+
+### Added
+
+- **Hide clean repositories in the git tab.** `agentura.git.hideClean` (off by default): with several repositories,
+  the tab skips those without changed files, unpushed commits or an unpublished branch; the header counts the hidden
+  ones.
+- **Resizable commit description.** The commit box pinned to the bottom of the git tab has a grip on its top edge;
+  drag it up for a taller description, double-click to reset. The height is kept per chat tab.
+- **"Open file" in the changes tab.** A file row shows an ↗ button on hover that opens the file itself in the editor;
+  clicking the row still opens the diff.
+
+### Changed
+
+- Files and diffs opened from a chat now open as a tab in the chat's own editor group instead of the neighbouring one.
+
 ## 0.11.0 — 2026-10-12
 
 ### Added

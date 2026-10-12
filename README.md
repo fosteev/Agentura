@@ -81,6 +81,9 @@ same in all of them; only the arrangement changes. While a turn runs the field s
 - `picker` puts the repository list on top.
 - `unified` shows one list and makes one commit across the repositories you tick.
 
+`agentura.git.hideClean` hides repositories with nothing to commit or push. Drag the top edge of the commit box to make
+the description taller.
+
 The ✦ button asks Sonnet to write the commit message from the staged diff.
 
 ![Git tab layouts: stack, picker, unified](docs/images/git-layouts.png)
