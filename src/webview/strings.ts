@@ -163,7 +163,7 @@ const ru = {
     builtin: 'встроенный',
     version: (v: string) => `v${v}`,
     tools: (n: number) => `${n} тул.`,
-    calls: 'выз.',
+    calls: (n: number) => plural(n, 'вызов', 'вызова', 'вызовов'),
     noServers: 'Серверов нет',
     expandServer: (name: string) => `Вызовы сервера ${name} по тулам`,
     loginClaude: 'Войдите через /mcp в Claude Code или в настройках коннекторов claude.ai',

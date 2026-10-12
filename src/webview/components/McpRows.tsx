@@ -134,7 +134,7 @@ export function McpServerRow({
             {tools && showCalls ? ' · ' : ''}
             {calls > 0 ? (
               <>
-                <b>{calls}</b> {ui.mcp.calls}
+                <b>{calls}</b> {ui.mcp.calls(calls)}
               </>
             ) : (
               showCalls && '—'
