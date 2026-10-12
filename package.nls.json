@@ -48,6 +48,7 @@
   "config.sidebar.limits.enum.table": "Table: all engines and their windows in one table",
   "config.sidebar.limits.enum.active": "Active in detail: the current tab's engine in full, the others as one line each",
   "config.sidebar.limits.enum.header": "In the header: the worst limit of each engine as a mini-gauge, details in a popup",
+  "config.sidebar.limitsHidden.description": "Engines whose limits are not shown in the sidebar. Hide every engine to drop the limits section altogether; limits in the chat header stay.",
   "config.tasks.sidebar.description": "Where Jira tasks go in the sidebar: chats of a task grouped inside the session list, or a separate “Tasks” section above “Sessions”.",
   "config.tasks.sidebar.enum.groups": "Groups: chats nested in the list under the task key",
   "config.tasks.sidebar.enum.section": "Section: a “Tasks” section above “Sessions”, a key tag on the session row",

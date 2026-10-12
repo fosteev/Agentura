@@ -289,6 +289,8 @@ export type ToWebview =
       top: SidebarTopMode;
       /** Вид лимитов всех движков при ≥ 2 установленных (`agentura.sidebar.limits`). */
       limits: SidebarLimitsMode;
+      /** Движки, чьи лимиты не показывать (`agentura.sidebar.limitsHidden`); нет — все. */
+      hidden?: AgentProvider[];
       /** Где задачи Jira: группы в списке или секция (`agentura.tasks.sidebar`, roadmap 19). */
       tasks?: TaskSidebarMode;
     }

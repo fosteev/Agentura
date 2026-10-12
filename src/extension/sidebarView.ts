@@ -110,6 +110,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           this.viewWrites === 0
         )
           this.pushView();
+        // движок вернули в панель — его лимиты могли не опрашиваться, не ждём следующего опроса
+        if (e.affectsConfiguration('agentura.sidebar.limitsHidden')) void this.refreshUsage();
       }),
     ];
     view.onDidDispose(() => {
@@ -147,6 +149,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       time: v['sessionList.time'],
       top: v['sidebar.top'],
       limits: v['sidebar.limits'],
+      hidden: v['sidebar.limitsHidden'],
       tasks: v['tasks.sidebar'],
     });
   }
@@ -223,9 +226,14 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   /** Кнопка ↻ в боковой панели и команда «Обновить лимиты». Claude, Codex и Antigravity — параллельно. */
   async refreshUsage(): Promise<void> {
     const { codexLimits, agyQuota, antigravityEngine } = this.engines;
+    // скрытые в панели движки не опрашиваем; Claude опрашивается всегда — его лимиты нужны и шапке чата
+    const hidden = readSettings(vscode.workspace.getConfiguration('agentura'))['sidebar.limitsHidden'];
+    const codex = hidden.includes('codex') ? undefined : codexLimits.refresh();
     // agy — только установленный: `AgyQuotaService` ищет его громко, и без agy каждый опрос писал бы «не найден»
-    const agy = antigravityEngine.available().then((ok) => (ok ? agyQuota.refresh() : undefined));
-    const others = Promise.allSettled([codexLimits.refresh(), agy]).then(() => this.pushEngineLimits());
+    const agy = hidden.includes('antigravity')
+      ? undefined
+      : antigravityEngine.available().then((ok) => (ok ? agyQuota.refresh() : undefined));
+    const others = Promise.allSettled([codex, agy]).then(() => this.pushEngineLimits());
     const snap = await this.usage.refresh();
     if (snap.error) this.log.warn(`Лимиты не обновились: ${snap.error}`);
     else this.log.info(`Лимиты: данные на ${new Date(snap.updatedAt).toLocaleTimeString(hostStrings(currentLanguage()).locale)}`);

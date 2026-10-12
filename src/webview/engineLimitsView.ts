@@ -103,19 +103,21 @@ function hostView(e: EngineLimitsSummary, now: number): EngineView {
 
 /**
  * Установленные движки по порядку Claude, Codex, Antigravity. Claude — всегда; остальные — по `engines.limits`
- * (`missing` не показывается). Один движок на выходе — боковая панель рисует прежнюю разметку.
+ * (`missing` не показывается); скрытые настройкой `sidebar.limitsHidden` отбрасываются. Один Claude на выходе —
+ * боковая панель рисует прежнюю разметку.
  */
 export function buildEngines(
   windows: readonly LimitWindowSummary[],
   account: AccountSummary | undefined,
   host: readonly EngineLimitsSummary[] | undefined,
   now: number,
+  hidden: readonly EngineId[] = [],
 ): EngineView[] {
   const rest = (host ?? [])
     .filter((e) => e.state !== 'missing')
     .map((e) => hostView(e, now))
     .sort((a, b) => ENGINE_ORDER.indexOf(a.engine) - ENGINE_ORDER.indexOf(b.engine));
-  return [claudeView(windows, account, now), ...rest];
+  return [claudeView(windows, account, now), ...rest].filter((e) => !hidden.includes(e.engine));
 }
 
 /** Худшее окно движка — с максимальным процентом. */

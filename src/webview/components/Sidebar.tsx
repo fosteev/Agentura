@@ -61,6 +61,8 @@ const engineLimits = signal<EngineLimitsSummary[] | undefined>(undefined);
 const provider = signal<AgentProvider | undefined>(undefined);
 /** Вид лимитов при ≥ 2 движках (`agentura.sidebar.limits`). */
 const limitsMode = signal<SidebarLimitsMode>(DEFAULT_SIDEBAR_LIMITS);
+/** Движки, чьи лимиты не показывать (`agentura.sidebar.limitsHidden`). */
+const hiddenEngines = signal<AgentProvider[]>([]);
 /** Где задачи Jira (`agentura.tasks.sidebar`): группы в списке или секция над сессиями. */
 const tasksMode = signal<TaskSidebarMode>(DEFAULT_TASK_SIDEBAR);
 /** Группы задач (`sessions.update.tasks`); нет — групп нет. */
@@ -453,6 +455,7 @@ export function Sidebar() {
           listMode.value = m.view;
           topMode.value = m.top ?? DEFAULT_SIDEBAR_TOP;
           limitsMode.value = m.limits ?? DEFAULT_SIDEBAR_LIMITS;
+          hiddenEngines.value = m.hidden ?? [];
           tasksMode.value = m.tasks ?? DEFAULT_TASK_SIDEBAR;
           listCols.value = { context: m.context, time: m.time };
           break;
@@ -482,6 +485,7 @@ export function Sidebar() {
         context: listCols.value.context,
         time: listCols.value.time,
         limits: limitsMode.value,
+        hidden: hiddenEngines.value,
         tasks: tasksMode.value,
       }}
       data={{
@@ -507,6 +511,8 @@ export interface SidebarLook {
   time: boolean;
   /** Вид лимитов при ≥ 2 движках; нет — по умолчанию. */
   limits?: SidebarLimitsMode;
+  /** Движки, чьи лимиты не показывать; нет — все. */
+  hidden?: readonly AgentProvider[];
   /** Где задачи Jira; нет — по умолчанию (группы). */
   tasks?: TaskSidebarMode;
 }
@@ -555,9 +561,11 @@ export function SidebarView({ look, data }: { look: SidebarLook; data: SidebarDa
   const f = fold.value;
   const limits = limitRows(data.windows, n);
   const top = look.top;
-  // установленных движков ≥ 2 → вариант из настройки (`dense` — всегда в заголовке); иначе прежняя разметка
-  const engines = buildEngines(data.windows, data.account, data.engines, n);
-  const multi = engines.length >= 2;
+  // установленных движков ≥ 2 (или остался один не-Claude) → вариант из настройки (`dense` — всегда в заголовке);
+  // один Claude — прежняя разметка; все скрыты — лимитов нет вовсе
+  const engines = buildEngines(data.windows, data.account, data.engines, n, look.hidden);
+  const none = engines.length === 0;
+  const multi = engines.length >= 2 || (engines.length === 1 && engines[0]!.engine !== 'claude');
   const variant: SidebarLimitsMode =
     top === 'dense' ? 'header' : (look.limits ?? DEFAULT_SIDEBAR_LIMITS);
   const inHeader = multi && variant === 'header';
@@ -575,7 +583,7 @@ export function SidebarView({ look, data }: { look: SidebarLook; data: SidebarDa
       <div
         class="head"
         data-tip={
-          top === 'dense' && !multi
+          top === 'dense' && !multi && !none
             ? accountRows(data.account)
                 .map(([k, v]) => `${k}: ${v}`)
                 .join('\n')
@@ -584,7 +592,7 @@ export function SidebarView({ look, data }: { look: SidebarLook; data: SidebarDa
       >
         <span>{ui.sidebar.head}</span>
         {inHeader && <EngineHeaderLimits engines={engines} refresh={refresh} />}
-        {top === 'dense' && !multi && (
+        {top === 'dense' && !multi && !none && (
           <span class="hl">
             {limits
               .filter((l) => l.mini)
@@ -625,7 +633,7 @@ export function SidebarView({ look, data }: { look: SidebarLook; data: SidebarDa
         </button>
       </div>
       {inHeader && <EnginePopup engines={engines} />}
-      {!inHeader && (
+      {!inHeader && !none && (
         <section
           class={`sec acc${multi ? ' multi' : ''}${f.account ? ' folded' : ''}`}
           data-limits={multi ? variant : undefined}

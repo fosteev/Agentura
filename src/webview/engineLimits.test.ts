@@ -43,6 +43,7 @@ interface Setup {
   top?: SidebarTopMode;
   engines?: EngineLimitsSummary[];
   provider?: 'claude' | 'codex' | 'antigravity';
+  hidden?: ('claude' | 'codex' | 'antigravity')[];
 }
 
 async function mount(o: Setup = {}) {
@@ -68,6 +69,7 @@ async function mount(o: Setup = {}) {
     time: true,
     top: o.top ?? 'compact',
     limits: o.limits ?? 'stack',
+    ...(o.hidden ? { hidden: o.hidden } : {}),
   });
   msg({ type: 'engines.limits', engines: o.engines ?? [codex(), agy()] });
   msg({
@@ -236,6 +238,35 @@ describe('лимиты нескольких движков в боковой п�
     // ↻ в заголовке просит обновить лимиты
     q(host, '.hx .refresh').click();
     expect(posted).toContainEqual({ type: 'limits.refresh' });
+  });
+
+  it('скрыты Codex и Antigravity — прежняя разметка Claude', async () => {
+    const host = await mount({ limits: 'stack', hidden: ['codex', 'antigravity'] });
+    expect(q(host, '.sec.acc.multi')).toBeNull();
+    expect(q(host, '.sec.acc .kv')).not.toBeNull();
+    expect(qa(host, '.sec.acc .lim .row').length).toBe(3);
+  });
+
+  it('скрыт Claude — остальные движки карточками; один оставшийся не-Claude — тоже вариант из настройки', async () => {
+    let host = await mount({ limits: 'stack', hidden: ['claude'] });
+    expect(qa(host, '.sec.acc .eng').map((e) => e.getAttribute('data-engine'))).toEqual(['codex', 'antigravity']);
+    expect(q(host, '.sec.acc .kv')).toBeNull();
+    render(null, host);
+    host = await mount({ limits: 'stack', hidden: ['claude', 'antigravity'] });
+    expect(q(host, '.sec.acc.multi')).not.toBeNull();
+    expect(qa(host, '.sec.acc .eng').map((e) => e.getAttribute('data-engine'))).toEqual(['codex']);
+    expect(q(host, '.sec.acc .kv')).toBeNull();
+  });
+
+  it('скрыты все движки — нет ни секции лимитов, ни шкал в заголовке', async () => {
+    for (const top of ['compact', 'dense'] as const) {
+      const host = await mount({ top, limits: 'header', hidden: ['claude', 'codex', 'antigravity'] });
+      expect(q(host, '.sec.acc')).toBeNull();
+      expect(q(host, '.head .hx')).toBeNull();
+      expect(q(host, '.head .hl')).toBeNull();
+      expect(q(host, '.head')?.getAttribute('data-tip')).toBeNull();
+      render(null, host);
+    }
   });
 
   it('top=dense при ≥ 2 движках рисует вариант header независимо от настройки', async () => {

@@ -387,6 +387,25 @@
           "default": "active",
           "description": "%config.sidebar.limits.description%"
         },
+        "agentura.sidebar.limitsHidden": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "claude",
+              "codex",
+              "antigravity"
+            ],
+            "enumDescriptions": [
+              "Claude Code",
+              "Codex",
+              "Antigravity"
+            ]
+          },
+          "uniqueItems": true,
+          "default": [],
+          "description": "%config.sidebar.limitsHidden.description%"
+        },
         "agentura.tasks.sidebar": {
           "type": "string",
           "enum": [

@@ -1133,6 +1133,11 @@ export const en: Ui = {
         header: 'in header',
       },
     },
+    limitsHidden: {
+      name: 'Show limits for',
+      desc: 'Unchecking an engine hides its limits from the sidebar and stops polling them. Uncheck all to drop the limits section. Limits in the chat header are unaffected.',
+      engines: { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity' },
+    },
     feedStyle: {
       name: 'Chat feed style',
       desc: 'How a turn looks: journal — a flat list, folded — finished turns collapse their actions into one line, replies — a bubble and action chips, cards — a turn as a framed card with a timeline. Open tabs switch immediately.',

@@ -1,5 +1,6 @@
 import { uiZoom } from '../appearance';
 import type { ComponentChildren } from 'preact';
+import type { AgentProvider } from '../../agent/types';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import {
   EFFORT_LEVELS,
@@ -7,6 +8,7 @@ import {
   MAX_POLL_MINUTES,
   MIN_POLL_MINUTES,
   SESSION_LIST_MODES,
+  PROVIDERS,
   SIDEBAR_LIMITS_MODES,
   JIRA_SOURCES,
   TASK_CARD_MODES,
@@ -253,6 +255,31 @@ function AgentToolsBoxes({ value, writes }: { value: AgentToolsSetting; writes: 
         </label>
       ))}
       {!writes && <em class="soon">{A.noWrite}</em>}
+    </div>
+  );
+}
+
+/** Движки, чьи лимиты не показывать в боковой панели: флажок «показывать» на движок, пишут список скрытых целиком. */
+function HiddenEnginesBoxes({ value }: { value: readonly AgentProvider[] }) {
+  void errors.value['sidebar.limitsHidden']; // отказ записи — перерисовать флажки по значению из настроек
+  return (
+    <div class="cbs">
+      {PROVIDERS.map((p) => (
+        <label key={p}>
+          <input
+            type="checkbox"
+            checked={!value.includes(p)}
+            aria-label={T.limitsHidden.engines[p]}
+            onChange={(e) =>
+              commit(
+                'sidebar.limitsHidden',
+                (e.currentTarget as HTMLInputElement).checked ? value.filter((x) => x !== p) : [...value, p],
+              )
+            }
+          />
+          {T.limitsHidden.engines[p]}
+        </label>
+      ))}
     </div>
   );
 }
@@ -910,6 +937,9 @@ export function Settings() {
                 }
               >
                 {null}
+              </Row>
+              <Row name={T.limitsHidden.name} isNew desc={T.limitsHidden.desc} k="sidebar.limitsHidden">
+                <HiddenEnginesBoxes value={v['sidebar.limitsHidden']} />
               </Row>
               <Row
                 name={T.tasksSidebar.name}

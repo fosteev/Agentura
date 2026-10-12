@@ -52,6 +52,7 @@ const values: SettingsValues = {
   'sessionList.time': true,
   'sidebar.top': 'detailed',
   'sidebar.limits': 'active',
+  'sidebar.limitsHidden': [],
   'tasks.sidebar': 'groups',
   'tasks.card': 'tab',
   'tasks.tab': 'chat',
@@ -142,6 +143,7 @@ describe('вкладка настроек', () => {
       'agentura.limits.readKeychain',
       'agentura.sidebar.top',
       'agentura.sidebar.limits',
+      'agentura.sidebar.limitsHidden',
       'agentura.tasks.sidebar',
       'agentura.sessionList.view',
       'agentura.sessionList.context',
@@ -353,6 +355,24 @@ describe('вкладка настроек', () => {
     await flush();
     cards[0]!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
     expect(sets().at(-1)).toEqual({ type: 'settings.set', key: 'sidebar.limits', value: 'switch' });
+  });
+
+  it('чьи лимиты показывать: флажок на движок, снятый пишет список скрытых', async () => {
+    const host = mount(Settings);
+    state({ 'sidebar.limitsHidden': ['codex'] });
+    await flush();
+    const boxes = [
+      ...host.querySelectorAll<HTMLInputElement>('[data-key="agentura.sidebar.limitsHidden"] input[type="checkbox"]'),
+    ];
+    expect(boxes.map((b) => b.checked)).toEqual([true, false, true]);
+    boxes[2]!.click();
+    expect(sets().at(-1)).toEqual({
+      type: 'settings.set',
+      key: 'sidebar.limitsHidden',
+      value: ['codex', 'antigravity'],
+    });
+    boxes[1]!.click();
+    expect(sets().at(-1)).toEqual({ type: 'settings.set', key: 'sidebar.limitsHidden', value: [] });
   });
 
   it('задачи Jira в панели: два превью с фикстурой групп (группы / секция), выбор пишет настройку', async () => {

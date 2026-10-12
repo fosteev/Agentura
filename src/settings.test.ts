@@ -92,6 +92,12 @@ describe('sessionList', () => {
     expect(validateSetting('sidebar.top', 'mini').ok).toBe(false);
     expect(validateSetting('sidebar.limits', 'table')).toEqual({ ok: true, value: 'table' });
     expect(validateSetting('sidebar.limits', 'grid').ok).toBe(false);
+    expect(validateSetting('sidebar.limitsHidden', ['antigravity', 'claude'])).toEqual({
+      ok: true,
+      value: ['claude', 'antigravity'],
+    });
+    expect(validateSetting('sidebar.limitsHidden', ['gemini']).ok).toBe(false);
+    expect(validateSetting('sidebar.limitsHidden', 'codex').ok).toBe(false);
     expect(validateSetting('tasks.sidebar', 'section')).toEqual({ ok: true, value: 'section' });
     expect(validateSetting('tasks.sidebar', 'tree').ok).toBe(false);
     expect(validateSetting('tasks.card', 'split')).toEqual({ ok: true, value: 'split' });
@@ -271,6 +277,7 @@ describe('readSettings', () => {
         'sessionList.context': 'x',
         'sidebar.top': 'mini',
         'sidebar.limits': 'grid',
+        'sidebar.limitsHidden': ['codex', 'gemini', 'codex'],
         'tasks.sidebar': 'tree',
         'tasks.card': 'grid',
         'tasks.tab': 'split',
@@ -288,6 +295,7 @@ describe('readSettings', () => {
       'sessionList.time': true,
       'sidebar.top': 'detailed',
       'sidebar.limits': 'active',
+      'sidebar.limitsHidden': ['codex'],
       'tasks.sidebar': 'groups',
       'tasks.card': 'tab',
       'tasks.tab': 'chat',

@@ -178,6 +178,7 @@ export type SettingKey =
   | 'sessionList.time'
   | 'sidebar.top'
   | 'sidebar.limits'
+  | 'sidebar.limitsHidden'
   | 'tasks.sidebar'
   | 'tasks.card'
   | 'tasks.tab'
@@ -220,6 +221,7 @@ export const SETTING_KEYS: readonly SettingKey[] = [
   'sessionList.time',
   'sidebar.top',
   'sidebar.limits',
+  'sidebar.limitsHidden',
   'tasks.sidebar',
   'tasks.card',
   'tasks.tab',
@@ -280,6 +282,8 @@ export interface SettingsValues {
   'sessionList.time': boolean;
   'sidebar.top': SidebarTopMode;
   'sidebar.limits': SidebarLimitsMode;
+  /** Движки, чьи лимиты не показывать в боковой панели; пусто — все. */
+  'sidebar.limitsHidden': AgentProvider[];
   'tasks.sidebar': TaskSidebarMode;
   'tasks.card': TaskCardMode;
   'tasks.tab': TaskTabMode;
@@ -339,6 +343,11 @@ export function isSessionListMode(v: unknown): v is SessionListMode {
 
 export function isSidebarLimitsMode(v: unknown): v is SidebarLimitsMode {
   return typeof v === 'string' && (SIDEBAR_LIMITS_MODES as readonly string[]).includes(v);
+}
+
+/** Скрытые движки из settings.json: незнакомые имена отбрасываются, порядок — как в `PROVIDERS`. */
+export function readHiddenEngines(v: unknown): AgentProvider[] {
+  return Array.isArray(v) ? PROVIDERS.filter((p) => v.includes(p)) : [];
 }
 
 export function isTaskSidebarMode(v: unknown): v is TaskSidebarMode {
@@ -552,6 +561,10 @@ export function validateSetting(key: SettingKey, value: unknown, lang: ErrLang =
       return isSidebarLimitsMode(value)
         ? { ok: true, value }
         : bad(t.allowed(SIDEBAR_LIMITS_MODES.join(', ')));
+    case 'sidebar.limitsHidden':
+      return Array.isArray(value) && value.every(isProvider)
+        ? { ok: true, value: PROVIDERS.filter((p) => value.includes(p)) }
+        : bad(t.allowed(PROVIDERS.join(', ')));
     case 'tasks.sidebar':
       return isTaskSidebarMode(value)
         ? { ok: true, value }
@@ -645,6 +658,7 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
     'sessionList.time': cfg.get<unknown>('sessionList.time') !== false,
     'sidebar.top': isSidebarTopMode(top) ? top : DEFAULT_SIDEBAR_TOP,
     'sidebar.limits': isSidebarLimitsMode(limits) ? limits : DEFAULT_SIDEBAR_LIMITS,
+    'sidebar.limitsHidden': readHiddenEngines(cfg.get<unknown>('sidebar.limitsHidden')),
     'tasks.sidebar': isTaskSidebarMode(taskSb) ? taskSb : DEFAULT_TASK_SIDEBAR,
     'tasks.card': readTaskCardMode(taskCard),
     'tasks.tab': isTaskTabMode(taskTab) ? taskTab : DEFAULT_TASK_TAB,
