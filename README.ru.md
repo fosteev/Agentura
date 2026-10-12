@@ -94,7 +94,8 @@
 
 `agentura.sessionList.view`: `detailed`, `compact`, `dense`. Если движков установлено больше одного,
 `agentura.sidebar.limits` выбирает вид их лимитов: `active` (по умолчанию — движок текущей вкладки раскрыт), `stack`,
-`switch`, `table`, `header`. Все настройки есть и на вкладке настроек (⚙ в боковой
+`switch`, `table`, `header`. `agentura.sidebar.limitsHidden` — движки, чьи лимиты панель не показывает (и не
+опрашивает). Все настройки есть и на вкладке настроек (⚙ в боковой
 панели), с живыми превью.
 
 ![Виды списка сессий](docs/images/session-list.png)

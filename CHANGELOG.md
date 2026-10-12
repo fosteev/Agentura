@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.13.0 — 2026-10-12
+
+### Added
+
+- **Choose whose limits the sidebar shows.** `agentura.sidebar.limitsHidden` (empty by default) lists engines whose
+  limits are hidden from the sidebar; they are not polled either. Settings page: a checkbox per engine under
+  "Engine limits". Hide every engine to drop the limits section; limits in the chat header stay.
+
 ## 0.12.0 — 2026-10-12
 
 ### Added
