@@ -421,6 +421,13 @@ describe('состояние webview', () => {
     expect(pane.querySelector('.tot')?.textContent).toContain('1');
     expect(pane.querySelector('.chk code')?.textContent).toBe('npm test');
     expect(tabs(host)[0]!.querySelector('.b')?.textContent).toBe('1');
+    // «открыть файл» — сам файл по абсолютному пути, без диффа
+    const sent = vi.mocked(vscode.send);
+    sent.mockClear();
+    q(host, '#pane-changes .file .op').click();
+    expect(sent.mock.calls.map((c) => c[0])).toEqual([
+      { type: 'file.open', kind: 'text', path: `${chat.value.cwd}/src/a.ts` },
+    ]);
   });
 
   it('охват «сессия | ход» переключается и сохраняется в panel.changes', async () => {

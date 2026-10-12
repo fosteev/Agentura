@@ -590,6 +590,7 @@ export const en: Ui = {
     diffAll: 'diff all',
     diffAllTitle: 'Open the diff of all changed files',
     fileTitle: 'Open the file diff',
+    openFile: 'Open the file in the editor',
     root: './',
     newFile: 'new',
     checks: 'checks',

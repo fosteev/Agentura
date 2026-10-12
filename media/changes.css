@@ -20,11 +20,15 @@
 
 /* файлы по папкам и проверки */
 .cg .dir { padding: 6px 14px 2px; font-size: 10.5px; color: var(--fg-faint); font-family: var(--mono); }
-.cg .file { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: baseline; padding: 3px 14px 3px 24px; cursor: pointer; }
+.cg .file { display: grid; grid-template-columns: 1fr auto auto auto; gap: 8px; align-items: baseline; padding: 3px 14px 3px 24px; cursor: pointer; }
 .cg .file:hover { background: var(--bg-hover); }
 .cg .file .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); }
 .cg .file .ch { white-space: nowrap; }
 .cg .file .tn { display: flex; gap: 2px; }
+/* «открыть файл» — на наведении; место держит visibility, чтобы строка не прыгала */
+.cg .file .op { visibility: hidden; align-self: center; display: inline-flex; padding: 1px; border-radius: 3px; color: var(--fg-mute); }
+.cg .file:hover .op, .cg .file:focus-within .op, .cg .file .op:focus-visible { visibility: visible; }
+.cg .file .op:hover { background: var(--bg-hover); color: var(--fg); }
 .cg .file .tn i { font-style: normal; font-family: var(--mono); font-size: 9.5px; color: var(--fg-mute); background: var(--bg-input); border-radius: 2px; padding: 0 3px; min-width: 14px; text-align: center; }
 .cg .file .tn i.live { background: var(--info); color: #fff; }
 .cg .file.live .nm { color: var(--info); }

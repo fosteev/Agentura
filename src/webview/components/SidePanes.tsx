@@ -13,6 +13,7 @@ export function ChangesPane({
   labelledBy = 'tab-changes',
   onScope,
   onDiff,
+  onOpen,
 }: {
   view: ChangesView;
   hidden?: boolean;
@@ -21,6 +22,8 @@ export function ChangesPane({
   onScope: (scope: ChangesScope) => void;
   /** Открыть дифф правок с этими `toolUseId` (файл — его правки, «дифф всего» — все). */
   onDiff: (toolUseIds: string[]) => void;
+  /** Открыть сам файл в обычном редакторе (путь как в строке: от cwd или абсолютный). */
+  onOpen?: (path: string) => void;
 }) {
   const c = ui.changes;
   return (
@@ -85,6 +88,23 @@ export function ChangesPane({
                       </>
                     )}
                   </span>
+                  {onOpen && (
+                    <button
+                      class="op"
+                      data-tip={c.openFile}
+                      aria-label={c.openFile}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onOpen(f.path);
+                      }}
+                      onKeyDown={(e) => e.stopPropagation()}
+                    >
+                      <svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true">
+                        <path d="M9 2.5h4.5V7M13.5 2.5L7.5 8.5" />
+                        <path d="M12 9.5v3a1 1 0 0 1-1 1H3.5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3" />
+                      </svg>
+                    </button>
+                  )}
                   <span class="tn">
                     {f.turns.map((n) => (
                       <i

@@ -698,6 +698,14 @@ export function Chat() {
             onDiff={(toolUseIds) =>
               send({ type: 'diff.changes', sessionId: s.sessionId, toolUseIds })
             }
+            onOpen={(path) =>
+              send({
+                type: 'file.open',
+                kind: 'text',
+                // путь строки — от cwd чата; хост открывает абсолютный как есть
+                path: /^(\/|[a-zA-Z]:[\\/])/.test(path) || !s.cwd ? path : `${s.cwd.replace(/[\\/]+$/, '')}/${path}`,
+              })
+            }
           />
           <GitPane
             snapshot={gitSnap}
