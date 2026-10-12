@@ -49,6 +49,9 @@
 .webview[data-feed="replies"] .log .steps .e .what .dim { display: none; }
 .webview[data-feed="replies"] .log .steps .e .what { max-width: 28ch; }
 .webview[data-feed="replies"] .log .steps .e.think { border-style: dashed; }
+.webview[data-feed="replies"] .log .steps .e[role="button"] { cursor: pointer; }
+.webview[data-feed="replies"] .log .steps .e[aria-expanded="true"] { border-color: var(--fg-mute); }
+.webview[data-feed="replies"] .log .steps .tool-full { margin-left: 0; }
 /* рассуждение в чипе — «think 12s», текст мысли не влезает (в прототипе «думал 12s») */
 .webview[data-feed="replies"] .log .steps .e.think .what { display: none; }
 .webview[data-feed="replies"] .log .steps .e.now { border-color: var(--info); }

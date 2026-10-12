@@ -226,6 +226,13 @@ export function matchCount(name: string, result: unknown): number | undefined {
   return undefined;
 }
 
+/** Полный ввод инструмента для раскрытой строки: команда Bash как есть, остальное — JSON. */
+export function toolInputText(input: Record<string, unknown> | undefined): string {
+  if (!input || Object.keys(input).length === 0) return '';
+  if (typeof input.command === 'string') return input.command;
+  return JSON.stringify(input, null, 2);
+}
+
 /** `0.4s`, `12s`, `1m 05s`. */
 export function formatDuration(ms: number): string {
   if (ms < 0) ms = 0;

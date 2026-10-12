@@ -42,6 +42,8 @@ import {
   mcpComposerButton,
   meters,
   newSession,
+  openFile,
+  openImage,
   provider,
   quota,
   removeExtra,
@@ -209,7 +211,7 @@ function DraftChip({ d }: { d: DraftImage }) {
       ? `${i.width}×${i.height} · ~${compactTokens(imageTokens(i.width, i.height))}`
       : '';
   return (
-    <span class="im">
+    <span class="im" {...openable(ui.log.openImage, () => openImage(i))}>
       <img class="mock" src={`data:${i.mediaType};base64,${i.data}`} alt="" />
       <b>{d.name}</b>
       <small
@@ -222,6 +224,22 @@ function DraftChip({ d }: { d: DraftImage }) {
       {remove}
     </span>
   );
+}
+
+/** Готовый черновик открывается кликом (картинка — вкладкой, файл — в редакторе); клик по ✕ — только удаление. */
+function openable(tip: string, open: () => void) {
+  const own = (e: Event) => !(e.target as Element).closest('.x');
+  return {
+    role: 'button' as const,
+    tabIndex: 0,
+    'data-tip': tip,
+    onClick: (e: MouseEvent) => {
+      if (own(e)) open();
+    },
+    onKeyDown: (e: KeyboardEvent) => {
+      if (own(e)) pressKey(e, open);
+    },
+  };
 }
 
 /** Чип файла над полем (этап 8 roadmap 0.2): значок типа, имя, размер, ~токены, ✕ или плашка ошибки. */
@@ -256,7 +274,7 @@ function FileChip({ d }: { d: DraftFile }) {
   const f = d.file;
   const tokens = fileTokens(f);
   return (
-    <span class="im file" data-tip={f.path}>
+    <span class="im file" {...openable(`${f.path}\n${ui.log.openDraftFile}`, () => openFile(f))}>
       <span class="ic">{fileBadge(f)}</span>
       <b>{d.name}</b>
       <small>

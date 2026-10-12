@@ -14,6 +14,7 @@ import {
   formatDuration,
   matchCount,
   jiraTaskLink,
+  toolInputText,
   toolLinks,
   toolView,
 } from '../toolView';
@@ -278,8 +279,9 @@ export function Tool({
   // метки B: сервер в статусе failed — красные чип и op; показываем имя из статуса (оно с пробелами/точками)
   const srv = v.server ? serverByPrefix(chat.value.mcp?.servers, v.server) : undefined;
   const srvDown = srv?.status === 'failed';
-  // красный результат раскрывается: вывод инструмента как его увидела модель
-  const expandable = failed && !!t.content;
+  // строка (чип в «репликах») раскрывается: полный ввод и вывод; у красной — вывод как его увидела модель
+  const input = toolInputText(t.input);
+  const expandable = !!input || !!t.content;
   const [open, setOpen] = useState(false);
   const cls = ['e', v.run && 'run', v.edit && 'ed', running && 'now', failed && 'fail'].filter(Boolean).join(' ');
   const toggle = () => expandable && setOpen(!open);
@@ -293,7 +295,7 @@ export function Tool({
               role: 'button',
               tabIndex: 0,
               'aria-expanded': open,
-              title: ui.fail.toolToggle,
+              title: failed ? ui.fail.toolToggle : ui.log.toolToggle,
               style: { cursor: 'pointer' },
               onClick: toggle,
               onKeyDown: (e: KeyboardEvent) => {
@@ -336,8 +338,34 @@ export function Tool({
           onTask={onTaskEvent}
         />
       </div>
-      {open && t.content && <ToolOutput content={t.content} />}
+      {open && (input || !failed) && <ToolDetail input={input} output={failed ? undefined : t.content} running={running} />}
+      {open && failed && t.content && <ToolOutput content={t.content} />}
     </>
+  );
+}
+
+/** Раскрытая строка инструмента: ввод целиком и вывод (у упавшего вывод — красной карточкой ниже). */
+function ToolDetail({ input, output, running }: { input: string; output?: string | undefined; running: boolean }) {
+  const MAX = 20_000;
+  const clip = (s: string) => (s.length > MAX ? s.slice(0, MAX) : s);
+  const cut = (output?.length ?? 0) - MAX;
+  return (
+    <div class="tool-full">
+      {input && (
+        <>
+          <small>{ui.log.toolInput}</small>
+          <pre>{clip(input)}</pre>
+        </>
+      )}
+      {output !== undefined && (
+        <>
+          <small>{ui.log.toolOutput}</small>
+          <pre>{clip(output).trimEnd() || '—'}</pre>
+          {cut > 0 && <small>{ui.fail.truncated(cut)}</small>}
+        </>
+      )}
+      {output === undefined && running && <small>{ui.log.toolNoOutput}</small>}
+    </div>
   );
 }
 

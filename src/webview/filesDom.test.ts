@@ -106,13 +106,32 @@ describe('файлы в поле ввода (этап 8 roadmap 0.2)', () => {
     expect(chips[0]!.querySelector('.ic')?.textContent).toBe('TXT');
     expect(chips[0]!.querySelector('b')?.textContent).toBe('notes.txt');
     expect(chips[0]!.querySelector('small')?.textContent).toBe('4 КБ · ~1k');
-    expect(chips[0]!.getAttribute('data-tip')).toBe('docs/notes.txt');
+    expect(chips[0]!.getAttribute('data-tip')).toBe('docs/notes.txt\nОткрыть файл в редакторе');
     expect(chips[1]!.querySelector('.ic')?.textContent).toBe('PDF');
     expect(chips[1]!.querySelector('small')?.textContent).toBe('6 Б · ≈?');
     expect(host.querySelector('.ctx .cn .plus')?.textContent).toBe('+1k+? файлы');
     expect(host.querySelector('.ctx .hint')?.textContent).toBe(
       'перетащить с ⇧ — файл из проводника VS Code',
     );
+  });
+
+  it('клик по чипу открывает файл или картинку, клик по ✕ — только убирает', async () => {
+    const host = mount();
+    handleHostMessage({ type: 'file.picked', items: [TXT] });
+    draftImages.value = [
+      { id: 1, name: 'скриншот 1', image: { mediaType: 'image/png', data: 'AAAA', width: 10, height: 10 } },
+    ];
+    await flush();
+    posted.length = 0;
+    host.querySelector<HTMLElement>('.att .im.file')!.click();
+    host.querySelector<HTMLElement>('.att .im:not(.file)')!.click();
+    expect(posted.map((m) => m.type)).toEqual(['file.open', 'image.open']);
+    expect(posted[0]).toMatchObject({ path: 'docs/notes.txt' });
+    posted.length = 0;
+    host.querySelector<HTMLElement>('.att .im.file .x')!.click();
+    await flush();
+    expect(posted.filter((m) => m.type === 'file.open')).toEqual([]);
+    expect(host.querySelectorAll('.att .im.file')).toHaveLength(0);
   });
 
   it('отказ хоста — красная плашка с причиной; ✕ убирает; повтор того же файла не дублирует', async () => {

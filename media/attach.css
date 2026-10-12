@@ -59,3 +59,5 @@ img.mock { display: block; object-fit: cover; background: var(--bg-input); }
 .log .u .att .fl:hover { border-color: var(--info); }
 .log .u .att .fl:focus-visible { outline: 1px solid var(--info); outline-offset: 1px; }
 .log .u .att .fl b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 18em; }
+.compose .att .im[role="button"] { cursor: pointer; }
+.compose .att .im[role="button"]:hover { border-color: var(--fg-mute); }

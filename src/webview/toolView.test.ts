@@ -3,6 +3,7 @@ import {
   editStats,
   formatCost,
   formatDuration,
+  toolInputText,
   formatInt,
   matchCount,
   relPath,
@@ -224,5 +225,14 @@ describe('toolView: метки B (roadmap 21, этап 2)', () => {
 
   it('инструменты Jira остаются «jira» и с флагом', () => {
     expect(toolView('mcp__agentura_jira__comment', { issue: 'A-1' }, undefined, undefined, true).op).toBe('jira');
+  });
+});
+
+describe('toolInputText', () => {
+  it('Bash — команда как есть, остальное — JSON, пусто — пустая строка', () => {
+    expect(toolInputText({ command: 'grep -rn "x" src | head', description: 'd' })).toBe('grep -rn "x" src | head');
+    expect(toolInputText({ file_path: '/a/b.ts', limit: 5 })).toBe('{\n  "file_path": "/a/b.ts",\n  "limit": 5\n}');
+    expect(toolInputText({})).toBe('');
+    expect(toolInputText(undefined)).toBe('');
   });
 });

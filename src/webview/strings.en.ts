@@ -222,6 +222,10 @@ export const en: Ui = {
     toolError: 'error',
     toolStopped: 'stopped',
     thinkToggle: 'Show full reasoning',
+    toolToggle: 'Show the full tool input and output',
+    toolInput: 'input',
+    toolOutput: 'output',
+    toolNoOutput: 'no output yet',
     actions: (n: number) => `${n} ${pl(n, 'action', 'actions')}`,
     foldLive: 'running',
     foldToggle: 'Show or hide the turn actions',
@@ -234,6 +238,7 @@ export const en: Ui = {
       'Estimated from image size: width × height / 750 (the engine does not count them separately)',
     screenshot: 'screenshot',
     openImage: 'Open the image in an editor tab',
+    openDraftFile: 'Open the file in the editor',
     noImageData:
       'The transcript has no image data (or it is older than the latest in history) — placeholder only',
     openFile: 'Open the file in an editor tab',

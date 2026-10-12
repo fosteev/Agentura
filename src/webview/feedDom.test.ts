@@ -145,6 +145,31 @@ describe('вид ленты', () => {
     expect(live!.getAttribute('data-open')).toBe('true');
   });
 
+  it('replies: клик по чипу инструмента показывает ввод и вывод целиком, повторный — прячет', async () => {
+    const host = mount();
+    info('replies');
+    play({ secondRunning: true });
+    await flush();
+    const chips = () => [...host.querySelectorAll<HTMLElement>('.steps .e[role="button"]')];
+    const read = chips().find((c) => c.textContent?.includes('a.ts'))!;
+    read.click();
+    await flush();
+    const full = host.querySelector('.tool-full')!;
+    expect([...full.querySelectorAll('pre')].map((p) => p.textContent)).toEqual([
+      '{\n  "file_path": "/p/a.ts"\n}',
+      'ok',
+    ]);
+    expect(read.getAttribute('aria-expanded')).toBe('true');
+    read.click();
+    await flush();
+    expect(host.querySelector('.tool-full')).toBeNull();
+    const bash = chips().find((c) => c.classList.contains('now'))!;
+    bash.click();
+    await flush();
+    expect(host.querySelector('.tool-full pre')?.textContent).toBe('npm test');
+    expect(host.querySelector('.tool-full')?.textContent).toContain('вывода пока нет');
+  });
+
   it('.live — внутри идущего хода; когда хода нет — после всех ходов', async () => {
     const host = mount();
     play({ secondRunning: true });
