@@ -6,6 +6,8 @@
   "command.resumeSession.title": "Возобновить сессию",
   "command.bindTask.title": "Привязать к задаче…",
   "command.unbindTask.title": "Отвязать от задачи",
+  "command.archiveSession.title": "В архив",
+  "command.unarchiveSession.title": "Вернуть из архива",
   "command.refreshUsage.title": "Обновить лимиты",
   "command.openSettings.title": "Настройки",
   "command.feedStyle.title": "Вид ленты…",

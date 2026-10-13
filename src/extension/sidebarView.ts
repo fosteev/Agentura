@@ -10,6 +10,7 @@ import type { AgyQuotaService } from './agyQuota';
 import type { CodexLimitsService } from './codexLimits';
 import type { EngineLocator } from './engineLocator';
 import { summarizeAgy, summarizeCodex } from './engineLimits';
+import type { ArchivedSessions } from './archive';
 import { decorateSessions, parseTaskKey, type TaskGroups } from './taskGroups';
 import { hostStrings } from '../shared/l10n';
 import { attachMessaging, currentLanguage, renderWebview, userFontsDir, webviewOptions } from './webviewHost';
@@ -41,6 +42,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     private readonly sessions: SessionsService,
     private readonly account: AccountService,
     private readonly taskGroups: TaskGroups,
+    private readonly archive: ArchivedSessions,
     private readonly engines: SidebarEngines,
   ) {}
 
@@ -98,6 +100,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         this.pushSessions();
       }),
       this.taskGroups.onChange(() => this.pushSessions()),
+      this.archive.onChange(() => this.pushSessions()),
       this.account.onUpdate((a) => this.post({ type: 'account.info', ...a })),
       this.engines.codexLimits.onUpdate(() => void this.pushEngineLimits()),
       this.engines.agyQuota.onUpdate(() => void this.pushEngineLimits()),
@@ -129,7 +132,15 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const current = ChatPanel.currentSessionId();
     const provider = ChatPanel.currentProvider();
     const project = vscode.workspace.workspaceFolders?.[0]?.name;
-    const { sessions, tasks } = decorateSessions(this.rows, this.taskGroups.groups());
+    const groups = this.taskGroups.groups();
+    const archived = this.archive.ids();
+    // метки задач — по всем строкам; группы (и их счётчики) — только по неархивным
+    const labelled = decorateSessions(this.rows, groups).sessions;
+    const { tasks } = decorateSessions(
+      this.rows.filter((r) => !archived.has(r.id)),
+      groups,
+    );
+    const sessions = labelled.map((r): SessionSummary => (archived.has(r.id) ? { ...r, archived: true } : r));
     this.post({
       type: 'sessions.update',
       sessions,

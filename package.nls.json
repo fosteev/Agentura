@@ -6,6 +6,8 @@
   "command.resumeSession.title": "Resume Session",
   "command.bindTask.title": "Bind to Issue…",
   "command.unbindTask.title": "Unbind from Issue",
+  "command.archiveSession.title": "Archive",
+  "command.unarchiveSession.title": "Unarchive",
   "command.refreshUsage.title": "Refresh Limits",
   "command.openSettings.title": "Settings",
   "command.feedStyle.title": "Feed Style…",

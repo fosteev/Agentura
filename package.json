@@ -89,6 +89,16 @@
         "category": "Agentura"
       },
       {
+        "command": "agentura.archiveSession",
+        "title": "%command.archiveSession.title%",
+        "category": "Agentura"
+      },
+      {
+        "command": "agentura.unarchiveSession",
+        "title": "%command.unarchiveSession.title%",
+        "category": "Agentura"
+      },
+      {
         "command": "agentura.chatForTask",
         "title": "%command.chatForTask.title%",
         "category": "Agentura"
@@ -186,9 +196,27 @@
           "command": "agentura.unbindTask",
           "when": "webviewId == 'agentura.sidebar' && webviewSection == 'session' && sessionBound",
           "group": "task@1"
+        },
+        {
+          "command": "agentura.archiveSession",
+          "when": "webviewId == 'agentura.sidebar' && webviewSection == 'session' && !sessionArchived",
+          "group": "archive@1"
+        },
+        {
+          "command": "agentura.unarchiveSession",
+          "when": "webviewId == 'agentura.sidebar' && webviewSection == 'session' && sessionArchived",
+          "group": "archive@1"
         }
       ],
       "commandPalette": [
+        {
+          "command": "agentura.archiveSession",
+          "when": "false"
+        },
+        {
+          "command": "agentura.unarchiveSession",
+          "when": "false"
+        },
         {
           "command": "agentura.debug.showState",
           "when": "agentura.debug"

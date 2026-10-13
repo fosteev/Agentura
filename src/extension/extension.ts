@@ -15,6 +15,8 @@ import { SessionMemory } from './sessionMemory';
 import { TaskGroups, parseTaskKey, taskSessionRows } from './taskGroups';
 import { createJira } from './jira/setup';
 import { registerTaskCommands } from './taskCommands';
+import { ArchivedSessions } from './archive';
+import { registerArchiveCommands } from './archiveCommands';
 import { SessionsService } from './sessionsService';
 import { showDebugState } from './debugPanel';
 import { SettingsPanel } from './settingsPanel';
@@ -66,6 +68,7 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
   const transcripts = new TranscriptCache();
   const memory = new SessionMemory(context.workspaceState);
   const taskGroups = new TaskGroups(context.workspaceState);
+  const archive = new ArchivedSessions(context.workspaceState);
   const jira = createJira(context, taskGroups);
   context.subscriptions.push(...jira.disposables);
 
@@ -111,7 +114,7 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
 
   const agyQuota = new AgyQuotaService(() => antigravityEngine.path());
   const codexLimits = new CodexLimitsService(async () => ((await codexEngine.available()) ? codexEngine.path() : undefined));
-  const sidebar = new SidebarProvider(context, log, usage, sessions, account, taskGroups, {
+  const sidebar = new SidebarProvider(context, log, usage, sessions, account, taskGroups, archive, {
     codexLimits,
     agyQuota,
     codexEngine,
@@ -136,6 +139,7 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     account,
     memory,
     taskGroups,
+    archive,
     tasks: jira.tasks,
     jira: jira.sources,
     engine,
@@ -420,6 +424,7 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
       return taskSessionRows(taskGroups.group(parsed.taskKey), await sessions.list());
     }),
     ...registerTaskCommands(context, log, services),
+    ...registerArchiveCommands(services),
     vscode.commands.registerCommand('agentura.showStatus', () =>
       ChatPanel.runStatus(context, log, services),
     ),

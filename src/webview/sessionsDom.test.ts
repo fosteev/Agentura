@@ -680,6 +680,133 @@ describe('боковая панель (sessions.html)', () => {
       expect(ctx('свободный')).toMatchObject({ webviewSection: 'session', sessionId: 'b', sessionBound: false });
       expect(ctx('почему')).toMatchObject({ sessionId: 'a', sessionBound: true });
     });
+
+    describe('архив чатов (roadmap 23)', () => {
+      const arch = (r: SessionSummary): SessionSummary => ({ ...r, archived: true });
+      const listKids = (host: HTMLElement) => [...host.querySelectorAll('.list > .tgp')].map((g) => g.getAttribute('data-task') ?? (g.classList.contains('arch') ? 'arch' : 'free'));
+      const head = (host: HTMLElement) => host.querySelector('.tgp.arch > .tg-h')!;
+      const search = (v: string) => {
+        const input = document.querySelector('.tools input') as HTMLInputElement;
+        input.value = v;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      };
+      afterEach(() => search(''));
+
+      it('архивный чат ушёл из группы и «Без задачи»; блок «Архив · 1» свёрнут, клик раскрывает и пишет -archive-open', async () => {
+        const save = vi.spyOn(vscode, 'saveTaskFold').mockImplementation(() => undefined);
+        const host = mount(Sidebar);
+        await flush();
+        view({ tasks: 'groups' });
+        // `b` («Без задачи») и `c` (из группы NEWMFC-1) в архиве; хост считает группы по неархивным
+        sidebarMessages({
+          type: 'sessions.update',
+          sessions: [rows[0]!, arch(rows[1]!), arch(rows[2]!), rows[3]!],
+          tasks: [tasks[0]!, { ...tasks[1]!, sessionIds: ['a'] }],
+        });
+        await flush();
+        expect(listKids(host)).toEqual(['jira:x:NEWMFC-1', 'jira:x:GARM-8', 'arch']);
+        const group = host.querySelector('[data-task="jira:x:NEWMFC-1"]')!;
+        expect(group.textContent).not.toContain('восстановление очереди');
+        expect(host.querySelector('.tgp.none:not(.arch)')).toBeNull();
+        expect(head(host).querySelector('b')!.textContent).toBe('Архив');
+        expect(head(host).querySelector('.cn')!.textContent).toBe('2');
+        expect(head(host).querySelector('button.hit')!.getAttribute('aria-expanded')).toBe('false');
+        expect(host.querySelectorAll('.tgp.arch .s')).toHaveLength(0);
+        (head(host).querySelector('button.hit') as HTMLElement).click();
+        await flush();
+        expect(save).toHaveBeenLastCalledWith(['-archive-open']);
+        expect(head(host).querySelector('button.hit')!.getAttribute('aria-expanded')).toBe('true');
+        expect(host.querySelectorAll('.tgp.arch .s')).toHaveLength(2);
+        // архивный чат сидит и в блоке, и нигде больше
+        expect(host.querySelectorAll('.list .s')).toHaveLength(host.querySelectorAll('.tgp .s').length);
+        (head(host).querySelector('button.hit') as HTMLElement).click();
+        await flush();
+        expect(save).toHaveBeenLastCalledWith([]);
+        expect(host.querySelectorAll('.tgp.arch .s')).toHaveLength(0);
+      });
+
+      it('все чаты задачи в архиве — группы нет; свёрнутый архив с текущим чатом подсвечен', async () => {
+        const host = mount(Sidebar);
+        await flush();
+        view({ tasks: 'groups' });
+        sidebarMessages({
+          type: 'sessions.update',
+          sessions: [arch(rows[0]!), rows[1]!, arch(rows[2]!), rows[3]!],
+          tasks: [tasks[0]!],
+          current: 'a',
+        });
+        await flush();
+        expect(listKids(host)).toEqual(['jira:x:GARM-8', 'free', 'arch']);
+        expect(host.querySelector('[data-task="jira:x:NEWMFC-1"]')).toBeNull();
+        expect(head(host).classList.contains('sel')).toBe(true);
+        // вообще без активных групп список прежний, архив внизу
+        sidebarMessages({ type: 'sessions.update', sessions: [arch(rows[0]!), rows[1]!, arch(rows[2]!)] });
+        await flush();
+        expect(host.querySelector('.tga')).toBeNull();
+        expect(host.querySelector('.list > .tgp.arch')).not.toBeNull();
+      });
+
+      it('поиск находит архивный чат: блок раскрыт и не сворачивается кликом', async () => {
+        const save = vi.spyOn(vscode, 'saveTaskFold').mockImplementation(() => undefined);
+        const host = mount(Sidebar);
+        await flush();
+        view({ tasks: 'groups' });
+        sidebarMessages({ type: 'sessions.update', sessions: [rows[0]!, arch(rows[1]!), arch(rows[2]!)], tasks: [{ ...tasks[1]!, sessionIds: ['a'] }] });
+        await flush();
+        search('свободный');
+        await flush();
+        expect(head(host).querySelector('button.hit')!.getAttribute('aria-expanded')).toBe('true');
+        expect(head(host).querySelector('.cn')!.textContent).toBe('1');
+        expect(host.querySelectorAll('.tgp.arch .s')).toHaveLength(1);
+        (head(host).querySelector('button.hit') as HTMLElement).click();
+        await flush();
+        expect(save).not.toHaveBeenCalled();
+        expect(host.querySelectorAll('.tgp.arch .s')).toHaveLength(1);
+        // нашлось только в активных — блока нет
+        search('почему');
+        await flush();
+        expect(host.querySelector('.tgp.arch')).toBeNull();
+      });
+
+      it('строка сессии несёт sessionArchived: false у активной, true у архивной', async () => {
+        const host = mount(Sidebar);
+        await flush();
+        view({ tasks: 'groups' });
+        sidebarMessages({ type: 'sessions.update', sessions: [rows[1]!, arch(rows[3]!)] });
+        await flush();
+        (head(host).querySelector('button.hit') as HTMLElement).click();
+        await flush();
+        const ctx = (text: string) => {
+          const row = [...host.querySelectorAll<HTMLElement>('.s')].find((r) => r.textContent!.includes(text))!;
+          return JSON.parse(row.getAttribute('data-vscode-context')!) as Record<string, unknown>;
+        };
+        expect(ctx('свободный')).toMatchObject({ sessionId: 'b', sessionArchived: false });
+        expect(ctx('дубль')).toMatchObject({ sessionId: 'd', sessionArchived: true });
+        (head(host).querySelector('button.hit') as HTMLElement).click();
+        await flush();
+      });
+
+      it('режим без задач (список по дням): архивный внизу в блоке «Архив»; только архивные — «нет сессий» не пишем', async () => {
+        const host = mount(Sidebar);
+        await flush();
+        view({ tasks: 'groups' });
+        sidebarMessages({ type: 'sessions.update', sessions: [rows[1]!, arch(rows[3]!)] });
+        await flush();
+        const list = host.querySelector('.list')!;
+        expect(list.lastElementChild!.classList.contains('arch')).toBe(true);
+        expect([...list.querySelectorAll(':scope > .s')].map((r) => r.textContent)).toHaveLength(1);
+        expect(host.querySelector('.tgp.arch .cn')!.textContent).toBe('1');
+        sidebarMessages({ type: 'sessions.update', sessions: [arch(rows[3]!)] });
+        await flush();
+        expect(list.textContent).not.toContain('Нет сессий');
+        expect(list.querySelector('.tgp.arch')).not.toBeNull();
+        // совсем пусто — прежняя подпись
+        sidebarMessages({ type: 'sessions.update', sessions: [] });
+        await flush();
+        expect(host.querySelector('.tgp.arch')).toBeNull();
+        expect(list.querySelector('.day')).not.toBeNull();
+      });
+    });
   });
 });
 

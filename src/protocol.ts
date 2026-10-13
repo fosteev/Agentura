@@ -538,6 +538,8 @@ export interface SessionSummary {
   contextTokens?: number;
   /** Чат входит в группу задачи (`TaskGroups`): метка для списка сессий. */
   task?: { key: string; title: string; status?: string; statusCategory?: 'new' | 'indeterminate' | 'done' };
+  /** Чат в архиве (`ArchivedSessions`): в списке — только в блоке «Архив» внизу. */
+  archived?: true;
 }
 
 /** Группа чатов по задаче в `sessions.update.tasks`: метаданные задачи и id её сессий (новые сверху, только из списка). */

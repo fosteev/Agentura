@@ -1287,6 +1287,7 @@ export const en: Ui = {
     tasks: {
       section: 'Tasks',
       noTask: 'No task',
+      archive: 'Archive',
       chats: (n: number) => `${n} ${pl(n, 'chat', 'chats')}`,
       newChat: 'New chat for the task',
       groupTip: (key: string, title: string) => `${key} · ${title}`,

@@ -282,7 +282,40 @@ mcpJobs.push(async () => {
 // ---- go --------------------------------------------------------------------------------------------------------
 
 try {
-  await pool(process.argv[2] === 'tasks' ? taskJobs : process.argv[2] === 'mcp' ? mcpJobs : [...jobs, ...taskJobs, ...mcpJobs], 4);
+// ---- 10. Chat archive (roadmap 23): `node scripts/readme-shots/run.mjs archive` renders only these ----------------
+// Frames of both themes go to ARCHIVE_SHOTS_DIR (archive-real-<frame>-<theme>.png).
+
+const ARCH = process.env.ARCHIVE_SHOTS_DIR;
+if (ARCH) mkdirSync(ARCH, { recursive: true });
+const archiveJobs = [];
+const ARCHIVED = new Set(['s2', 's8', 's9']);
+const archSessions = (rows) => rows.map((s) => (ARCHIVED.has(s.id) ? { ...s, archived: true } : s));
+// QUE-198 has its only chat in the archive → its group is gone, as the host sends it
+const archGroups = data.taskGroups.filter((g) => g.sessionIds.some((id) => !ARCHIVED.has(id)));
+
+for (const theme of ['dark', 'light']) {
+  for (const [frame, tasks, open] of [['groups', true, false], ['groups-open', true, true], ['plain-open', false, true]]) {
+    archiveJobs.push(async () => {
+      const side = put(TMP, `${name('asidebar')}.html`, surfaceHtml({
+        surface: 'sidebar', theme, bg: THEMES[theme].side,
+        state: open ? { taskFold: ['-archive-open'] } : {},
+        messages: [
+          { type: 'sidebar.view', view: 'compact', context: true, time: true, top: 'compact', tasks: 'groups' },
+          { type: 'account.info', ...data.account },
+          limitsMsg(),
+          tasks
+            ? { type: 'sessions.update', sessions: archSessions(data.taskSessions), current: 's1', project: data.PROJECT, tasks: archGroups }
+            : { type: 'sessions.update', sessions: archSessions(data.sessions), current: 's1', project: data.PROJECT },
+        ],
+      }));
+      const page = put(TMP, `${name('aside')}.html`, splitHtml({ theme, w: 300, h: 760, panes: [{ file: side, w: 300 }] }));
+      const dest = ARCH ? join(ARCH, `archive-real-${frame}-${theme}.png`) : join(TMP, `archive-real-${frame}-${theme}.png`);
+      await single(await shot(page, png('aside'), 300, 760), dest);
+    });
+  }
+}
+
+  await pool(process.argv[2] === 'tasks' ? taskJobs : process.argv[2] === 'mcp' ? mcpJobs : process.argv[2] === 'archive' ? archiveJobs : [...jobs, ...taskJobs, ...mcpJobs], 4);
   console.log(`done: ${OUT}`);
 } finally {
   if (!process.env.KEEP_TMP) rmSync(TMP, { recursive: true, force: true });

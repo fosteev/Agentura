@@ -1306,6 +1306,7 @@ const ru = {
     tasks: {
       section: 'Задачи',
       noTask: 'Без задачи',
+      archive: 'Архив',
       chats: (n: number) => `${n} ${plural(n, 'чат', 'чата', 'чатов')}`,
       newChat: 'Новый чат по задаче',
       groupTip: (key: string, title: string) => `${key} · ${title}`,

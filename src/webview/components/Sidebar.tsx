@@ -214,6 +214,7 @@ function SessionRow({
         webviewSection: 'session',
         sessionId: s.id,
         sessionBound: !!s.task,
+        sessionArchived: !!s.archived,
         preventDefaultContextMenuItems: true,
       })}
       data-tip={`${s.title}\n${subLabel(s, true, mixed)}\n${ui.sidebar.renameTitle}`}
@@ -521,6 +522,8 @@ export interface SidebarLook {
 const FREE_FOLD = '-free';
 /** Ключ свёрнутости всего блока групп задач в `taskFold`. */
 const TASKS_FOLD = '-tasks';
+/** Блок «Архив» свёрнут по умолчанию: ключ в `taskFold` значит «раскрыт» (инверсия к остальным ключам). */
+const ARCHIVE_OPEN = '-archive-open';
 
 /** Данные панели: живые — из сообщений хоста, в превью настроек — фикстура. */
 export interface SidebarData {
@@ -546,20 +549,25 @@ export function SidebarView({ look, data }: { look: SidebarLook; data: SidebarDa
   const u = usage.value;
   const n = data.now;
   const q = query.value;
-  const shown = filterSessions(data.sessions, q);
+  // архивные строки живут только в блоке «Архив» внизу; всё остальное считается по активным
+  const active = data.sessions.filter((s) => !s.archived);
+  const archivedRows = data.sessions.filter((s) => s.archived);
+  const shown = filterSessions(active, q);
   const groups = groupByDay(shown, n);
   const mixed = mixedProviders(data.sessions);
   // задачи: есть ли группы вообще (без них список прежний), раскладка под поиск; вид `groups` | `section`
   const tasksView = look.tasks ?? DEFAULT_TASK_SIDEBAR;
-  const allTasks = data.tasks?.length ? taskLayout(data.sessions, data.tasks, '') : undefined;
+  const allTasks = data.tasks?.length ? taskLayout(active, data.tasks, '') : undefined;
   const hasTasks = !!allTasks && allTasks.blocks.length > 0;
-  const layout = hasTasks ? (q.trim() ? taskLayout(data.sessions, data.tasks, q) : allTasks) : undefined;
+  const layout = hasTasks ? (q.trim() ? taskLayout(active, data.tasks, q) : allTasks) : undefined;
   const asGroups = hasTasks && tasksView === 'groups';
   const asSection = hasTasks && tasksView === 'section';
   const folded = taskFold.value;
   const searching = q.trim() !== '';
   const curBlock = (b: TaskBlock) => b.all.some((s) => s.id === data.current);
   const freeOpen = searching || !folded.has(FREE_FOLD);
+  const archivedShown = filterSessions(archivedRows, q);
+  const archiveOpen = searching || folded.has(ARCHIVE_OPEN);
   const tasksOpen = searching || !folded.has(TASKS_FOLD);
   const f = fold.value;
   const limits = limitRows(data.windows, n);
@@ -573,6 +581,40 @@ export function SidebarView({ look, data }: { look: SidebarLook; data: SidebarDa
     top === 'dense' ? 'header' : (look.limits ?? DEFAULT_SIDEBAR_LIMITS);
   const inHeader = multi && variant === 'header';
   const refresh = { pending: u.pending, title: refreshTitle(), onClick: refreshUsage };
+  // блок «Архив» — последний в списке; по умолчанию свёрнут, при поиске раскрыт (и без клика)
+  const archiveBlock = archivedShown.length > 0 && (
+    <div class="tgp none arch">
+      <div class={`tg-h nokey${!archiveOpen && archivedShown.some((s) => s.id === data.current) ? ' sel' : ''}`}>
+        <i class={archiveOpen ? 'tw open' : 'tw'} />
+        <button
+          type="button"
+          class="kp hit"
+          aria-expanded={archiveOpen}
+          onClick={() => !searching && toggleTaskFold(ARCHIVE_OPEN)}
+        >
+          <b>{ui.sidebar.tasks.archive}</b>
+        </button>
+        <span class="cn">{archivedShown.length}</span>
+      </div>
+      {archiveOpen &&
+        groupByDay(archivedShown, n).map((g) => (
+          <>
+            <div class="day">{g.day}</div>
+            {g.rows.map((s) => (
+              <SessionRow
+                key={s.id}
+                s={s}
+                isCurrent={data.current === s.id}
+                now={n}
+                ctxCol={look.context}
+                mixed={mixed}
+                nest
+              />
+            ))}
+          </>
+        ))}
+    </div>
+  );
   return (
     <div
       class="sidebar"
@@ -768,7 +810,9 @@ export function SidebarView({ look, data }: { look: SidebarLook; data: SidebarDa
       <div class="list" hidden={f.sessions}>
         {asGroups && layout ? (
           <>
-            {layout.blocks.length === 0 && layout.free.length === 0 && <div class="day">{ui.sidebar.noMatches}</div>}
+            {layout.blocks.length === 0 && layout.free.length === 0 && archivedShown.length === 0 && (
+              <div class="day">{ui.sidebar.noMatches}</div>
+            )}
             {layout.blocks.length > 0 && (
               // весь блок задач сворачивается, как «Без задачи»; группы остаются прямыми детьми списка.
               // свёрнут с текущим чатом внутри — заголовок подсвечен
@@ -838,7 +882,7 @@ export function SidebarView({ look, data }: { look: SidebarLook; data: SidebarDa
           </>
         ) : (
           <>
-            {groups.length === 0 && (
+            {groups.length === 0 && archivedShown.length === 0 && (
               <div class="day">{q.trim() ? ui.sidebar.noMatches : ui.sidebar.noSessions}</div>
             )}
             {groups.map((g) => (
@@ -859,6 +903,7 @@ export function SidebarView({ look, data }: { look: SidebarLook; data: SidebarDa
             ))}
           </>
         )}
+        {archiveBlock}
       </div>
     </div>
   );

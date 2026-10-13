@@ -34,7 +34,9 @@
 .sidebar .tga.sel { background: color-mix(in srgb, var(--sel) 22%, transparent); }
 /* чат внутри группы: отступ под стрелку заголовка; в «Без задачи» — тот же */
 /* [data-tasks]: перебить padding строк cur/live вида compact (hud.css), иначе текущий чат теряет отступ */
-.sidebar[data-tasks] .s.nest { padding-left: 28px; }
+.sidebar:is([data-tasks], :has(.tgp.arch)) .s.nest { padding-left: 28px; }
+/* «Архив» в списке без задач идёт сразу за строками — своя черта сверху (в группах её даёт .tgp + .tgp) */
+.sidebar .tgp.arch { border-top: 1px solid var(--line); }
 .sidebar .tgp .day { padding-left: 28px; }
 .sidebar .s.nest .t .mk { margin-right: 6px; vertical-align: -2px; }
 

@@ -45,6 +45,7 @@ import {
   type Route,
 } from './panelRouting';
 import type { ContextRequest } from './contextRequest';
+import type { ArchivedSessions } from './archive';
 import { nextTabTask, parseTaskKey, routeTaskOpen, taskChatRows, taskKeyOf, type TabTask, type TaskGroups, type TaskKey, type TaskMeta } from './taskGroups';
 import { isTaskRequest, type TaskChatsMessage } from '../shared/task';
 import { TaskTab } from './jira/taskTab';
@@ -111,6 +112,8 @@ export interface ChatServices {
   memory: SessionMemory;
   /** Группы чатов по задачам Jira (roadmap 19). */
   taskGroups: TaskGroups;
+  /** Архив чатов в боковой панели (roadmap 23). */
+  archive: ArchivedSessions;
   /** Карточка задачи и лента изменений для вкладок (этап 2): источник Jira, кеш, опрос. */
   tasks: TaskService;
   /** Источники Jira: Jiraffe и свои подключения (решения 3, 4). */
