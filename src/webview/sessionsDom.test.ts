@@ -486,6 +486,30 @@ describe('боковая панель (sessions.html)', () => {
       expect(free.getAttribute('aria-expanded')).toBe('true');
     });
 
+    it('groups: заголовок «Задачи» сворачивает все группы разом, «Без задачи» остаётся; свёрнут с текущим чатом — подсвечен', async () => {
+      const save = vi.spyOn(vscode, 'saveTaskFold').mockImplementation(() => undefined);
+      const host = mount(Sidebar);
+      await flush();
+      view({ tasks: 'groups' });
+      sidebarMessages({ type: 'sessions.update', sessions: rows, tasks, current: 'c' });
+      await flush();
+      const head = () => host.querySelector('.list > .tga')!;
+      const tasksOf = () => [...host.querySelectorAll('.list > .tgp')].map((g) => g.getAttribute('data-task'));
+      expect(head().querySelector('b')!.textContent).toBe('Задачи');
+      expect(head().querySelector('.cn')!.textContent).toBe('2');
+      expect(head().classList.contains('sel')).toBe(false);
+      (head().querySelector('button.hit') as HTMLElement).click();
+      await flush();
+      expect(tasksOf()).toEqual([null]);
+      expect(head().querySelector('button.hit')!.getAttribute('aria-expanded')).toBe('false');
+      expect(head().classList.contains('sel')).toBe(true);
+      expect(save).toHaveBeenLastCalledWith(['-tasks']);
+      (head().querySelector('button.hit') as HTMLElement).click();
+      await flush();
+      expect(tasksOf()).toEqual(['jira:x:NEWMFC-1', 'jira:x:GARM-8', null]);
+      expect(save).toHaveBeenLastCalledWith([]);
+    });
+
     it('groups: поиск по ключу задачи показывает все её чаты, по названию чата — только его; найденное видно в свёрнутой группе', async () => {
       const host = mount(Sidebar);
       await flush();

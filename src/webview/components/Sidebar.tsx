@@ -519,6 +519,8 @@ export interface SidebarLook {
 
 /** Ключ свёрнутости группы «Без задачи» в `taskFold` (не совпадает ни с одним `jira:<инстанс>:<KEY>`). */
 const FREE_FOLD = '-free';
+/** Ключ свёрнутости всего блока групп задач в `taskFold`. */
+const TASKS_FOLD = '-tasks';
 
 /** Данные панели: живые — из сообщений хоста, в превью настроек — фикстура. */
 export interface SidebarData {
@@ -558,6 +560,7 @@ export function SidebarView({ look, data }: { look: SidebarLook; data: SidebarDa
   const searching = q.trim() !== '';
   const curBlock = (b: TaskBlock) => b.all.some((s) => s.id === data.current);
   const freeOpen = searching || !folded.has(FREE_FOLD);
+  const tasksOpen = searching || !folded.has(TASKS_FOLD);
   const f = fold.value;
   const limits = limitRows(data.windows, n);
   const top = look.top;
@@ -766,20 +769,37 @@ export function SidebarView({ look, data }: { look: SidebarLook; data: SidebarDa
         {asGroups && layout ? (
           <>
             {layout.blocks.length === 0 && layout.free.length === 0 && <div class="day">{ui.sidebar.noMatches}</div>}
-            {layout.blocks.map((b) => (
-              <TaskGroup
-                key={b.group.taskKey}
-                block={b}
-                // при поиске найденное видно, даже если группа свёрнута
-                open={searching || !folded.has(b.group.taskKey)}
-                searching={searching}
-                isCurrent={curBlock(b)}
-                now={n}
-                ctxCol={look.context}
-                mixed={mixed}
-                current={data.current}
-              />
-            ))}
+            {layout.blocks.length > 0 && (
+              // весь блок задач сворачивается, как «Без задачи»; группы остаются прямыми детьми списка.
+              // свёрнут с текущим чатом внутри — заголовок подсвечен
+              <div class={`tga tg-h nokey${tasksOpen ? ' open' : ''}${!tasksOpen && layout.blocks.some(curBlock) ? ' sel' : ''}`}>
+                <i class={tasksOpen ? 'tw open' : 'tw'} />
+                <button
+                  type="button"
+                  class="kp hit"
+                  aria-expanded={tasksOpen}
+                  onClick={() => !searching && toggleTaskFold(TASKS_FOLD)}
+                >
+                  <b>{ui.sidebar.tasks.section}</b>
+                </button>
+                <span class="cn">{layout.blocks.length}</span>
+              </div>
+            )}
+            {tasksOpen &&
+              layout.blocks.map((b) => (
+                <TaskGroup
+                  key={b.group.taskKey}
+                  block={b}
+                  // при поиске найденное видно, даже если группа свёрнута
+                  open={searching || !folded.has(b.group.taskKey)}
+                  searching={searching}
+                  isCurrent={curBlock(b)}
+                  now={n}
+                  ctxCol={look.context}
+                  mixed={mixed}
+                  current={data.current}
+                />
+              ))}
             {layout.free.length > 0 && (
               <div class="tgp none">
                 <div class="tg-h nokey">

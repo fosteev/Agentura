@@ -29,6 +29,9 @@
 .sidebar .tg-h.nokey .kp b { font-weight: 600; font-size: 11px; color: var(--fg-mute); letter-spacing: .02em; }
 .sidebar .tgp + .tgp { border-top: 1px solid var(--line); }
 .sidebar .tgp.sel > .tg-h { background: color-mix(in srgb, var(--sel) 22%, transparent); }
+/* заголовок «Задачи» над группами: свёрнут — черта до «Без задачи», подсветка, если текущий чат спрятан */
+.sidebar .tga:not(.open) + .tgp { border-top: 1px solid var(--line); }
+.sidebar .tga.sel { background: color-mix(in srgb, var(--sel) 22%, transparent); }
 /* чат внутри группы: отступ под стрелку заголовка; в «Без задачи» — тот же */
 /* [data-tasks]: перебить padding строк cur/live вида compact (hud.css), иначе текущий чат теряет отступ */
 .sidebar[data-tasks] .s.nest { padding-left: 28px; }
