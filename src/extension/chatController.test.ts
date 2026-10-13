@@ -2837,6 +2837,9 @@ describe('ChatController: MCP и скиллы (roadmap 21)', () => {
     async mcpReconnect(name: string) {
       this.calls.push(`reconnect:${name}`);
     }
+    async mcpToggle(name: string, enabled: boolean) {
+      this.calls.push(`toggle:${name}:${enabled}`);
+    }
     setMcpWatch(on: boolean) {
       this.calls.push(`watch:${on}`);
     }
@@ -2906,6 +2909,32 @@ describe('ChatController: MCP и скиллы (roadmap 21)', () => {
     expect(isFromWebview({ type: 'mcp.reconnect' })).toBe(false);
     expect(isFromWebview({ type: 'mcp.refresh' })).toBe(true);
     expect(isFromWebview({ type: 'mcp.reloadAll' })).toBe(true);
+  });
+
+  it('mcp.toggle: валидатор (имя 1..128, enabled boolean); без сессии движок не поднимает; с сессией доходит', async () => {
+    expect(isFromWebview({ type: 'mcp.toggle', name: 'github', enabled: false })).toBe(true);
+    expect(isFromWebview({ type: 'mcp.toggle', name: 'github', enabled: true })).toBe(true);
+    expect(isFromWebview({ type: 'mcp.toggle', name: '', enabled: true })).toBe(false);
+    expect(isFromWebview({ type: 'mcp.toggle', name: 'x'.repeat(129), enabled: true })).toBe(false);
+    expect(isFromWebview({ type: 'mcp.toggle', name: 'github' })).toBe(false);
+    expect(isFromWebview({ type: 'mcp.toggle', name: 'github', enabled: 'yes' })).toBe(false);
+    const { controller, mcpSessions } = mcpSetup();
+    await controller.handle({ type: 'mcp.toggle', name: 'github', enabled: false });
+    expect(mcpSessions).toHaveLength(0);
+    controller.start();
+    await tick();
+    const s = mcpSessions[0]!;
+    await controller.handle({ type: 'mcp.toggle', name: 'github', enabled: false });
+    await controller.handle({ type: 'mcp.toggle', name: 'github', enabled: true });
+    expect(s.calls.filter((c) => !c.startsWith('watch'))).toEqual(['toggle:github:false', 'toggle:github:true']);
+  });
+
+  it('mcp.toggle у движка без метода — warn в лог, без исключения', async () => {
+    const t = setup();
+    t.controller.start();
+    await tick();
+    await t.controller.handle({ type: 'mcp.toggle', name: 'github', enabled: false });
+    expect(t.deps.log.warn).toHaveBeenCalledWith(expect.stringContaining('mcp.toggle'));
   });
 
   it('mcp.* без сессии движок не поднимают; с сессией — доходят; reloadAll без метода — в лог', async () => {

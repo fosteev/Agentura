@@ -539,6 +539,11 @@ export interface AgentSession {
   mcpReconnect?(name: string): Promise<void>;
   /** Перезагрузить все серверы сразу, затем `mcpStatus()`. Только Codex (`features.mcpReloadAll`). */
   mcpReloadAll?(): Promise<void>;
+  /**
+   * Включить/выключить один сервер (`toggleMcpServer`: выключение в проекте, `disabledMcpServers` в `~/.claude.json`),
+   * затем `mcpStatus()`. Только Claude (`features.mcpToggle`).
+   */
+  mcpToggle?(name: string, enabled: boolean): Promise<void>;
   /** Включить/выключить слежение за статусом (`SessionOptions.mcpWatch`) у живой сессии: смена настроек. */
   setMcpWatch?(on: boolean): void;
   dispose(): void;

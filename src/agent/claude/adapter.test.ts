@@ -859,7 +859,14 @@ describe('ClaudeSession: статус MCP (roadmap 21)', () => {
   ];
   const result = { type: 'result', subtype: 'success', is_error: false, result: 'ok', session_id: 's-1' };
 
-  function setup(opts: { watch?: boolean; status?: () => Promise<unknown>; reconnect?: (n: string) => Promise<void> } = {}) {
+  function setup(
+    opts: {
+      watch?: boolean;
+      status?: () => Promise<unknown>;
+      reconnect?: (n: string) => Promise<void>;
+      toggle?: (n: string, on: boolean) => Promise<void>;
+    } = {},
+  ) {
     const control: string[] = [];
     const fake = fakeSdk({
       mcpServerStatus: async () => {
@@ -869,6 +876,10 @@ describe('ClaudeSession: статус MCP (roadmap 21)', () => {
       reconnectMcpServer: async (n: string) => {
         control.push(`reconnect:${n}`);
         if (opts.reconnect) await opts.reconnect(n);
+      },
+      toggleMcpServer: async (n: string, on: boolean) => {
+        control.push(`toggle:${n}:${on}`);
+        if (opts.toggle) await opts.toggle(n, on);
       },
     });
     const log: string[] = [];
@@ -926,6 +937,20 @@ describe('ClaudeSession: статус MCP (roadmap 21)', () => {
     await session.mcpReconnect!('sentry');
     expect(s.control).toEqual(['status', 'status', 'reconnect:sentry', 'status']);
     expect(events.filter((e) => e.type === 'mcp.status')).toHaveLength(3);
+  });
+
+  it('mcpToggle → toggleMcpServer, затем статус; ошибка — в лог, статус всё равно приходит', async () => {
+    const s = setup({ toggle: (n) => (n === 'bad' ? Promise.reject(new Error('no such server')) : Promise.resolve()) });
+    const session = await s.create();
+    const events: AgentEvent[] = [];
+    session.events.on((e) => events.push(e));
+    await session.mcpToggle!('sentry', false);
+    expect(s.control).toEqual(['toggle:sentry:false', 'status']);
+    expect(events.filter((e) => e.type === 'mcp.status')).toHaveLength(1);
+    await expect(session.mcpToggle!('bad', true)).resolves.toBeUndefined();
+    expect(s.control).toEqual(['toggle:sentry:false', 'status', 'toggle:bad:true', 'status']);
+    expect(s.log.some((m) => /toggleMcpServer\(bad, true\)/.test(m))).toBe(true);
+    expect(events.map((e) => e.type)).not.toContain('error');
   });
 
   it('ошибка control-запроса — в лог, без исключения и без падения сессии', async () => {

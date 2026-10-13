@@ -48,6 +48,12 @@ export function usageByServer(
   return out;
 }
 
+/** Метка источника сервера (`McpServerInfo.scope`): `claudeai` → `claude.ai`, остальное как есть; нет scope — нет метки. */
+export function sourceLabel(scope: string | undefined): string | undefined {
+  if (!scope) return undefined;
+  return scope === 'claudeai' ? 'claude.ai' : scope;
+}
+
 /** Команда входа для сервера в `needs-auth`: Codex — `codex mcp login <имя>`, Claude — `/mcp` (в SDK авторизации нет). */
 export function loginCommand(engine: string | undefined, name: string): string {
   return engine === 'codex' ? `codex mcp login ${name}` : '/mcp';

@@ -112,10 +112,14 @@ export function turnCounts(rows: readonly FeedRow[]): { mcp: number; skill: numb
 
 /** Данные системной строки MCP: полный список на момент события и кто в сбое. */
 export interface McpNote {
-  variant: 'start' | 'fail';
+  variant: 'start' | 'fail' | 'toggle';
   servers: { name: string; status: McpServerInfo['status']; error?: string }[];
-  /** Имена серверов в сбое: при `start` — все такие, при `fail` — только упавшие в этом событии. */
+  /** Имена серверов в сбое: при `start` — все такие, при `fail` — только упавшие в этом событии; при `toggle` пусто. */
   bad: string[];
+  /** `toggle` (roadmap 22): серверы, ставшие `disabled` в этом событии, и число их тулов по прошлому статусу. */
+  off?: { name: string; tools?: number }[];
+  /** `toggle`: серверы, вышедшие из `disabled` в этом событии. */
+  on?: string[];
 }
 
 /**
@@ -131,7 +135,21 @@ export function mcpNote(prev: readonly McpServerInfo[] | undefined, next: readon
   const bad = next
     .filter((s) => isBadServer(s) && was.get(s.name) !== 'failed' && was.get(s.name) !== 'needs-auth')
     .map((s) => s.name);
-  return bad.length ? { variant: 'fail', servers, bad } : undefined;
+  if (bad.length) return { variant: 'fail', servers, bad };
+  // сбой в том же событии приоритетнее (выше); иначе — тумблер (roadmap 22, решение 7)
+  const off: { name: string; tools?: number }[] = [];
+  const on: string[] = [];
+  for (const s of next) {
+    const w = was.get(s.name);
+    if (w === undefined) continue;
+    if (s.status === 'disabled' && w !== 'disabled') {
+      const tools = prev.find((p) => p.name === s.name)?.tools;
+      off.push({ name: s.name, ...(tools !== undefined ? { tools } : {}) });
+    } else if (s.status !== 'disabled' && w === 'disabled') on.push(s.name);
+  }
+  return off.length || on.length
+    ? { variant: 'toggle', servers, bad: [], ...(off.length ? { off } : {}), ...(on.length ? { on } : {}) }
+    : undefined;
 }
 
 /**
@@ -150,9 +168,9 @@ export function settlingStart(rows: readonly FeedRow[]): number {
   return -1;
 }
 
-/** Показывать ли системную строку при настройке `agentura.mcp.feedStatus`. */
+/** Показывать ли системную строку при настройке `agentura.mcp.feedStatus` (`toggle` виден при `failures` и `start`). */
 export function noteVisible(n: McpNote, mode: 'failures' | 'start' | 'off'): boolean {
   if (mode === 'off') return false;
   if (mode === 'start') return true;
-  return n.bad.length > 0;
+  return n.variant === 'toggle' || n.bad.length > 0;
 }

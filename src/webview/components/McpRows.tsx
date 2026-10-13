@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from 'preact/hooks';
 import type { McpServerInfo } from '../../agent/types';
 import { addSys } from '../chatState';
 import { canOpenSkill, sessionSkills, type McpUsage, type SessionSkill } from '../mcpFeed';
-import { loginCommand, mcpCounts, usageByServer } from '../mcpView';
+import { loginCommand, mcpCounts, sourceLabel, usageByServer } from '../mcpView';
 import { chat, features, provider, skillFiles } from '../store';
 import { ui } from '../strings';
 import { send } from '../vscode';
@@ -58,7 +58,8 @@ function LoginHint({ name, engine }: { name: string; engine: string | undefined 
 }
 
 /**
- * Строка сервера: статус-точка, имя с пометкой (версия / «встроенный» / ошибка), справа «повторить» или счётчики.
+ * Строка сервера: статус-точка, имя с меткой источника и пометкой (версия / «встроенный» / ошибка), справа «повторить»
+ * или счётчики, последней колонкой — тумблер (`canSwitch`, roadmap 22; у встроенного пустое место, чтобы колонки ровно).
  * `onToggle` — строка раскрывается по клику (вкладка панели): ниже вызовы по тулам.
  */
 export function McpServerRow({
@@ -67,6 +68,8 @@ export function McpServerRow({
   engine,
   canReconnect,
   onReconnect,
+  canSwitch,
+  onSwitch,
   expanded,
   onToggle,
 }: {
@@ -75,6 +78,9 @@ export function McpServerRow({
   engine: string | undefined;
   canReconnect: boolean;
   onReconnect: (name: string) => void;
+  /** Показывать тумблер вкл/выкл (`features.mcpToggle`); у `builtin` его нет в любом случае. */
+  canSwitch?: boolean;
+  onSwitch?: (name: string, enabled: boolean) => void;
   expanded?: boolean;
   onToggle?: () => void;
 }) {
@@ -89,11 +95,15 @@ export function McpServerRow({
   const err = s.status === 'failed' ? (s.error ?? ui.mcp.status['failed']) : undefined;
   const calls = usage?.total ?? 0;
   const tools = s.status === 'connected' && s.tools !== undefined ? ui.mcp.tools(s.tools) : '';
-  const showCalls = s.status === 'connected' || calls > 0;
+  const disabled = s.status === 'disabled';
+  const showCalls = s.status === 'connected' || disabled || calls > 0;
+  const src = s.builtin ? undefined : sourceLabel(s.scope);
+  const switchable = !!canSwitch && !s.builtin;
   const expandable = !!onToggle && calls > 0;
   const nm = (
     <>
       {s.name}
+      {src && <span class="src">{src}</span>}
       {notes.length > 0 && <small>{notes.join(' · ')}</small>}
       {err && (
         <small class="err" data-tip={err}>
@@ -104,7 +114,11 @@ export function McpServerRow({
   );
   return (
     <>
-      <div class={`srv${s.status === 'needs-auth' ? ' dim' : ''}`} data-status={s.status} data-name={s.name}>
+      <div
+        class={`srv${canSwitch ? ' tgl' : ''}${disabled ? ' off' : ''}${s.status === 'needs-auth' ? ' dim' : ''}`}
+        data-status={s.status}
+        data-name={s.name}
+      >
         <span class={`st ${dotClass(s)}`} aria-hidden="true" />
         {expandable ? (
           <button
@@ -140,6 +154,19 @@ export function McpServerRow({
               showCalls && '—'
             )}
           </span>
+        )}
+        {switchable ? (
+          <button
+            type="button"
+            role="switch"
+            class={`tg${disabled ? '' : ' on'}`}
+            aria-checked={!disabled}
+            aria-label={ui.mcp.chipTip(s.name)}
+            data-tip={disabled ? ui.mcp.toggleOnTip(s.name) : ui.mcp.toggleOffTip(s.name)}
+            onClick={() => onSwitch?.(s.name, disabled)}
+          />
+        ) : (
+          canSwitch && <span />
         )}
       </div>
       {s.status === 'needs-auth' && <LoginHint name={s.name} engine={engine} />}
@@ -208,6 +235,7 @@ export function McpAllSkills({ names, label }: { names: readonly string[]; label
 }
 
 const reconnect = (name: string) => send({ type: 'mcp.reconnect', name });
+const switchServer = (name: string, enabled: boolean) => send({ type: 'mcp.toggle', name, enabled });
 const openSkill = (name: string) => send({ type: 'skill.open', name });
 
 /**
@@ -274,6 +302,8 @@ export function McpSections({ variant, idle }: { variant: 'pop' | 'pane'; idle?:
           engine={engine}
           canReconnect={f.mcpReconnect}
           onReconnect={reconnect}
+          canSwitch={f.mcpToggle}
+          onSwitch={switchServer}
           {...(pane ? { expanded: open.has(sv.name), onToggle: () => toggle(sv.name) } : {})}
         />
       ))}

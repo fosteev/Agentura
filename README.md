@@ -212,6 +212,10 @@ What the agent reaches for is visible without opening `/mcp`.
 - **"mcp N/M" by the input box.** A popover with every server: status, version, tools, calls in this session, the
   skills used, and "retry" (Claude) or "reload all" (Codex). A yellow dot means a server failed or needs sign-in;
   Agentura only shows how to sign in (`/mcp` in Claude Code, `codex mcp login <name>`), it does not do it.
+- **Turn a server off.** Each server (except the built-in one) has a switch in the popover and in the "mcp" tab,
+  with a source chip (`user`, `project`, `claude.ai`…). It turns the server off for the project (the chat's folder):
+  its tools leave the context from the next turn, and it stays off for every chat in that folder and in Claude Code
+  (`disabledMcpServers` in `~/.claude.json`). Claude only; Codex has no per-server switch.
 - **"mcp" tab.** In the right panel: servers with their calls by tool, the session's skills and all available skills.
 - **A line in the feed** when a server fails to start or drops.
 - **Where to turn it off.** Settings, "Appearance", "MCP and skills": `agentura.mcp.feedLabels`,

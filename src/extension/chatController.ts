@@ -871,6 +871,13 @@ export class ChatController {
         }
         await this.current.mcpReconnect(m.name);
         return;
+      case 'mcp.toggle':
+        if (!this.current?.mcpToggle) {
+          this.log.warn(`mcp.toggle: у движка ${this.engineProvider} вкл/выкл сервера нет`);
+          return;
+        }
+        await this.current.mcpToggle(m.name, m.enabled);
+        return;
       case 'mcp.reloadAll':
         if (!this.current?.mcpReloadAll) {
           this.log.warn(`mcp.reloadAll: у движка ${this.engineProvider} перезапуска серверов нет`);

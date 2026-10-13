@@ -417,6 +417,36 @@ function McpSysRow({ n, at }: { n: McpNote; at?: string | undefined }) {
       );
     if (auth.length) parts.push(<span class="wn">{ui.mcp.needsAuth(auth.length)}</span>);
     if (pending) parts.push(<span>{ui.mcp.pending(pending)}</span>);
+  } else if (n.variant === 'toggle') {
+    const off = n.off ?? [];
+    const on = n.on ?? [];
+    if (off.length) {
+      const tools = off.reduce((a, x) => a + (x.tools ?? 0), 0);
+      const known = off.some((x) => x.tools !== undefined);
+      parts.push(
+        <span>
+          {ui.mcp.toggledOff(off.map((x) => x.name).join(', '), off.length)}
+          {known && tools > 0 && ` · ${ui.mcp.toggleLeave(tools)}`}
+          {' · '}
+          <a
+            href="#"
+            data-tip={ui.mcp.undoTip}
+            onClick={(ev) => {
+              ev.preventDefault();
+              for (const x of off) send({ type: 'mcp.toggle', name: x.name, enabled: true });
+            }}
+          >
+            {ui.mcp.undo}
+          </a>
+        </span>,
+      );
+    }
+    if (on.length)
+      parts.push(
+        <span>
+          {ui.mcp.toggledOn(on.join(', '), on.length)} · {ui.mcp.toggleBack(on.length)}
+        </span>,
+      );
   } else {
     if (bad.length)
       parts.push(

@@ -34,6 +34,8 @@ export interface ProviderFeatures {
   mcpReconnect: boolean;
   /** «перезапустить все» (`mcp.reloadAll`): Codex (`mcpServer/reload`, по одному серверу не умеет). */
   mcpReloadAll: boolean;
+  /** Тумблер вкл/выкл сервера (`mcp.toggle`, roadmap 22): Claude (`toggleMcpServer`, выключение в проекте). */
+  mcpToggle: boolean;
   /** Скиллы движка известны (`skills` в init, вызовы `Skill`): раздел скиллов. Только Claude. */
   skills: boolean;
 }
@@ -52,6 +54,7 @@ export const CLAUDE_FEATURES: Readonly<ProviderFeatures> = {
   mcp: true,
   mcpReconnect: true,
   mcpReloadAll: false,
+  mcpToggle: true,
   skills: true,
 };
 
@@ -77,6 +80,7 @@ export const CODEX_FEATURES: Readonly<ProviderFeatures> = {
   mcp: true,
   mcpReconnect: false,
   mcpReloadAll: true,
+  mcpToggle: false,
   skills: false,
 };
 
@@ -99,6 +103,7 @@ export const ANTIGRAVITY_FEATURES: Readonly<ProviderFeatures> = {
   mcp: false,
   mcpReconnect: false,
   mcpReloadAll: false,
+  mcpToggle: false,
   skills: false,
 };
 

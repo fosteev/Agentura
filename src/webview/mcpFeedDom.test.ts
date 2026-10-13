@@ -6,12 +6,12 @@
 import { h, render } from 'preact';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgentEvent, McpServerInfo } from '../agent/types';
-import { initialState, queueUser, seedHistory } from './chatState';
+import { applyEvent, initialState, queueUser, seedHistory } from './chatState';
 import { feedItems } from './agentsView';
 import { feedTurns } from './turnView';
 import { Chat } from './components/Chat';
 import { initialHud } from './hudState';
-import { mcpNote, mcpPrefix, mcpUsage, serverByPrefix, sessionSkills, turnCounts } from './mcpFeed';
+import { mcpNote, mcpPrefix, noteVisible, mcpUsage, serverByPrefix, sessionSkills, turnCounts } from './mcpFeed';
 import {
   chat,
   dispatchEvent,
@@ -130,10 +130,42 @@ describe('чистые функции', () => {
     expect(mcpNote(a, [srv('x', 'failed', 'boom'), srv('y', 'pending')])).toMatchObject({ variant: 'fail', bad: ['x'] });
     // pending → failed — тоже сбой, needs-auth — тоже
     expect(mcpNote(a, [srv('x', 'connected'), srv('y', 'needs-auth')])).toMatchObject({ variant: 'fail', bad: ['y'] });
-    // тот же сбой повторно, выздоровление, выключение — строки нет
+    // тот же сбой повторно и выздоровление — строки нет
     expect(mcpNote([srv('x', 'failed')], [srv('x', 'failed', 'again')])).toBeUndefined();
     expect(mcpNote([srv('x', 'failed')], [srv('x', 'connected')])).toBeUndefined();
-    expect(mcpNote(a, [srv('x', 'disabled'), srv('y', 'pending')])).toBeUndefined();
+  });
+
+  it('mcpNote toggle (roadmap 22): выкл — из любого статуса с числом тулов; вкл — из disabled; fail приоритетнее', () => {
+    const before = [{ ...srv('x', 'connected'), tools: 5 }, { ...srv('y', 'failed') }, srv('z', 'disabled')];
+    // connected → disabled (тулы по прошлому статусу), failed → disabled; disabled без изменений — молчим
+    expect(mcpNote(before, [srv('x', 'disabled'), srv('y', 'disabled'), srv('z', 'disabled')])).toEqual({
+      variant: 'toggle',
+      servers: [
+        { name: 'x', status: 'disabled' },
+        { name: 'y', status: 'disabled' },
+        { name: 'z', status: 'disabled' },
+      ],
+      bad: [],
+      off: [{ name: 'x', tools: 5 }, { name: 'y' }],
+    });
+    // disabled → connected / pending / failed: вкл (для failed — но тогда это сбой, и приоритет у fail)
+    expect(mcpNote(before, [srv('x', 'connected'), srv('y', 'failed'), srv('z', 'pending')])).toMatchObject({
+      variant: 'toggle',
+      on: ['z'],
+    });
+    expect(mcpNote(before, [srv('x', 'connected'), srv('y', 'failed'), srv('z', 'failed')])).toMatchObject({
+      variant: 'fail',
+      bad: ['z'],
+    });
+    // и выкл, и сбой в одном событии — fail
+    expect(mcpNote(before, [srv('x', 'disabled'), srv('y', 'failed'), srv('z', 'needs-auth')])).toMatchObject({
+      variant: 'fail',
+    });
+    // появился сразу disabled (его не было) и неизменный статус — строки нет
+    expect(mcpNote(before, [...before, srv('new', 'disabled')])).toBeUndefined();
+    // noteVisible: toggle виден при failures и start, скрыт при off
+    const t = mcpNote(before, [srv('x', 'disabled'), srv('y', 'failed'), srv('z', 'disabled')])!;
+    expect([noteVisible(t, 'failures'), noteVisible(t, 'start'), noteVisible(t, 'off')]).toEqual([true, true, false]);
   });
 
   it('счётчики и скиллы считаются по ленте, в том числе после пересева из событий', () => {
@@ -334,6 +366,57 @@ describe('системная строка MCP', () => {
     const turns = qa(host, '.turn');
     expect(q(turns[1]!, '.sys.mcp')).not.toBeNull();
     expect(q(turns[0]!, '.sys.mcp')).toBeNull();
+  });
+
+  it('toggle: «выключен … в проекте · N тул. · вернуть» шлёт mcp.toggle enabled:true по каждому; включение — без «вернуть»', async () => {
+    const host = mount();
+    play([
+      init(),
+      { type: 'turn.start', at: T0, prompt: 'go' },
+      status([{ ...srv('serena', 'connected'), tools: 21 }, { ...srv('ctx', 'connected'), tools: 2 }]),
+      status([srv('serena', 'disabled'), srv('ctx', 'disabled')], T0 + 100),
+    ]);
+    await flush();
+    // при failures стартовая сводка без сбоев скрыта, а toggle виден
+    const rows = qa(host, '.sys.mcp');
+    expect(rows).toHaveLength(1);
+    const text = rows[0]!.textContent!;
+    expect(text).toContain('выключены serena, ctx в проекте');
+    expect(text).toContain('23 тул. уйдут из контекста со следующего хода');
+    expect(rows[0]!.classList.contains('bad')).toBe(false);
+    const undo = qa(rows[0]!, 'a').find((a) => a.textContent === 'вернуть')!;
+    undo.click();
+    expect(sent).toEqual([
+      { type: 'mcp.toggle', name: 'serena', enabled: true },
+      { type: 'mcp.toggle', name: 'ctx', enabled: true },
+    ]);
+    // включили обратно: ещё одна строка, без «вернуть»
+    play([status([srv('serena', 'connected'), srv('ctx', 'pending')], T0 + 500)]);
+    await flush();
+    const last = qa(host, '.sys.mcp').at(-1)!;
+    expect(qa(host, '.sys.mcp')).toHaveLength(2);
+    expect(last.textContent).toContain('включены serena, ctx в проекте · подключатся со следующего хода');
+    expect(qa(last, 'a').find((a) => a.textContent === 'вернуть')).toBeUndefined();
+    // off — никакой строки
+    mcpFeedStatus.value = 'off';
+    await flush();
+    expect(q(host, '.sys.mcp')).toBeNull();
+  });
+
+  it('toggle без числа тулов — без этой части; пересев живой сессии (mcpQuiet) строку не пишет', async () => {
+    const host = mount();
+    play([
+      init(),
+      { type: 'turn.start', at: T0, prompt: 'go' },
+      status([srv('serena', 'connected')]),
+      status([srv('serena', 'disabled')], T0 + 100),
+    ]);
+    await flush();
+    expect(q(host, '.sys.mcp').textContent).toContain('выключен serena в проекте');
+    expect(q(host, '.sys.mcp').textContent).not.toContain('тул.');
+    const quiet = { ...initialState(), mcp: { servers: [srv('serena', 'connected')], at: 1 }, mcpQuiet: true };
+    const next = applyEvent(quiet, status([srv('serena', 'disabled')], 2), 2);
+    expect(next.rows.filter((r) => r.kind === 'sys' && r.mcp)).toHaveLength(0);
   });
 
   it('старт оседает: init даёт pending, следом failed — одна сводка «не подключился», не «отключился»', async () => {

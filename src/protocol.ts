@@ -408,6 +408,8 @@ export type FromWebview =
   | { type: 'mcp.refresh' }
   | { type: 'mcp.reconnect'; name: string }
   | { type: 'mcp.reloadAll' }
+  /** Roadmap 22: тумблер сервера (Claude, `features.mcpToggle`): выключение в проекте (папке чата), не в этом чате. */
+  | { type: 'mcp.toggle'; name: string; enabled: boolean }
   /** Roadmap 21, решение 6: открыть SKILL.md скилла в редакторе; путь собирает хост, имя — `SKILL_NAME_RE`. */
   | { type: 'skill.open'; name: string }
   | { type: 'compact'; sessionId: string }
@@ -589,6 +591,7 @@ const FROM_WEBVIEW_TYPES: Record<FromWebview['type'], true> = {
   'mcp.refresh': true,
   'mcp.reconnect': true,
   'mcp.reloadAll': true,
+  'mcp.toggle': true,
   'skill.open': true,
   'compact': true,
   'agent.stop': true,
@@ -663,6 +666,7 @@ const FIELD_CHECKS: Partial<Record<FromWebview['type'], (m: Record<string, unkno
   'agents.snapshot': (m) => typeof m.sessionId === 'string' && isAgentGraphView(m.graph),
   'remote.set': (m) => bool(m.on) && (m.sessionId === undefined || str(m.sessionId)),
   'mcp.reconnect': (m) => str(m.name) && m.name.length > 0 && m.name.length <= 128,
+  'mcp.toggle': (m) => str(m.name) && m.name.length > 0 && m.name.length <= 128 && bool(m.enabled),
   'skill.open': (m) => isSkillName(m.name),
   'agent.stop': (m) => typeof m.sessionId === 'string' && typeof m.taskId === 'string',
   'agent.transcript': (m) =>

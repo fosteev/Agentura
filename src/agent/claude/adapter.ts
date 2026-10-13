@@ -810,6 +810,17 @@ class ClaudeSession implements AgentSession {
     await this.refreshMcp(true);
   }
 
+  /** Тумблер сервера: `toggleMcpServer`, затем свежий статус (ответ всегда приходит `mcp.status`). */
+  async mcpToggle(name: string, enabled: boolean): Promise<void> {
+    if (this.closed) return;
+    try {
+      await this.q.toggleMcpServer(name, enabled);
+    } catch (error) {
+      this.log('warn', `toggleMcpServer(${name}, ${enabled}) не ответил: ${String(error)}`);
+    }
+    await this.refreshMcp(true);
+  }
+
   setMcpWatch(on: boolean): void {
     const was = this.mcpWatch;
     this.mcpWatch = on;

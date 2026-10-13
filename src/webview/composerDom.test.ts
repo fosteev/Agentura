@@ -453,6 +453,57 @@ describe('кнопка «mcp N/M» (roadmap 21, этап 3)', () => {
     expect(host.querySelector('.mcpmenu h5 .act')).toBeNull();
   });
 
+  it('тумблер (roadmap 22): у Claude есть, у builtin нет; шлёт mcp.toggle с инверсией; выключенный — .off, «—»; чип источника', async () => {
+    withStatus([
+      srv('serena', 'connected', { tools: 21, scope: 'user' }),
+      srv('agentura_jira', 'connected', { builtin: true, scope: 'user' }),
+      srv('figma', 'connected', { scope: 'claudeai' }),
+      srv('bare', 'failed', { error: 'x' }),
+      srv('old', 'disabled', { scope: 'project' }),
+    ]);
+    const host = mount();
+    await flush();
+    btn(host)!.click();
+    await flush();
+    const row = (n: string) => host.querySelector<HTMLElement>(`.mcpmenu .srv[data-name="${n}"]`)!;
+    const sw = (n: string) => row(n).querySelector<HTMLButtonElement>('button.tg');
+    expect(sw('serena')!.getAttribute('role')).toBe('switch');
+    expect(sw('serena')!.getAttribute('aria-checked')).toBe('true');
+    expect(sw('serena')!.getAttribute('data-tip')).toContain('Выключить serena в этом проекте');
+    expect(sw('bare')).not.toBeNull(); // выключить сломанный — частый случай
+    expect(sw('agentura_jira')).toBeNull(); // встроенный: им правит настройка Jira
+    expect(row('agentura_jira').classList.contains('tgl')).toBe(true); // место под колонку сохранено
+    sw('serena')!.click();
+    sw('old')!.click();
+    expect(posted).toContainEqual({ type: 'mcp.toggle', name: 'serena', enabled: false });
+    expect(posted).toContainEqual({ type: 'mcp.toggle', name: 'old', enabled: true });
+    // выключенный: .off, переключатель снят, заметка «выключен», справа «—»
+    expect(row('old').classList.contains('off')).toBe(true);
+    expect(sw('old')!.getAttribute('aria-checked')).toBe('false');
+    expect(sw('old')!.getAttribute('data-tip')).toBe('Включить old в этом проекте');
+    expect(row('old').textContent).toContain('выключен');
+    expect(row('old').querySelector('.n')!.textContent).toBe('—');
+    // чип источника: claudeai → claude.ai, остальное как есть, у встроенного нет
+    expect(row('figma').querySelector('.src')!.textContent).toBe('claude.ai');
+    expect(row('serena').querySelector('.src')!.textContent).toBe('user');
+    expect(row('old').querySelector('.src')!.textContent).toBe('project');
+    expect(row('agentura_jira').querySelector('.src')).toBeNull();
+    expect(row('bare').querySelector('.src')).toBeNull();
+  });
+
+  it('тумблера нет у Codex (чип источника — есть, если scope пришёл)', async () => {
+    chat.value = { ...initialState(), project: 'p', cwd: '/p', engine: 'codex' };
+    features.value = providerFeatures('codex');
+    withStatus([srv('serena', 'connected', { scope: 'user' }), srv('old', 'disabled')]);
+    const host = mount();
+    await flush();
+    btn(host)!.click();
+    await flush();
+    expect(host.querySelector('.mcpmenu .tg')).toBeNull();
+    expect(host.querySelector('.mcpmenu .srv.tgl')).toBeNull();
+    expect(host.querySelector('.mcpmenu .srv[data-name="serena"] .src')!.textContent).toBe('user');
+  });
+
   it('needs-auth: подсказка входа и «скопировать команду» кладёт команду в буфер; у Codex — codex mcp login', async () => {
     const written: string[] = [];
     Object.defineProperty(navigator, 'clipboard', {

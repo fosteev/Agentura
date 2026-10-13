@@ -5,6 +5,7 @@ describe('providerFeatures', () => {
   it('Claude: все возможности включены, кроме «перезапустить все MCP» (это Codex)', () => {
     const { mcpReloadAll, ...rest } = providerFeatures('claude');
     expect(Object.values(rest).every(Boolean)).toBe(true);
+    expect(rest.mcpToggle).toBe(true);
     expect(mcpReloadAll).toBe(false);
   });
 
@@ -23,6 +24,7 @@ describe('providerFeatures', () => {
       mcp: true,
       mcpReconnect: false,
       mcpReloadAll: true,
+      mcpToggle: false,
       skills: false,
     });
   });
@@ -42,6 +44,7 @@ describe('providerFeatures', () => {
       mcp: false,
       mcpReconnect: false,
       mcpReloadAll: false,
+      mcpToggle: false,
       skills: false,
     });
   });
