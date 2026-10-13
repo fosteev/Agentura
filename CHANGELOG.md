@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.16.0 — 2026-10-13
+
+### Added
+
+- **Archive chats.** Right-click a session in the sidebar → "Archive" moves it into a folded "Archive · N" block at the
+  bottom of the list (a notification offers "Undo"); "Unarchive" brings it back. Archived chats leave task groups,
+  "No task" and the day list; a task whose chats are all archived drops out of the groups until one comes back.
+  Search finds archived chats too. Nothing is deleted: the archive is a list of session ids kept per project by
+  Agentura, the engines and their session files are untouched.
+- **Fold all task groups at once.** A "Tasks · N" header above the groups collapses them together, like "No task".
+
 ## 0.15.0 — 2026-10-13
 
 ### Added
