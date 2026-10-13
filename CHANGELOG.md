@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.15.0 — 2026-10-13
+
+### Added
+
+- **Turn an MCP server off from the "mcp" tab and the "mcp N/M" popover.** Every server except the built-in Jira one
+  gets a switch (Claude only). It turns the server off for the project, i.e. the chat's folder: its tools leave the
+  context from the next turn, and the choice applies to every chat in that folder and to Claude Code in the terminal
+  (`disabledMcpServers` in `~/.claude.json`). A switched-off server is dimmed and marked "disabled".
+- **Source chip on each server.** `user`, `project`, `local`, `claude.ai`, `plugin`… as the engine reports it.
+- **A line in the feed when a server is switched off or on**, with an "undo" link and the number of tools leaving the
+  context.
+
 ## 0.14.0 — 2026-10-12
 
 ### Added
