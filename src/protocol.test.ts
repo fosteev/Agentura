@@ -91,6 +91,7 @@ describe('protocol', () => {
       { type: 'task.toComposer', commentId: '50001' },
       { type: 'task.openExternal' },
       { type: 'task.openExternal', attachmentId: '40001' },
+      { type: 'task.openExternal', web: true },
       { type: 'task.toComposer' }, // roadmap 20: без commentId — контекст всей задачи
     ];
     for (const m of ok) expect(isFromWebview(m), JSON.stringify(m)).toBe(true);
@@ -99,6 +100,7 @@ describe('protocol', () => {
       { type: 'task.toComposer', commentId: 5 },
       { type: 'task.toComposer', commentId: 'x'.repeat(201) },
       { type: 'task.openExternal', attachmentId: 5 },
+      { type: 'task.openExternal', web: 'yes' },
       { type: 'task.state' }, // это сообщение хоста, от webview не принимается
     ];
     for (const m of bad) expect(isFromWebview(m), JSON.stringify(m)).toBe(false);

@@ -366,6 +366,9 @@ export function TaskView({
               <button class="btn" disabled={!canWrite} data-tip={writeTip} aria-expanded={wlOpen} onClick={() => setWlOpen(!wlOpen)}>
                 {t.worklogBtn}
               </button>
+              <button class="btn" data-tip={t.openJiraTitle} onClick={() => send({ type: 'task.openExternal', web: true })}>
+                {t.openJiraBtn}
+              </button>
               <button class="btn pri" data-tip={t.toChatCardTitle} onClick={() => onToChat()}>
                 {t.toChatCard}
               </button>

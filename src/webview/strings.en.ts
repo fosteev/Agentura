@@ -47,6 +47,8 @@ export const en: Ui = {
     worklogBtn: 'Worklog',
     toChatCard: '↳ to chat',
     toChatCardTitle: 'Attach the task to the chat input (as a file) and go to the chat',
+    openJiraBtn: 'open in Jira ↗',
+    openJiraTitle: 'Open the task in Jira in the browser',
     commentPh: 'Write a comment…',
     commentSend: 'Send',
     commentHint: 'Ctrl/Cmd+Enter to send',

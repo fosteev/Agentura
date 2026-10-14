@@ -707,7 +707,9 @@ const FIELD_CHECKS: Partial<Record<FromWebview['type'], (m: Record<string, unkno
     str(m.comment) &&
     m.comment.length <= TASK_LIMITS.workComment,
   'task.openLink': (m) => isOpenableLink(m.url),
-  'task.openExternal': (m) => m.attachmentId === undefined || (str(m.attachmentId) && m.attachmentId.length <= 200),
+  'task.openExternal': (m) =>
+    (m.attachmentId === undefined || (str(m.attachmentId) && m.attachmentId.length <= 200)) &&
+    (m.web === undefined || typeof m.web === 'boolean'),
 };
 
 /** Проверка входящего от webview сообщения: снаружи приходит `unknown`. */

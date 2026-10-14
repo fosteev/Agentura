@@ -51,6 +51,8 @@ const ru = {
     worklogBtn: 'Ворклог',
     toChatCard: '↳ в чат',
     toChatCardTitle: 'Добавить задачу к полю ввода чата (файлом) и перейти в чат',
+    openJiraBtn: 'открыть в Jira ↗',
+    openJiraTitle: 'Открыть задачу в Jira в браузере',
     commentPh: 'Написать комментарий…',
     commentSend: 'Отправить',
     commentHint: 'Ctrl/Cmd+Enter — отправить',

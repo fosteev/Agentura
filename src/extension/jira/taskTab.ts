@@ -167,7 +167,7 @@ export class TaskTab {
         }
         const parsed = parseTaskKey(key);
         const src = this.deps.service.sourceFor(key);
-        if (parsed && src?.kind === 'jiraffe' && src.openIssue) {
+        if (!m.web && parsed && src?.kind === 'jiraffe' && src.openIssue) {
           void src.openIssue(parsed.instanceId, parsed.key, true).catch(() => {
             const url = this.deps.service.issueUrl(key);
             if (url) this.open(url);

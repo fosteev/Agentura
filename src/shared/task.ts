@@ -238,8 +238,8 @@ export type TaskRequest =
   | { type: 'task.logWork'; seconds: number; date: string; comment: string }
   /** Ссылка из HTML описания/комментария: хост открывает только http/https/mailto. */
   | { type: 'task.openLink'; url: string }
-  /** Открыть задачу («в Jiraffe ↗» при источнике Jiraffe, иначе в браузере) или вложение `attachmentId` в браузере. */
-  | { type: 'task.openExternal'; attachmentId?: string }
+  /** Открыть задачу («в Jiraffe ↗» при источнике Jiraffe, иначе в браузере; `web` — всегда в браузере) или вложение `attachmentId` в браузере. */
+  | { type: 'task.openExternal'; attachmentId?: string; web?: boolean }
   /** Открыть чат из блока «Чаты по задаче» (должен быть в группе задачи вкладки — хост проверяет). */
   | { type: 'task.openChat'; sessionId: string }
   /** Нет подключения/токен не подошёл: открыть «Agentura: Подключить Jira…». */
