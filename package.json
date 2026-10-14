@@ -2,7 +2,7 @@
   "name": "agentura",
   "displayName": "Agentura",
   "description": "%ext.description%",
-  "version": "0.16.0",
+  "version": "0.17.0",
   "private": true,
   "publisher": "fosteev",
   "repository": {
@@ -608,6 +608,33 @@
           "minimum": 10,
           "maximum": 20,
           "description": "%config.ui.fontSize.description%"
+        },
+        "agentura.diff.syntaxHighlighting": {
+          "type": "boolean",
+          "default": true,
+          "description": "%config.diff.syntaxHighlighting.description%"
+        },
+        "agentura.diff.highlightTheme": {
+          "type": "string",
+          "enum": [
+            "simple",
+            "github",
+            "one"
+          ],
+          "enumDescriptions": [
+            "%config.diff.highlightTheme.enum.simple%",
+            "%config.diff.highlightTheme.enum.github%",
+            "%config.diff.highlightTheme.enum.one%"
+          ],
+          "default": "github",
+          "description": "%config.diff.highlightTheme.description%"
+        },
+        "agentura.diff.fontSize": {
+          "type": "integer",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 40,
+          "description": "%config.diff.fontSize.description%"
         },
         "agentura.language": {
           "type": "string",

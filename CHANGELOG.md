@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.17.0 — 2026-10-14
+
+### Added
+
+- **"code" tab for task chats.** Next to "chat | task" a task chat now has "code N": everything done for the Jira task
+  in the repositories its chats worked in. Commits with the task key in the message (all branches), branches with the
+  key in the name and their commits ahead of the base (marked "branch"), "↑ local" for unpushed commits and "in
+  <base>" for merged ones, plus the files agents edited in the task's chats that are still uncommitted (with the chats
+  that edited them). The selected commit shows its files, "commit diff", "to chat" and "copy hash".
+- **Inline diff inside the tab.** Commit, branch and uncommitted file diffs open in the same tab instead of a separate
+  editor: syntax highlighting, inline or split view, ✕ or Esc to go back, j/k for the next and previous file.
+- **"How do we search?"** A popover with the exact git commands used for the task (with "copy"), and the rule: put the
+  task key in the commit message or the branch name.
+- **Diff settings.** `agentura.diff.highlightTheme` (simple / github / one), `agentura.diff.syntaxHighlighting` and
+  `agentura.diff.fontSize`; the font family follows `agentura.font.code`.
+- **"open in Jira ↗" button** on the task card: always opens the issue in the browser, even with the Jiraffe source.
+
 ## 0.16.0 — 2026-10-13
 
 ### Added
