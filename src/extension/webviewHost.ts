@@ -81,6 +81,9 @@ const APPEARANCE_KEYS = [
   'agentura.font.code',
   'agentura.feed.fontSize',
   'agentura.ui.fontSize',
+  'agentura.diff.syntaxHighlighting',
+  'agentura.diff.highlightTheme',
+  'agentura.diff.fontSize',
 ];
 
 /** Скачанные шрифты для `appearance`: имена и ссылка на fonts.css (`?v=` — mtime, чтобы webview не держал старый). */
@@ -112,6 +115,9 @@ async function postAppearance(webview: vscode.Webview, isLatest: () => boolean, 
       fontCode: v['font.code'],
       feedFontSize: v['feed.fontSize'],
       uiFontSize: v['ui.fontSize'],
+      diffHighlight: v['diff.syntaxHighlighting'],
+      diffTheme: v['diff.highlightTheme'],
+      diffFontSize: v['diff.fontSize'],
       userFonts,
     });
   } catch (e) {

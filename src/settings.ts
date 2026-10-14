@@ -152,6 +152,16 @@ export const DEFAULT_FEED_FONT_SIZE = 13;
 export const MIN_FEED_FONT_SIZE = 10;
 export const MAX_FEED_FONT_SIZE = 20;
 
+/**
+ * Дифф вкладки «код» (roadmap 24): палитра подсветки, подсветка вкл/выкл, размер шрифта (0 — как `feed.fontSize`).
+ * Семейство шрифта — `font.code`. Применяется через `appearance` (`body[data-hl-theme]`, `--diff-size`).
+ */
+export const HIGHLIGHT_THEMES = ['simple', 'github', 'one'] as const;
+export type HighlightTheme = (typeof HIGHLIGHT_THEMES)[number];
+export const DEFAULT_HIGHLIGHT_THEME: HighlightTheme = 'github';
+export const MIN_DIFF_FONT_SIZE = 0;
+export const MAX_DIFF_FONT_SIZE = 40;
+
 export const PROVIDERS: readonly AgentProvider[] = ['claude', 'codex', 'antigravity'];
 export const DEFAULT_PROVIDER: AgentProvider = 'claude';
 export function isProvider(v: unknown): v is AgentProvider {
@@ -197,6 +207,9 @@ export type SettingKey =
   | 'mcp.feedStatus'
   | 'feed.fontSize'
   | 'ui.fontSize'
+  | 'diff.syntaxHighlighting'
+  | 'diff.highlightTheme'
+  | 'diff.fontSize'
   | 'font.interface'
   | 'font.panels'
   | 'font.code'
@@ -240,6 +253,9 @@ export const SETTING_KEYS: readonly SettingKey[] = [
   'mcp.feedStatus',
   'feed.fontSize',
   'ui.fontSize',
+  'diff.syntaxHighlighting',
+  'diff.highlightTheme',
+  'diff.fontSize',
   'font.interface',
   'font.panels',
   'font.code',
@@ -308,6 +324,12 @@ export interface SettingsValues {
   'feed.fontSize': number;
   /** Размер интерфейса (всё, кроме ленты), px; 13 — как есть, иначе всё масштабируется (`--ui-zoom`). */
   'ui.fontSize': number;
+  /** Дифф вкладки «код»: подсвечивать синтаксис. */
+  'diff.syntaxHighlighting': boolean;
+  /** Дифф вкладки «код»: палитра подсветки. */
+  'diff.highlightTheme': HighlightTheme;
+  /** Дифф вкладки «код»: размер шрифта, px (0 — как у ленты, `feed.fontSize`). */
+  'diff.fontSize': number;
   /** Пусто — шрифт интерфейса VS Code. */
   'font.interface': string;
   /** Шапка, поле ввода, правая и левая панели; пусто — как было (чат моноширинный, боковая — шрифт интерфейса). */
@@ -390,6 +412,17 @@ export function isMcpFeedStatus(v: unknown): v is McpFeedStatus {
 
 export function isAgentsView(v: unknown): v is AgentsView {
   return typeof v === 'string' && (AGENTS_VIEWS as readonly string[]).includes(v);
+}
+
+export function isHighlightTheme(v: unknown): v is HighlightTheme {
+  return typeof v === 'string' && (HIGHLIGHT_THEMES as readonly string[]).includes(v);
+}
+
+/** Размер шрифта диффа: целое 0…40, 0 — размер ленты. */
+export function isDiffFontSize(v: unknown): v is number {
+  return (
+    typeof v === 'number' && Number.isInteger(v) && v >= MIN_DIFF_FONT_SIZE && v <= MAX_DIFF_FONT_SIZE
+  );
 }
 
 export function isFeedFontSize(v: unknown): v is number {
@@ -521,6 +554,7 @@ export function validateSetting(key: SettingKey, value: unknown, lang: ErrLang =
     case 'sessionList.time':
     case 'tasks.humanChanges':
     case 'git.hideClean':
+    case 'diff.syntaxHighlighting':
     case 'mcp.feedLabels':
     case 'mcp.composerButton':
     case 'mcp.panelTab':
@@ -541,6 +575,14 @@ export function validateSetting(key: SettingKey, value: unknown, lang: ErrLang =
       return isFeedFontSize(value)
         ? { ok: true, value }
         : bad(t.pxRange(MIN_FEED_FONT_SIZE, MAX_FEED_FONT_SIZE));
+    case 'diff.highlightTheme':
+      return isHighlightTheme(value)
+        ? { ok: true, value }
+        : bad(t.allowed(HIGHLIGHT_THEMES.join(', ')));
+    case 'diff.fontSize':
+      return isDiffFontSize(value)
+        ? { ok: true, value }
+        : bad(t.pxRange(MIN_DIFF_FONT_SIZE, MAX_DIFF_FONT_SIZE));
     case 'usagePollMinutes':
       if (typeof value !== 'number' || !Number.isFinite(value) || !Number.isInteger(value)) {
         return bad(t.wholeMinutes);
@@ -631,6 +673,8 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
   const provider = cfg.get<unknown>('defaultProvider');
   const fz = cfg.get<unknown>('feed.fontSize');
   const uz = cfg.get<unknown>('ui.fontSize');
+  const hlTheme = cfg.get<unknown>('diff.highlightTheme');
+  const diffSize = cfg.get<unknown>('diff.fontSize');
   const str = (k: string) => {
     const v = cfg.get<unknown>(k);
     return typeof v === 'string' ? v : '';
@@ -677,6 +721,9 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
     'mcp.feedStatus': mcp.feedStatus,
     'feed.fontSize': isFeedFontSize(fz) ? fz : DEFAULT_FEED_FONT_SIZE,
     'ui.fontSize': isFeedFontSize(uz) ? uz : DEFAULT_FEED_FONT_SIZE,
+    'diff.syntaxHighlighting': cfg.get<unknown>('diff.syntaxHighlighting') !== false,
+    'diff.highlightTheme': isHighlightTheme(hlTheme) ? hlTheme : DEFAULT_HIGHLIGHT_THEME,
+    'diff.fontSize': isDiffFontSize(diffSize) ? diffSize : 0,
     'font.interface': str('font.interface'),
     'font.panels': str('font.panels'),
     'font.code': str('font.code'),

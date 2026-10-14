@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest';
-import { applyAppearance, appearanceVars, fontStack, uiZoom } from './appearance';
+import { applyAppearance, appearanceVars, fontStack, highlightThemeAttr, uiZoom } from './appearance';
 import { userFonts } from './fonts';
 
 const msg = (
@@ -10,6 +10,9 @@ const msg = (
     fontCode: string;
     feedFontSize: number;
     uiFontSize: number;
+    diffHighlight: boolean;
+    diffTheme: 'simple' | 'github' | 'one';
+    diffFontSize: number;
     userFonts: { ui: string[]; code: string[]; css?: string };
   }> = {},
 ) => ({
@@ -19,6 +22,9 @@ const msg = (
   fontCode: '',
   feedFontSize: 13,
   uiFontSize: 13,
+  diffHighlight: true,
+  diffTheme: 'github' as const,
+  diffFontSize: 0,
   userFonts: { ui: [], code: [] },
   ...over,
 });
@@ -51,6 +57,7 @@ describe('appearanceVars / applyAppearance', () => {
       '--panel-font': undefined,
       '--feed-zoom': undefined,
       '--ui-zoom': undefined,
+      '--diff-size': '13px',
     });
   });
   it('размер интерфейса — свой масштаб от 13 px; мусор — как 13', () => {
@@ -75,6 +82,33 @@ describe('appearanceVars / applyAppearance', () => {
     applyAppearance(msg(), root);
     expect(root.style.getPropertyValue('--mono')).toBe('');
     expect(root.style.getPropertyValue('--feed-zoom')).toBe('');
+  });
+});
+
+describe('дифф вкладки «код»', () => {
+  it('размер: 0 и мусор — размер ленты, иначе свой в px', () => {
+    expect(appearanceVars(msg())['--diff-size']).toBe('13px');
+    expect(appearanceVars(msg({ feedFontSize: 16 }))['--diff-size']).toBe('16px');
+    expect(appearanceVars(msg({ diffFontSize: 11 }))['--diff-size']).toBe('11px');
+    expect(appearanceVars(msg({ diffFontSize: 40, feedFontSize: 16 }))['--diff-size']).toBe('40px');
+    expect(appearanceVars(msg({ diffFontSize: 99, feedFontSize: 16 }))['--diff-size']).toBe('16px');
+    expect(appearanceVars(msg({ diffFontSize: 1.5 }))['--diff-size']).toBe('13px');
+  });
+  it('палитра: из настройки, выключенная подсветка — off, мусор — github', () => {
+    expect(highlightThemeAttr(msg({ diffTheme: 'one' }))).toBe('one');
+    expect(highlightThemeAttr(msg({ diffHighlight: false, diffTheme: 'one' }))).toBe('off');
+    expect(highlightThemeAttr({ ...msg(), diffTheme: 'x' as never })).toBe('github');
+  });
+  it('смена настройки живьём: атрибут body и --diff-size на корне', () => {
+    const root = document.createElement('div');
+    applyAppearance(msg({ diffTheme: 'one', diffFontSize: 14 }), root);
+    expect(document.body.dataset.hlTheme).toBe('one');
+    expect(root.style.getPropertyValue('--diff-size')).toBe('14px');
+    applyAppearance(msg({ diffTheme: 'simple', diffFontSize: 0, feedFontSize: 15 }), root);
+    expect(document.body.dataset.hlTheme).toBe('simple');
+    expect(root.style.getPropertyValue('--diff-size')).toBe('15px');
+    applyAppearance(msg({ diffHighlight: false }), root);
+    expect(document.body.dataset.hlTheme).toBe('off');
   });
 });
 

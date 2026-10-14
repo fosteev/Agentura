@@ -191,6 +191,31 @@ describe('шрифты и размер ленты', () => {
     expect(validateSetting('ui.fontSize', 16)).toEqual({ ok: true, value: 16 });
     expect(validateSetting('ui.fontSize', 21).ok).toBe(false);
   });
+  it('дифф вкладки «код»: проверка и чтение', () => {
+    expect(validateSetting('diff.syntaxHighlighting', false)).toEqual({ ok: true, value: false });
+    expect(validateSetting('diff.syntaxHighlighting', 'no').ok).toBe(false);
+    for (const t of ['simple', 'github', 'one']) {
+      expect(validateSetting('diff.highlightTheme', t)).toEqual({ ok: true, value: t });
+    }
+    expect(validateSetting('diff.highlightTheme', 'auto').ok).toBe(false);
+    expect(validateSetting('diff.fontSize', 0)).toEqual({ ok: true, value: 0 });
+    expect(validateSetting('diff.fontSize', 40)).toEqual({ ok: true, value: 40 });
+    expect(validateSetting('diff.fontSize', 41).ok).toBe(false);
+    expect(validateSetting('diff.fontSize', -1).ok).toBe(false);
+    expect(validateSetting('diff.fontSize', 12.5).ok).toBe(false);
+    expect(readSettings(cfgOf({}))).toMatchObject({
+      'diff.syntaxHighlighting': true,
+      'diff.highlightTheme': 'github',
+      'diff.fontSize': 0,
+    });
+    expect(
+      readSettings(cfgOf({ 'diff.syntaxHighlighting': false, 'diff.highlightTheme': 'one', 'diff.fontSize': 14 })),
+    ).toMatchObject({ 'diff.syntaxHighlighting': false, 'diff.highlightTheme': 'one', 'diff.fontSize': 14 });
+    expect(readSettings(cfgOf({ 'diff.highlightTheme': 'auto', 'diff.fontSize': 99 }))).toMatchObject({
+      'diff.highlightTheme': 'github',
+      'diff.fontSize': 0,
+    });
+  });
   it('readSettings: мусор → пусто и 13', () => {
     expect(readSettings(cfgOf({ 'feed.fontSize': 99, 'font.code': 1 }))).toMatchObject({
       'feed.fontSize': 13,

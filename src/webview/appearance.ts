@@ -1,5 +1,11 @@
 import type { ToWebview } from '../protocol';
-import { DEFAULT_FEED_FONT_SIZE, isFeedFontSize } from '../settings';
+import {
+  DEFAULT_FEED_FONT_SIZE,
+  DEFAULT_HIGHLIGHT_THEME,
+  isDiffFontSize,
+  isFeedFontSize,
+  isHighlightTheme,
+} from '../settings';
 import { GENERIC_FONTS, userFonts } from './fonts';
 import { onHostMessage } from './vscode';
 
@@ -30,7 +36,18 @@ export function appearanceVars(m: Appearance): Record<string, string | undefined
       size === DEFAULT_FEED_FONT_SIZE ? undefined : String(size / DEFAULT_FEED_FONT_SIZE),
     // интерфейс целиком (`zoom` на #root); лента делит на него свой масштаб и остаётся своего размера
     '--ui-zoom': ui === DEFAULT_FEED_FONT_SIZE ? undefined : String(ui / DEFAULT_FEED_FONT_SIZE),
+    // дифф вкладки «код»: 0 (и мусор) — размер ленты; семейство — `--mono` (font.code)
+    '--diff-size': `${isDiffFontSize(m.diffFontSize) && m.diffFontSize > 0 ? m.diffFontSize : size}px`,
   };
+}
+
+/**
+ * Палитра подсветки диффа → `body[data-hl-theme]` (токены — в media/taskCode.css). Подсветка выключена — `off`:
+ * палитры нет, токены берут цвет текста.
+ */
+export function highlightThemeAttr(m: Appearance): string {
+  if (m.diffHighlight === false) return 'off';
+  return isHighlightTheme(m.diffTheme) ? m.diffTheme : DEFAULT_HIGHLIGHT_THEME;
 }
 
 /** Один `<link id="user-fonts">` на страницу: ставится, перенаправляется на новый css или снимается. */
@@ -70,6 +87,8 @@ export function applyAppearance(m: Appearance, root: HTMLElement = document.docu
     if (value === undefined) root.style.removeProperty(prop);
     else root.style.setProperty(prop, value);
   }
+  const body = root.ownerDocument.body;
+  if (body) body.dataset.hlTheme = highlightThemeAttr(m);
   // пороги ширины (узкий режим, панель) пересчитываются по resize — масштаб меняет «ширину» так же
   if (uiZoom(root) !== zoomBefore) root.ownerDocument.defaultView?.dispatchEvent(new Event('resize'));
 }

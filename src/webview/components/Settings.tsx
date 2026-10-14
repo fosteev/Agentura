@@ -20,6 +20,8 @@ import {
   FEED_STYLES,
   AGENTS_VIEWS,
   GIT_LAYOUTS,
+  HIGHLIGHT_THEMES,
+  MAX_DIFF_FONT_SIZE,
   MCP_FEED_STATUS_MODES,
   DEFAULT_FEED_FONT_SIZE,
   MAX_FEED_FONT_SIZE,
@@ -496,6 +498,29 @@ function FontSizeSelect({
         {sizes.map((n) => (
           <option key={n} value={String(n)}>
             {n === DEFAULT_FEED_FONT_SIZE ? `${n} px — ${T.feedFontSize.def}` : `${n} px`}
+          </option>
+        ))}
+      </select>
+    </span>
+  );
+}
+
+function DiffFontSizeSelect({ value }: { value: number }) {
+  void errors.value['diff.fontSize'];
+  // 0 (как лента), 8…24 и круглые крупные; значение вне списка (из settings.json) — отдельной строкой
+  const sizes = [0, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 20, 22, 24, 28, 32, MAX_DIFF_FONT_SIZE];
+  if (!sizes.includes(value)) sizes.push(value);
+  sizes.sort((a, b) => a - b);
+  return (
+    <span class="dd">
+      <select
+        aria-label="diff.fontSize"
+        value={String(value)}
+        onChange={(e) => commit('diff.fontSize', Number((e.currentTarget as HTMLSelectElement).value))}
+      >
+        {sizes.map((n) => (
+          <option key={n} value={String(n)}>
+            {n === 0 ? T.diffFontSize.same : `${n} px`}
           </option>
         ))}
       </select>
@@ -1113,6 +1138,19 @@ export function Settings() {
               </Row>
               <Row name={T.uiFontSize.name} isNew desc={T.uiFontSize.desc} k="ui.fontSize">
                 <FontSizeSelect value={v['ui.fontSize']} k="ui.fontSize" />
+              </Row>
+              <Row name={T.diffHighlight.name} isNew desc={T.diffHighlight.desc} k="diff.syntaxHighlighting">
+                <Toggle k="diff.syntaxHighlighting" value={v['diff.syntaxHighlighting']} />
+              </Row>
+              <Row name={T.diffTheme.name} isNew desc={T.diffTheme.desc} k="diff.highlightTheme">
+                <Select
+                  k="diff.highlightTheme"
+                  value={v['diff.highlightTheme']}
+                  options={HIGHLIGHT_THEMES.map((m) => [m, T.diffTheme.options[m] ?? m] as const)}
+                />
+              </Row>
+              <Row name={T.diffFontSize.name} isNew desc={T.diffFontSize.desc} k="diff.fontSize">
+                <DiffFontSizeSelect value={v['diff.fontSize']} />
               </Row>
               <Row
                 name={T.fontInterface.name}

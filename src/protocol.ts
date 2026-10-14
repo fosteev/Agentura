@@ -52,6 +52,7 @@ import type {
   SidebarTopMode,
   SettingsValues,
   McpView,
+  HighlightTheme,
 } from './settings';
 import { isSkillName } from './shared/skills';
 
@@ -163,6 +164,10 @@ export type ToWebview =
       fontCode: string;
       feedFontSize: number;
       uiFontSize: number;
+      /** Дифф вкладки «код» (`agentura.diff.*`): подсветка, палитра, размер в px (0 — как лента). */
+      diffHighlight: boolean;
+      diffTheme: HighlightTheme;
+      diffFontSize: number;
       /**
        * Шрифты, скачанные из Google Fonts: имена по назначению и ссылка на их fonts.css (webview-uri с `?v=`).
        * Нет скачанных — без `css`.

@@ -127,17 +127,110 @@
 .tcd .dnote { padding: 20px; color: var(--fg-mute); font-family: var(--font); font-size: 12.5px; }
 .tcd .dnote.err { color: var(--err, var(--full)); white-space: pre-wrap; }
 
-/* подсветка синтаксиса: палитра github (gitsprout tokens.css), тёмная и светлая; выбор палитры — roadmap 24, сессия 3 */
-.tcd {
-  --tok-keyword: #ff7b72; --tok-operator: #ff7b72; --tok-string: #a5d6ff; --tok-regexp: #a5d6ff; --tok-comment: #8b949e;
-  --tok-number: #79c0ff; --tok-literal: #79c0ff; --tok-builtIn: #79c0ff; --tok-function: #d2a8ff; --tok-type: #ffa657;
-  --tok-meta: #ffa657; --tok-tag: #7ee787; --tok-attribute: #79c0ff; --tok-property: #79c0ff; --tok-heading: #1f6feb;
+/* подсветка синтаксиса: палитры simple | github | one (gitsprout tokens.css, без auto), тёмная и светлая; выбор —
+   agentura.diff.highlightTheme через appearance → body[data-hl-theme]; `off` (подсветка выключена) — без палитры.
+   Нет атрибута (до первого appearance) — github. */
+/* simple */
+body[data-hl-theme="simple"] {
+  --tok-comment: #6a9955;
+  --tok-comment-i: italic;
+  --tok-keyword: #569cd6;
+  --tok-string: #ce9178;
+  --tok-number: #ce9178;
+}
+body.vscode-light[data-hl-theme="simple"],
+body.vscode-high-contrast-light[data-hl-theme="simple"],
+:root[data-theme="light"] body[data-hl-theme="simple"] {
+  --tok-comment: #008000;
+  --tok-comment-i: italic;
+  --tok-keyword: #0000ff;
+  --tok-string: #a31515;
+  --tok-number: #a31515;
+}
+/* github */
+body[data-hl-theme="github"],
+body:not([data-hl-theme]) {
+  --tok-keyword: #ff7b72;
+  --tok-operator: #ff7b72;
+  --tok-string: #a5d6ff;
+  --tok-regexp: #a5d6ff;
+  --tok-comment: #8b949e;
+  --tok-number: #79c0ff;
+  --tok-literal: #79c0ff;
+  --tok-builtIn: #79c0ff;
+  --tok-function: #d2a8ff;
+  --tok-type: #ffa657;
+  --tok-meta: #ffa657;
+  --tok-tag: #7ee787;
+  --tok-attribute: #79c0ff;
+  --tok-property: #79c0ff;
+  --tok-heading: #1f6feb;
   --tok-heading-b: bold;
 }
-body.vscode-light .tcd, body.vscode-high-contrast-light .tcd, :root[data-theme="light"] .tcd {
-  --tok-keyword: #cf222e; --tok-operator: #cf222e; --tok-string: #0a3069; --tok-regexp: #0a3069; --tok-comment: #6e7781;
-  --tok-number: #0550ae; --tok-literal: #0550ae; --tok-builtIn: #0550ae; --tok-function: #8250df; --tok-type: #953800;
-  --tok-meta: #953800; --tok-tag: #116329; --tok-attribute: #0550ae; --tok-property: #0550ae; --tok-heading: #0550ae;
+body.vscode-light[data-hl-theme="github"],
+body.vscode-high-contrast-light[data-hl-theme="github"],
+:root[data-theme="light"] body[data-hl-theme="github"],
+body.vscode-light:not([data-hl-theme]),
+body.vscode-high-contrast-light:not([data-hl-theme]),
+:root[data-theme="light"] body:not([data-hl-theme]) {
+  --tok-keyword: #cf222e;
+  --tok-operator: #cf222e;
+  --tok-string: #0a3069;
+  --tok-regexp: #0a3069;
+  --tok-comment: #6e7781;
+  --tok-number: #0550ae;
+  --tok-literal: #0550ae;
+  --tok-builtIn: #0550ae;
+  --tok-function: #8250df;
+  --tok-type: #953800;
+  --tok-meta: #953800;
+  --tok-tag: #116329;
+  --tok-attribute: #0550ae;
+  --tok-property: #0550ae;
+  --tok-heading: #0550ae;
+  --tok-heading-b: bold;
+}
+/* one */
+body[data-hl-theme="one"] {
+  --tok-keyword: #c678dd;
+  --tok-string: #98c379;
+  --tok-comment: #5c6370;
+  --tok-comment-i: italic;
+  --tok-number: #d19a66;
+  --tok-literal: #d19a66;
+  --tok-function: #61afef;
+  --tok-type: #e5c07b;
+  --tok-builtIn: #e5c07b;
+  --tok-tag: #e06c75;
+  --tok-variable: #e06c75;
+  --tok-attribute: #d19a66;
+  --tok-property: #d19a66;
+  --tok-operator: #56b6c2;
+  --tok-regexp: #56b6c2;
+  --tok-meta: #c678dd;
+  --tok-heading: #e06c75;
+  --tok-heading-b: bold;
+}
+body.vscode-light[data-hl-theme="one"],
+body.vscode-high-contrast-light[data-hl-theme="one"],
+:root[data-theme="light"] body[data-hl-theme="one"] {
+  --tok-keyword: #a626a4;
+  --tok-string: #50a14f;
+  --tok-comment: #a0a1a7;
+  --tok-comment-i: italic;
+  --tok-number: #986801;
+  --tok-literal: #986801;
+  --tok-function: #4078f2;
+  --tok-type: #c18401;
+  --tok-builtIn: #c18401;
+  --tok-tag: #e45649;
+  --tok-variable: #e45649;
+  --tok-attribute: #986801;
+  --tok-property: #986801;
+  --tok-operator: #0184bc;
+  --tok-regexp: #0184bc;
+  --tok-meta: #a626a4;
+  --tok-heading: #e45649;
   --tok-heading-b: bold;
 }
 .tcd .dgrid.hl .hljs-comment, .tcd .dgrid.hl .hljs-quote { color: var(--tok-comment, currentColor); font-style: var(--tok-comment-i, normal); font-weight: var(--tok-comment-b, normal); }

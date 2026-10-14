@@ -1272,6 +1272,24 @@ export const en: Ui = {
       name: 'Git tab: hide repositories without changes',
       desc: 'With several repositories, skip those that have no changed files, no unpushed commits and no unpublished branch. Open tabs apply immediately.',
     },
+    diffHighlight: {
+      name: 'Task diff: syntax highlighting',
+      desc: 'The diff in the task “code” tab. Off: only the background of added and removed lines. Open tabs apply immediately.',
+    },
+    diffTheme: {
+      name: 'Task diff: palette',
+      desc: 'Highlight colours; each palette has a dark and a light variant. The diff font is “Code font” below. Open tabs apply immediately.',
+      options: {
+        simple: 'simple — comments, keywords, strings',
+        github: 'github',
+        one: 'one — like One Dark / One Light',
+      } as Record<string, string>,
+    },
+    diffFontSize: {
+      name: 'Task diff: font size',
+      desc: 'In the task “code” tab, px. 0 — the feed text size. Open tabs apply immediately.',
+      same: '0 — as the feed',
+    },
     fontInterface: {
       name: 'Interface font',
       desc: 'Reply text and settings; the sidebar too, unless a panel font is set. Empty — same as VS Code; also used if the font is not installed.',

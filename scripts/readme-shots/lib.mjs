@@ -38,7 +38,7 @@ const cssFor = (surface) => [
 
 const json = (v) => JSON.stringify(v).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
 
-const APPEARANCE = { type: 'appearance', fontInterface: '', fontPanels: '', fontCode: '', feedFontSize: 13, uiFontSize: 13, userFonts: { ui: [], code: [] } };
+const APPEARANCE = { type: 'appearance', fontInterface: '', fontPanels: '', fontCode: '', feedFontSize: 13, uiFontSize: 13, diffHighlight: true, diffTheme: 'github', diffFontSize: 0, userFonts: { ui: [], code: [] } };
 
 /**
  * html of one webview surface. `messages` are posted to the page after its `ready`, one by one (50 ms apart);
