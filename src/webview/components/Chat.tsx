@@ -32,6 +32,7 @@ import {
   taskChats,
   tabChats,
   activeTabChat,
+  taskCode,
   taskState,
   taskFocus,
   tick,
@@ -42,7 +43,8 @@ import { changesView } from '../changesView';
 import { cacheLive } from '../hudView';
 import { agentBadge, agentMapView, liveSubagents, waitingAgents } from '../agentsView';
 import { ui } from '../strings';
-import { readPanel, savePanel, send, type PanelState } from '../vscode';
+import { readPanel, savePanel, send, type PanelState, type TaskViewName } from '../vscode';
+import { codeCount } from '../taskCodeView';
 import { Composer } from './Composer';
 import { Empty } from './Empty';
 import { Hud, type Tab } from './Hud';
@@ -53,6 +55,7 @@ import { AgentsPane, ChangesPane, McpPane, type AgentsPaneModel } from './SidePa
 import { mcpCounts, mcpSurfaceShown } from '../mcpView';
 import { GitPane } from './GitPane';
 import { ChatTabs, TaskStrip, type ChatActivity } from './TaskPane';
+import { TaskCode } from './TaskCode';
 import { TaskView } from './TaskView';
 import { isTaskChat, latestSeen, taskDefaultView, taskPanelShown, unseenCount, visibleEvents, waitingWhat } from '../taskView';
 import { agentPathSet, gitBadge } from '../gitView';
@@ -290,8 +293,9 @@ export function Chat() {
   const ts = taskState.value;
   const taskOn = taskPanelShown(taskCardMode.value, ts);
   const taskSub = panel.taskView ?? taskDefaultView(taskCardMode.value, ts);
-  // вкладки «чат | задача» полосы задачи (roadmap 20, решение 1): «задача» занимает всю вкладку, правая панель и поле ввода прячутся
-  const view: 'chat' | 'task' = taskOn && panel.view === 'task' ? 'task' : 'chat';
+  // вкладки «чат | задача | код» полосы задачи (roadmap 20, решение 1; roadmap 24): «задача» и «код» занимают всю вкладку,
+  // правая панель и поле ввода прячутся
+  const view: TaskViewName = taskOn && (panel.view === 'task' || panel.view === 'code') ? panel.view : 'chat';
   const t: Tab = empty
     ? 'chat'
     : (!subagents && tab.value === 'agents') || (!mcpOn && tab.value === 'mcp')
@@ -402,8 +406,8 @@ export function Chat() {
   const taskBdg = taskOn && !(taskShown && taskSub === 'changes') ? unseenCount(visibleEvents(ts), seen) : 0;
   // сколько записей в ленте было, когда ушли на «задачу»: «N новых» на вкладке «чат» считается от этого
   const rowsMark = useRef(0);
-  const showView = (v: 'chat' | 'task', extra: PanelState = {}) => {
-    if (v === 'task' && view !== 'task') rowsMark.current = s.rows.length;
+  const showView = (v: TaskViewName, extra: PanelState = {}) => {
+    if (v !== 'chat' && view === 'chat') rowsMark.current = s.rows.length;
     updatePanel({ view: v, ...extra });
   };
   // «↳ в чат» (решение 8): вставить в поле ввода и перейти на «чат» с фокусом в поле
@@ -413,6 +417,8 @@ export function Chat() {
     showView('chat');
     setTimeout(() => document.querySelector<HTMLElement>('.compose .typed')?.focus(), 50);
   };
+  // число у вкладки «код» (roadmap 24): коммиты + незакоммиченные файлы; пока не загружено — без числа
+  const codeN = codeCount(taskCode.value, ts?.taskKey);
   // агент ждёт ответа (разрешение / вопрос / план) или идёт ход — для вкладки «чат» полосы (решение 9)
   const waitingText = s.status === 'waiting' ? (waitingWhat(s) ?? ui.task.waitAsk) : undefined;
   const activity: ChatActivity = {
@@ -477,7 +483,7 @@ export function Chat() {
         onTab={(k) => {
           tab.value = k;
           // вкладка шапки узкого режима ведёт в чат: «задача» его закрывает
-          if (view === 'task') showView('chat');
+          if (view !== 'chat') showView('chat');
         }}
         sidePanesEnabled={!empty}
         agentsTab={subagents}
@@ -531,6 +537,7 @@ export function Chat() {
           onView={(v) => showView(v)}
           unseen={taskBdg}
           activity={activity}
+          {...(codeN !== undefined ? { codeCount: codeN } : {})}
         />
       )}
       {tabChats.value && <ChatTabs state={tabChats.value} />}
@@ -813,6 +820,18 @@ export function Chat() {
             onSeen={(at) => updatePanel({ taskSeen: at, taskSeenKey: taskKey })}
             onToChat={toChat}
             onBackToChat={() => showView('chat')}
+          />
+        )}
+        {taskOn && ts?.taskKey && (
+          <TaskCode
+            taskKey={ts.taskKey}
+            hidden={view !== 'code'}
+            diffMode={panel.diffMode ?? 'inline'}
+            onDiffMode={(m) => updatePanel({ diffMode: m })}
+            onToChat={() => {
+              showView('chat');
+              setTimeout(() => document.querySelector<HTMLElement>('.compose .typed')?.focus(), 50);
+            }}
           />
         )}
       </div>

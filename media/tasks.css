@@ -88,6 +88,7 @@
 .tk-strip .vtab { display: flex; gap: 6px; align-items: center; align-self: stretch; padding: 0 10px; color: var(--fg-mute); border-bottom: 2px solid transparent; margin-bottom: -1px; font-family: var(--font); font-size: 12.5px; }
 .tk-strip .vtab:hover { color: var(--fg); }
 .tk-strip .vtab.on { color: var(--fg); border-bottom-color: var(--fg); }
+.tk-strip .vtab .cnt { font: 10px/14px var(--mono); color: var(--fg-faint); font-style: normal; }
 .tk-strip .vtab .nb { font: 10px/14px var(--mono); padding: 0 5px; border-radius: 7px; background: var(--info); color: #fff; font-style: normal; }
 .tk-strip .vtab .spin { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--info); border-right-color: transparent; animation: tkspin 1s linear infinite; }
 .tk-strip .vtab .wt { width: 7px; height: 7px; border-radius: 50%; background: var(--warn); }
@@ -119,9 +120,9 @@
 
 /* вкладка «задача» (roadmap 20; task-tab.html#wide): карточка на всю вкладку чата. Слева контент, справа колонка 280 px;
    уже 720 px колонка полей уходит под заголовок (container query). Чат и поле ввода прячутся, не размонтируются. */
-.webview[data-view="task"] > .body { grid-template-columns: 1fr !important; }
-.webview[data-view="task"] > .body > :is(.pane, .rail) { display: none !important; }
-.webview[data-view="task"] > .compose { display: none; }
+.webview:is([data-view="task"], [data-view="code"]) > .body { grid-template-columns: 1fr !important; }
+.webview:is([data-view="task"], [data-view="code"]) > .body > :is(.pane, .rail) { display: none !important; }
+.webview:is([data-view="task"], [data-view="code"]) > .compose { display: none; }
 .tv[hidden] { display: none !important; }
 .tv { container-type: inline-size; position: relative; display: flex; min-height: 0; min-width: 0; overflow: hidden; font-family: var(--font); font-size: 13px; background: var(--bg); }
 .tv h5 { margin: 0 0 6px; font-size: 11px; font-weight: 600; color: var(--fg-mute); text-transform: uppercase; letter-spacing: .03em; display: flex; gap: 6px; }

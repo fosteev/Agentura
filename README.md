@@ -202,6 +202,20 @@ Start one with "Agentura: Chat for Issue…" (a key or a link), "Open in Agentur
 
 ![Jira tasks: a task group in the sidebar, the "chat | task" tabs with the full issue card](docs/images/jira-tasks.png)
 
+### Task code tab
+
+The third tab of the task strip, `chat | task | code N`, collects everything the task produced in git: the repositories the task's chats worked in, the task branch against the base (`origin/develop`, `main`…), commits, and the files agents edited but have not committed yet (with the chats that touched them). Click a commit to see its files, click a file (or "commit diff", "branch diff") to open the diff in the same tab: `inline | split`, `j`/`k` for the next/previous file, `Esc` or `×` to go back to the list. "to chat ↳" puts the commit into the input box. The tab is read-only: committing stays in the git tab.
+
+How commits are found ("how do we search?" in the tab shows these with your key and base, each with a copy button):
+
+```
+git log --all -i --grep='NEWMFC-1482' --format='%h %an %s'      # commits with the key in the message, all branches
+git branch -a --list '*NEWMFC-1482*'                            # branches with the key in the name
+git log --oneline origin/develop..feature/NEWMFC-1482           # commits of such a branch not in the base yet
+```
+
+A commit is found only if the key is in its message (`NEWMFC-1482: …`) or on a branch whose name has it (`feature/NEWMFC-1482`). "Uncommitted" is not read from git status alone: it is the files agents edited in the task's chats, so hand edits made without an agent are not listed.
+
 ## MCP servers and skills
 
 What the agent reaches for is visible without opening `/mcp`.

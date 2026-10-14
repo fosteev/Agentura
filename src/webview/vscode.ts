@@ -30,6 +30,9 @@ export function send(message: FromWebview): void {
 export const TASK_SUBS = ['comments', 'history', 'worklog', 'changes'] as const;
 export type TaskSub = (typeof TASK_SUBS)[number];
 
+/** Вкладка полосы задачи: «чат», «задача» или «код». */
+export type TaskViewName = 'chat' | 'task' | 'code';
+
 /** Состояние правой панели вкладки чата (широкий режим): свои значения у каждой вкладки. */
 export interface PanelState {
   /** Ширина, px. */
@@ -38,8 +41,13 @@ export interface PanelState {
   off?: boolean;
   /** Активная вкладка панели. */
   tab?: 'changes' | 'git' | 'agents' | 'mcp';
-  /** Вкладка чата по задаче (roadmap 20): «чат» или «задача» (карточка на всю вкладку; панель и поле ввода прячутся). */
-  view?: 'chat' | 'task';
+  /**
+   * Вкладка чата по задаче (roadmap 20, 24): «чат», «задача» (карточка на всю вкладку) или «код» (коммиты, ветки и правки
+   * задачи); панель и поле ввода прячутся.
+   */
+  view?: TaskViewName;
+  /** Встроенный дифф вкладки «код»: в одну колонку или бок о бок (нет — inline). */
+  diffMode?: 'inline' | 'split';
   /** Вкладка «git»: файлы деревом (иначе списком путей). */
   gitTree?: boolean;
   /** Вкладка «git»: выбранный репозиторий (`root`) в раскладке «выбор сверху». */
@@ -151,7 +159,8 @@ export function readPanel(): PanelState {
   else if (p.tab === 'mcp') out.tab = 'mcp';
   // вкладка «задача» ушла из правой панели (roadmap 20, решение 2): сохранённое 'task' открывает «изменения»
   else if (p.tab === 'task') out.tab = 'changes';
-  if (p.view === 'chat' || p.view === 'task') out.view = p.view;
+  if (p.view === 'chat' || p.view === 'task' || p.view === 'code') out.view = p.view;
+  if (p.diffMode === 'inline' || p.diffMode === 'split') out.diffMode = p.diffMode;
   // 'card' — прежний вид «карточка»: теперь это комментарии
   if (p.taskView === 'card') out.taskView = 'comments';
   else if (TASK_SUBS.includes(p.taskView as TaskSub)) out.taskView = p.taskView as TaskSub;

@@ -1,0 +1,160 @@
+/* Вкладка «код» полосы задачи (roadmap 24; prototype/screens/task-git.html#b): репозитории, коммиты, правки агентов,
+   детали коммита, встроенный дифф (порт gitsprout `diff.css` + `tokens.css`, палитра github) и всплывашка «как ищем?».
+   CSP без unsafe-inline: динамики в style нет — только классы. */
+.tcd[hidden] { display: none !important; }
+.tcd { position: relative; display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; background: var(--bg); font-family: var(--font); font-size: 12px; }
+.tcd :is(.add) { color: var(--add); }
+.tcd :is(.del) { color: var(--del); }
+.tcd .dim { color: var(--fg-faint); font-style: normal; }
+.tcd .mono { font-family: var(--mono); font-size: 11px; }
+.tcd-main { flex: 1; min-height: 0; display: flex; overflow: hidden; }
+.tcd-main[hidden] { display: none !important; }
+.tcd-main > .l { flex: 1; min-width: 0; padding: 12px 18px; overflow: auto; }
+.tcd-main > .r { width: 330px; flex: none; border-left: 1px solid var(--line); background: var(--bg-side); padding: 12px 14px; overflow: auto; }
+@container (max-width: 640px) { .tcd-main > .r { display: none; } }
+.tcd { container-type: inline-size; }
+
+.tcd .top { display: flex; gap: 10px; align-items: baseline; color: var(--fg-mute); margin-bottom: 4px; min-height: 18px; }
+.tcd .top .rf { margin-left: auto; color: var(--fg-mute); font-size: 14px; line-height: 1; }
+.tcd .top .rf:hover:not(:disabled) { color: var(--fg); }
+.tcd .top .rf:disabled { cursor: default; }
+.tcd .top .rf.busy { animation: tcdspin 1s linear infinite; display: inline-block; }
+.tcd .top .q { color: var(--link); }
+.tcd .top .q:hover, .tcd .top .q[aria-expanded="true"] { text-decoration: underline; }
+@keyframes tcdspin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .tcd .top .rf.busy { animation: none; } }
+.tcd .note { padding: 8px 2px; color: var(--fg-faint); }
+.tcd .note.err { color: var(--err, var(--full)); white-space: pre-wrap; word-break: break-word; }
+
+.tcd .rb { border: 1px solid var(--line); border-radius: 5px; margin-top: 10px; overflow: hidden; }
+.tcd .rb .rh { display: flex; gap: 8px; align-items: center; padding: 7px 10px; background: var(--bg-side); border-bottom: 1px solid var(--line); min-width: 0; }
+.tcd .rb .rh.b2 { padding-top: 4px; padding-bottom: 4px; }
+.tcd .rb .rh b { font-weight: 600; flex: none; }
+.tcd .rb .rh .br { font: 11px var(--mono); color: var(--fg-mute); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tcd .rb .rh .n, .tcd .rb .rh button { white-space: nowrap; flex: none; }
+.tcd .rb .rh .sp { flex: 1; }
+.tcd .rb .rh .n { font: 11px var(--mono); }
+.tcd .rb .rh button { font-size: 11px; padding: 1px 8px; border: 1px solid var(--line-strong); border-radius: 3px; color: var(--fg); }
+.tcd .rb .rh button:hover { background: var(--bg-hover); }
+.tcd .rb > .note { padding: 6px 10px; }
+
+.tcd .row { display: grid; grid-template-columns: 58px minmax(0, 1fr) auto auto auto; gap: 10px; align-items: center; padding: 4px 10px; cursor: pointer; }
+.tcd .row + .row, .tcd .rb .rh + .row { border-top: 1px solid color-mix(in srgb, var(--line) 60%, transparent); }
+.tcd .row:hover { background: var(--bg-hover); }
+.tcd .row:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.tcd .row .h { font: 11px var(--mono); color: var(--link); }
+.tcd .row .s { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tcd .row .who { color: var(--fg-mute); font-size: 11px; white-space: nowrap; max-width: 14ch; overflow: hidden; text-overflow: ellipsis; }
+.tcd .row .t { color: var(--fg-mute); font: 10.5px var(--mono); text-align: right; white-space: nowrap; }
+.tcd .row.sel { background: color-mix(in srgb, var(--info) 12%, transparent); box-shadow: inset 2px 0 0 var(--info); }
+.tcd .row.f { grid-template-columns: 14px minmax(0, 1fr) auto auto; }
+.tcd .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tcd .nm i { font-style: normal; color: var(--fg-faint); }
+.tcd .row em, .tcd .fr em, .tcd .dbar em { font: 10.5px var(--mono); font-style: normal; white-space: nowrap; }
+.tcd .sub { padding: 5px 10px 3px; font-size: 10.5px; font-weight: 600; color: var(--fg-faint); border-top: 1px solid var(--line); }
+.tcd .tags { display: inline-flex; gap: 6px; align-items: center; }
+.tcd .src { font: 9.5px/14px var(--mono); padding: 0 4px; border-radius: 2px; border: 1px solid var(--line-strong); color: var(--fg-mute); white-space: nowrap; }
+.tcd .src.br { color: var(--info); border-color: color-mix(in srgb, var(--info) 45%, transparent); }
+.tcd .up { font: 10px var(--mono); color: var(--warn); white-space: nowrap; }
+.tcd .ind { font: 10px var(--mono); color: var(--ok); white-space: nowrap; }
+.tcd .st { font: 700 10px var(--mono); color: var(--warn); width: 14px; text-align: center; flex: none; }
+.tcd .st.A { color: var(--ok); }
+.tcd .st.D { color: var(--del); }
+.tcd .chs { display: inline-flex; gap: 3px; }
+.tcd .chm { display: inline-flex; border-radius: 3px; }
+.tcd .chm:hover { filter: brightness(1.2); }
+.tcd .mk { display: inline-grid; place-items: center; width: 14px; height: 14px; border-radius: 3px; font: 700 9px/1 var(--mono); color: #fff; flex: none; font-style: normal; }
+.tcd .mk.claude { background: #c96442; }
+.tcd .mk.codex { background: #6b6bd6; }
+.tcd .mk.agy { background: #2f7de1; }
+
+.tcd .r h5 { margin: 12px 0 4px; font-size: 11px; font-weight: 600; color: var(--fg-mute); text-transform: uppercase; letter-spacing: .03em; }
+.tcd .r h5:first-child { margin-top: 0; }
+.tcd .r .ttl2 { font-size: 12.5px; margin-bottom: 2px; word-break: break-word; }
+.tcd .r .meta2 { color: var(--fg-mute); font-size: 11px; margin-bottom: 4px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.tcd .r .fr { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; gap: 6px; align-items: center; padding: 3px 0; cursor: pointer; }
+.tcd .r .fr:hover { background: var(--bg-hover); }
+.tcd .r .fr:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
+.tcd .r .acts2 { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+.tcd .r .acts2 button { font-size: 11px; padding: 3px 8px; border: 1px solid var(--line-strong); border-radius: 3px; color: var(--fg); }
+.tcd .r .acts2 button:hover:not(:disabled) { background: var(--bg-hover); }
+.tcd .r .acts2 button:disabled { opacity: .5; cursor: default; }
+.tcd .r .acts2 button.pri { background: var(--btn); color: var(--btn-fg); border-color: transparent; }
+
+/* всплывашка «как ищем?» */
+.tcd .how { position: absolute; right: 12px; top: 34px; width: min(520px, calc(100% - 24px)); max-height: calc(100% - 48px); overflow: auto; background: var(--bg-raise); border: 1px solid var(--line-strong); border-radius: 5px; box-shadow: 0 10px 28px rgba(0, 0, 0, .35); padding: 12px 14px; line-height: 1.45; z-index: 5; }
+.tcd .how h6 { margin: 0 0 6px; font-size: 12.5px; font-weight: 600; display: flex; align-items: baseline; }
+.tcd .how h6 .x { margin-left: auto; color: var(--fg-mute); font-size: 15px; line-height: 1; }
+.tcd .how h6 .x:hover { color: var(--fg); }
+.tcd .how p { margin: 0 0 6px; color: var(--fg-mute); }
+.tcd .how ol { margin: 0 0 6px; padding-left: 18px; }
+.tcd .how li { margin: 0 0 6px; }
+.tcd .how pre { margin: 3px 0 0; padding: 5px 78px 5px 8px; background: var(--bg-code); border-radius: 3px; font: 11px/1.45 var(--mono); color: var(--fg); white-space: pre-wrap; word-break: break-all; position: relative; }
+.tcd .how pre .cp { position: absolute; right: 6px; top: 4px; font: 10.5px var(--font); color: var(--link); }
+.tcd .how .rule { border-left: 3px solid var(--warn); padding: 3px 8px; background: color-mix(in srgb, var(--warn) 8%, transparent); color: var(--fg); margin-top: 8px; }
+.tcd .how code { font: 11px var(--mono); background: var(--bg-code); padding: 0 3px; border-radius: 2px; }
+
+/* встроенный дифф: на месте списка (порт gitsprout diff.css) */
+.tcd .dview { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.tcd .dbar { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px 0 12px; border-bottom: 1px solid var(--line); flex: none; font-size: 12.5px; white-space: nowrap; background: var(--bg-side); }
+.tcd .dbar .st { width: 16px; font-size: 11px; }
+.tcd .dbar .st.M, .tcd .dbar .st.R, .tcd .dbar .st.T { color: var(--warn); }
+.tcd .dpath { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.tcd .dpath b { font-weight: 500; }
+.tcd .ddir { color: var(--fg-mute); }
+.tcd .dctx { color: var(--fg-mute); font: 11.5px var(--mono); flex: none; }
+.tcd .dsp { flex: 1; min-width: 4px; }
+.tcd .dbar .ib { width: 22px; height: 22px; display: inline-grid; place-items: center; border-radius: 3px; color: var(--fg-mute); font-size: 14px; flex: none; }
+.tcd .dbar .ib:hover:not(:disabled) { background: var(--bg-hover); color: var(--fg); }
+.tcd .dbar .ib:disabled { opacity: .4; cursor: default; }
+.tcd .dbar .seg { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 3px; overflow: hidden; flex: none; }
+.tcd .dbar .seg button { padding: 1px 9px; font-size: 11px; color: var(--fg-mute); }
+.tcd .dbar .seg button + button { border-left: 1px solid var(--line-strong); }
+.tcd .dbar .seg button[aria-pressed="true"] { background: var(--bg-input); color: var(--fg); }
+.tcd .dbody { flex: 1; min-height: 0; overflow: auto; font-family: var(--diff-font, var(--mono)); font-size: var(--diff-size, var(--vscode-editor-font-size, 12px)); line-height: 1.5; }
+.tcd .dgrid { display: grid; min-width: 0; }
+.tcd .dinl { grid-template-columns: 46px 46px 18px minmax(0, 1fr); }
+.tcd .dsbs { grid-template-columns: 46px minmax(0, 1fr) 46px minmax(0, 1fr); }
+.tcd .dgrid > span { white-space: pre-wrap; word-break: break-all; min-height: 1.5em; }
+.tcd .dn { color: var(--vscode-editorLineNumber-foreground, var(--fg-mute)); text-align: right; padding-right: 10px; user-select: none; font-variant-numeric: tabular-nums; }
+.tcd .dg { color: var(--fg-mute); user-select: none; }
+.tcd .dc { padding-right: 10px; }
+.tcd .dsbs .dr { border-left: 1px solid var(--line); padding-left: 0; }
+.tcd .ins { background: var(--vscode-diffEditor-insertedLineBackground, rgba(155, 185, 85, .2)); }
+.tcd .rem { background: var(--vscode-diffEditor-removedLineBackground, rgba(255, 0, 0, .2)); }
+.tcd .fill { background: repeating-linear-gradient(-45deg, rgba(128, 128, 128, .18) 0 2px, transparent 2px 7px); }
+.tcd .dfold { grid-column: 1 / -1; color: var(--fg-mute); background: color-mix(in srgb, var(--accent) 8%, transparent); padding: 1px 14px; font: 11.5px var(--font); }
+.tcd .dnote { padding: 20px; color: var(--fg-mute); font-family: var(--font); font-size: 12.5px; }
+.tcd .dnote.err { color: var(--err, var(--full)); white-space: pre-wrap; }
+
+/* подсветка синтаксиса: палитра github (gitsprout tokens.css), тёмная и светлая; выбор палитры — roadmap 24, сессия 3 */
+.tcd {
+  --tok-keyword: #ff7b72; --tok-operator: #ff7b72; --tok-string: #a5d6ff; --tok-regexp: #a5d6ff; --tok-comment: #8b949e;
+  --tok-number: #79c0ff; --tok-literal: #79c0ff; --tok-builtIn: #79c0ff; --tok-function: #d2a8ff; --tok-type: #ffa657;
+  --tok-meta: #ffa657; --tok-tag: #7ee787; --tok-attribute: #79c0ff; --tok-property: #79c0ff; --tok-heading: #1f6feb;
+  --tok-heading-b: bold;
+}
+body.vscode-light .tcd, body.vscode-high-contrast-light .tcd, :root[data-theme="light"] .tcd {
+  --tok-keyword: #cf222e; --tok-operator: #cf222e; --tok-string: #0a3069; --tok-regexp: #0a3069; --tok-comment: #6e7781;
+  --tok-number: #0550ae; --tok-literal: #0550ae; --tok-builtIn: #0550ae; --tok-function: #8250df; --tok-type: #953800;
+  --tok-meta: #953800; --tok-tag: #116329; --tok-attribute: #0550ae; --tok-property: #0550ae; --tok-heading: #0550ae;
+  --tok-heading-b: bold;
+}
+.tcd .dgrid.hl .hljs-comment, .tcd .dgrid.hl .hljs-quote { color: var(--tok-comment, currentColor); font-style: var(--tok-comment-i, normal); font-weight: var(--tok-comment-b, normal); }
+.tcd .dgrid.hl .hljs-keyword, .tcd .dgrid.hl .hljs-doctag { color: var(--tok-keyword, currentColor); font-style: var(--tok-keyword-i, normal); font-weight: var(--tok-keyword-b, normal); }
+.tcd .dgrid.hl .hljs-string, .tcd .dgrid.hl .hljs-symbol, .tcd .dgrid.hl .hljs-char.escape_ { color: var(--tok-string, currentColor); font-style: var(--tok-string-i, normal); font-weight: var(--tok-string-b, normal); }
+.tcd .dgrid.hl .hljs-number { color: var(--tok-number, currentColor); font-style: var(--tok-number-i, normal); font-weight: var(--tok-number-b, normal); }
+.tcd .dgrid.hl .hljs-literal { color: var(--tok-literal, currentColor); font-style: var(--tok-literal-i, normal); font-weight: var(--tok-literal-b, normal); }
+.tcd .dgrid.hl .hljs-built_in { color: var(--tok-builtIn, currentColor); font-style: var(--tok-builtIn-i, normal); font-weight: var(--tok-builtIn-b, normal); }
+.tcd .dgrid.hl .hljs-type, .tcd .dgrid.hl .hljs-title.class_, .tcd .dgrid.hl .hljs-title.class_.inherited__ { color: var(--tok-type, currentColor); font-style: var(--tok-type-i, normal); font-weight: var(--tok-type-b, normal); }
+.tcd .dgrid.hl .hljs-title.function_, .tcd .dgrid.hl .hljs-title { color: var(--tok-function, currentColor); font-style: var(--tok-function-i, normal); font-weight: var(--tok-function-b, normal); }
+.tcd .dgrid.hl .hljs-variable, .tcd .dgrid.hl .hljs-params, .tcd .dgrid.hl .hljs-template-variable, .tcd .dgrid.hl .hljs-variable.language_ { color: var(--tok-variable, currentColor); font-style: var(--tok-variable-i, normal); font-weight: var(--tok-variable-b, normal); }
+.tcd .dgrid.hl .hljs-property, .tcd .dgrid.hl .hljs-attr { color: var(--tok-property, currentColor); font-style: var(--tok-property-i, normal); font-weight: var(--tok-property-b, normal); }
+.tcd .dgrid.hl .hljs-tag, .tcd .dgrid.hl .hljs-name, .tcd .dgrid.hl .hljs-selector-tag { color: var(--tok-tag, currentColor); font-style: var(--tok-tag-i, normal); font-weight: var(--tok-tag-b, normal); }
+.tcd .dgrid.hl .hljs-attribute, .tcd .dgrid.hl .hljs-selector-attr, .tcd .dgrid.hl .hljs-selector-class, .tcd .dgrid.hl .hljs-selector-id, .tcd .dgrid.hl .hljs-selector-pseudo { color: var(--tok-attribute, currentColor); font-style: var(--tok-attribute-i, normal); font-weight: var(--tok-attribute-b, normal); }
+.tcd .dgrid.hl .hljs-regexp, .tcd .dgrid.hl .hljs-link { color: var(--tok-regexp, currentColor); font-style: var(--tok-regexp-i, normal); font-weight: var(--tok-regexp-b, normal); }
+.tcd .dgrid.hl .hljs-meta, .tcd .dgrid.hl .hljs-meta .hljs-keyword, .tcd .dgrid.hl .hljs-subst { color: var(--tok-meta, currentColor); font-style: var(--tok-meta-i, normal); font-weight: var(--tok-meta-b, normal); }
+.tcd .dgrid.hl .hljs-operator, .tcd .dgrid.hl .hljs-punctuation { color: var(--tok-operator, currentColor); font-style: var(--tok-operator-i, normal); font-weight: var(--tok-operator-b, normal); }
+.tcd .dgrid.hl .hljs-section, .tcd .dgrid.hl .hljs-bullet { color: var(--tok-heading, currentColor); font-style: var(--tok-heading-i, normal); font-weight: var(--tok-heading-b, normal); }
+.tcd .dgrid.hl .hljs-emphasis { font-style: italic; }
+.tcd .dgrid.hl .hljs-strong { font-weight: bold; }

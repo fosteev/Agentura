@@ -410,7 +410,7 @@ describe('вкладка настроек', () => {
     }
     const [tab, split] = cards as [HTMLElement, HTMLElement];
     // «задача» — вкладка полосы рядом с «чатом», в правой панели её нет
-    expect([...tab.querySelectorAll('.tk-strip .vtab')].map((b) => b.textContent)).toEqual(['чат', 'задача']);
+    expect([...tab.querySelectorAll('.tk-strip .vtab')].map((b) => b.textContent)).toEqual(['чат', 'задача', 'код']);
     expect([...tab.querySelectorAll('.tcp-side .tcp-tabs span')].map((b) => b.textContent)).toEqual(['изменения', 'git', 'агенты']);
     expect(tab.querySelector('.tcp-card')).toBeNull();
     expect(split.querySelector('.tcp-card')).not.toBeNull();

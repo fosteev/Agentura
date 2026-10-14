@@ -69,7 +69,16 @@ import {
   type QuestionCard,
 } from './chatState';
 import type { AgentsView, ComposerLayout, FeedStyle, GitLayout, McpFeedStatus, McpView, TaskCardMode } from '../settings';
-import type { TaskActionMessage, TaskChatRow, TaskEventKind, TaskStateMessage, TaskTransitionsMessage } from '../shared/task';
+import type {
+  TaskActionMessage,
+  TaskChatRow,
+  TaskCodeCommitMessage,
+  TaskCodeDiffMessage,
+  TaskCodeStateMessage,
+  TaskEventKind,
+  TaskStateMessage,
+  TaskTransitionsMessage,
+} from '../shared/task';
 import type { TabChatsMessage } from '../shared/taskTab';
 import type { GitOp, GitSnapshot } from '../shared/git';
 import { pushHistory } from './composer';
@@ -160,6 +169,12 @@ export const taskFocus = signal<{ kind: TaskEventKind; id?: string; since: numbe
 export const taskTransitions = signal<TaskTransitionsMessage | undefined>(undefined);
 /** Последний итог записи от имени пользователя (`task.action`); новый объект на каждое сообщение — вкладка ловит по ссылке. */
 export const taskAction = signal<TaskActionMessage | undefined>(undefined);
+/** Вкладка «код» (roadmap 24): последний итог хоста по задаче вкладки; нет — ещё не загружали. */
+export const taskCode = signal<TaskCodeStateMessage | undefined>(undefined);
+/** Файлы коммитов (`task.code.commit`) по `root + sha`: ответы приходят позже клика, поэтому копим. */
+export const taskCodeCommits = signal<Record<string, TaskCodeCommitMessage>>({});
+/** Последний патч (`task.code.diff`); вкладка берёт его по счётчику `req`. */
+export const taskCodeDiff = signal<TaskCodeDiffMessage | undefined>(undefined);
 /** Чаты группы задачи вкладки (`task.chats`) для блока «Чаты по задаче». */
 export const taskChats = signal<TaskChatRow[]>([]);
 /** Вкладка на задачу (`tasks.tab = task`, этап 7): её чаты внутренними вкладками; нет — обычная вкладка чата. */
@@ -570,6 +585,20 @@ export function handleHostMessage(m: ToWebview): void {
     case 'task.chats':
       taskChats.value = m.taskKey ? m.chats : [];
       break;
+    case 'task.code.state':
+      // итог другой задачи не показываем: файлы коммитов и дифф прежней тоже уходят
+      if (taskCode.value?.taskKey !== m.taskKey) {
+        taskCodeCommits.value = {};
+        taskCodeDiff.value = undefined;
+      }
+      taskCode.value = m;
+      break;
+    case 'task.code.commit':
+      taskCodeCommits.value = { ...taskCodeCommits.value, [`${m.root}\0${m.sha}`]: m };
+      break;
+    case 'task.code.diff':
+      taskCodeDiff.value = m;
+      break;
     default:
       break;
   }
@@ -599,6 +628,9 @@ function switchTabChat(prev: string, next: string | undefined, seeded: boolean):
   // полоска и блок «Чаты по задаче» — от показанного чата (у чата без задачи хост их не пришлёт)
   taskState.value = undefined;
   taskChats.value = [];
+  taskCode.value = undefined;
+  taskCodeCommits.value = {};
+  taskCodeDiff.value = undefined;
   taskFocus.value = undefined;
   // события прежнего чата хост больше не шлёт — фильтр брошенной сессии здесь только мешал бы возврату к ней
   abandonedSessionId = undefined;

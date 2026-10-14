@@ -285,6 +285,47 @@ export const tabChats = () => ({
 export const integrations = { jiraffe: { state: 'ready', version: '0.8.0', instances: [{ id: 'inst', name: 'Jira DC', baseUrl: 'https://jira.example.com', kind: 'dc' }] },
   own: [{ id: 'cloud', name: 'Team Cloud', baseUrl: 'https://example.atlassian.net', kind: 'cloud' }], active: 'jiraffe', writes: true };
 
+// ---- Task code tab (roadmap 24, session 2): repos, commits, agent edits, one patch ------------------------------
+
+const SHA = (p) => p + '0'.repeat(40 - p.length);
+export const codeRepos = () => {
+  const now = Date.now();
+  return [
+    { root: `${CWD}/queue-board`, name: 'queue-board', base: 'origin/develop',
+      branches: [{ name: 'feature/QUE-214', ahead: 3, add: 52, del: 6, files: [
+        { path: 'src/board/counter.ts', status: 'M', add: 21, del: 4 },
+        { path: 'src/board/socket.ts', status: 'M', add: 9, del: 2 },
+        { path: 'test/counter.test.ts', status: 'A', add: 22, del: 0 }] }],
+      commits: [
+        { sha: SHA('a41c9e2'), short: 'a41c9e2', subject: 'QUE-214: keep the last snapshot on reconnect', author: 'You', at: now - 12 * MIN, src: 'key', unpushed: true },
+        { sha: SHA('e19f5a0'), short: 'e19f5a0', subject: 'Add reconnect test for the counter', author: 'You', at: now - 5 * HOUR, src: 'branch', branch: 'feature/QUE-214' },
+        { sha: SHA('7d03b11'), short: '7d03b11', subject: 'QUE-214 socket: back off exponentially', author: 'You', at: now - 26 * HOUR, src: 'key' }],
+      dirty: [
+        { path: 'src/board/socket.ts', status: 'M', add: 3, del: 1, chats: [{ id: 's1', title: 'Fix board counter blink' }, { id: 's3', provider: 'codex', title: 'Hall board: same blink' }] },
+        { path: 'README.md', status: 'M', add: 6, del: 0, chats: [{ id: 's1', title: 'Fix board counter blink' }] }] },
+    { root: `${CWD}/kiosk-api`, name: 'kiosk-api', base: 'origin/develop', branches: [], dirty: [],
+      commits: [{ sha: SHA('3b8e7c4'), short: '3b8e7c4', subject: 'QUE-214: expose snapshot version in /board/state', author: 'Oleg P.', at: now - 3 * 86400_000, src: 'key', inBase: true }] },
+  ];
+};
+export const codeState = () => ({ type: 'task.code.state', taskKey: TASK_KEY, repos: codeRepos() });
+export const codeCommit = () => ({ type: 'task.code.commit', root: `${CWD}/queue-board`, sha: SHA('a41c9e2'), files: [
+  { path: 'src/board/counter.ts', status: 'M', add: 21, del: 4 }, { path: 'test/counter.test.ts', status: 'A', add: 22, del: 0 }] });
+export const codePatch = () => ({ binary: false, truncated: false, hunks: [{ header: '@@ -41,9 +41,14 @@ export class Socket', oldStart: 41, newStart: 41, lines: [
+  { kind: ' ', text: '  private attempt = 0;', old: 41, new: 41 },
+  { kind: ' ', text: '', old: 42, new: 42 },
+  { kind: '-', text: '  private reconnect(): void {', old: 43, new: null },
+  { kind: '-', text: '    setTimeout(() => this.open(), 1000);', old: 44, new: null },
+  { kind: '+', text: '  private reconnect(): void {', old: null, new: 43 },
+  { kind: '+', text: '    // exponential back-off, capped at 30 s', old: null, new: 44 },
+  { kind: '+', text: '    const delay = Math.min(1000 * 2 ** this.attempt++, 30_000);', old: null, new: 45 },
+  { kind: '+', text: '    setTimeout(() => this.open(), delay);', old: null, new: 46 },
+  { kind: ' ', text: '  }', old: 45, new: 47 },
+  { kind: ' ', text: '', old: 46, new: 48 },
+  { kind: ' ', text: '  private onOpen(): void {', old: 47, new: 49 },
+  { kind: '+', text: '    this.attempt = 0;', old: null, new: 50 },
+  { kind: ' ', text: '    this.emit("open");', old: 48, new: 51 },
+  { kind: ' ', text: '  }', old: 49, new: 52 }] }] });
+
 // ---- MCP and skills (roadmap 21, stage 4) ----------------------------------------------------------------------
 
 const srv = (name, status, extra = {}) => ({ name, status, ...extra });

@@ -5,7 +5,7 @@ import { ENGINE_MARK, ENGINE_MARK_CLASS } from '../engineLimitsView';
 import { pillClass } from '../sessionsView';
 import { ui } from '../strings';
 import { agoLabel, eventActor, eventText, initials, issueKeyOf } from '../taskView';
-import { send } from '../vscode';
+import { send, type TaskViewName } from '../vscode';
 
 export function Mark({ provider }: { provider: AgentProvider | undefined }) {
   const e = provider ?? 'claude';
@@ -104,8 +104,9 @@ export interface ChatActivity {
 
 /**
  * Полоса задачи над лентой чата (решение 8 roadmap 19, вкладки — решение 1 roadmap 20; `task-tab.html`, `.strip.vt`):
- * вкладки «чат | задача», ключ, статус, заголовок, ссылка на задачу. На вкладке «чат», пока открыта «задача»,
- * видно, что идёт ход (спиннер и число новых записей) и что агент ждёт ответа (жёлтая точка).
+ * вкладки «чат | задача | код», ключ, статус, заголовок, ссылка на задачу. На вкладке «чат», пока открыта другая,
+ * видно, что идёт ход (спиннер и число новых записей) и что агент ждёт ответа (жёлтая точка). «код» (roadmap 24) —
+ * коммиты, ветки и правки агентов по задаче; число — коммиты + незакоммиченные файлы, пока не загружено — без числа.
  */
 export function TaskStrip({
   state,
@@ -113,18 +114,21 @@ export function TaskStrip({
   onView,
   unseen,
   activity,
+  codeCount,
 }: {
   state: TaskStateMessage & { taskKey: string };
-  view: 'chat' | 'task';
-  onView: (v: 'chat' | 'task') => void;
+  view: TaskViewName;
+  onView: (v: TaskViewName) => void;
   /** Непросмотренных событий ленты — бейдж на вкладке «задача», пока она не открыта. */
   unseen: number;
   activity: ChatActivity;
+  /** Число у вкладки «код»; нет — вкладка ещё не загружалась. */
+  codeCount?: number;
 }) {
   const t = ui.task;
   const card = state.card;
   const link = state.source === 'jiraffe' ? t.openJiraffe : t.openBrowser;
-  const away = view === 'task';
+  const away = view !== 'chat';
   return (
     <div class="tk-strip" role="region" aria-label={t.stripAria}>
       <span class="vtabs" role="tablist" aria-label={t.viewAria}>
@@ -140,11 +144,15 @@ export function TaskStrip({
         </button>
         <button role="tab" id="vtab-task" class={view === 'task' ? 'vtab on' : 'vtab'} aria-selected={view === 'task'} onClick={() => onView('task')}>
           {ui.tabs.task}
-          {!away && unseen > 0 && (
+          {view !== 'task' && unseen > 0 && (
             <i class="nb" data-tip={t.badgeTitle(unseen)}>
               {unseen}
             </i>
           )}
+        </button>
+        <button role="tab" id="vtab-code" class={view === 'code' ? 'vtab on' : 'vtab'} aria-selected={view === 'code'} data-tip={t.code.tabTitle} onClick={() => onView('code')}>
+          {ui.tabs.code}
+          {codeCount !== undefined && <i class="cnt">{codeCount}</i>}
         </button>
       </span>
       <span class="sep" />

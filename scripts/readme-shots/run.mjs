@@ -233,6 +233,19 @@ for (const theme of ['dark', 'light']) {
   });
 }
 
+// roadmap 24: the "code" view of the chat tab (`node scripts/readme-shots/run.mjs code`); frames code-list, code-diff, code-how.
+// Messages reach the page one by one after `ready`; the first diff request of a fresh page has req 1, so its patch is sent up front.
+const codeJobs = [];
+for (const theme of ['dark', 'light']) {
+  for (const [frame, click, more] of [['list', undefined, []], ['diff', '.tcd .row.f', [{ type: 'task.code.diff', req: 1, patch: data.codePatch() }]], ['how', '.tcd .top .q', []]]) {
+    codeJobs.push(async () => {
+      const panel = { ...WIDE, tab: 'changes', view: 'code', taskView: 'comments', taskSeen: seenOld(), taskSeenKey: data.TASK_KEY };
+      const page = chatPage(theme, data.taskTurn(), panel, { extra: [...taskMsgs, data.codeState(), data.codeCommit(), ...more], ...(click ? { click } : {}) });
+      await single(await shot(page, png('tcode'), 1100, 760), out(`code-${frame}`, theme));
+    });
+  }
+}
+
 // README picture: sidebar with the task group + chat with the "changes" feed (dark), like the hero
 taskJobs.push(async () => {
   const side = taskSidebar('dark', 'groups');
@@ -315,7 +328,7 @@ for (const theme of ['dark', 'light']) {
   }
 }
 
-  await pool(process.argv[2] === 'tasks' ? taskJobs : process.argv[2] === 'mcp' ? mcpJobs : process.argv[2] === 'archive' ? archiveJobs : [...jobs, ...taskJobs, ...mcpJobs], 4);
+  await pool(process.argv[2] === 'tasks' ? taskJobs : process.argv[2] === 'code' ? codeJobs : process.argv[2] === 'mcp' ? mcpJobs : process.argv[2] === 'archive' ? archiveJobs : [...jobs, ...taskJobs, ...mcpJobs], 4);
   console.log(`done: ${OUT}`);
 } finally {
   if (!process.env.KEEP_TMP) rmSync(TMP, { recursive: true, force: true });
