@@ -160,6 +160,37 @@ describe('TaskTab', () => {
     expect(deps.connect).toHaveBeenCalledTimes(1);
   });
 
+  it('вкладка «код»: task.code.* идёт в TaskCode с ключом задачи; без задачи и без code — игнор; turn.result перезагружает', () => {
+    const code = { handle: vi.fn(), refresh: vi.fn(), reset: vi.fn() };
+    const { tab, deps } = setup({ sessionId: 's1' });
+    (deps as { code?: typeof code }).code = code;
+    tab.handle({ type: 'task.code.load' });
+    expect(code.handle).not.toHaveBeenCalled(); // sync ещё не было — задачи нет
+    tab.sync();
+    expect(code.reset).toHaveBeenCalledTimes(1); // смена задачи (нет → есть)
+    tab.handle({ type: 'task.code.load', force: true });
+    tab.handle({ type: 'task.code.copy', text: 'abc' });
+    expect(code.handle).toHaveBeenNthCalledWith(1, TASK, { type: 'task.code.load', force: true });
+    expect(code.handle).toHaveBeenNthCalledWith(2, TASK, { type: 'task.code.copy', text: 'abc' });
+    tab.sync(); // та же задача — не сбрасываем
+    expect(code.reset).toHaveBeenCalledTimes(1);
+    tab.onAgentEvent({ type: 'turn.result' } as AgentEvent);
+    expect(code.refresh).toHaveBeenCalledWith(TASK);
+    tab.dispose();
+    expect(code.reset).toHaveBeenCalledTimes(2);
+    // субагент: не перезагружаем
+    const sub = setup({ sessionId: 's1' });
+    (sub.deps as { code?: typeof code }).code = code;
+    sub.tab.sync();
+    code.refresh.mockClear();
+    sub.tab.onAgentEvent({ type: 'turn.result', agentId: 'a1' } as AgentEvent);
+    expect(code.refresh).not.toHaveBeenCalled();
+    // без code запрос не падает
+    const bare = setup({ sessionId: 's1' });
+    bare.tab.sync();
+    expect(() => bare.tab.handle({ type: 'task.code.load' })).not.toThrow();
+  });
+
   it('запросы без задачи игнорируются', () => {
     const { tab, service } = setup({});
     tab.handle({ type: 'task.refresh' });

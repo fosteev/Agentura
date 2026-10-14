@@ -1,8 +1,12 @@
 import type { AgentEvent } from '../../agent/types';
 import {
   isOpenableLink,
+  isTaskCodeRequest,
   type TaskActionKind,
   type TaskActionMessage,
+  type TaskCodeCommitMessage,
+  type TaskCodeDiffMessage,
+  type TaskCodeStateMessage,
   type TaskRequest,
   type TaskStateMessage,
   type TaskTransitionsMessage,
@@ -10,6 +14,7 @@ import {
 import { parseTaskKey, type TaskGroups, type TaskKey } from '../taskGroups';
 import { WRITE_TIMEOUT_MS } from './agentTools';
 import type { JiraWriter } from './source';
+import type { TaskCode } from './taskCode';
 import type { TurnSpan } from './taskEvents';
 import type { TaskService } from './taskService';
 
@@ -28,7 +33,17 @@ export interface TaskTabDeps {
   pending(): TaskKey | undefined;
   visible(): boolean;
   turns(): TurnSpan[];
-  post(m: TaskStateMessage | TaskTransitionsMessage | TaskActionMessage): void;
+  post(
+    m:
+      | TaskStateMessage
+      | TaskTransitionsMessage
+      | TaskActionMessage
+      | TaskCodeStateMessage
+      | TaskCodeCommitMessage
+      | TaskCodeDiffMessage,
+  ): void;
+  /** Вкладка «код» (roadmap 24): коммиты, ветки и правки агентов задачи. Нет — запросы `task.code.*` игнорируются. */
+  code?: Pick<TaskCode, 'handle' | 'refresh' | 'reset'>;
   /** Вставить текст в поле ввода (не отправляя). */
   prefill(text: string): void;
   /** Приложить к полю ввода текстовый файл (контекст задачи `<KEY>.md`); нет — текст уходит в `prefill`. */
@@ -87,6 +102,7 @@ export class TaskTab {
     }
     this.attached?.dispose();
     this.attached = undefined;
+    this.deps.code?.reset();
     const had = this.key !== undefined;
     this.key = taskKey;
     if (!taskKey) {
@@ -112,6 +128,10 @@ export class TaskTab {
   handle(m: TaskRequest): void {
     const key = this.key;
     if (!key) return;
+    if (isTaskCodeRequest(m)) {
+      this.deps.code?.handle(key, m);
+      return;
+    }
     switch (m.type) {
       case 'task.refresh':
         void this.deps.service.refresh(key);
@@ -187,6 +207,7 @@ export class TaskTab {
     if (!key || e.agentId) return;
     if (e.type === 'turn.result') {
       this.deps.service.nudge(key);
+      this.deps.code?.refresh(key);
     } else if (e.type === 'tool.result') {
       const issue = parseTaskKey(key)?.key;
       if (issue && e.content.toUpperCase().includes(issue)) this.deps.service.nudge(key);
@@ -255,6 +276,7 @@ export class TaskTab {
   dispose(): void {
     this.attached?.dispose();
     this.attached = undefined;
+    this.deps.code?.reset();
     this.key = undefined;
   }
 }

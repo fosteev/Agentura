@@ -154,6 +154,66 @@ describe('protocol', () => {
     for (const m of bad) expect(isFromWebview(m), JSON.stringify(m).slice(0, 200)).toBe(false);
   });
 
+  it('вкладка «код» (roadmap 24): запросы task.code.* проверяются по полям, пути и ref-ы — без выхода и флагов', () => {
+    const SHA = 'abc1234';
+    const ok = [
+      { type: 'task.code.load' },
+      { type: 'task.code.load', force: true },
+      { type: 'task.code.commit', root: '/w/r', sha: SHA },
+      { type: 'task.code.commit', root: '/w/r', sha: 'a'.repeat(40) },
+      { type: 'task.code.diff', req: 1, root: '/w/r', target: { kind: 'commit', sha: SHA, path: 'src/a.ts' } },
+      { type: 'task.code.diff', req: 0, root: '/w/r', target: { kind: 'branch', base: 'origin/develop', branch: 'feature/GARM-87', path: 'a.ts' } },
+      { type: 'task.code.diff', req: 2, root: '/w/r', target: { kind: 'wip', path: 'dir/..name/a.ts' } },
+      { type: 'task.code.prefill', text: 'abc1234 subject' },
+      { type: 'task.code.prefill', text: 'x'.repeat(2000) },
+      { type: 'task.code.copy', text: SHA },
+      { type: 'task.code.copy', text: 'x'.repeat(200) },
+    ];
+    for (const m of ok) expect(isFromWebview(m), JSON.stringify(m)).toBe(true);
+    const diff = (target: unknown, over: Record<string, unknown> = {}) => ({ type: 'task.code.diff', req: 1, root: '/w/r', target, ...over });
+    const bad = [
+      { type: 'task.code.load', force: 'yes' },
+      { type: 'task.code.commit', root: '/w/r' },
+      { type: 'task.code.commit', root: '', sha: SHA },
+      { type: 'task.code.commit', root: '/w/r', sha: 'abc' },
+      { type: 'task.code.commit', root: '/w/r', sha: 'ABC1234' },
+      { type: 'task.code.commit', root: '/w/r', sha: '--output=x' },
+      { type: 'task.code.commit', root: '/w/r', sha: 'a'.repeat(41) },
+      { type: 'task.code.commit', root: 5, sha: SHA },
+      diff({ kind: 'commit', sha: SHA, path: '' }),
+      diff({ kind: 'commit', sha: SHA, path: '/etc/passwd' }),
+      diff({ kind: 'commit', sha: SHA, path: 'C:\\Windows\\x' }),
+      diff({ kind: 'commit', sha: SHA, path: '\\\\server\\share' }),
+      diff({ kind: 'commit', sha: SHA, path: '../secret' }),
+      diff({ kind: 'commit', sha: SHA, path: 'a/../../b' }),
+      diff({ kind: 'commit', sha: SHA, path: 'a\\..\\b' }),
+      diff({ kind: 'commit', sha: SHA, path: 'a\0b' }),
+      diff({ kind: 'commit', path: 'a.ts' }),
+      diff({ kind: 'commit', sha: 'nothex!', path: 'a.ts' }),
+      diff({ kind: 'branch', base: '--upload-pack=x', branch: 'b', path: 'a.ts' }),
+      diff({ kind: 'branch', base: 'b', branch: '-x', path: 'a.ts' }),
+      diff({ kind: 'branch', base: 'b', branch: '', path: 'a.ts' }),
+      diff({ kind: 'branch', base: 'b', branch: 'x\ny', path: 'a.ts' }),
+      diff({ kind: 'branch', base: 'b', path: 'a.ts' }),
+      diff({ kind: 'wip' }),
+      diff({ kind: 'staged', path: 'a.ts' }),
+      diff('wip'),
+      diff(null),
+      diff({ kind: 'wip', path: 'a.ts' }, { req: '1' }),
+      diff({ kind: 'wip', path: 'a.ts' }, { req: 1.5 }),
+      diff({ kind: 'wip', path: 'a.ts' }, { req: -1 }),
+      diff({ kind: 'wip', path: 'a.ts' }, { root: '' }),
+      { type: 'task.code.prefill' },
+      { type: 'task.code.prefill', text: '' },
+      { type: 'task.code.prefill', text: 'x'.repeat(2001) },
+      { type: 'task.code.copy', text: 'x'.repeat(201) },
+      { type: 'task.code.copy', text: 5 },
+      { type: 'task.code.state', repos: [] }, // сообщение хоста, от webview не принимается
+      { type: 'task.code.diff' },
+    ];
+    for (const m of bad) expect(isFromWebview(m), JSON.stringify(m).slice(0, 200)).toBe(false);
+  });
+
   it('вкладка «git» (roadmap 12): запросы проверяются по полям', () => {
     const ok = [
       { type: 'git.watch', on: true },

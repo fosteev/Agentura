@@ -48,6 +48,7 @@ import type { ContextRequest } from './contextRequest';
 import type { ArchivedSessions } from './archive';
 import { nextTabTask, parseTaskKey, routeTaskOpen, taskChatRows, taskKeyOf, type TabTask, type TaskGroups, type TaskKey, type TaskMeta } from './taskGroups';
 import { isTaskRequest, type TaskChatsMessage } from '../shared/task';
+import { TaskCode, readTextFile } from './jira/taskCode';
 import { TaskTab } from './jira/taskTab';
 import { AgentJiraTools } from './jira/agentTools';
 import { readAgentTools } from '../shared/jiraTools';
@@ -57,7 +58,7 @@ import type { SessionMemory } from './sessionMemory';
 import type { SessionsService } from './sessionsService';
 import type { UsageService } from './usage';
 import type { AgyQuotaService } from './agyQuota';
-import type { GitService } from './git/gitService';
+import { runGit, type GitService } from './git/gitService';
 import { isGitRequest } from '../shared/git';
 import type { Logger } from './logger';
 import { hostStrings } from '../shared/l10n';
@@ -832,8 +833,55 @@ export class ChatPanel {
       },
     });
 
+    // вкладка «код» задачи (roadmap 24): git — через встроенное расширение VS Code, история чатов — адаптеры движков
+    let gitPath: string | undefined;
+    const taskCode = new TaskCode({
+      run: async (args, cwd) => {
+        gitPath ??= (await services.git.rootsFor(cwd)).gitPath;
+        return runGit(gitPath, args, cwd);
+      },
+      repos: async (cwd) => {
+        const r = await services.git.rootsFor(cwd);
+        gitPath = r.gitPath;
+        return r.roots;
+      },
+      history: async (chat, cwd) => {
+        const adapter =
+          chat.provider === 'codex'
+            ? services.codexAdapter()
+            : chat.provider === 'antigravity'
+              ? services.antigravityAdapter()
+              : services.adapter;
+        return (await adapter.loadHistory(chat.id, cwd)).events;
+      },
+      readText: readTextFile,
+      cwd: () => folder.uri.fsPath,
+      chats: async (taskKey) => {
+        const group = services.taskGroups.group(taskKey);
+        if (!group) return [];
+        const rows = await services.sessions.list().catch(() => []);
+        return group.sessions
+          .flatMap((ref) => {
+            const row = rows.find((r) => r.id === ref.id && (r.provider ?? 'claude') === ref.provider);
+            return row ? [{ row, ref }] : [];
+          })
+          .sort((a, b) => b.row.updatedAt - a.row.updatedAt)
+          .map(({ row, ref }) => ({
+            id: ref.id,
+            ...(ref.provider === 'claude' ? {} : { provider: ref.provider }),
+            title: row.title,
+            ...(row.cwd ? { cwd: row.cwd } : {}),
+            updatedAt: row.updatedAt,
+          }));
+      },
+      post: (m) => panel.post(m),
+      prefill: (text) => this.controller.prefill(text),
+      copy: (text) => void vscode.env.clipboard.writeText(text),
+    });
+
     // карточка и лента задачи: подписка на `TaskService`, пока вкладка в группе (или ждёт её)
     this.taskTab = new TaskTab({
+      code: taskCode,
       service: services.tasks,
       groups: services.taskGroups,
       sessionId: () => this.controller.sessionId,

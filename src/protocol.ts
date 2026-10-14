@@ -22,11 +22,17 @@ import { isAgentGraphView, type AgentGraphView } from './shared/agentsGraph';
 import type { GitNotice, GitRequest } from './shared/git';
 import type { IntegrationsState } from './shared/integrations';
 import {
+  CODE_LIMITS,
+  isCodeDiffTarget,
+  isCodeSha,
   isIsoDate,
   isOpenableLink,
   TASK_LIMITS,
   type TaskActionMessage,
   type TaskChatsMessage,
+  type TaskCodeCommitMessage,
+  type TaskCodeDiffMessage,
+  type TaskCodeStateMessage,
   type TaskRequest,
   type TaskStateMessage,
   type TaskTransitionsMessage,
@@ -327,6 +333,10 @@ export type ToWebview =
   | TaskActionMessage
   /** Чаты группы задачи вкладки для блока «Чаты по задаче» (этап 5). */
   | TaskChatsMessage
+  /** Вкладка «код» задачи (roadmap 24): всё по задаче, файлы коммита и патч файла для встроенного диффа. */
+  | TaskCodeStateMessage
+  | TaskCodeCommitMessage
+  | TaskCodeDiffMessage
   /** Вкладка на задачу (`tasks.tab = task`, этап 7): внутренние вкладки чатов и состояние для сериализатора. */
   | TabChatsMessage;
 
@@ -641,6 +651,11 @@ const FROM_WEBVIEW_TYPES: Record<FromWebview['type'], true> = {
   'task.comment': true,
   'task.logWork': true,
   'task.openLink': true,
+  'task.code.load': true,
+  'task.code.commit': true,
+  'task.code.diff': true,
+  'task.code.prefill': true,
+  'task.code.copy': true,
   'tab.select': true,
   'tab.close': true,
   'tab.new': true,
@@ -707,6 +722,18 @@ const FIELD_CHECKS: Partial<Record<FromWebview['type'], (m: Record<string, unkno
     str(m.comment) &&
     m.comment.length <= TASK_LIMITS.workComment,
   'task.openLink': (m) => isOpenableLink(m.url),
+  // вкладка «код» (roadmap 24): хост ещё проверяет, что `root` — один из корней последнего `task.code.state`
+  'task.code.load': (m) => m.force === undefined || bool(m.force),
+  'task.code.commit': (m) => str(m.root) && m.root.length > 0 && m.root.length <= CODE_LIMITS.path && isCodeSha(m.sha),
+  'task.code.diff': (m) =>
+    Number.isInteger(m.req) &&
+    (m.req as number) >= 0 &&
+    str(m.root) &&
+    m.root.length > 0 &&
+    m.root.length <= CODE_LIMITS.path &&
+    isCodeDiffTarget(m.target),
+  'task.code.prefill': (m) => str(m.text) && m.text.length > 0 && m.text.length <= CODE_LIMITS.prefill,
+  'task.code.copy': (m) => str(m.text) && m.text.length > 0 && m.text.length <= CODE_LIMITS.copy,
   'task.openExternal': (m) =>
     (m.attachmentId === undefined || (str(m.attachmentId) && m.attachmentId.length <= 200)) &&
     (m.web === undefined || typeof m.web === 'boolean'),

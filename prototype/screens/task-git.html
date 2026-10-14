@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="ru" data-theme="dark" data-width="vscode">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agentura · код по задаче</title>
+<link rel="stylesheet" href="../shared/tokens.css">
+<link rel="stylesheet" href="../shared/preview.css">
+<link rel="stylesheet" href="../shared/hud.css">
+<link rel="stylesheet" href="../shared/tasks.css">
+<link rel="stylesheet" href="../shared/tooltip.css">
+<style>
+/* Полоса задачи: вкладки «чат | задача [| код]» */
+.strip.vt { padding-left: 4px; gap: 8px; }
+.strip .vtab { display: flex; gap: 6px; align-items: center; align-self: stretch; padding: 0 10px; color: var(--fg-mute); border-bottom: 2px solid transparent; margin-bottom: -1px; font-family: var(--font); font-size: 12.5px; }
+.strip .vtab.on { color: var(--fg); border-bottom-color: var(--fg); }
+.strip .vtab .cnt { font: 10px/14px var(--mono); color: var(--fg-faint); }
+
+/* общие мелочи кода по задаче */
+.kx { font-family: var(--font); font-size: 12px; }
+.kx .add { color: var(--add); } .kx .del { color: var(--del); }
+.kx a { color: var(--link); text-decoration: none; }
+.kx .mono { font-family: var(--mono); font-size: 11px; }
+.kx .src { font: 9.5px/14px var(--mono); padding: 0 4px; border-radius: 2px; border: 1px solid var(--line-strong); color: var(--fg-mute); white-space: nowrap; }
+.kx .src.br { color: var(--info); border-color: color-mix(in srgb, var(--info) 45%, transparent); }
+.kx .up { font: 10px var(--mono); color: var(--warn); white-space: nowrap; }
+.kx .ind { font: 10px var(--mono); color: var(--ok); white-space: nowrap; }
+.kx .ch { display: inline-grid; place-items: center; width: 14px; height: 14px; border-radius: 3px; color: #fff; font: 600 8.5px var(--font); font-style: normal; vertical-align: -2px; }
+.kx .ch.claude { background: #c96442; } .kx .ch.codex { background: #6b6bd6; }
+.kx .st { font: 700 10px var(--mono); color: var(--warn); } .kx .st.a { color: var(--ok); }
+
+/* ── A · охват «задача» во вкладке «изменения» правой панели ── */
+.rp.wide { width: 340px; }
+.rp .kx { overflow: hidden; display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.rp .scope { display: flex; margin: 10px 14px 0; border: 1px solid var(--line-strong); border-radius: 3px; overflow: hidden; width: max-content; }
+.rp .scope button { padding: 2px 9px; font-size: 11px; color: var(--fg-mute); }
+.rp .scope button + button { border-left: 1px solid var(--line-strong); }
+.rp .scope button[aria-pressed="true"] { background: var(--bg-input); color: var(--fg); }
+.rp .tot { display: flex; gap: 6px; align-items: baseline; padding: 8px 14px 2px; color: var(--fg-mute); font-size: 11.5px; }
+.rp .tot b { font-weight: 400; color: var(--fg); }
+.rp .kh { margin: 0; padding: 12px 14px 4px; font-size: 10.5px; font-weight: 600; color: var(--fg-faint); display: flex; gap: 8px; align-items: center; text-transform: none; letter-spacing: 0; }
+.rp .kh::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.rp .repo { display: flex; gap: 6px; align-items: baseline; padding: 6px 14px 2px; }
+.rp .repo b { font-weight: 600; }
+.rp .repo .br { font: 10.5px var(--mono); color: var(--fg-mute); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rp .repo .n { margin-left: auto; font: 10.5px var(--mono); white-space: nowrap; }
+.rp .cm2 { display: grid; grid-template-columns: 50px minmax(0,1fr) auto; gap: 6px; align-items: baseline; padding: 3px 14px 3px 20px; }
+.rp .cm2 .h { font: 10.5px var(--mono); color: var(--link); }
+.rp .cm2 .s { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rp .cm2 .m { display: flex; gap: 5px; align-items: center; }
+.rp .cm2 .w { grid-column: 2 / 4; color: var(--fg-mute); font-size: 10.5px; display: flex; gap: 6px; margin-top: -2px; }
+.rp .cm2.sel { background: var(--bg-hover); }
+.rp .fl2 { display: grid; grid-template-columns: 14px minmax(0,1fr) auto auto; gap: 6px; align-items: center; padding: 3px 14px 3px 20px; }
+.rp .fl2 .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rp .fl2 .nm i { font-style: normal; color: var(--fg-faint); }
+.rp .fl2 em { font: 10.5px var(--mono); font-style: normal; white-space: nowrap; }
+.rp .foot { margin-top: auto; display: flex; gap: 8px; align-items: center; padding: 8px 14px 10px; border-top: 1px solid var(--line); color: var(--fg-mute); font-size: 11px; }
+.rp .foot .q { margin-left: auto; color: var(--link); }
+.rp .foot .q.on { color: var(--fg); background: var(--bg-input); border-radius: 3px; padding: 0 5px; }
+
+/* пояснялка «как ищем» */
+.how { position: absolute; right: 12px; top: 40px; width: 520px; background: var(--bg-raise); border: 1px solid var(--line-strong); border-radius: 5px; box-shadow: 0 10px 28px rgba(0,0,0,.35); padding: 12px 14px; font-family: var(--font); font-size: 12px; line-height: 1.45; z-index: 5; }
+.how h6 { margin: 0 0 6px; font-size: 12.5px; font-weight: 600; display: flex; }
+.how h6 span { margin-left: auto; color: var(--fg-mute); font-weight: 400; }
+.how p { margin: 0 0 6px; color: var(--fg-mute); }
+.how p b { color: var(--fg); font-weight: 500; }
+.how ol { margin: 0 0 6px; padding-left: 18px; } .how li { margin: 0 0 6px; }
+.how pre { margin: 3px 0 0; padding: 5px 8px; background: var(--bg-code); border-radius: 3px; font: 11px/1.45 var(--mono); color: var(--fg); white-space: pre-wrap; position: relative; padding-right: 78px; }
+.how pre .cp { position: absolute; right: 6px; top: 4px; font: 10.5px var(--font); color: var(--link); }
+.how .rule { border-left: 3px solid var(--warn); padding: 3px 8px; background: color-mix(in srgb, var(--warn) 8%, transparent); color: var(--fg); margin-top: 8px; }
+.how .rule code, .how p code { font: 11px var(--mono); background: var(--bg-code); padding: 0 3px; border-radius: 2px; }
+
+/* ── Б · отдельная вкладка «код» в полосе задачи ── */
+.kd { flex: 1; min-height: 0; display: flex; overflow: hidden; }
+.kd .l { flex: 1; min-width: 0; padding: 12px 18px; overflow: hidden; }
+.kd .r { width: 330px; flex: none; border-left: 1px solid var(--line); background: var(--bg-side); padding: 12px 14px; overflow: hidden; }
+.kd .top { display: flex; gap: 10px; align-items: baseline; color: var(--fg-mute); margin-bottom: 4px; }
+.kd .top b { color: var(--fg); font-weight: 500; }
+.kd .top .q { margin-left: auto; }
+.kd .rb { border: 1px solid var(--line); border-radius: 5px; margin-top: 10px; overflow: hidden; }
+.kd .rb .rh { display: flex; gap: 8px; align-items: center; padding: 7px 10px; background: var(--bg-side); border-bottom: 1px solid var(--line); }
+.kd .rb .rh b { font-weight: 600; }
+.kd .rb .rh .br { font: 11px var(--mono); color: var(--fg-mute); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kd .rb .rh .n, .kd .rb .rh button { white-space: nowrap; flex: none; }
+.kd .rb .rh .sp { flex: 1; }
+.kd .rb .rh .n { font: 11px var(--mono); }
+.kd .rb .rh button { font-size: 11px; padding: 1px 8px; border: 1px solid var(--line-strong); border-radius: 3px; color: var(--fg); }
+.kd .row { display: grid; grid-template-columns: 58px minmax(0,1fr) auto auto 70px; gap: 10px; align-items: center; padding: 4px 10px; }
+.kd .row + .row { border-top: 1px solid color-mix(in srgb, var(--line) 60%, transparent); }
+.kd .row .h { font: 11px var(--mono); color: var(--link); }
+.kd .row .s { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kd .row .who { color: var(--fg-mute); font-size: 11px; white-space: nowrap; }
+.kd .row .t { color: var(--fg-mute); font: 10.5px var(--mono); text-align: right; white-space: nowrap; }
+.kd .row.sel { background: color-mix(in srgb, var(--info) 12%, transparent); box-shadow: inset 2px 0 0 var(--info); }
+.kd .row.f { grid-template-columns: 14px minmax(0,1fr) auto auto; }
+.kd .row.f .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kd .row.f .nm i { font-style: normal; color: var(--fg-faint); }
+.kd .row.f em { font: 10.5px var(--mono); font-style: normal; white-space: nowrap; }
+.kd .sub { padding: 5px 10px 3px; font-size: 10.5px; font-weight: 600; color: var(--fg-faint); border-top: 1px solid var(--line); }
+.kd .r h5 { margin: 0 0 4px; font-size: 11px; font-weight: 600; color: var(--fg-mute); text-transform: uppercase; letter-spacing: .03em; }
+.kd .r .ttl2 { font-size: 12.5px; margin-bottom: 2px; }
+.kd .r .meta2 { color: var(--fg-mute); font-size: 11px; margin-bottom: 10px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.kd .r .fr { display: grid; grid-template-columns: 14px minmax(0,1fr) auto; gap: 6px; align-items: center; padding: 3px 0; }
+.kd .r .fr .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .kd .r .fr .nm i { font-style: normal; color: var(--fg-faint); }
+.kd .r .fr em { font: 10.5px var(--mono); font-style: normal; }
+.kd .r .acts2 { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+.kd .r .acts2 button { font-size: 11px; padding: 3px 8px; border: 1px solid var(--line-strong); border-radius: 3px; color: var(--fg); }
+.kd .r .acts2 button.pri { background: var(--btn); color: var(--btn-fg); border-color: transparent; }
+
+/* ── В · подвкладка «Код» в карточке задачи ── */
+.tc { flex: 1; min-height: 0; display: flex; overflow: hidden; font-family: var(--font); font-size: 13px; }
+.tc .tm { flex: 1; min-width: 0; padding: 14px 20px 0; overflow: hidden; position: relative; }
+.tc .crumb { display: flex; gap: 8px; align-items: center; color: var(--fg-mute); font-size: 12px; }
+.tc .crumb .tic { background: #4ba35b; }
+.tc .crumb .sp { flex: 1; } .tc .crumb .upd { font: 11px var(--mono); }
+.tc h1 { margin: 6px 0 10px; font-size: 19px; font-weight: 600; line-height: 1.25; }
+.tc .bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.tc .btn { display: inline-flex; gap: 6px; align-items: center; height: 26px; padding: 0 10px; border-radius: 3px; background: var(--btn-2); color: var(--btn-2-fg); font-size: 12px; white-space: nowrap; }
+.tc .btn.st { background: color-mix(in srgb, var(--info) 18%, transparent); color: var(--info); }
+.tc .btn.pri { background: var(--btn); color: var(--btn-fg); }
+.tc h4 { margin: 0 0 5px; font-size: 12px; color: var(--fg-mute); font-weight: 600; }
+.tc .rich { line-height: 1.5; max-width: 78ch; margin-bottom: 12px; } .tc .rich p { margin: 0 0 6px; }
+.tc .rich code { font-family: var(--mono); font-size: 12px; background: var(--bg-code); padding: 0 4px; border-radius: 3px; }
+.tc .subtabs { display: flex; border-bottom: 1px solid var(--line); margin-bottom: 8px; }
+.tc .subtabs span { padding: 5px 12px; color: var(--fg-mute); border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+.tc .subtabs span.on { color: var(--fg); border-bottom-color: var(--accent); }
+.tc .subtabs .cnt { margin-left: 5px; font: 10.5px var(--mono); color: var(--fg-faint); font-style: normal; }
+.tc .subtabs .q { margin-left: auto; align-self: center; font-size: 11.5px; color: var(--link); padding: 0; border: 0; }
+.tc .ts { width: 260px; flex: none; border-left: 1px solid var(--line); background: var(--bg-side); padding: 14px 16px; display: grid; gap: 14px; align-content: start; overflow: hidden; font-size: 12.5px; }
+.tc .ts h5 { margin: 0 0 6px; font-size: 11px; font-weight: 600; color: var(--fg-mute); text-transform: uppercase; letter-spacing: .03em; }
+.tc .ts .kv { display: grid; grid-template-columns: 86px 1fr; gap: 6px 8px; } .tc .ts .kv span { color: var(--fg-mute); } .tc .ts .kv b { font-weight: 400; }
+.tc .kc .gh { display: flex; gap: 8px; align-items: baseline; padding: 6px 0 3px; }
+.tc .kc .gh b { font-weight: 600; } .tc .kc .gh .br { font: 11px var(--mono); color: var(--fg-mute); } .tc .kc .gh .n { margin-left: auto; font: 11px var(--mono); }
+.tc .kc .gh a { font-size: 11.5px; }
+.tc .kc .row { display: grid; grid-template-columns: 58px minmax(0,1fr) auto auto 64px; gap: 10px; align-items: center; padding: 3px 0 3px 10px; }
+.tc .kc .row .h { font: 11px var(--mono); color: var(--link); }
+.tc .kc .row .s { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tc .kc .row .who { color: var(--fg-mute); font-size: 11px; white-space: nowrap; }
+.tc .kc .row .t { color: var(--fg-mute); font: 10.5px var(--mono); text-align: right; white-space: nowrap; }
+.tc .kc .row.f { grid-template-columns: 14px minmax(0,1fr) auto auto; }
+.tc .kc .row.f .nm i { font-style: normal; color: var(--fg-faint); }
+.tc .kc .row.f em { font: 10.5px var(--mono); font-style: normal; }
+</style>
+</head>
+<body>
+<div class="preview-bar">
+  <b>Код по задаче</b>
+  <span class="grp"><button data-set-theme="dark">Тёмная</button><button data-set-theme="light">Светлая</button></span>
+  <span class="grp"><a href="#a">A панель</a> <a href="#b">Б вкладка «код»</a> <a href="#c">В в карточке</a> <a href="#how">как ищем</a></span>
+  <a href="../index.html">← оглавление</a>
+</div>
+<div class="preview-stage">
+<div class="webview" id="win"></div>
+</div>
+<script src="../shared/preview.js"></script>
+<script>
+(function () {
+  var v = (location.hash.slice(1) || 'a').toLowerCase();
+  if (['a', 'b', 'c', 'how'].indexOf(v) < 0) v = 'a';
+  var KEY = 'NEWMFC-1482';
+
+  var T = [
+    { k: KEY, t: 'Электронная очередь: талон не печатается после перерыва', st: 'В работе', c: 'wip', open: true, chats: [
+      { n: 1, e: 'claude', t: 'почему не печатает после перерыва', ctx: '168k', w: 'вчера' },
+      { n: 2, e: 'codex', t: 'восстановление очереди печати', ctx: '74k', w: 'сейчас' } ] },
+    { k: 'NEWMFC-1490', t: 'Окно записи: неверный часовой пояс', st: 'Тестирование', c: 'test', open: true, chats: [
+      { n: 1, e: 'codex', t: 'часовой пояс в окне записи', ctx: '22k', w: '10:20' } ] },
+    { k: 'GARM-833', t: 'Pulse: пуш о тревоге дублируется', st: 'Открыта', c: 'open', open: false, chats: [
+      { n: 1, e: 'claude', t: 'дубль пуша тревоги', ctx: '96k', w: 'вчера' }, { n: 2, e: 'claude', t: 'тест дедупликации', ctx: '35k', w: 'вчера' }, { n: 3, e: 'codex', t: 'ревью фикса', ctx: '12k', w: 'пн' } ] }
+  ];
+  var FREE = [
+    { e: 'claude', t: 'мигание счётчика талонов', ctx: '131k', w: '12:40' },
+    { e: 'codex', t: 'почему падает lint в ws-client', ctx: '12k', w: '11:48' },
+    { e: 'claude', t: 'переименовать TicketCounter в хук', ctx: '8k', w: '09:41' }
+  ];
+  var K = { claude: 'C', codex: 'X' };
+  function mk(e) { return '<i class="mk ' + e + '" title="' + e + '">' + K[e] + '</i>'; }
+  function pill(t) { return '<span class="pill ' + t.c + '">' + t.st + '</span>'; }
+
+  // ───── данные: коммиты и правки по задаче ─────
+  // src: key — ключ в сообщении коммита; br — только на ветке задачи (сообщение без ключа)
+  var REPOS = [
+    { name: 'smart_eq_terminal', br: 'feature/' + KEY, base: 'develop', ahead: 3, add: 52, del: 6, commits: [
+      { h: 'a41c9e2', s: KEY + ': reset busy flag when the operator pauses', who: 'А. Фостеев', ch: 'codex', t: '14:44', src: 'key', up: true },
+      { h: 'e19f5a0', s: 'Add resume-after-pause test for the print queue', who: 'А. Фостеев', ch: 'claude', t: 'вчера 17:52', src: 'br' },
+      { h: '7d03b11', s: KEY + ' printer socket: reconnect after idle', who: 'А. Фостеев', ch: 'claude', t: 'вчера 16:10', src: 'key' } ],
+      files: [ ['M', 'packages/printer/src/', 'PrintQueue.ts', 9, 2], ['M', 'packages/printer/src/', 'socket.ts', 9, 4], ['A', 'packages/printer/test/', 'resume.test.ts', 34, 0] ],
+      dirty: [ ['M', 'packages/printer/src/', 'socket.ts', 3, 1, 'codex', 2], ['M', 'packages/printer/', 'README.md', 6, 0, 'claude', 1] ] },
+    { name: 'smart_eq_api', br: null, base: 'develop', commits: [
+      { h: '3b8e7c4', s: KEY + ': expose printer state in /kiosk/status', who: 'Д. Соколов', t: 'пн 12:30', src: 'key', merged: true } ],
+      files: [ ['M', 'src/kiosk/', 'status.controller.ts', 14, 2] ], dirty: [] }
+  ];
+  var NC = 4, NDIRTY = 2;
+
+  function ch(e, n) { return '<i class="ch ' + e + '" title="Чат ' + n + ' · ' + e + '">' + n + '</i>'; }
+  function srcTag(c) { return c.src === 'br' ? '<span class="src br" title="Сообщение без ключа — найден по ветке ' + REPOS[0].br + '">ветка</span>' : '<span class="src" title="Ключ задачи в сообщении коммита">ключ</span>'; }
+  function state(c) { return c.up ? '<span class="up" title="Не запушен">↑ локально</span>' : c.merged ? '<span class="ind" title="Уже в develop">в develop</span>' : ''; }
+  function chatOf(c) { return c.ch ? ch(c.ch, c.ch === 'codex' ? 2 : 1) : ''; }
+
+  // ───── боковая панель (как в task-tab) ─────
+  function acc() {
+    function L(a, p, r) { return '<div class="L lim-hot"><span>' + a + '</span><span class="bar"><i style="width:' + p + '%"></i></span><span class="n">' + p + ' %</span><em class="rs">' + r + '</em></div>'; }
+    return '<section class="sec acc"><h3><span class="tri"></span>Аккаунт и лимиты<button class="refresh">↻</button></h3><div class="who"><b>andrey@example.com</b><span>· Max 5×</span><i class="okd"></i></div><div class="lims">' + L('Окно 5 часов', 62, '→ 17:00') + L('Неделя', 34, '→ чт 09:00') + '</div></section>';
+  }
+  function chatRow(c, cur) {
+    return '<button class="c' + (cur === c ? ' cur' : '') + '"><span class="dot"></span>' + mk(c.e) + '<span class="t">' + (c.n ? '<em>Чат ' + c.n + ' ·</em> ' : '') + c.t + '</span><span class="cx">' + c.ctx + '</span><span class="when">' + c.w + '</span></button>';
+  }
+  function group(t, cur) {
+    return '<div class="tgp' + (t.chats.indexOf(cur) >= 0 ? ' sel' : '') + '"><button class="tg-h" title="' + t.t + '"><i class="tw' + (t.open ? ' open' : '') + '"></i><span class="kp"><span class="key">' + t.k + '</span>' + pill(t) + '</span><span class="cn">' + t.chats.length + '</span><span class="plus">＋</span><span class="tt">' + t.t + '</span></button>' +
+      (t.open ? t.chats.map(function (c) { return chatRow(c, cur); }).join('') : '') + '</div>';
+  }
+  function sidebar(cur) {
+    return '<div class="sidebar" data-top="compact" data-list="compact"><div class="head"><span>Agentura</span><button class="gear">⚙</button></div>' + acc() +
+      '<section class="sec"><h3><span class="tri"></span>Задачи</h3></section>' +
+      '<div class="tools"><input type="search" placeholder="Поиск по названию, ключу задачи" disabled><button>⚲</button></div><div class="list">' +
+      T.map(function (t) { return group(t, cur); }).join('') +
+      '<div class="tgp none"><button class="tg-h nokey"><i class="tw open"></i><span class="kp"><b>Без задачи</b></span><span class="cn">3</span><span class="plus">＋</span></button>' + FREE.map(function (c) { return chatRow(c, cur); }).join('') + '</div></div></div>';
+  }
+
+  // ───── полоса задачи ─────
+  function strip(on, withCode) {
+    var t = T[0];
+    function vt(id, label, extra) { return '<span class="vtab' + (on === id ? ' on' : '') + '">' + label + (extra || '') + '</span>'; }
+    return '<div class="strip vt">' + vt('chat', 'чат') + vt('task', 'задача') + (withCode ? vt('code', 'код', '<i class="cnt">' + NC + '</i>') : '') + '<span class="sep"></span>' +
+      '<span class="key">' + t.k + '</span>' + pill(t) + '<span class="ttl" title="' + t.t + '">' + t.t + '</span><a href="#">открыть в Jira ↗</a></div>';
+  }
+  function tab(label, o) { o = o || {}; return '<div class="etab' + (o.on ? ' on' : '') + '">' + (o.ic || '') + '<span class="n">' + label + '</span><span class="x">×</span></div>'; }
+  function tabs(a) { return '<div class="etabs">' + a.join('') + '</div>'; }
+
+  function log() {
+    return '<div class="log">' +
+      '<div class="ref"><span class="p">✓</span><span>контекст задачи <b>' + KEY + '</b> · описание, 3 комментария, 2 вложения · <a href="#">обновить</a></span><span class="at">14:41</span></div>' +
+      '<div class="u"><span class="p">&gt;</span><span>После паузы ещё бывает, что сокет не поднимается. Добей переподключение и закоммить.</span><span class="at">14:42</span></div>' +
+      '<div class="e"><span class="p">▸</span><span class="op">edit</span><span class="what"><span class="dim">packages/printer/src/</span>PrintQueue.ts</span><span class="r"><span class="add">+9</span> <span class="del">−2</span> · <a href="#">diff</a></span></div>' +
+      '<div class="e run"><span class="p">▸</span><span class="op">bash</span><span class="what">git commit -m "' + KEY + ': reset busy flag when the operator pauses"</span><span class="r">0.2s</span></div>' +
+      '<div class="e"><span class="p">▸</span><span class="op">edit</span><span class="what"><span class="dim">packages/printer/src/</span>socket.ts</span><span class="r"><span class="add">+3</span> <span class="del">−1</span> · <a href="#">diff</a></span></div>' +
+      '<div class="e run"><span class="p">▸</span><span class="op">bash</span><span class="what">pnpm test --filter printer</span><span class="r"><span class="pass">22 ✓</span> · 6.1s</span></div>' +
+      '<div class="txt"><p>Флаг <code>busy</code> сбрасывается при паузе — закоммитил. Переподключение сокета поправил, тесты зелёные, но это ещё не в коммите: глянь дифф <code>socket.ts</code>.</p></div><div class="sum"><span>in 380</span><span>out 640</span><b>$0.05</b><span>21s</span></div></div>';
+  }
+  function compose() {
+    var b = '', i; for (i = 0; i < 20; i++) b += '<i' + (i < 7 ? ' class="on"' : '') + '></i>';
+    return '<footer class="compose"><div class="blocks">' + b + '</div><div class="ctx"><span><span class="chip">' + KEY + '</span></span><span class="cn">контекст <b class="ok">74 100</b> / 200 000</span></div>' +
+      '<div class="prompt"><span class="p">$</span><span class="text">задача, @файл, /команда</span></div><div class="opts"><button class="mode">режим <b>manual</b></button><button class="agent">агент <b>codex</b></button><button>модель <b>gpt-5-codex</b></button><button class="send">enter ↵</button></div></footer>';
+  }
+
+  // ───── A · правая панель, охват «задача» ─────
+  function panelA(howOn) {
+    var h = '<div class="scope"><button aria-pressed="true">задача</button><button aria-pressed="false">сессия</button><button aria-pressed="false">ход 4</button></div>' +
+      '<div class="tot"><b>2</b> чата · <b>2</b> репо · <b>' + NC + '</b> коммита · <b>' + NDIRTY + '</b> не закоммичено</div>';
+    h += '<h5 class="kh">не закоммичено · правки агентов</h5>';
+    REPOS[0].dirty.forEach(function (f) {
+      h += '<div class="fl2"><span class="st' + (f[0] === 'A' ? ' a' : '') + '">' + f[0] + '</span><span class="nm"><i>' + f[1] + '</i>' + f[2] + '</span>' + ch(f[5], f[6]) + '<em><span class="add">+' + f[3] + '</span> <span class="del">−' + f[4] + '</span></em></div>';
+    });
+    h += '<h5 class="kh">коммиты по ' + KEY + '</h5>';
+    REPOS.forEach(function (r) {
+      h += '<div class="repo"><b>' + r.name + '</b><span class="br">' + (r.br ? r.br + ' → ' + r.base : r.base) + '</span>' + (r.br ? '<span class="n"><span class="add">+' + r.add + '</span> <span class="del">−' + r.del + '</span></span>' : '') + '</div>';
+      r.commits.forEach(function (c, i) {
+        h += '<div class="cm2' + (r === REPOS[0] && i === 0 ? ' sel' : '') + '"><span class="h">' + c.h + '</span><span class="s" title="' + c.s + '">' + c.s.replace(KEY + ': ', '').replace(KEY + ' ', '') + '</span><span class="m">' + chatOf(c) + srcTag(c) + '</span>' +
+          '<span class="w"><span>' + c.who + '</span><span>·</span><span>' + c.t + '</span>' + state(c) + '</span></div>';
+      });
+    });
+    h += '<div class="foot"><a href="#">дифф ветки</a><span>·</span><a href="#">↻</a><span class="q' + (howOn ? ' on' : '') + '">как ищем?</span></div>';
+    return '<aside class="rp wide"><div class="ptabs" role="tablist"><button role="tab" aria-selected="true">изменения <span class="b">' + (NC + NDIRTY) + '</span></button><button role="tab" aria-selected="false">git</button><button role="tab" aria-selected="false">агенты</button></div><div class="kx">' + h + '</div></aside>';
+  }
+  function howBox() {
+    return '<div class="how kx"><h6>Как находятся коммиты по задаче<span>×</span></h6>' +
+      '<p>Смотрим репозитории, в которых работали чаты задачи <b>' + KEY + '</b>, и в каждом запускаем три команды:</p><ol>' +
+      '<li>Коммиты с ключом задачи в сообщении, во всех ветках:<pre>git log --all -i --grep=\'' + KEY + '\' --format=\'%h %an %s\'<span class="cp">копировать</span></pre></li>' +
+      '<li>Ветки с ключом в имени:<pre>git branch -a --list \'*' + KEY + '*\'<span class="cp">копировать</span></pre></li>' +
+      '<li>Коммиты такой ветки, которых ещё нет в базе (даже если ключа нет в сообщении):<pre>git log --oneline develop..feature/' + KEY + '<span class="cp">копировать</span></pre></li></ol>' +
+      '<p>Блок «не закоммичено» берётся не из git, а из истории чатов задачи: файлы, которые правили агенты.</p>' +
+      '<div class="rule">Чтобы коммит нашёлся, ключ должен быть в сообщении (<code>' + KEY + ': …</code>) или в имени ветки (<code>feature/' + KEY + '</code>). Без этого Agentura его не увидит.</div></div>';
+  }
+
+  // ───── Б · отдельная вкладка «код» ─────
+  function codeTab() {
+    var l = '<div class="top"><span><b>2</b> репо · <b>' + NC + '</b> коммита · <b>' + NDIRTY + '</b> файла не закоммичено</span><a class="q" href="#">как ищем?</a></div>';
+    REPOS.forEach(function (r) {
+      l += '<div class="rb"><div class="rh"><b>' + r.name + '</b><span class="br">' + (r.br ? r.br + ' → ' + r.base + ' · ' + r.ahead + ' коммита впереди' : 'ветки задачи нет · коммиты в ' + r.base) + '</span><span class="sp"></span>' +
+        (r.br ? '<span class="n"><span class="add">+' + r.add + '</span> <span class="del">−' + r.del + '</span></span><button>дифф ветки</button>' : '') + '</div>';
+      r.commits.forEach(function (c, i) {
+        l += '<div class="row' + (r === REPOS[0] && i === 0 ? ' sel' : '') + '"><span class="h">' + c.h + '</span><span class="s">' + c.s + '</span><span>' + chatOf(c) + '</span>' + srcTag(c) + '<span class="t">' + c.t + '</span></div>';
+      });
+      if (r.dirty.length) {
+        l += '<div class="sub">не закоммичено · правки агентов</div>';
+        r.dirty.forEach(function (f) { l += '<div class="row f"><span class="st">' + f[0] + '</span><span class="nm"><i>' + f[1] + '</i>' + f[2] + '</span>' + ch(f[5], f[6]) + '<em><span class="add">+' + f[3] + '</span> <span class="del">−' + f[4] + '</span></em></div>'; });
+      }
+      l += '</div>';
+    });
+    var c = REPOS[0].commits[0];
+    var rr = '<h5>Коммит</h5><div class="ttl2">' + c.s + '</div><div class="meta2"><span class="mono">' + c.h + '</span><span>·</span><span>' + c.who + '</span><span>·</span><span>' + c.t + '</span>' + state(c) + '</div>' +
+      '<div class="meta2">' + chatOf(c) + '<span>сделан в чате 2 · codex</span></div><h5>Файлы · 2</h5>' +
+      '<div class="fr"><span class="st">M</span><span class="nm"><i>packages/printer/src/</i>PrintQueue.ts</span><em><span class="add">+9</span> <span class="del">−2</span></em></div>' +
+      '<div class="fr"><span class="st a">A</span><span class="nm"><i>packages/printer/test/</i>resume.test.ts</span><em><span class="add">+34</span> <span class="del">−0</span></em></div>' +
+      '<div class="acts2"><button class="pri">дифф коммита</button><button>в чат ↳</button><button>копировать хэш</button></div>';
+    return '<div class="kd kx"><div class="l">' + l + '</div><div class="r">' + rr + '</div></div>';
+  }
+
+  // ───── В · подвкладка «Код» в карточке задачи ─────
+  function taskCardCode() {
+    var t = T[0];
+    var head = '<div class="crumb"><i class="tic">✓</i><span>' + t.k + '</span><span>·</span><span>Задача</span><span class="sp"></span><span class="upd">обновлено 10 с назад</span></div><h1>' + t.t + '</h1>' +
+      '<div class="bar"><button class="btn st">В работе ▾</button><button class="btn">Ворклог</button><button class="btn">открыть в Jira ↗</button><button class="btn pri">↳ в чат</button></div>';
+    var desc = '<h4>Описание</h4><div class="rich"><p>На терминале в МФЦ после перерыва оператора (пауза ≥ 5 минут) талон выдаётся на экран, но печать не запускается. Принтер в статусе <code>ready</code>, в логе — ни ошибок, ни запросов на печать.</p></div>';
+    var sub = '<div class="subtabs"><span>Комментарии<i class="cnt">3</i></span><span>История<i class="cnt">9</i></span><span>Ворклог<i class="cnt">2</i></span><span>Изменения</span><span class="on">Код<i class="cnt">' + NC + '</i></span><a class="q" href="#">как ищем?</a></div>';
+    var k = '<div class="kc kx">';
+    REPOS.forEach(function (r) {
+      k += '<div class="gh"><b>' + r.name + '</b><span class="br">' + (r.br ? r.br + ' → ' + r.base : 'коммиты в ' + r.base) + '</span>' + (r.br ? '<span class="n"><span class="add">+' + r.add + '</span> <span class="del">−' + r.del + '</span></span><a href="#">дифф ветки</a>' : '') + '</div>';
+      r.commits.forEach(function (c) { k += '<div class="row"><span class="h">' + c.h + '</span><span class="s">' + c.s + '</span><span>' + chatOf(c) + '</span>' + srcTag(c) + '<span class="t">' + c.t + '</span></div>'; });
+      r.dirty.forEach(function (f) { k += '<div class="row f"><span class="st">' + f[0] + '</span><span class="nm"><i>' + f[1] + '</i>' + f[2] + ' <span class="up">не закоммичено</span></span>' + ch(f[5], f[6]) + '<em><span class="add">+' + f[3] + '</span> <span class="del">−' + f[4] + '</span></em></div>'; });
+    });
+    k += '</div>';
+    var side = '<aside class="ts"><div><h5>Поля</h5><div class="kv"><span>Статус</span><b><span class="pill wip">В работе</span></b><span>Исполнитель</span><b>А. Фостеев</b><span>Компонент</span><b>smart_eq_terminal</b><span>Обновлено</span><b>сегодня, 14:44</b></div></div>' +
+      '<div><h5>Чаты по задаче</h5><div class="kv"><span>' + mk('claude') + '</span><b>Чат 1 · claude</b><span>' + mk('codex') + '</span><b>Чат 2 · codex</b></div></div></aside>';
+    return '<div class="tc"><div class="tm">' + head + desc + sub + k + '</div>' + side + '</div>';
+  }
+
+  // ───── сборка ─────
+  var cur = T[0].chats[1];
+  var chatTabs = tabs([tab(KEY + ' · Чат 2', { on: true, ic: mk('codex') }), tab(KEY + ' · Чат 1', { ic: mk('claude') }), tab('lint в ws-client', { ic: mk('codex') })]);
+  var ed;
+  if (v === 'a' || v === 'how') ed = chatTabs + '<div class="edrow" style="position:relative"><div class="egrp narrow"><div class="pane">' + strip('chat') + log() + compose() + '</div></div>' + panelA(v === 'how') + (v === 'how' ? howBox() : '') + '</div>';
+  else if (v === 'b') ed = chatTabs + '<div class="edrow"><div class="egrp"><div class="pane">' + strip('code', true) + codeTab() + '</div></div></div>';
+  else ed = chatTabs + '<div class="edrow"><div class="egrp"><div class="pane">' + strip('task') + taskCardCode() + '</div></div></div>';
+  document.getElementById('win').innerHTML = sidebar(cur) + '<div class="ed">' + ed + '</div>';
+  window.addEventListener('hashchange', function () { location.reload(); });
+})();
+</script>
+<script src="../shared/tooltip.js"></script>
+</body>
+</html>

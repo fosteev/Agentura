@@ -316,6 +316,32 @@ export class GitService implements vscode.Disposable {
     return outer ? [outer, ...nested] : nested;
   }
 
+  /**
+   * Для вкладки «код» задачи (roadmap 24): путь к git и корни репозиториев папки `cwd` (как `reposFor`). Загружает
+   * API, если его ещё не просили, и ждёт его инициализации (до 5 с). Git недоступен — исключение с причиной.
+   */
+  async rootsFor(cwd: string): Promise<{ gitPath: string; roots: string[] }> {
+    this.ensure();
+    await this.loading;
+    if (this.unavailable !== undefined) throw new Error(this.unavailable);
+    const api = this.api;
+    if (!api) throw new Error(this.t.gitMissing);
+    if (api.state !== 'initialized') {
+      await new Promise<void>((resolve) => {
+        const sub = api.onDidChangeState((s) => {
+          if (s === 'initialized') done();
+        });
+        const timer = setTimeout(done, 5000);
+        function done(): void {
+          clearTimeout(timer);
+          sub.dispose();
+          resolve();
+        }
+      });
+    }
+    return { gitPath: api.git.path, roots: this.reposFor(cwd).map((r) => r.rootUri.fsPath) };
+  }
+
   private findRepo(client: Client, root: string): Repository | undefined {
     return this.reposFor(client.cwd).find((r) => samePath(r.rootUri.fsPath, root));
   }
