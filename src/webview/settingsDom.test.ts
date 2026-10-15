@@ -15,6 +15,7 @@ import {
   handleSettingsMessage,
   integrations,
   overridden,
+  requestedSection,
   settingsValues,
 } from './settingsStore';
 import { userFonts } from './fonts';
@@ -59,6 +60,8 @@ const values: SettingsValues = {
   'jira.source': 'auto',
   'tasks.refresh': '30s',
   'tasks.humanChanges': true,
+  'tasks.code.matchMessage': true,
+  'tasks.code.matchBranch': true,
   'feed.style': 'journal',
   'composer.layout': 'classic',
   'agents.view': 'list',
@@ -100,6 +103,7 @@ beforeEach(() => {
     (m) => void posted.push(m as Record<string, unknown>),
   );
   settingsValues.value = undefined;
+  requestedSection.value = undefined;
   integrations.value = undefined;
   overridden.value = [];
   errors.value = {};
@@ -176,6 +180,8 @@ describe('вкладка настроек', () => {
       'agentura.jira.connect',
       'agentura.tasks.refresh',
       'agentura.tasks.humanChanges',
+      'agentura.tasks.code.matchMessage',
+      'agentura.tasks.code.matchBranch',
       'agentura.jira.agentTools',
       'agentura.defaultProvider',
       'agentura.claudeExecutable · только эта машина',
@@ -765,10 +771,14 @@ describe('страница «Интеграции»', () => {
     rf.value = 'manual';
     rf.dispatchEvent(new Event('change', { bubbles: true }));
     p.querySelector<HTMLElement>('.set[data-key$="tasks.humanChanges"] .tg')!.click();
+    p.querySelector<HTMLElement>('.set[data-key$="tasks.code.matchMessage"] .tg')!.click();
+    p.querySelector<HTMLElement>('.set[data-key$="tasks.code.matchBranch"] .tg')!.click();
     expect(sets()).toEqual([
       { type: 'settings.set', key: 'jira.source', value: 'own' },
       { type: 'settings.set', key: 'tasks.refresh', value: 'manual' },
       { type: 'settings.set', key: 'tasks.humanChanges', value: false },
+      { type: 'settings.set', key: 'tasks.code.matchMessage', value: false },
+      { type: 'settings.set', key: 'tasks.code.matchBranch', value: false },
     ]);
     const boxes = [...p.querySelectorAll<HTMLInputElement>('.cbs input')];
     expect(boxes).toHaveLength(3);
@@ -790,6 +800,24 @@ describe('страница «Интеграции»', () => {
     boxes[1]!.checked = false;
     boxes[1]!.dispatchEvent(new Event('change', { bubbles: true }));
     expect(sets()).toEqual([{ type: 'settings.set', key: 'jira.agentTools', value: { comment: true, transition: false, worklog: true } }]);
+  });
+
+  it('settings.section от хоста переключает раздел; до значений запрос не теряется', async () => {
+    const host = mount(Settings);
+    state();
+    await flush();
+    const tab = (id: string) => host.querySelector<HTMLButtonElement>(`[data-section="${id}"]`)!;
+    expect(tab('session').getAttribute('aria-selected')).toBe('true');
+    handleSettingsMessage({ type: 'settings.section', section: 'integrations' });
+    await flush();
+    expect(tab('integrations').getAttribute('aria-selected')).toBe('true');
+    expect(requestedSection.value).toBeUndefined();
+    // повторный запрос того же раздела после ухода с него работает снова
+    tab('look').click();
+    await flush();
+    handleSettingsMessage({ type: 'settings.section', section: 'integrations' });
+    await flush();
+    expect(tab('integrations').getAttribute('aria-selected')).toBe('true');
   });
 
   it('шестая страница в навигации; стрелки ↑↓ проходят по кругу через неё', async () => {

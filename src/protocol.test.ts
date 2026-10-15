@@ -1,5 +1,21 @@
 import { describe, expect, it, vi } from 'vitest';
-import { isFromWebview, postToHost, postToWebview, AGENT_EVENT_TYPES } from './protocol';
+import {
+  isFromWebview,
+  isSettingsSection,
+  postToHost,
+  postToWebview,
+  AGENT_EVENT_TYPES,
+  SETTINGS_SECTIONS,
+} from './protocol';
+
+describe('isSettingsSection', () => {
+  it('пропускает только разделы вкладки настроек', () => {
+    for (const s of SETTINGS_SECTIONS) expect(isSettingsSection(s)).toBe(true);
+    expect(isSettingsSection('nope')).toBe(false);
+    expect(isSettingsSection(undefined)).toBe(false);
+    expect(isSettingsSection(['integrations'])).toBe(false);
+  });
+});
 
 describe('protocol', () => {
   it('принимает известные сообщения webview и отбрасывает мусор', () => {
@@ -7,6 +23,10 @@ describe('protocol', () => {
     expect(isFromWebview({ type: 'limits.refresh' })).toBe(true);
     expect(isFromWebview({ type: 'task.newChat', taskKey: 'jira:x:A-1' })).toBe(true);
     expect(isFromWebview({ type: 'task.newChat' })).toBe(false);
+    // settings.open: раздел необязателен; мусор в поле не делает сообщение невалидным (хост его отбрасывает)
+    expect(isFromWebview({ type: 'settings.open' })).toBe(true);
+    expect(isFromWebview({ type: 'settings.open', section: 'integrations' })).toBe(true);
+    expect(isFromWebview({ type: 'settings.open', section: { evil: 1 } })).toBe(true);
     expect(isFromWebview({ type: 'task.newChat', taskKey: 'x'.repeat(401) })).toBe(false);
     expect(isFromWebview({ type: 'send', sessionId: 's', text: 'привет' })).toBe(true);
     expect(isFromWebview({ type: 'preview.open', path: '/a/x.html' })).toBe(true);

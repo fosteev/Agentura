@@ -1,6 +1,13 @@
 import type { AgentProvider } from '../agent/types';
 import type { TaskTabState } from '../shared/taskTab';
-import { postToHost, type FromWebview, type ToWebview, type VsCodeApiLike } from '../protocol';
+import {
+  postToHost,
+  SETTINGS_SECTIONS,
+  type FromWebview,
+  type SettingsSection,
+  type ToWebview,
+  type VsCodeApiLike,
+} from '../protocol';
 
 declare function acquireVsCodeApi(): VsCodeApiLike;
 
@@ -92,9 +99,7 @@ export interface GraphViewState {
   selected?: string;
 }
 
-/** Разделы вкладки настроек (страницы, порядок в навигации). */
-export const SETTINGS_SECTIONS = ['session', 'limits', 'sidebar', 'look', 'integrations', 'engine'] as const;
-export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
+export { SETTINGS_SECTIONS, type SettingsSection };
 
 /** Свёрнутые секции боковой панели (нет поля — развёрнута). */
 export interface SidebarFold {

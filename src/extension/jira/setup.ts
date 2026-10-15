@@ -32,6 +32,14 @@ export function taskSettings(): { refresh: TaskRefreshMode; humanChanges: boolea
   return { refresh: isTaskRefresh(r) ? r : DEFAULT_TASK_REFRESH, humanChanges: h !== false };
 }
 
+/** Где вкладка «код» задачи ищет ключ (`agentura.tasks.code.match*`); нет в конфиге — оба `true`. */
+export function codeMatchSettings(): { message: boolean; branch: boolean } {
+  return {
+    message: config().get<unknown>('tasks.code.matchMessage') !== false,
+    branch: config().get<unknown>('tasks.code.matchBranch') !== false,
+  };
+}
+
 export interface JiraRuntime {
   sources: JiraSources;
   own: OwnInstanceStore;

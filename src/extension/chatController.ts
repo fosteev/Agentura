@@ -27,7 +27,7 @@ import type {
   SessionSummary,
   ToWebview,
 } from '../protocol';
-import { ENGINE_MISSING_CODE } from '../protocol';
+import { ENGINE_MISSING_CODE, isSettingsSection, type SettingsSection } from '../protocol';
 import { isAgySession } from '../agent/antigravity/adapter';
 import { providerFeatures } from '../agent/features';
 import type {
@@ -189,7 +189,7 @@ export interface ChatDeps {
    */
   engine?: { ready(): Promise<{ ok: true } | { ok: false; problem: string }> };
   /** Карточка «claude не найден» и `settings.open`: вкладка настроек (`agentura.openSettings`). */
-  openSettings?(): void;
+  openSettings?(section?: SettingsSection): void;
   /** Граф агентов во вкладке редактора (roadmap 11, этап 2): открыть или показать, выбрать агента. */
   openGraph?(agentId?: string): void;
   /** Снимок карты агентов от webview чата — в его вкладку графа (если она открыта). */
@@ -848,7 +848,9 @@ export class ChatController {
         deps.showLogs?.();
         return;
       case 'settings.open':
-        deps.openSettings?.();
+        // раздел из webview — только известный; мусор отбрасывается, сообщение остаётся валидным
+        if (isSettingsSection(m.section)) deps.openSettings?.(m.section);
+        else deps.openSettings?.();
         return;
       case 'turn.retry':
         await this.retry(m.turn);

@@ -276,6 +276,76 @@ describe('collectCode', () => {
     expect(res.repos[0]!.commits.some((c) => c.unpushed)).toBe(false);
   });
 
+  describe('где искать ключ (match)', () => {
+    const run = async (match: { message: boolean; branch: boolean } | undefined, extra: Handler[] = []) => {
+      const git = fakeRun([...extra, ...repoHandlers()]);
+      const res = await collectCode(
+        { run: git.run, repos: async () => ['/w/r'], history: async () => [edit('src/a.ts')], readText: async () => ({ text: 'x\n' }) },
+        { key: 'GARM-87', cwd: '/w/r', chats: [chat1], ...(match ? { match } : {}) },
+      );
+      const ran = (pred: (c: string[]) => boolean) => git.calls.some(pred);
+      return {
+        r: res.repos[0]!,
+        grepAll: ran((c) => c[0] === 'log' && c.includes('--all')),
+        refs: ran((c) => c[0] === 'for-each-ref'),
+        branchLog: ran((c) => c[0] === 'log' && String(c[1]).includes('..')),
+        baseGrep: ran((c) => c[0] === 'log' && c[1] === 'origin/develop'),
+        mergeBase: git.calls.filter((c) => c[0] === 'merge-base'),
+      };
+    };
+
+    it('по умолчанию (match не передан) — оба поиска, как раньше', async () => {
+      const a = await run(undefined);
+      const b = await run({ message: true, branch: true });
+      expect(a.r).toEqual(b.r);
+      expect(a).toMatchObject({ grepAll: true, refs: true, branchLog: true, baseGrep: true, mergeBase: [] });
+      expect(a.r.commits).toHaveLength(3);
+    });
+
+    it('только сообщение: for-each-ref и логи веток не запускаются, веток нет, «в базе» — grep по базе', async () => {
+      const t = await run({ message: true, branch: false });
+      expect(t).toMatchObject({ grepAll: true, refs: false, branchLog: false, baseGrep: true, mergeBase: [] });
+      expect(t.r.branches).toEqual([]);
+      expect(t.r.commits.map((c) => [c.sha, c.src, c.inBase])).toEqual([
+        [SHA2, 'key', undefined],
+        [SHA1, 'key', true],
+      ]);
+    });
+
+    it('только ветки: log --all не запускается; «в базе» — merge-base --is-ancestor по каждому sha', async () => {
+      const t = await run({ message: false, branch: true }, [
+        // предок базы — только SHA2; остальные: команда падает (код 1) = не в базе
+        (a) => (a[0] === 'merge-base' && has(a, '--is-ancestor', SHA2, 'origin/develop') ? '' : undefined),
+      ]);
+      expect(t).toMatchObject({ grepAll: false, refs: true, branchLog: true, baseGrep: false });
+      expect(t.r.branches.map((b) => b.name)).toEqual(['feature/GARM-87-x']);
+      expect(t.r.commits.map((c) => [c.sha, c.src, c.inBase])).toEqual([
+        [SHA3, 'branch', undefined],
+        [SHA2, 'branch', true],
+      ]);
+      expect(t.mergeBase.sort()).toEqual(
+        [
+          ['merge-base', '--is-ancestor', SHA2, 'origin/develop'],
+          ['merge-base', '--is-ancestor', SHA3, 'origin/develop'],
+        ].sort(),
+      );
+    });
+
+    it('оба выключены: ни одной команды log/for-each-ref/merge-base/rev-list, только правки агентов', async () => {
+      const git = fakeRun(repoHandlers());
+      const res = await collectCode(
+        { run: git.run, repos: async () => ['/w/r'], history: async () => [edit('src/a.ts')], readText: async () => ({ text: 'x\n' }) },
+        { key: 'GARM-87', cwd: '/w/r', chats: [chat1], match: { message: false, branch: false } },
+      );
+      const r = res.repos[0]!;
+      expect(r.commits).toEqual([]);
+      expect(r.branches).toEqual([]);
+      expect(r.dirty.map((d) => d.path)).toEqual(['src/a.ts']);
+      const cmds = new Set(git.calls.map((c) => c[0]));
+      for (const c of ['log', 'for-each-ref', 'merge-base', 'rev-list']) expect(cmds.has(c)).toBe(false);
+    });
+  });
+
   it('нет базы: ветки по имени без «сверх базы», коммиты только по ключу, inBase нет', async () => {
     const git = fakeRun(repoHandlers({ base: false }));
     const res = await collectCode(
@@ -451,7 +521,7 @@ describe('файлы коммита и патчи', () => {
 describe('TaskCode', () => {
   const TASK = 'jira:inst:GARM-87';
 
-  function setup(over: Partial<{ delay: Promise<void> }> = {}) {
+  function setup(over: Partial<{ delay: Promise<void>; match: { message: boolean; branch: boolean } }> = {}) {
     const posted: (TaskCodeStateMessage | TaskCodeCommitMessage | TaskCodeDiffMessage)[] = [];
     const git = fakeRun([
       ...repoHandlers(),
@@ -478,6 +548,7 @@ describe('TaskCode', () => {
       post: (m) => posted.push(m),
       prefill,
       copy,
+      ...(over.match ? { match: () => over.match! } : {}),
     });
     return { code, posted, git, prefill, copy, chats };
   }
@@ -503,6 +574,45 @@ describe('TaskCode', () => {
     expect(s.git.calls.length).toBeGreaterThan(calls);
     expect(states(s.posted)[3]).toMatchObject({ loading: true });
     expect(states(s.posted)[3]!.repos).toHaveLength(1); // прежний итог остаётся, пока грузится новый
+  });
+
+  it('search в каждом task.code.state (и в loading); match из зависимости ограничивает git-команды', async () => {
+    const s = setup({ match: { message: false, branch: false } });
+    s.code.handle(TASK, { type: 'task.code.load' });
+    await settle();
+    const st = states(s.posted);
+    expect(st[0]).toMatchObject({ loading: true, search: { message: false, branch: false } });
+    expect(st[1]).toMatchObject({ search: { message: false, branch: false } });
+    expect(st[1]!.repos[0]!.commits).toEqual([]);
+    expect(s.git.calls.some((c) => c[0] === 'log')).toBe(false);
+  });
+
+  it('без зависимости match — search = оба true', async () => {
+    const s = setup();
+    s.code.handle(TASK, { type: 'task.code.load' });
+    await settle();
+    expect(states(s.posted).map((m) => m.search)).toEqual([
+      { message: true, branch: true },
+      { message: true, branch: true },
+    ]);
+  });
+
+  it('смена настроек + refresh: тихо перечитывает с новыми значениями', async () => {
+    const m = { message: true, branch: true };
+    const s = setup({ match: m });
+    s.code.handle(TASK, { type: 'task.code.load' });
+    await settle();
+    expect(states(s.posted).at(-1)!.repos[0]!.commits.length).toBeGreaterThan(0);
+    m.message = false;
+    m.branch = false;
+    s.posted.length = 0;
+    s.code.refresh(TASK);
+    await settle();
+    const st = states(s.posted);
+    expect(st).toHaveLength(1);
+    expect(st[0]).toMatchObject({ search: { message: false, branch: false } });
+    expect(st[0]!.loading).toBeUndefined();
+    expect(st[0]!.repos[0]!.commits).toEqual([]);
   });
 
   it('refresh: без загрузки вкладки — ничего; после — тихо, без loading', async () => {

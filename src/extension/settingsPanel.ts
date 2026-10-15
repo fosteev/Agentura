@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { AGY_NOT_FOUND, resolveAgyExecutable } from '../agent/antigravity/executable';
 import { resolveExecutable } from '../agent/claude/executable';
 import { CODEX_NOT_FOUND, resolveCodexExecutable } from '../agent/codex/executable';
-import { postToWebview } from '../protocol';
+import { postToWebview, type SettingsSection } from '../protocol';
 import { hostStrings } from '../shared/l10n';
 import type { JiraRuntime } from './jira/setup';
 import { JIRAFFE_ID } from './jira/setup';
@@ -17,9 +17,10 @@ export const SETTINGS_VIEW_TYPE = 'agentura.settings';
 export class SettingsPanel {
   private static current: SettingsPanel | undefined;
 
-  static show(context: vscode.ExtensionContext, log: Logger, jira?: JiraRuntime): void {
+  static show(context: vscode.ExtensionContext, log: Logger, jira?: JiraRuntime, section?: SettingsSection): void {
     if (SettingsPanel.current) {
       SettingsPanel.current.panel.reveal();
+      if (section) SettingsPanel.current.controller.showSection(section);
       return;
     }
     const panel = vscode.window.createWebviewPanel(
@@ -29,9 +30,11 @@ export class SettingsPanel {
       webviewOptions(context.extensionUri, userFontsDir(context)),
     );
     SettingsPanel.current = new SettingsPanel(panel, context, log, jira);
+    if (section) SettingsPanel.current.controller.showSection(section);
   }
 
   private readonly disposables: vscode.Disposable[] = [];
+  private readonly controller: SettingsController;
 
   private constructor(
     private readonly panel: vscode.WebviewPanel,
@@ -43,7 +46,7 @@ export class SettingsPanel {
     // команды страницы «Интеграции»: отказ (сбой хранилища, нет `extension.open` в форке) — в журнал, а не в unhandled rejection
     const run = (cmd: string, ...args: unknown[]): void =>
       void vscode.commands.executeCommand(cmd, ...args).then(undefined, (e: unknown) => log.error(`${cmd}: ${String(e)}`));
-    const controller = new SettingsController({
+    const controller = (this.controller = new SettingsController({
       config: () => vscode.workspace.getConfiguration('agentura'),
       globalTarget: vscode.ConfigurationTarget.Global,
       post: (m) => postToWebview(webview, m),
@@ -92,7 +95,7 @@ export class SettingsPanel {
             },
           }
         : {}),
-    });
+    }));
     webview.html = renderWebview(
       webview,
       context.extensionUri,

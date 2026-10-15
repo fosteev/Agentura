@@ -1,6 +1,6 @@
 import type { AgentProvider } from '../agent/types';
 import type { IntegrationsState } from '../shared/integrations';
-import type { FromWebview, ToWebview } from '../protocol';
+import type { FromWebview, SettingsSection, ToWebview } from '../protocol';
 import { hostStrings, type Lang } from '../shared/l10n';
 import {
   SETTING_KEYS,
@@ -45,7 +45,18 @@ export class SettingsController {
   /** Номер последней «проверить» — ответ приходит только на неё. */
   private checkSeq: Record<AgentProvider, number> = { claude: 0, codex: 0, antigravity: 0 };
 
+  /** Webview прислал `ready` и получил первое состояние: раздел можно слать сразу. */
+  private ready = false;
+  /** Раздел, запрошенный до `ready` (панель только создана): уходит сразу после первого `settings.state`. */
+  private pendingSection: SettingsSection | undefined;
+
   constructor(private readonly deps: SettingsDeps) {}
+
+  /** Открыть вкладку на разделе: webview уже готов — сразу, иначе после первого состояния. */
+  showSection(section: SettingsSection): void {
+    if (this.ready) this.deps.post({ type: 'settings.section', section });
+    else this.pendingSection = section;
+  }
 
   /** Текущие значения → webview. Зовётся на `ready`, после записи и из `onDidChangeConfiguration`. */
   pushState(): void {
@@ -77,6 +88,11 @@ export class SettingsController {
     switch (m.type) {
       case 'ready':
         this.pushState();
+        this.ready = true;
+        if (this.pendingSection) {
+          this.deps.post({ type: 'settings.section', section: this.pendingSection });
+          this.pendingSection = undefined;
+        }
         break;
       case 'settings.set':
         await this.set(m.key, m.value);

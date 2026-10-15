@@ -38,6 +38,8 @@ export function splitPath(p: string): [dir: string, base: string] {
 }
 
 export interface HowCommands {
+  /** Ключ задачи (или пример `KEY-123`, если ключ не разобрался). */
+  key: string;
   log: string;
   branches: string;
   ahead: string;
@@ -45,16 +47,18 @@ export interface HowCommands {
 
 const shq = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`;
 
-/** Настоящие команды для «как ищем?» с ключом задачи и базой/веткой первого репозитория (в упрощённом для человека виде). */
-export function howCommands(taskKey: string | undefined, repos: readonly CodeRepo[]): HowCommands {
+/**
+ * Команды для «как ищем?»: общий текст с ключом задачи, без реальных базы и ветки репозитория —
+ * на их месте плейсхолдеры из строк (`<база>` / `<ветка>`).
+ */
+export function howCommands(taskKey: string | undefined): HowCommands {
   const key = (taskKey && issueKeyOf(taskKey)) || 'KEY-123';
-  const first = repos[0];
-  const base = first?.base ?? 'develop';
-  const branch = (first && visibleBranches(first)[0]?.name) || `feature/${key}`;
+  const t = ui.task.code;
   return {
+    key,
     log: `git log --all -i --grep=${shq(key)} --format='%h %an %s'`,
     branches: `git branch -a --list ${shq(`*${key}*`)}`,
-    ahead: `git log --oneline ${base}..${branch}`,
+    ahead: `git log --oneline ${t.howPhBase}..${t.howPhBranch}`,
   };
 }
 

@@ -143,6 +143,14 @@ type MissingEventType = Exclude<AgentEvent['type'], AgentEventType>;
 const _allEventTypesListed: MissingEventType extends never ? true : MissingEventType = true;
 void _allEventTypesListed;
 
+/** Разделы вкладки настроек (страницы, порядок в навигации). */
+export const SETTINGS_SECTIONS = ['session', 'limits', 'sidebar', 'look', 'integrations', 'engine'] as const;
+export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
+
+export function isSettingsSection(v: unknown): v is SettingsSection {
+  return (SETTINGS_SECTIONS as readonly unknown[]).includes(v);
+}
+
 /**
  * Extension → webview.
  *
@@ -176,6 +184,8 @@ export type ToWebview =
     }
   /** Вкладка настроек (этап 3 roadmap 0.2): значения `agentura.*` и ключи, перекрытые настройками рабочей папки. */
   | { type: 'settings.state'; values: SettingsValues; overridden: SettingKey[] }
+  /** Открыть вкладку настроек сразу на разделе (`settings.open` с `section`). */
+  | { type: 'settings.section'; section: SettingsSection }
   /** Страница «Интеграции» (roadmap 19, этап 6): Jiraffe и свои подключения Jira. */
   | { type: 'integrations.state'; state: IntegrationsState }
   /** Отказ записи настройки (проверка не прошла или запись не удалась) — текст у поля. */
@@ -460,7 +470,7 @@ export type FromWebview =
   /** Этап 7: «Открыть журнал расширения» — канал Output → Agentura. */
   | { type: 'log.show' }
   /** Этап 3 roadmap 0.2: ⚙ в боковой панели открывает вкладку настроек. */
-  | { type: 'settings.open' }
+  | { type: 'settings.open'; /** Раздел, на котором открыть настройки; неизвестный отбрасывается хостом. */ section?: SettingsSection }
   /** Вкладка настроек: записать настройку (в пользовательские настройки VS Code). */
   | { type: 'settings.set'; key: SettingKey; value: unknown }
   /** «проверить»: найти claude по этому пути (пусто — системный) и показать версию и источник. */

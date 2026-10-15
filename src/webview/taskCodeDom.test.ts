@@ -480,7 +480,14 @@ describe('вкладка «код»: встроенный дифф', () => {
 });
 
 describe('вкладка «код»: как ищем?', () => {
-  it('всплывашка с настоящими командами: ключ задачи, база и ветка первого репо; «копировать»; Esc закрывает', async () => {
+  const open = async (search?: { message: boolean; branch: boolean }) => {
+    const host = await openCode(codeState(search ? { search } : {}));
+    q(host, '.tcd .top .q').click();
+    await flush();
+    return host;
+  };
+
+  it('общий текст: ключ задачи и плейсхолдеры, без реальных базы, ветки и имени репо; «копировать»; Esc закрывает', async () => {
     const host = await openCode();
     expect(q(host, '.tcd .how')).toBeNull();
     q(host, '.tcd .top .q').click();
@@ -489,14 +496,66 @@ describe('вкладка «код»: как ищем?', () => {
     expect(pres.map((p) => p.firstChild!.textContent)).toEqual([
       `git log --all -i --grep='NEWMFC-1482' --format='%h %an %s'`,
       `git branch -a --list '*NEWMFC-1482*'`,
-      'git log --oneline origin/develop..feature/NEWMFC-1482',
+      'git log --oneline <база>..<ветка>',
     ]);
+    const text = q(host, '.tcd .how').textContent!;
+    // в итоге есть репо smart_eq_terminal, база origin/develop и ветка merged/NEWMFC-1482 — в попапе их быть не должно
+    expect(text).not.toContain('smart_eq');
+    expect(text).not.toContain('origin/develop');
+    expect(text).not.toContain('merged/');
+    expect(text).not.toContain('Agentura');
+    expect(text).toContain('Смотрим git-репозитории, в которых работали чаты задачи NEWMFC-1482');
+    expect(text).toContain('База — ветка по умолчанию у origin (origin/HEAD), иначе develop, main или master.');
     expect(q(host, '.tcd .how .rule').textContent).toContain('NEWMFC-1482: …');
+    expect(q(host, '.tcd .how .rule').textContent).toContain('Иначе вкладка его не покажет.');
+    expect(qa(host, '.tcd .how li.off')).toHaveLength(0);
     pres[1]!.querySelector<HTMLElement>('.cp')!.click();
     expect(sent.at(-1)).toEqual({ type: 'task.code.copy', text: `git branch -a --list '*NEWMFC-1482*'` });
     key('Escape');
     await flush();
     expect(q(host, '.tcd .how')).toBeNull();
+  });
+
+  it('выключенный пункт виден приглушённым с пометкой, команд у него нет', async () => {
+    const host = await open({ message: false, branch: true });
+    const [msg, br] = qa(host, '.tcd .how li');
+    expect(msg!.classList.contains('off')).toBe(true);
+    expect(msg!.textContent).toContain('выключено в настройках');
+    expect(msg!.querySelector('pre')).toBeNull();
+    expect(br!.classList.contains('off')).toBe(false);
+    expect(br!.querySelectorAll('pre')).toHaveLength(2);
+    // правило в рамке упоминает только включённое
+    const rule = q(host, '.tcd .how .rule').textContent!;
+    expect(rule).toContain('feature/NEWMFC-1482');
+    expect(rule).not.toContain('NEWMFC-1482: …');
+
+    handleHostMessage(codeState({ search: { message: true, branch: false } }));
+    await flush();
+    const [msg2, br2] = qa(host, '.tcd .how li');
+    expect(msg2!.classList.contains('off')).toBe(false);
+    expect(msg2!.querySelectorAll('pre')).toHaveLength(1);
+    expect(br2!.classList.contains('off')).toBe(true);
+    expect(br2!.textContent).toContain('выключено в настройках');
+    expect(br2!.querySelector('pre')).toBeNull();
+    expect(q(host, '.tcd .how .rule').textContent).toContain('NEWMFC-1482: …');
+  });
+
+  it('оба выключены: вместо правила — строка про выключенный git-поиск, команд нет', async () => {
+    const host = await open({ message: false, branch: false });
+    expect(qa(host, '.tcd .how pre')).toHaveLength(0);
+    expect(q(host, '.tcd .how .rule')).toBeNull();
+    expect(q(host, '.tcd .how .gitoff').textContent).toBe('Поиск по git выключен — видны только незакоммиченные правки агентов.');
+    expect(qa(host, '.tcd .how li.off')).toHaveLength(2);
+    // абзац про «не закоммичено» остаётся
+    expect(q(host, '.tcd .how').textContent).toContain('Блок «не закоммичено»');
+  });
+
+  it('ссылка «настройки поиска →» открывает настройки на разделе «Интеграции»', async () => {
+    const host = await open();
+    const link = q(host, '.tcd .how .lnk');
+    expect(link.textContent).toBe('настройки поиска →');
+    link.click();
+    expect(sent.at(-1)).toEqual({ type: 'settings.open', section: 'integrations' });
   });
 });
 

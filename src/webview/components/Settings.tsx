@@ -43,6 +43,7 @@ import {
   integrationsAction,
   overridden,
   removeFont,
+  requestedSection,
   reveal,
   setError,
   settingsValues,
@@ -390,6 +391,12 @@ function IntegrationsRows({ v }: { v: SettingsValues }) {
       <Row name={I.humanChanges.name} isNew desc={I.humanChanges.desc} k="tasks.humanChanges">
         <Toggle k="tasks.humanChanges" value={v['tasks.humanChanges']} />
       </Row>
+      <Row name={I.matchMessage.name} isNew desc={I.matchMessage.desc} k="tasks.code.matchMessage">
+        <Toggle k="tasks.code.matchMessage" value={v['tasks.code.matchMessage']} />
+      </Row>
+      <Row name={I.matchBranch.name} isNew desc={I.matchBranch.desc} k="tasks.code.matchBranch">
+        <Toggle k="tasks.code.matchBranch" value={v['tasks.code.matchBranch']} />
+      </Row>
       <Row name={I.agentTools.name} isNew desc={I.agentTools.desc} k="jira.agentTools">
         <AgentToolsBoxes value={v['jira.agentTools']} writes={st?.writes === true} />
       </Row>
@@ -716,6 +723,13 @@ export function Settings() {
     if (body.current) body.current.scrollTop = 0;
     if (focus) nav.current?.querySelector<HTMLElement>(`[data-section="${id}"]`)?.focus();
   };
+  // хост открыл настройки сразу на разделе (ссылка «настройки поиска →» из вкладки «код»)
+  const wanted = requestedSection.value;
+  useEffect(() => {
+    if (!wanted) return;
+    requestedSection.value = undefined;
+    go(wanted);
+  }, [wanted]);
   // стрелки, Home, End — как у вкладок (role="tablist")
   const onNavKey = (e: KeyboardEvent) => {
     const i = SECTIONS.indexOf(active);

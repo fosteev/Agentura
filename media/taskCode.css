@@ -96,6 +96,11 @@
 .tcd .how pre { margin: 3px 0 0; padding: 5px 78px 5px 8px; background: var(--bg-code); border-radius: 3px; font: 11px/1.45 var(--mono); color: var(--fg); white-space: pre-wrap; word-break: break-all; position: relative; }
 .tcd .how pre .cp { position: absolute; right: 6px; top: 4px; font: 10.5px var(--font); color: var(--link); }
 .tcd .how .rule { border-left: 3px solid var(--warn); padding: 3px 8px; background: color-mix(in srgb, var(--warn) 8%, transparent); color: var(--fg); margin-top: 8px; }
+.tcd .how li.off { opacity: .55; }
+.tcd .how li.off .offmark { display: block; margin-top: 2px; font-size: 11px; font-style: italic; color: var(--fg-mute); }
+.tcd .how .gitoff { color: var(--fg); border-left: 3px solid var(--line-strong); padding: 3px 8px; margin-top: 8px; }
+.tcd .how .lnk { display: block; margin-top: 8px; padding: 0; color: var(--link); font: 11.5px var(--font); }
+.tcd .how .lnk:hover { text-decoration: underline; }
 .tcd .how code { font: 11px var(--mono); background: var(--bg-code); padding: 0 3px; border-radius: 2px; }
 
 /* встроенный дифф: на месте списка (порт gitsprout diff.css) */

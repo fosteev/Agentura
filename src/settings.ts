@@ -195,6 +195,8 @@ export type SettingKey =
   | 'jira.source'
   | 'tasks.refresh'
   | 'tasks.humanChanges'
+  | 'tasks.code.matchMessage'
+  | 'tasks.code.matchBranch'
   | 'jira.agentTools'
   | 'feed.style'
   | 'composer.layout'
@@ -241,6 +243,8 @@ export const SETTING_KEYS: readonly SettingKey[] = [
   'jira.source',
   'tasks.refresh',
   'tasks.humanChanges',
+  'tasks.code.matchMessage',
+  'tasks.code.matchBranch',
   'jira.agentTools',
   'feed.style',
   'composer.layout',
@@ -306,6 +310,10 @@ export interface SettingsValues {
   'jira.source': JiraSourceSetting;
   'tasks.refresh': TaskRefreshMode;
   'tasks.humanChanges': boolean;
+  /** Вкладка «код» задачи: искать ключ в сообщениях коммитов (все ветки). */
+  'tasks.code.matchMessage': boolean;
+  /** Вкладка «код» задачи: искать ключ в именах веток и брать их коммиты сверх базы. */
+  'tasks.code.matchBranch': boolean;
   /** Инструменты Jira для агента (roadmap 19, этап 8): какие из трёх агент получает. */
   'jira.agentTools': AgentToolsSetting;
   'feed.style': FeedStyle;
@@ -553,6 +561,8 @@ export function validateSetting(key: SettingKey, value: unknown, lang: ErrLang =
     case 'sessionList.context':
     case 'sessionList.time':
     case 'tasks.humanChanges':
+    case 'tasks.code.matchMessage':
+    case 'tasks.code.matchBranch':
     case 'git.hideClean':
     case 'diff.syntaxHighlighting':
     case 'mcp.feedLabels':
@@ -709,6 +719,8 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
     'jira.source': isJiraSource(jiraSource) ? jiraSource : DEFAULT_JIRA_SOURCE,
     'tasks.refresh': isTaskRefresh(taskRefresh) ? taskRefresh : DEFAULT_TASK_REFRESH,
     'tasks.humanChanges': cfg.get<unknown>('tasks.humanChanges') !== false,
+    'tasks.code.matchMessage': cfg.get<unknown>('tasks.code.matchMessage') !== false,
+    'tasks.code.matchBranch': cfg.get<unknown>('tasks.code.matchBranch') !== false,
     'jira.agentTools': readAgentTools(cfg.get<unknown>('jira.agentTools')),
     'feed.style': isFeedStyle(feed) ? feed : DEFAULT_FEED_STYLE,
     'composer.layout': isComposerLayout(cl) ? cl : DEFAULT_COMPOSER_LAYOUT,

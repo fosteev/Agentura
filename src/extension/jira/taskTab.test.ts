@@ -160,6 +160,20 @@ describe('TaskTab', () => {
     expect(deps.connect).toHaveBeenCalledTimes(1);
   });
 
+  it('вкладка «код»: смена настроек поиска перечитывает итог (только при наличии задачи и code)', () => {
+    const code = { handle: vi.fn(), refresh: vi.fn(), reset: vi.fn() };
+    const { tab, deps } = setup({ sessionId: 's1' });
+    (deps as { code?: typeof code }).code = code;
+    tab.codeSettingsChanged(); // sync ещё не было — задачи нет
+    expect(code.refresh).not.toHaveBeenCalled();
+    tab.sync();
+    tab.codeSettingsChanged();
+    expect(code.refresh).toHaveBeenCalledWith(TASK);
+    const bare = setup({ sessionId: 's1' });
+    bare.tab.sync();
+    expect(() => bare.tab.codeSettingsChanged()).not.toThrow();
+  });
+
   it('вкладка «код»: task.code.* идёт в TaskCode с ключом задачи; без задачи и без code — игнор; turn.result перезагружает', () => {
     const code = { handle: vi.fn(), refresh: vi.fn(), reset: vi.fn() };
     const { tab, deps } = setup({ sessionId: 's1' });

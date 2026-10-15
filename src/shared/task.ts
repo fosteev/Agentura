@@ -296,6 +296,8 @@ export interface TaskCodeStateMessage {
   loading?: true;
   error?: string;
   repos: CodeRepo[];
+  /** С какими настройками поиска собран итог (`agentura.tasks.code.match*`). Нет — оба `true`. */
+  search?: { message: boolean; branch: boolean };
 }
 
 /** Хост → вкладка «код»: файлы коммита (ответ на `task.code.commit`). */

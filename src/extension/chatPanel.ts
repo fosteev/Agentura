@@ -50,6 +50,7 @@ import { nextTabTask, parseTaskKey, routeTaskOpen, taskChatRows, taskKeyOf, type
 import { isTaskRequest, type TaskChatsMessage } from '../shared/task';
 import { TaskCode, readTextFile } from './jira/taskCode';
 import { TaskTab } from './jira/taskTab';
+import { codeMatchSettings } from './jira/setup';
 import { AgentJiraTools } from './jira/agentTools';
 import { readAgentTools } from '../shared/jiraTools';
 import type { TaskService } from './jira/taskService';
@@ -770,7 +771,7 @@ export class ChatPanel {
       showSessions: () => void vscode.commands.executeCommand('workbench.view.extension.agentura'),
       showLogs: () => log.show(),
       engine: { ready: () => services.engine.ready() },
-      openSettings: () => void vscode.commands.executeCommand('agentura.openSettings'),
+      openSettings: (section) => void vscode.commands.executeCommand('agentura.openSettings', section),
       live: services.live,
       // превью — по тексту из редактора, если там несохранённые правки: именно он попадёт на диск.
       // Сохраняет файл `saveFile` — когда человек разрешил правку, а не когда показана карточка
@@ -877,6 +878,7 @@ export class ChatPanel {
       post: (m) => panel.post(m),
       prefill: (text) => this.controller.prefill(text),
       copy: (text) => void vscode.env.clipboard.writeText(text),
+      match: codeMatchSettings,
     });
 
     // карточка и лента задачи: подписка на `TaskService`, пока вкладка в группе (или ждёт её)
@@ -1067,6 +1069,11 @@ export class ChatPanel {
   /** Настройки `agentura.*` изменились: открытые вкладки чата получают свежие `chat.info`. */
   static settingsChanged(): void {
     for (const p of ChatPanel.panels) p.controller.pushInfo();
+  }
+
+  /** Настройки поиска вкладки «код» (`agentura.tasks.code.*`) изменились: открытые вкладки задач перечитывают итог. */
+  static taskCodeSettingsChanged(): void {
+    for (const p of ChatPanel.panels) p.taskTab.codeSettingsChanged();
   }
 
   /** Название сессии сменили в списке — вкладка, где она открыта, обновляет заголовок. */

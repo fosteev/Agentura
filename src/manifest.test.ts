@@ -261,6 +261,11 @@ describe('настройки Jira (roadmap 19, этап 2)', () => {
     expect(props['agentura.tasks.humanChanges']).toMatchObject({ type: 'boolean', default: true });
   });
 
+  it('agentura.tasks.code.match* — boolean, по умолчанию true', () => {
+    expect(props['agentura.tasks.code.matchMessage']).toMatchObject({ type: 'boolean', default: true });
+    expect(props['agentura.tasks.code.matchBranch']).toMatchObject({ type: 'boolean', default: true });
+  });
+
   it('команды подключения Jira и «Чат по задаче…» объявлены', () => {
     const ids = pkg.contributes.commands.map((c) => c.command);
     for (const c of ['agentura.jira.connect', 'agentura.jira.disconnect', 'agentura.jira.test', 'agentura.chatForTask']) {

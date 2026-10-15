@@ -242,7 +242,17 @@ export interface CodeCollectInput {
   /** Рабочая папка вкладки: для чатов без своей. */
   cwd: string | undefined;
   chats: readonly CodeChatInfo[];
+  /** Где искать ключ (настройки `agentura.tasks.code.match*`). Нет — оба `true`. */
+  match?: CodeMatch;
 }
+
+/** Где вкладка «код» ищет ключ задачи: сообщение коммита (все ветки) и/или имя ветки. */
+export interface CodeMatch {
+  message: boolean;
+  branch: boolean;
+}
+
+export const DEFAULT_CODE_MATCH: CodeMatch = { message: true, branch: true };
 
 function errText(e: unknown): string {
   const err = e as { stderr?: unknown; message?: unknown } | undefined;
@@ -286,18 +296,23 @@ async function collectRepo(
   root: string,
   key: string,
   edits: () => Promise<Map<string, CodeChat[]>>,
+  match: CodeMatch,
 ): Promise<CodeRepo> {
   const run = (args: string[]): Promise<string> => deps.run(args, root);
   const base = await detectBase(deps.run, root);
   const grep = keyPattern(key);
 
-  const byKey = parseLog(
-    await run(['log', '--all', '-i', '-E', `--grep=${grep}`, '-n', String(LOG_LIMIT), `--format=${LOG_FORMAT}`]),
-  );
   const commits = new Map<string, CodeCommit>();
-  for (const c of byKey) commits.set(c.sha, toCommit(c, 'key'));
+  if (match.message) {
+    const byKey = parseLog(
+      await run(['log', '--all', '-i', '-E', `--grep=${grep}`, '-n', String(LOG_LIMIT), `--format=${LOG_FORMAT}`]),
+    );
+    for (const c of byKey) commits.set(c.sha, toCommit(c, 'key'));
+  }
 
-  const names = branchesOf(await run(['for-each-ref', '--format=%(refname:short)', 'refs/heads', 'refs/remotes']), key);
+  const names = match.branch
+    ? branchesOf(await run(['for-each-ref', '--format=%(refname:short)', 'refs/heads', 'refs/remotes']), key)
+    : [];
   const branches: CodeBranch[] = [];
   for (const name of names) {
     if (!base) {
@@ -339,13 +354,23 @@ async function collectRepo(
     } catch {
       /* без пометки */
     }
-    if (base) {
+    if (base && match.message) {
       try {
         const out = await run(['log', base, '-i', '-E', `--grep=${grep}`, '-n', String(LOG_LIMIT), '--format=%H']);
         const inBase = new Set(out.split('\n').map((l) => l.trim()).filter(Boolean));
         for (const sha of shas) if (inBase.has(sha)) commits.get(sha)!.inBase = true;
       } catch {
         /* без пометки */
+      }
+    } else if (base) {
+      // без поиска по сообщению grep по базе не подходит: проверяем предка по каждому коммиту
+      for (const sha of shas) {
+        try {
+          await run(['merge-base', '--is-ancestor', sha, base]);
+          commits.get(sha)!.inBase = true;
+        } catch {
+          /* не в базе (код 1) или ошибка — без пометки */
+        }
       }
     }
   }
@@ -474,7 +499,7 @@ export async function collectCode(
   const repos: CodeRepo[] = [];
   for (const root of roots) {
     try {
-      repos.push(await collectRepo(deps, root, input.key, getEdits));
+      repos.push(await collectRepo(deps, root, input.key, getEdits, input.match ?? DEFAULT_CODE_MATCH));
     } catch (e) {
       repos.push({ root, name: path.basename(root), branches: [], commits: [], dirty: [], error: errText(e) });
     }
@@ -554,6 +579,8 @@ export interface TaskCodeDeps extends CodeCollectDeps {
   prefill(text: string): void;
   /** Скопировать текст в буфер обмена. */
   copy(text: string): void;
+  /** Где искать ключ задачи (настройки `agentura.tasks.code.match*`). Нет — оба `true`. */
+  match?(): CodeMatch;
 }
 
 /** Задача вкладки без экземпляра Jira: `jira:inst:GARM-87` → `GARM-87`. */
@@ -624,6 +651,11 @@ export class TaskCode {
     }
   }
 
+  private currentMatch(): CodeMatch {
+    const m = this.deps.match?.() ?? DEFAULT_CODE_MATCH;
+    return { message: m.message !== false, branch: m.branch !== false };
+  }
+
   /** После `turn.result`: тихая перезагрузка, если вкладка «код» уже загружалась. */
   refresh(taskKey: string): void {
     if (this.loaded(taskKey)) void this.load(taskKey, true, true);
@@ -637,22 +669,24 @@ export class TaskCode {
     }
     const gen = ++this.gen;
     const prev = cached?.taskKey === taskKey ? cached.repos : [];
+    const match = this.currentMatch();
     if (!quiet) {
-      // roots остаются доступными, пока идёт перезагрузка
-      this.last = { type: 'task.code.state', taskKey, loading: true, repos: prev };
+      // roots остаются доступными, пока идёт перезагрузка; search — как у прежнего итога (его и показываем)
+      const search = cached?.taskKey === taskKey && cached.search ? cached.search : match;
+      this.last = { type: 'task.code.state', taskKey, loading: true, repos: prev, search };
       this.deps.post(this.last);
     }
     const key = issueKeyOf(taskKey);
     let msg: TaskCodeStateMessage;
     if (!key) {
-      msg = { type: 'task.code.state', taskKey, error: 'Bad task key', repos: [] };
+      msg = { type: 'task.code.state', taskKey, error: 'Bad task key', repos: [], search: match };
     } else {
       try {
         const chats = await this.deps.chats(taskKey);
-        const res = await collectCode(this.collectDeps, { key, cwd: this.deps.cwd(), chats });
-        msg = { type: 'task.code.state', taskKey, ...(res.error ? { error: res.error } : {}), repos: res.repos };
+        const res = await collectCode(this.collectDeps, { key, cwd: this.deps.cwd(), chats, match });
+        msg = { type: 'task.code.state', taskKey, ...(res.error ? { error: res.error } : {}), repos: res.repos, search: match };
       } catch (e) {
-        msg = { type: 'task.code.state', taskKey, error: errText(e), repos: prev };
+        msg = { type: 'task.code.state', taskKey, error: errText(e), repos: prev, search: match };
       }
     }
     if (gen !== this.gen) return;

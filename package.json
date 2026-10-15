@@ -691,6 +691,16 @@
           "default": true,
           "description": "%config.tasks.humanChanges.description%"
         },
+        "agentura.tasks.code.matchMessage": {
+          "type": "boolean",
+          "default": true,
+          "description": "%config.tasks.code.matchMessage.description%"
+        },
+        "agentura.tasks.code.matchBranch": {
+          "type": "boolean",
+          "default": true,
+          "description": "%config.tasks.code.matchBranch.description%"
+        },
         "agentura.jira.agentTools": {
           "type": "object",
           "default": {

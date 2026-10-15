@@ -31,6 +31,7 @@ import { GitService, countLines, runGit } from './git/gitService';
 import { getGitApi } from './git/gitApi';
 import { vscodeGitUi } from './git/gitUi';
 import type { AgentProvider, CompletionRequest } from '../agent/types';
+import { isSettingsSection } from '../protocol';
 
 /** Что активация отдаёт интеграционным тестам (только при запуске из исходников). */
 export interface TestApi {
@@ -428,12 +429,13 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     vscode.commands.registerCommand('agentura.showStatus', () =>
       ChatPanel.runStatus(context, log, services),
     ),
-    vscode.commands.registerCommand('agentura.openSettings', () =>
-      SettingsPanel.show(context, log, jira),
+    vscode.commands.registerCommand('agentura.openSettings', (section?: unknown) =>
+      SettingsPanel.show(context, log, jira, isSettingsSection(section) ? section : undefined),
     ),
     // правка настроек (UI, settings.json, вкладка настроек) доходит до открытых вкладок чата
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('agentura')) ChatPanel.settingsChanged();
+      if (e.affectsConfiguration('agentura.tasks.code')) ChatPanel.taskCodeSettingsChanged();
       if (e.affectsConfiguration('agentura.language')) {
         const t = hostStrings(currentLanguage());
         const reload = t.reloadButton;

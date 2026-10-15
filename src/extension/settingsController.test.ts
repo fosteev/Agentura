@@ -36,6 +36,21 @@ function setup(values: Record<string, unknown> = {}, over: Partial<SettingsDeps>
 }
 
 describe('SettingsController', () => {
+  it('showSection: до ready ждёт первого состояния, после — уходит сразу', async () => {
+    const { c, posted } = setup();
+    c.showSection('integrations');
+    expect(posted).toEqual([]);
+    await c.handle({ type: 'ready' });
+    expect(posted[0]!.type).toBe('settings.state');
+    expect(posted.at(-1)).toEqual({ type: 'settings.section', section: 'integrations' });
+    c.showSection('look');
+    expect(posted.at(-1)).toEqual({ type: 'settings.section', section: 'look' });
+    // повторный ready не шлёт старый запрос второй раз
+    posted.length = 0;
+    await c.handle({ type: 'ready' });
+    expect(posted.some((m) => m.type === 'settings.section')).toBe(false);
+  });
+
   it('ready: отдаёт текущие значения', async () => {
     const { c, posted } = setup({ defaultModel: 'opus', allowBypassPermissions: true });
     await c.handle({ type: 'ready' });

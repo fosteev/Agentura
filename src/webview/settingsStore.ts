@@ -1,6 +1,6 @@
 /** Стор вкладки настроек: значения из хоста, черновики полей, ошибки, итог «проверить». */
 import { signal } from '@preact/signals';
-import type { ToWebview } from '../protocol';
+import type { SettingsSection, ToWebview } from '../protocol';
 import type { IntegrationsState } from '../shared/integrations';
 import type { EngineCheck, SettingKey, SettingsValues } from '../settings';
 import { send } from './vscode';
@@ -8,6 +8,8 @@ import { send } from './vscode';
 export const settingsValues = signal<SettingsValues | undefined>(undefined);
 /** Jiraffe и свои подключения Jira (страница «Интеграции»); до ответа хоста — `undefined`. */
 export const integrations = signal<IntegrationsState | undefined>(undefined);
+/** Хост просит открыть раздел (`settings.section`); страница забирает запрос и сбрасывает его в `undefined`. */
+export const requestedSection = signal<SettingsSection | undefined>(undefined);
 export const overridden = signal<SettingKey[]>([]);
 /** Текст ошибки у поля: ошибка проверки (до отправки) или отказ хоста. */
 export const errors = signal<Partial<Record<SettingKey, string>>>({});
@@ -25,6 +27,9 @@ export function handleSettingsMessage(m: ToWebview): void {
     case 'settings.state':
       settingsValues.value = m.values;
       overridden.value = m.overridden;
+      break;
+    case 'settings.section':
+      requestedSection.value = m.section;
       break;
     case 'integrations.state':
       integrations.value = m.state;

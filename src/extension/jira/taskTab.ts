@@ -201,6 +201,12 @@ export class TaskTab {
     }
   }
 
+  /** Сменились настройки поиска вкладки «код»: тихая перезагрузка, если она уже загружалась. */
+  codeSettingsChanged(): void {
+    const key = this.key;
+    if (key) this.deps.code?.refresh(key);
+  }
+
   /** События движка вкладки: итог хода и результат инструмента, в тексте которого есть ключ задачи, обновляют карточку. */
   onAgentEvent(e: AgentEvent): void {
     const key = this.key;

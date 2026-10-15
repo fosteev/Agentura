@@ -60,13 +60,14 @@ describe('taskCodeView', () => {
     expect(repoHasContent(repo({ error: 'boom' }))).toBe(true);
   });
 
-  it('команды «как ищем?»: ключ задачи, база и ветка первого репо; без данных — запасные значения', () => {
-    const c = howCommands(KEY, [repo({ branches: [br('feature/NEWMFC-1482', 2)] })]);
+  it('команды «как ищем?»: ключ задачи; база и ветка — плейсхолдеры, не данные репо', () => {
+    const c = howCommands(KEY);
+    expect(c.key).toBe('NEWMFC-1482');
     expect(c.log).toBe(`git log --all -i --grep='NEWMFC-1482' --format='%h %an %s'`);
     expect(c.branches).toBe(`git branch -a --list '*NEWMFC-1482*'`);
-    expect(c.ahead).toBe('git log --oneline origin/develop..feature/NEWMFC-1482');
-    const d = howCommands(KEY, []);
-    expect(d.ahead).toBe('git log --oneline develop..feature/NEWMFC-1482');
+    expect(c.ahead).toBe('git log --oneline <база>..<ветка>');
+    // ключ не разобрался — запасной пример
+    expect(howCommands(undefined).key).toBe('KEY-123');
   });
 
   it('наборы файлов: цели диффа коммита, ветки и незакоммиченного', () => {

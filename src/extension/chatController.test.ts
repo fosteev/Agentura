@@ -2267,6 +2267,17 @@ describe('ChatController: ошибки и повтор хода (этап 7)', (
     const t = build({ openSettings });
     await t.controller.handle({ type: 'settings.open' });
     expect(openSettings).toHaveBeenCalledTimes(1);
+    expect(openSettings).toHaveBeenLastCalledWith();
+  });
+
+  it('settings.open с разделом передаёт его; неизвестный раздел отбрасывается', async () => {
+    const openSettings = vi.fn();
+    const t = build({ openSettings });
+    await t.controller.handle({ type: 'settings.open', section: 'integrations' });
+    expect(openSettings).toHaveBeenLastCalledWith('integrations');
+    await t.controller.handle({ type: 'settings.open', section: 'bogus' } as never);
+    expect(openSettings).toHaveBeenCalledTimes(2);
+    expect(openSettings).toHaveBeenLastCalledWith();
   });
 
   it('claude не найден: движок не стартует, в ленте карточка с кодом engine_missing', async () => {

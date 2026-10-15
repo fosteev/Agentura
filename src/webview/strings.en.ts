@@ -196,15 +196,24 @@ export const en: Ui = {
       howTitle: 'How the task commits are found',
       howClose: 'Close',
       howIntro: (key: string) =>
-        `We look at the repositories the chats of ${key} worked in and run three commands in each:`,
-      howStep1: 'Commits with the task key in the message, on all branches:',
-      howStep2: 'Branches with the key in the name:',
-      howStep3: 'Commits of such a branch that are not in the base yet (even if the message has no key):',
+        `We look at the git repositories the chats of ${key} worked in. A commit is listed when:`,
+      howMessage: (key: string) =>
+        `the key ${key} is in the commit message — on any branch, e.g. “${key}: fixed login”`,
+      howBranch: (key: string) =>
+        `the key is in a branch name, e.g. feature/${key} — then we take all commits of that branch that are not in the base yet, even without the key in the message`,
+      howBase: 'The base is the origin default branch (origin/HEAD), otherwise develop, main or master.',
+      howOff: 'turned off in settings',
+      howGitOff: 'Git search is turned off — only the agents’ uncommitted edits are shown.',
+      howPhBase: '<base>',
+      howPhBranch: '<branch>',
       howDirty:
         'The “uncommitted” block does not come from git but from the task chats’ history: the files agents edited. Hand edits made without an agent are not included.',
-      howRuleLead: 'To be found, a commit needs the key in its message (',
-      howRuleMid: ') or in the branch name (',
-      howRuleTail: '). Otherwise Agentura will not see it.',
+      howRuleLead: 'To be found, a commit needs the key ',
+      howRuleMsg: 'in its message (',
+      howRuleOr: ') or ',
+      howRuleBranch: 'in the branch name (',
+      howRuleTail: '). Otherwise the tab will not show it.',
+      howSettings: 'search settings →',
       howCopy: 'copy',
     },
   },
@@ -1199,6 +1208,14 @@ export const en: Ui = {
       humanChanges: {
         name: 'Show changes made by people',
         desc: 'Comments, status changes and worklogs made by someone other than the agent go into “changes” and the “send to the agent?” banner.',
+      },
+      matchMessage: {
+        name: 'Look for the key in commit messages',
+        desc: 'Task “code” tab: a commit is listed when the task key is in its message (on any branch).',
+      },
+      matchBranch: {
+        name: 'Look for the key in branch names',
+        desc: 'Task “code” tab: when the key is in a branch name, all of that branch’s commits not yet in the base are taken, even without the key in the message.',
       },
       agentTools: {
         name: 'Jira tools for the agent',

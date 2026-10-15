@@ -354,7 +354,13 @@ export function TaskCode({
           )}
         </div>
       </div>
-      {how && <How taskKey={taskKey} repos={repos} onClose={() => setHow(false)} />}
+      {how && (
+        <How
+          taskKey={taskKey}
+          search={state?.search ?? { message: true, branch: true }}
+          onClose={() => setHow(false)}
+        />
+      )}
     </div>
   );
 }
@@ -507,11 +513,22 @@ function CommitDetails({
   );
 }
 
-/** Всплывашка «как ищем?» (решение 13): настоящие команды с ключом задачи и базой первого репозитория. */
-function How({ taskKey, repos, onClose }: { taskKey: string; repos: readonly CodeRepo[]; onClose: () => void }) {
+/**
+ * Всплывашка «как ищем?» (решение 13): общий текст без реальных базы, ветки и репозитория. Пункты по настройкам
+ * поиска (`search` — с чем собран итог): выключенный виден, но приглушён и без команд.
+ */
+function How({
+  taskKey,
+  search,
+  onClose,
+}: {
+  taskKey: string;
+  search: { message: boolean; branch: boolean };
+  onClose: () => void;
+}) {
   const t = ui.task.code;
-  const cmd = howCommands(taskKey, repos);
-  const key = cmd.branches.match(/\*([^*]+)\*/)?.[1] ?? taskKey;
+  const cmd = howCommands(taskKey);
+  const { key } = cmd;
   const Pre = ({ text }: { text: string }) => (
     <pre>
       {text}
@@ -520,6 +537,7 @@ function How({ taskKey, repos, onClose }: { taskKey: string; repos: readonly Cod
       </button>
     </pre>
   );
+  const off = <span class="offmark">{t.howOff}</span>;
   return (
     <div class="how" role="dialog" aria-label={t.howTitle}>
       <h6>
@@ -530,27 +548,48 @@ function How({ taskKey, repos, onClose }: { taskKey: string; repos: readonly Cod
       </h6>
       <p>{t.howIntro(key)}</p>
       <ol>
-        <li>
-          {t.howStep1}
-          <Pre text={cmd.log} />
+        <li class={search.message ? undefined : 'off'} data-rule="message">
+          {t.howMessage(key)}
+          {search.message ? <Pre text={cmd.log} /> : off}
         </li>
-        <li>
-          {t.howStep2}
-          <Pre text={cmd.branches} />
-        </li>
-        <li>
-          {t.howStep3}
-          <Pre text={cmd.ahead} />
+        <li class={search.branch ? undefined : 'off'} data-rule="branch">
+          {t.howBranch(key)}
+          {search.branch ? (
+            <>
+              <Pre text={cmd.branches} />
+              <Pre text={cmd.ahead} />
+            </>
+          ) : (
+            off
+          )}
         </li>
       </ol>
+      <p>{t.howBase}</p>
       <p>{t.howDirty}</p>
-      <div class="rule">
-        {t.howRuleLead}
-        <code>{key}: …</code>
-        {t.howRuleMid}
-        <code>feature/{key}</code>
-        {t.howRuleTail}
-      </div>
+      {search.message || search.branch ? (
+        <div class="rule">
+          {t.howRuleLead}
+          {search.message && (
+            <>
+              {t.howRuleMsg}
+              <code>{key}: …</code>
+            </>
+          )}
+          {search.message && search.branch && t.howRuleOr}
+          {search.branch && (
+            <>
+              {t.howRuleBranch}
+              <code>feature/{key}</code>
+            </>
+          )}
+          {t.howRuleTail}
+        </div>
+      ) : (
+        <p class="gitoff">{t.howGitOff}</p>
+      )}
+      <button class="lnk" onClick={() => send({ type: 'settings.open', section: 'integrations' })}>
+        {t.howSettings}
+      </button>
     </div>
   );
 }

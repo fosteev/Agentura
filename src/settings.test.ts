@@ -114,6 +114,8 @@ describe('sessionList', () => {
     expect(validateSetting('tasks.refresh', '5s').ok).toBe(false);
     expect(validateSetting('tasks.humanChanges', false)).toEqual({ ok: true, value: false });
     expect(validateSetting('tasks.humanChanges', 'no').ok).toBe(false);
+    expect(validateSetting('tasks.code.matchMessage', false)).toEqual({ ok: true, value: false });
+    expect(validateSetting('tasks.code.matchBranch', 'no').ok).toBe(false);
     // инструменты Jira агента (этап 8): ровно три флажка
     expect(validateSetting('jira.agentTools', { comment: false, transition: true, worklog: true })).toEqual({
       ok: true,
@@ -327,6 +329,8 @@ describe('readSettings', () => {
       'jira.source': 'auto',
       'tasks.refresh': '30s',
       'tasks.humanChanges': true,
+      'tasks.code.matchMessage': true,
+      'tasks.code.matchBranch': true,
       'jira.agentTools': { comment: true, transition: true, worklog: true },
       'feed.style': 'journal',
       'agents.view': 'list',
