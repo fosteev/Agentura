@@ -9,7 +9,10 @@
 .tcd .mono { font-family: var(--mono); font-size: 11px; }
 .tcd-main { flex: 1; min-height: 0; display: flex; overflow: hidden; }
 .tcd-main[hidden] { display: none !important; }
-.tcd-main > .l { flex: 1; min-width: 0; padding: 12px 18px; overflow: auto; }
+.tcd-main > .lc { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.tcd .lc > .l { flex: 1; min-height: 0; padding: 12px 18px; overflow: auto; }
+/* дифф открыт: список коммитов сжимается сверху, дифф под ним, правая панель остаётся */
+.tcd .lc.open > .l { flex: none; max-height: 40%; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
 .tcd-main > .r { width: 330px; flex: none; border-left: 1px solid var(--line); background: var(--bg-side); padding: 12px 14px; overflow: auto; }
 @container (max-width: 640px) { .tcd-main > .r { display: none; } }
 .tcd { container-type: inline-size; }
@@ -74,6 +77,7 @@
 .tcd .r .meta2 { color: var(--fg-mute); font-size: 11px; margin-bottom: 4px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .tcd .r .fr { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; gap: 6px; align-items: center; padding: 3px 0; cursor: pointer; }
 .tcd .r .fr:hover { background: var(--bg-hover); }
+.tcd .r .fr.on { background: color-mix(in srgb, var(--info) 12%, transparent); box-shadow: inset 2px 0 0 var(--info); }
 .tcd .r .fr:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
 .tcd .r .acts2 { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
 .tcd .r .acts2 button { font-size: 11px; padding: 3px 8px; border: 1px solid var(--line-strong); border-radius: 3px; color: var(--fg); }

@@ -151,7 +151,10 @@ export function TaskCode({
   const state = codeFor(taskCode.value, taskKey);
   const [sel, setSel] = useState<Sel | undefined>();
   const [how, setHow] = useState(false);
-  const [diff, setDiff] = useState<{ set: DiffSet; i: number } | undefined>();
+  // sha — дифф коммита: подсвечиваем файл справа; выбор другого коммита при открытом диффе переключает дифф на него
+  const [diff, setDiff] = useState<{ set: DiffSet; i: number; sha?: string } | undefined>();
+  // коммит, выбранный при открытом диффе: как придут его файлы — открыть его дифф
+  const [follow, setFollow] = useState<string | undefined>();
   // номер запроса открытого файла: показываем только ответ с этим `req`, остальные устарели; 0 — дифф закрыт
   const [req, setReq] = useState(0);
 
@@ -187,23 +190,35 @@ export function TaskCode({
     setReq(next);
     send({ type: 'task.code.diff', req: next, root: set.root, target: it.target });
   };
-  const openDiff = (set: DiffSet, i = 0) => {
+  const openDiff = (set: DiffSet, i = 0, sha?: string) => {
     if (set.items.length === 0) return;
     setHow(false);
-    setDiff({ set, i });
+    setDiff({ set, i, sha });
     ask(set, i);
   };
   const closeDiff = () => {
     setReq(0);
     setDiff(undefined);
+    setFollow(undefined);
   };
   const step = (dir: 1 | -1) => {
     if (!diff) return;
     const i = stepIndex(diff.i, diff.set.items.length, dir);
     if (i === diff.i) return;
-    setDiff({ set: diff.set, i });
+    setDiff({ ...diff, i });
     ask(diff.set, i);
   };
+  const pick = (s: Sel) => {
+    setSel(s);
+    if (diff && !(diff.sha === s.sha && diff.set.root === s.root)) setFollow(keyOf(s));
+  };
+
+  useEffect(() => {
+    if (!follow || !cur || keyOf(cur) !== follow || !curFiles || !curCommit) return;
+    setFollow(undefined);
+    if (curFiles.files.length > 0) openDiff(commitSet(cur.root, cur.sha, curCommit.short, curFiles.files), 0, cur.sha);
+    else closeDiff();
+  }, [follow, curFiles]);
 
   // Esc закрывает всплывашку, затем дифф; j/k — следующий/предыдущий файл набора
   useEffect(() => {
@@ -237,41 +252,86 @@ export function TaskCode({
 
   return (
     <div class="tcd" hidden={hidden} role="tabpanel" aria-labelledby="vtab-code" aria-label={t.aria}>
-      <div class="tcd-main" hidden={!!diff}>
-        <div class="l">
-          <div class="top">
-            {!busy && (
-              <span>
-                {t.repos(shown.length)} · {t.commits(nCommits)} · {t.dirtyCount(nDirty)}
-              </span>
+      <div class="tcd-main">
+        <div class={diff ? 'lc open' : 'lc'}>
+          <div class="l">
+            <div class="top">
+              {!busy && (
+                <span>
+                  {t.repos(shown.length)} · {t.commits(nCommits)} · {t.dirtyCount(nDirty)}
+                </span>
+              )}
+              <button
+                class={`rf${state?.loading ? ' busy' : ''}`}
+                data-tip={t.refresh}
+                aria-label={t.refresh}
+                disabled={state?.loading === true}
+                onClick={() => send({ type: 'task.code.load', force: true })}
+              >
+                ↻
+              </button>
+              <button class="q" onClick={() => setHow((v) => !v)} aria-expanded={how}>
+                {t.how}
+              </button>
+            </div>
+            {busy && !state?.error && <div class="note">{t.loading}</div>}
+            {state?.error && <div class="note err">{state.error}</div>}
+            {!busy && !state?.error && shown.length === 0 && (
+              <div class="note">{repos.length === 0 ? t.noRepos : t.empty}</div>
             )}
-            <button
-              class={`rf${state?.loading ? ' busy' : ''}`}
-              data-tip={t.refresh}
-              aria-label={t.refresh}
-              disabled={state?.loading === true}
-              onClick={() => send({ type: 'task.code.load', force: true })}
-            >
-              ↻
-            </button>
-            <button class="q" onClick={() => setHow((v) => !v)} aria-expanded={how}>
-              {t.how}
-            </button>
+            {shown.map((r) => (
+              <RepoBlock
+                key={r.root}
+                repo={r}
+                sel={cur}
+                onPick={(sha) => pick({ root: r.root, sha })}
+                onOpen={openDiff}
+              />
+            ))}
           </div>
-          {busy && !state?.error && <div class="note">{t.loading}</div>}
-          {state?.error && <div class="note err">{state.error}</div>}
-          {!busy && !state?.error && shown.length === 0 && (
-            <div class="note">{repos.length === 0 ? t.noRepos : t.empty}</div>
+          {diff && item && (
+            <div class="dview" role="region" aria-label={t.diffAria}>
+              <div class="dbar">
+                <StatusLetter s={item.status} />
+                <span class="dpath" title={item.from ? `${item.path} (${t.renamedFrom(item.from)})` : item.path}>
+                  {splitPath(item.path)[0] && <span class="ddir">{splitPath(item.path)[0]}</span>}
+                  <b>{splitPath(item.path)[1]}</b>
+                </span>
+                <Stat f={item} />
+                <span class="dctx">{diff.set.label}</span>
+                <span class="dctx">{t.diffFileOf(diff.i + 1, diff.set.items.length)}</span>
+                <span class="dsp" />
+                <button class="ib" data-tip={t.diffPrev} aria-label={t.diffPrev} disabled={diff.i === 0} onClick={() => step(-1)}>
+                  ‹
+                </button>
+                <button
+                  class="ib"
+                  data-tip={t.diffNext}
+                  aria-label={t.diffNext}
+                  disabled={diff.i >= diff.set.items.length - 1}
+                  onClick={() => step(1)}
+                >
+                  ›
+                </button>
+                <span class="seg" role="group">
+                  {(['inline', 'split'] as const).map((m) => (
+                    <button
+                      key={m}
+                      aria-pressed={diffMode === m}
+                      data-tip={diffMode === m ? undefined : t.diffSwitchTo(m === 'inline' ? t.diffInline : t.diffSplit)}
+                      onClick={() => onDiffMode(m)}
+                    >
+                      {m === 'inline' ? t.diffInline : t.diffSplit}
+                    </button>
+                  ))}
+                </span>
+                <button class="ib" data-tip={t.diffClose} aria-label={t.diffClose} onClick={closeDiff}>
+                  ✕
+                </button>
+              </div>
+              <div class="dbody" key={`${diff.set.root}:${item.path}`} dangerouslySetInnerHTML={{ __html: html }} />
+            </div>
           )}
-          {shown.map((r) => (
-            <RepoBlock
-              key={r.root}
-              repo={r}
-              sel={cur}
-              onPick={(sha) => setSel({ root: r.root, sha })}
-              onOpen={openDiff}
-            />
-          ))}
         </div>
         <div class="r">
           {curRepo && curCommit && cur ? (
@@ -279,7 +339,8 @@ export function TaskCode({
               repo={curRepo}
               commit={curCommit}
               files={curFiles}
-              onDiff={(i) => openDiff(commitSet(cur.root, cur.sha, curCommit.short, curFiles?.files ?? []), i)}
+              active={diff?.sha === cur.sha && !follow ? diff.i : undefined}
+              onDiff={(i) => openDiff(commitSet(cur.root, cur.sha, curCommit.short, curFiles?.files ?? []), i, cur.sha)}
               onToChat={() => {
                 send({
                   type: 'task.code.prefill',
@@ -293,49 +354,6 @@ export function TaskCode({
           )}
         </div>
       </div>
-      {diff && item && (
-        <div class="dview" role="region" aria-label={t.diffAria}>
-          <div class="dbar">
-            <StatusLetter s={item.status} />
-            <span class="dpath" title={item.from ? `${item.path} (${t.renamedFrom(item.from)})` : item.path}>
-              {splitPath(item.path)[0] && <span class="ddir">{splitPath(item.path)[0]}</span>}
-              <b>{splitPath(item.path)[1]}</b>
-            </span>
-            <Stat f={item} />
-            <span class="dctx">{diff.set.label}</span>
-            <span class="dctx">{t.diffFileOf(diff.i + 1, diff.set.items.length)}</span>
-            <span class="dsp" />
-            <button class="ib" data-tip={t.diffPrev} aria-label={t.diffPrev} disabled={diff.i === 0} onClick={() => step(-1)}>
-              ‹
-            </button>
-            <button
-              class="ib"
-              data-tip={t.diffNext}
-              aria-label={t.diffNext}
-              disabled={diff.i >= diff.set.items.length - 1}
-              onClick={() => step(1)}
-            >
-              ›
-            </button>
-            <span class="seg" role="group">
-              {(['inline', 'split'] as const).map((m) => (
-                <button
-                  key={m}
-                  aria-pressed={diffMode === m}
-                  data-tip={diffMode === m ? undefined : t.diffSwitchTo(m === 'inline' ? t.diffInline : t.diffSplit)}
-                  onClick={() => onDiffMode(m)}
-                >
-                  {m === 'inline' ? t.diffInline : t.diffSplit}
-                </button>
-              ))}
-            </span>
-            <button class="ib" data-tip={t.diffClose} aria-label={t.diffClose} onClick={closeDiff}>
-              ✕
-            </button>
-          </div>
-          <div class="dbody" key={`${diff.set.root}:${item.path}`} dangerouslySetInnerHTML={{ __html: html }} />
-        </div>
-      )}
       {how && <How taskKey={taskKey} repos={repos} onClose={() => setHow(false)} />}
     </div>
   );
@@ -435,12 +453,15 @@ function CommitDetails({
   repo,
   commit,
   files,
+  active,
   onDiff,
   onToChat,
 }: {
   repo: CodeRepo;
   commit: CodeCommit;
   files: { files: CodeFile[]; error?: string } | undefined;
+  /** Файл, открытый сейчас в диффе. */
+  active?: number;
   onDiff: (i: number) => void;
   onToChat: () => void;
 }) {
@@ -462,7 +483,12 @@ function CommitDetails({
       {files?.error && <div class="note err">{files.error}</div>}
       {files && !files.error && list.length === 0 && <div class="note">{t.noFiles}</div>}
       {list.map((f, i) => (
-        <div key={f.path} class="fr" {...rowProps(() => onDiff(i))}>
+        <div
+          key={f.path}
+          class={i === active ? 'fr on' : 'fr'}
+          aria-current={i === active || undefined}
+          {...rowProps(() => onDiff(i))}
+        >
           <StatusLetter s={f.status} />
           <FileName f={f} />
           <Stat f={f} />

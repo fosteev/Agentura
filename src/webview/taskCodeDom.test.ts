@@ -337,13 +337,14 @@ describe('вкладка «код»: встроенный дифф', () => {
     return host;
   }
 
-  it('клик по незакоммиченному файлу открывает дифф на месте списка (список остаётся в DOM), запрос с req и целью wip', async () => {
+  it('клик по незакоммиченному файлу открывает дифф в левой колонке под списком (правая панель остаётся), запрос с req и целью wip', async () => {
     const host = await openDirtyDiff();
     const req = sentOf('task.code.diff').at(-1)!;
     expect(req).toMatchObject({ type: 'task.code.diff', root: '/w/smart_eq_terminal', target: { kind: 'wip', path: 'packages/printer/src/socket.ts' } });
     const main = q(host, '.tcd-main');
-    expect(main.hasAttribute('hidden')).toBe(true);
-    expect(q(host, '.dview')).not.toBeNull();
+    expect(main.hasAttribute('hidden')).toBe(false);
+    expect(q(host, '.tcd-main > .lc.open > .l + .dview')).not.toBeNull();
+    expect(q(host, '.tcd-main > .r')).not.toBeNull();
     expect(q(host, '.dview .dnote').textContent).toBe('Загрузка диффа…');
     expect(q(host, '.dbar').textContent).toContain('файл 1 / 1');
 
@@ -362,7 +363,7 @@ describe('вкладка «код»: встроенный дифф', () => {
     q(host, '.dbar button[aria-label="Закрыть (Esc)"]').click();
     await flush();
     expect(q(host, '.dview')).toBeNull();
-    expect(q(host, '.tcd-main').hasAttribute('hidden')).toBe(false);
+    expect(q(host, '.tcd-main > .lc.open')).toBeNull();
 
     q(host, '.tcd .row.f').click();
     await flush();
@@ -372,7 +373,6 @@ describe('вкладка «код»: встроенный дифф', () => {
     key('Escape');
     await flush();
     expect(q(host, '.dview')).toBeNull();
-    expect(q(host, '.tcd-main').hasAttribute('hidden')).toBe(false);
     expect(sent.slice(before).filter((m) => m.type === 'interrupt')).toEqual([]);
     // контроль: без диффа тот же Esc останавливает ход (общий обработчик чата)
     key('Escape');
@@ -421,6 +421,28 @@ describe('вкладка «код»: встроенный дифф', () => {
     key('k');
     await flush();
     expect(q(host, '.dbar').textContent).toContain('файл 2 / 3');
+    expect(qa(host, '.tcd .r .fr').map((e) => e.classList.contains('on'))).toEqual([false, true, false]);
+  });
+
+  it('при открытом диффе коммита выбор другого коммита переключает дифф на его файлы', async () => {
+    const host = await openCode();
+    handleHostMessage({ type: 'task.code.commit', root: '/w/smart_eq_terminal', sha: SHA1, files: [{ path: 'a.ts', status: 'M', add: 1, del: 1 }] });
+    await flush();
+    q(host, '.tcd .acts2 .pri').click();
+    await flush();
+    const before = sentOf('task.code.diff').length;
+
+    qa(host, '.tcd .lc .row:not(.f)')[1]!.click();
+    await flush();
+    expect(sentOf('task.code.commit').at(-1)).toMatchObject({ sha: SHA2 });
+    expect(q(host, '.dview')).not.toBeNull(); // старый дифф виден, пока не пришли файлы
+    expect(sentOf('task.code.diff')).toHaveLength(before);
+
+    handleHostMessage({ type: 'task.code.commit', root: '/w/smart_eq_terminal', sha: SHA2, files: [{ path: 'z.ts', status: 'A', add: 2, del: 0 }] });
+    await flush();
+    expect(sentOf('task.code.diff').at(-1)!.target).toEqual({ kind: 'commit', sha: SHA2, path: 'z.ts' });
+    expect(q(host, '.dbar').textContent).toContain('коммит e19f5a0');
+    expect(q(host, '.tcd .r .fr.on')).not.toBeNull();
   });
 
   it('дифф ветки идёт по файлам ветки против базы', async () => {
