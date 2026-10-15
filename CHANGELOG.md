@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.17.1 — 2026-10-15
+
+### Changed
+
+- **Diff stays next to the commit list.** In the task "code" tab the diff now opens in the left column under the
+  commit list instead of taking the whole tab; the commit details panel stays on the right. Picking another commit
+  while a commit diff is open switches the diff to that commit, and the open file is highlighted in the file list.
+
 ## 0.17.0 — 2026-10-14
 
 ### Added
