@@ -2,7 +2,7 @@
   "name": "agentura",
   "displayName": "Agentura",
   "description": "%ext.description%",
-  "version": "0.17.1",
+  "version": "0.18.0",
   "private": true,
   "publisher": "fosteev",
   "repository": {

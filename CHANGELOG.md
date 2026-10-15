@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.18.0 — 2026-10-15
+
+### Added
+
+- **Where to look for the task key.** Two settings on the Integrations page,
+  `agentura.tasks.code.matchMessage` (key in the commit message, any branch) and `agentura.tasks.code.matchBranch`
+  (key in the branch name, plus the branch's commits ahead of the base). Both are on by default; the "code" tab
+  reloads when they change. With both off the tab shows only the files agents edited.
+
+### Changed
+
+- **"How do we search?" explains the rules in general terms.** It no longer shows the base and branch of one real
+  repository: the commands use `<base>` / `<branch>` placeholders, rules turned off in settings are dimmed, and
+  "search settings →" opens Agentura settings right on the Integrations page.
+
 ## 0.17.1 — 2026-10-15
 
 ### Changed
