@@ -180,6 +180,10 @@ export const taskCodeCommits = signal<Record<string, TaskCodeCommitMessage>>({})
 export const taskCodeDiff = signal<TaskCodeDiffMessage | undefined>(undefined);
 /** Чаты группы задачи вкладки (`task.chats`) для блока «Чаты по задаче». */
 export const taskChats = signal<TaskChatRow[]>([]);
+/** Что доступно новому чату задачи из этой вкладки (`task.chats.newChat`, roadmap 26): своя worktree, итог чата. */
+export const taskNewChat = signal<{ worktree: boolean; summary: boolean }>({ worktree: false, summary: false });
+/** Открытая всплывашка «Новый чат по задаче»: где её рисовать (px окна); нет — закрыта. */
+export const newChatPopover = signal<{ left: number; top: number } | undefined>(undefined);
 /** Вкладка на задачу (`tasks.tab = task`, этап 7): её чаты внутренними вкладками; нет — обычная вкладка чата. */
 export const tabChats = signal<TabChatsMessage | undefined>(undefined);
 /** Id показанного чата вкладки задачи: поле ввода помнит черновик по нему. */
@@ -580,7 +584,11 @@ export function handleHostMessage(m: ToWebview): void {
       // другая задача (или никакой) — переход к событию прежней не нужен
       if (taskState.value?.taskKey !== m.taskKey) taskFocus.value = undefined;
       taskState.value = m.taskKey ? m : undefined;
-      if (!m.taskKey) taskChats.value = [];
+      if (!m.taskKey) {
+        taskChats.value = [];
+        taskNewChat.value = { worktree: false, summary: false };
+        newChatPopover.value = undefined;
+      }
       break;
     case 'task.transitions':
       taskTransitions.value = m;
@@ -590,6 +598,7 @@ export function handleHostMessage(m: ToWebview): void {
       break;
     case 'task.chats':
       taskChats.value = m.taskKey ? m.chats : [];
+      taskNewChat.value = m.taskKey && m.newChat ? m.newChat : { worktree: false, summary: false };
       break;
     case 'task.code.state':
       // итог другой задачи не показываем: файлы коммитов и дифф прежней тоже уходят
@@ -634,6 +643,8 @@ function switchTabChat(prev: string, next: string | undefined, seeded: boolean):
   // полоска и блок «Чаты по задаче» — от показанного чата (у чата без задачи хост их не пришлёт)
   taskState.value = undefined;
   taskChats.value = [];
+  taskNewChat.value = { worktree: false, summary: false };
+  newChatPopover.value = undefined;
   taskCode.value = undefined;
   taskCodeCommits.value = {};
   taskCodeDiff.value = undefined;

@@ -169,7 +169,9 @@ describe('полоса задачи и вкладки «чат | задача»'
     post(state());
     await flush();
     const strip = q(host, '.tk-strip');
-    expect(qa(strip, '.vtab').map((b) => b.textContent)).toEqual(['чат', 'задача', 'код']);
+    // вместо вкладки «чат» — чип чата (у вкладки без сессии — «новый чат», roadmap 26)
+    expect(qa(strip, '.vtab').map((b) => b.textContent)).toEqual(['задача', 'код']);
+    expect(vtab(host, 'chat').querySelector('.n')!.textContent).toBe('новый чат');
     expect(vtab(host, 'chat').getAttribute('aria-selected')).toBe('true');
     expect(strip.querySelector('.tkey')!.textContent).toBe('NEWMFC-1482');
     expect(strip.querySelector('.pill.wip')!.textContent).toBe('В работе');

@@ -3,7 +3,7 @@
  * считается новым, какие плашки «пока агент работал» открыты. Данные — `task.state` хоста (`shared/task.ts`).
  */
 import type { TaskCardMode } from '../settings';
-import { TASK_LIMITS, type TaskEvent, type TaskStateMessage } from '../shared/task';
+import { TASK_LIMITS, type TaskChatRow, type TaskEvent, type TaskStateMessage } from '../shared/task';
 import { activeCard, pendingPlan, type ChatState } from './chatState';
 import { ui } from './strings';
 import { toolView } from './toolView';
@@ -198,4 +198,32 @@ export function fileExt(filename: string): string {
   const i = filename.lastIndexOf('.');
   const ext = i > 0 ? filename.slice(i + 1) : '';
   return /^[A-Za-z0-9]{1,5}$/.test(ext) ? ext.toUpperCase() : 'FILE';
+}
+
+/** Чипов чатов задачи в полосе без «ещё N ▾» (roadmap 26, решение 11). */
+export const STRIP_CHATS_MAX = 4;
+
+/**
+ * Какие чаты задачи показать чипами в полосе: до `max` (с синтетическим «новым чатом», если у вкладки ещё нет сессии
+ * в списке) — все; больше — текущий и последние по `updatedAt` (`max - 1`), порядок остаётся прежним, остальные — в
+ * меню «ещё N ▾». `synthetic` — нет строки `current`: первым рисуется чип «новый чат».
+ */
+export function stripChats(
+  chats: readonly TaskChatRow[],
+  max = STRIP_CHATS_MAX,
+): { shown: TaskChatRow[]; hidden: TaskChatRow[]; synthetic: boolean } {
+  const synthetic = !chats.some((c) => c.current);
+  if (chats.length + (synthetic ? 1 : 0) <= max) return { shown: [...chats], hidden: [], synthetic };
+  const latest = new Set(
+    chats
+      .filter((c) => !c.current)
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .slice(0, max - 1)
+      .map((c) => c.id),
+  );
+  return {
+    shown: chats.filter((c) => c.current || latest.has(c.id)),
+    hidden: chats.filter((c) => !c.current && !latest.has(c.id)),
+    synthetic,
+  };
 }

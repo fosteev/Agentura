@@ -100,6 +100,11 @@ describe('собственные команды по возможностям д
     expect(ownCommands({ modes: false, compact: true })).toEqual(['compact', 'clear', 'status']);
   });
 
+  it('/new и /fork — только во вкладке задачи, любой движок (roadmap 26)', () => {
+    expect(ownCommands({ modes: false, compact: false, task: true })).toEqual(['clear', 'status', 'new', 'fork']);
+    expect(ownCommands({ modes: false, compact: false })).not.toContain('new');
+  });
+
   it('buildSlashItems с урезанным списком не добавляет /plan и /compact', () => {
     const names = buildSlashItems(
       [],

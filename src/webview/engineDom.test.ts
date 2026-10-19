@@ -307,14 +307,14 @@ describe('Composer: Codex', () => {
     expect(all).not.toMatch(/opus|sonnet|haiku/i);
   });
 
-  it('«+»: пункт картинки без «файл», «текст, pdf» не обещается', async () => {
+  it('«+»: пункт «картинка или текст», pdf не обещается', async () => {
     info('codex');
     const host = mount();
     await flush();
     host.querySelector<HTMLElement>('button.plus')!.click();
     await flush();
     const txt = host.querySelector('.menu')!.textContent ?? '';
-    expect(txt).toContain('Изображение…');
+    expect(txt).toContain('Изображение или текст…');
     expect(txt).not.toContain('pdf,');
   });
 });

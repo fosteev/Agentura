@@ -203,7 +203,8 @@ describe('вкладка «код»: полоса и загрузка', () => {
     const host = mount();
     handleHostMessage(taskMsg());
     await flush();
-    expect(qa(host, '.tk-strip .vtab').map((b) => b.textContent)).toEqual(['чат', 'задача', 'код']);
+    expect(qa(host, '.tk-strip .vtab').map((b) => b.textContent)).toEqual(['задача', 'код']); // «чат» — чип «новый чат» (roadmap 26)
+    expect(q(host, '#vtab-chat .n').textContent).toBe('новый чат');
     expect(q(host, '#vtab-code .cnt')).toBeNull();
     expect(sentOf('task.code.load')).toHaveLength(0);
     q(host, '#vtab-code').click();

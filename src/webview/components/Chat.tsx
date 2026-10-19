@@ -54,6 +54,7 @@ import { useStickToBottom } from '../useStickToBottom';
 import { AgentsPane, ChangesPane, McpPane, type AgentsPaneModel } from './SidePanes';
 import { mcpCounts, mcpSurfaceShown } from '../mcpView';
 import { GitPane } from './GitPane';
+import { NewChatPopover } from './NewChatPopover';
 import { ChatTabs, TaskStrip, type ChatActivity } from './TaskPane';
 import { TaskCode } from './TaskCode';
 import { TaskView } from './TaskView';
@@ -538,6 +539,7 @@ export function Chat() {
           unseen={taskBdg}
           activity={activity}
           {...(codeN !== undefined ? { codeCount: codeN } : {})}
+          {...(tabChats.value ? {} : { chats: taskChats.value })}
         />
       )}
       {tabChats.value && <ChatTabs state={tabChats.value} />}
@@ -836,6 +838,7 @@ export function Chat() {
         )}
       </div>
       <Composer key={activeTabChat.value ?? ''} />
+      <NewChatPopover />
     </div>
   );
 }

@@ -109,7 +109,7 @@ describe('внутренние вкладки чатов', () => {
     expect(bar.querySelector('.rt')!.textContent).toBe('чатов: 3 · общий контекст задачи');
   });
 
-  it('клик по фоновой — tab.select, по показанной — ничего; «×» — tab.close; «＋» — tab.new', async () => {
+  it('клик по фоновой — tab.select, по показанной — ничего; «×» — tab.close; «＋» — всплывашка, ⌥＋ — task.newChat сразу', async () => {
     const host = mount();
     handleHostMessage(tabs([row('c1', { active: true }), row('c2')]));
     await flush();
@@ -117,11 +117,19 @@ describe('внутренние вкладки чатов', () => {
     first!.click();
     second!.click();
     qa(host, '.tk-ctabs .x')[1]!.click();
-    host.querySelector<HTMLElement>('.tk-ctabs .plus')!.click();
+    const plus = host.querySelector<HTMLElement>('.tk-ctabs .plus')!;
+    plus.click();
+    await flush();
+    // без ⌥ — всплывашка (в режиме «задача» без кнопки «рядом»), сообщений хосту нет
+    expect(host.querySelector('.ncp')).not.toBeNull();
+    expect(host.querySelector('.ncp .ft .sec')).toBeNull();
+    plus.dispatchEvent(new MouseEvent('click', { bubbles: true, altKey: true }));
+    await flush();
+    expect(host.querySelector('.ncp')).toBeNull();
     expect(sent).toEqual([
       { type: 'tab.select', id: 'c2' },
       { type: 'tab.close', id: 'c2' },
-      { type: 'tab.new' },
+      { type: 'task.newChat', taskKey: KEY, provider: 'claude', carry: { task: true } },
     ]);
   });
 

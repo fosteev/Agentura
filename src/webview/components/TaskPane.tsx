@@ -1,10 +1,12 @@
+import { useEffect, useState } from 'preact/hooks';
 import type { AgentProvider } from '../../agent/types';
-import type { TaskEvent, TaskStateMessage } from '../../shared/task';
+import type { TaskChatRow, TaskEvent, TaskStateMessage } from '../../shared/task';
 import type { TabChatsMessage } from '../../shared/taskTab';
 import { ENGINE_MARK, ENGINE_MARK_CLASS } from '../engineLimitsView';
 import { pillClass } from '../sessionsView';
 import { ui } from '../strings';
-import { agoLabel, eventActor, eventText, initials, issueKeyOf } from '../taskView';
+import { startNewChat } from '../newChat';
+import { agoLabel, eventActor, eventText, initials, issueKeyOf, stripChats } from '../taskView';
 import { send, type TaskViewName } from '../vscode';
 
 export function Mark({ provider }: { provider: AgentProvider | undefined }) {
@@ -115,6 +117,7 @@ export function TaskStrip({
   unseen,
   activity,
   codeCount,
+  chats,
 }: {
   state: TaskStateMessage & { taskKey: string };
   view: TaskViewName;
@@ -124,6 +127,11 @@ export function TaskStrip({
   activity: ChatActivity;
   /** Число у вкладки «код»; нет — вкладка ещё не загружалась. */
   codeCount?: number;
+  /**
+   * Чаты задачи (`task.chats`): вместо вкладки «чат» — чипы чатов и «＋ чат» (roadmap 26, решение 11). Нет — прежняя
+   * вкладка «чат» (режим `tasks.tab = task`, где чаты уже во внутренних вкладках, и превью настроек).
+   */
+  chats?: readonly TaskChatRow[];
 }) {
   const t = ui.task;
   const card = state.card;
@@ -132,16 +140,20 @@ export function TaskStrip({
   return (
     <div class="tk-strip" role="region" aria-label={t.stripAria}>
       <span class="vtabs" role="tablist" aria-label={t.viewAria}>
-        <button role="tab" id="vtab-chat" class={view === 'chat' ? 'vtab on' : 'vtab'} aria-selected={view === 'chat'} onClick={() => onView('chat')}>
-          {ui.tabs.chat}
-          {away && activity.waiting && <span class="wt" role="img" aria-label={t.waitDotTitle} data-tip={t.waitDotTitle} />}
-          {away && !activity.waiting && activity.working && (
-            <>
-              <span class="spin" role="img" aria-label={t.turnTitle} data-tip={t.turnTitle} />
-              {activity.fresh > 0 && <i class="nb">{activity.fresh}</i>}
-            </>
-          )}
-        </button>
+        {chats ? (
+          <ChatChips state={state} chats={chats} view={view} onView={onView} activity={activity} />
+        ) : (
+          <button role="tab" id="vtab-chat" class={view === 'chat' ? 'vtab on' : 'vtab'} aria-selected={view === 'chat'} onClick={() => onView('chat')}>
+            {ui.tabs.chat}
+            {away && activity.waiting && <span class="wt" role="img" aria-label={t.waitDotTitle} data-tip={t.waitDotTitle} />}
+            {away && !activity.waiting && activity.working && (
+              <>
+                <span class="spin" role="img" aria-label={t.turnTitle} data-tip={t.turnTitle} />
+                {activity.fresh > 0 && <i class="nb">{activity.fresh}</i>}
+              </>
+            )}
+          </button>
+        )}
         <button role="tab" id="vtab-task" class={view === 'task' ? 'vtab on' : 'vtab'} aria-selected={view === 'task'} onClick={() => onView('task')}>
           {ui.tabs.task}
           {view !== 'task' && unseen > 0 && (
@@ -168,6 +180,145 @@ export function TaskStrip({
         </button>
       )}
     </div>
+  );
+}
+
+/** Индикаторы текущего чата, пока открыта «задача»/«код»: ждёт ответа — жёлтая точка, идёт ход — спиннер и число новых. */
+function ActivityMarks({ activity }: { activity: ChatActivity }) {
+  const t = ui.task;
+  return (
+    <>
+      {activity.waiting && <span class="wt" role="img" aria-label={t.waitDotTitle} data-tip={t.waitDotTitle} />}
+      {!activity.waiting && activity.working && (
+        <>
+          <span class="spin" role="img" aria-label={t.turnTitle} data-tip={t.turnTitle} />
+          {activity.fresh > 0 && <i class="nb">{activity.fresh}</i>}
+        </>
+      )}
+    </>
+  );
+}
+
+/**
+ * Чипы чатов задачи вместо вкладки «чат» (roadmap 26, решение 11; `task-chats.html#strip`): текущий чат — вкладка вида
+ * «чат» с индикаторами хода, остальные — точка состояния и переход `task.openChat`; нет строки текущего — первым
+ * идёт чип «новый чат». Больше четырёх — текущий и три последних, остальные в меню «ещё N ▾». Затем «＋ чат»:
+ * клик — всплывашка, ⌥+клик — сразу.
+ */
+function ChatChips({
+  state,
+  chats,
+  view,
+  onView,
+  activity,
+}: {
+  state: TaskStateMessage & { taskKey: string };
+  chats: readonly TaskChatRow[];
+  view: TaskViewName;
+  onView: (v: TaskViewName) => void;
+  activity: ChatActivity;
+}) {
+  const t = ui.task;
+  const away = view !== 'chat';
+  const { shown, hidden, synthetic } = stripChats(chats);
+  const [more, setMore] = useState(false);
+  useEffect(() => {
+    if (!more) return;
+    const off = (e: Event) => {
+      if (!(e.target as Element | null)?.closest?.('.cmore')) setMore(false);
+    };
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setMore(false);
+    document.addEventListener('pointerdown', off, true);
+    document.addEventListener('keydown', esc, true);
+    return () => {
+      document.removeEventListener('pointerdown', off, true);
+      document.removeEventListener('keydown', esc, true);
+    };
+  }, [more]);
+  const menuOpen = more && hidden.length > 0;
+
+  const current = (c: TaskChatRow | undefined) => {
+    const label = c?.title || t.tabUntitled;
+    return (
+      <button
+        key={c?.id ?? 'new'}
+        role="tab"
+        id="vtab-chat"
+        class={view === 'chat' ? 'cc cur on' : 'cc cur'}
+        aria-selected={view === 'chat'}
+        data-tip={label}
+        onClick={() => onView('chat')}
+      >
+        <Mark provider={c?.provider} />
+        <span class="n">{label}</span>
+        {away && <ActivityMarks activity={activity} />}
+      </button>
+    );
+  };
+  const other = (c: TaskChatRow) => {
+    const label = c.title || t.tabUntitled;
+    const st = c.state === 'idle' ? undefined : t.chipState[c.state];
+    return (
+      <button
+        key={c.id}
+        role="tab"
+        class="cc"
+        aria-selected={false}
+        data-state={c.state}
+        data-tip={t.chipTitle(label, st)}
+        onClick={() => send({ type: 'task.openChat', sessionId: c.id })}
+      >
+        <Mark provider={c.provider} />
+        <span class="n">{label}</span>
+        {st && <span class={`lv ${c.state}`} role="img" aria-label={st} />}
+      </button>
+    );
+  };
+  return (
+    <>
+      {synthetic && current(undefined)}
+      {shown.map((c) => (c.current ? current(c) : other(c)))}
+      {hidden.length > 0 && (
+        <span class="cmore">
+          <button
+            class="cc more"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            data-tip={t.chipMoreTitle}
+            onClick={() => setMore(!more)}
+          >
+            {t.chipMore(hidden.length)}
+          </button>
+          {menuOpen && (
+            <div class="cmenu" role="menu">
+              {hidden.map((c) => {
+                const st = c.state === 'idle' ? undefined : t.chipState[c.state];
+                return (
+                  <button
+                    key={c.id}
+                    role="menuitem"
+                    class="it"
+                    onClick={() => {
+                      setMore(false);
+                      send({ type: 'task.openChat', sessionId: c.id });
+                    }}
+                  >
+                    <Mark provider={c.provider} />
+                    <span class="n">{c.title || t.tabUntitled}</span>
+                    {st && <span class={`lv ${c.state}`} role="img" aria-label={st} />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </span>
+      )}
+      <button class="np" aria-label={t.newChatBtnTitle} data-tip={t.newChatBtnTitle} onClick={(e) => startNewChat(e, state.taskKey)}>
+        <b aria-hidden="true">＋</b>
+        {t.newChatBtn}
+      </button>
+      <span class="sep" />
+    </>
   );
 }
 
@@ -201,7 +352,7 @@ export function ChatTabs({ state }: { state: TabChatsMessage }) {
           </span>
         );
       })}
-      <button class="plus" aria-label={t.tabNew} data-tip={t.tabNew} onClick={() => send({ type: 'tab.new' })}>
+      <button class="plus" aria-label={t.tabNew} data-tip={t.tabNew} onClick={(e) => startNewChat(e, state.taskKey)}>
         ＋
       </button>
       <span class="rt">{t.tabCount(state.chats.length)}</span>

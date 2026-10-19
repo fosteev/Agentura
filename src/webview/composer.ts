@@ -43,13 +43,14 @@ export interface SlashItem {
 }
 
 /** Собственные команды расширения: обрабатываются в webview/хосте, не уходят движку. */
-export const OWN_COMMANDS = ['plan', 'compact', 'clear', 'status', 'rc', 'remote-control'] as const;
+export const OWN_COMMANDS = ['plan', 'compact', 'clear', 'status', 'rc', 'remote-control', 'new', 'fork'] as const;
 
 /**
  * Собственные команды, доступные движку: `/plan` — режим (`modes`), `/compact` — сжатие (`compact`),
- * `/rc` и `/remote-control` — Remote Control (`remote`, только Claude).
+ * `/rc` и `/remote-control` — Remote Control (`remote`, только Claude), `/new` и `/fork` — новый чат по задаче
+ * (roadmap 26, `task`: только во вкладке чата по задаче, движок любой).
  */
-export function ownCommands(f: { modes: boolean; compact: boolean; remote?: boolean }): string[] {
+export function ownCommands(f: { modes: boolean; compact: boolean; remote?: boolean; task?: boolean }): string[] {
   return OWN_COMMANDS.filter((n) =>
     n === 'plan'
       ? f.modes
@@ -57,7 +58,9 @@ export function ownCommands(f: { modes: boolean; compact: boolean; remote?: bool
         ? f.compact
         : n === 'rc' || n === 'remote-control'
           ? !!f.remote
-          : true,
+          : n === 'new' || n === 'fork'
+            ? !!f.task
+            : true,
   );
 }
 
@@ -70,7 +73,7 @@ export function buildSlashItems(
   slashCommands: readonly string[],
   skills: readonly string[],
   ownDescriptions: Readonly<Record<string, string>>,
-  own: readonly string[] = OWN_COMMANDS,
+  own: readonly string[] = ownCommands({ modes: true, compact: true, remote: true }),
 ): SlashItem[] {
   const skillSet = new Set(skills);
   const described = new Map(engine.map((c) => [c.name, c.description]));

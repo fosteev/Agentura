@@ -66,6 +66,7 @@ import {
 import { quotaView, type LimitMeter } from '../hudView';
 import { deferredNote } from '../limitView';
 import { menuKeys } from '../a11y';
+import { currentTaskKey, runNewChatCommand } from '../newChat';
 import { mcpCounts, mcpSurfaceShown } from '../mcpView';
 import { McpSections } from './McpRows';
 import { ui, uiLang } from '../strings';
@@ -398,7 +399,7 @@ export function Composer() {
             s.slashCommands,
             s.skills,
             Object.fromEntries(Object.entries(ui.commands).map(([k, v]) => [k, v[0]])),
-            ownCommands(features.value),
+            ownCommands({ ...features.value, task: !!currentTaskKey() }),
           ),
           trig.query,
         )
@@ -458,10 +459,20 @@ export function Composer() {
       return;
     }
     const cmd = /^\/([\w:.-]+)(?:\s+([\s\S]*))?$/.exec(t);
+    // `/new` и `/fork` — свои команды только во вкладке задачи (roadmap 26); вне её — обычный текст движку
+    const newChatCmd = cmd && (cmd[1] === 'new' || cmd[1] === 'fork') && currentTaskKey() ? cmd[1] : undefined;
     // лимит: уходит к движку всё, кроме локальных команд
-    if (blocked && !(cmd && ['clear', 'status', 'plan', 'rc', 'remote-control'].includes(cmd[1]!)))
+    if (
+      blocked &&
+      !newChatCmd &&
+      !(cmd && ['clear', 'status', 'plan', 'rc', 'remote-control'].includes(cmd[1]!))
+    )
       return;
-    if (cmd) {
+    if (newChatCmd && runNewChatCommand(newChatCmd, cmd![2] ?? '')) {
+      writeText('');
+      return;
+    }
+    if (cmd && cmd[1] !== 'new' && cmd[1] !== 'fork') {
       const name = cmd[1]!;
       // команды, которых у движка нет (`/plan`, `/compact` у Codex): не уходят ему текстом, а отвечают на месте
       if (!ownCommands(features.value).includes(name) && OWN_COMMANDS.some((n) => n === name)) {

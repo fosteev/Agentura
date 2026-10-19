@@ -860,7 +860,19 @@ export function TaskTabPreview({ mode }: { mode: TaskTabMode }) {
         ))}
       </div>
       <div class="ttp-chat">
-        <TaskStrip state={st} {...STRIP_IDLE} />
+        {/* `chat`: чаты задачи чипами в полосе (roadmap 26); `task`: они уже во внутренних вкладках */}
+        <TaskStrip
+          state={st}
+          {...STRIP_IDLE}
+          {...(mode === 'task'
+            ? {}
+            : {
+                chats: [
+                  { id: 'c1', title: chat1, provider: 'claude', updatedAt: 1, state: 'idle', current: false },
+                  { id: 'c2', title: chat2, provider: 'codex', updatedAt: 2, state: 'live', current: true },
+                ],
+              })}
+        />
         {mode === 'task' && <ChatTabs state={inner} />}
         <div class="ttp-feed">{lines(4)}</div>
       </div>
