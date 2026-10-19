@@ -246,6 +246,23 @@ for (const theme of ['dark', 'light']) {
   }
 }
 
+// roadmap 26: new chats inside a task (`node scripts/readme-shots/run.mjs newchat`); frames newchat-strip, -pop, -slash, -many.
+const newChatJobs = [];
+for (const theme of ['dark', 'light']) {
+  for (const [frame, rows, click] of [
+    ['strip', data.newChatRows(), undefined],
+    ['pop', data.newChatRows(), '.tstrip .np, .np'],
+    ['slash', data.newChatRows(), [{ type: '.typed', text: '/new' }]],
+    ['many', data.newChatRowsMany(), '.cc.more'],
+  ]) {
+    newChatJobs.push(async () => {
+      const panel = { ...WIDE, tab: 'changes', view: 'chat', taskView: 'comments', taskSeen: seenOld(), taskSeenKey: data.TASK_KEY };
+      const page = chatPage(theme, data.taskTurn(), panel, { extra: [data.taskState(), rows], ...(click ? { click } : {}) });
+      await single(await shot(page, png('tnew'), 1100, 760), out(`newchat-${frame}`, theme));
+    });
+  }
+}
+
 // README picture: sidebar with the task group + chat with the "changes" feed (dark), like the hero
 taskJobs.push(async () => {
   const side = taskSidebar('dark', 'groups');
@@ -328,7 +345,7 @@ for (const theme of ['dark', 'light']) {
   }
 }
 
-  await pool(process.argv[2] === 'tasks' ? taskJobs : process.argv[2] === 'code' ? codeJobs : process.argv[2] === 'mcp' ? mcpJobs : process.argv[2] === 'archive' ? archiveJobs : [...jobs, ...taskJobs, ...mcpJobs], 4);
+  await pool(process.argv[2] === 'tasks' ? taskJobs : process.argv[2] === 'code' ? codeJobs : process.argv[2] === 'newchat' ? newChatJobs : process.argv[2] === 'mcp' ? mcpJobs : process.argv[2] === 'archive' ? archiveJobs : [...jobs, ...taskJobs, ...mcpJobs], 4);
   console.log(`done: ${OUT}`);
 } finally {
   if (!process.env.KEEP_TMP) rmSync(TMP, { recursive: true, force: true });

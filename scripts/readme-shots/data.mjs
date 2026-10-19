@@ -361,3 +361,24 @@ export function mcpTurn() {
   ev.splice(i, 0, ...extra);
   return ev;
 }
+
+// ---- New task chats (roadmap 26, session 3): strip chips, "+ chat" popover, "N more" menu ---------------------------
+
+export const newChatRows = () => ({
+  type: 'task.chats', taskKey: TASK_KEY, newChat: { worktree: true, summary: true },
+  chats: [
+    { id: 's1', title: 'Fix board counter blink', updatedAt: ago(1), state: 'live', current: true },
+    { id: 's3', title: 'Hall board: same blink', provider: 'codex', updatedAt: ago(95), state: 'idle', current: false },
+    { id: 's4', title: 'Retry backoff review', provider: 'antigravity', updatedAt: ago(130), state: 'waiting', current: false },
+  ],
+});
+export const newChatRowsMany = () => {
+  const r = newChatRows();
+  r.chats.push(
+    { id: 's5', title: 'Reconnect tests', updatedAt: ago(200), state: 'idle', current: false },
+    { id: 's6', title: 'Board socket refactor in its own worktree', provider: 'codex', updatedAt: ago(300), state: 'error', current: false },
+    { id: 's7', title: 'Release notes draft', updatedAt: ago(500), state: 'idle', current: false },
+    { id: 's8', title: 'Wallboard layout check', provider: 'antigravity', updatedAt: ago(700), state: 'idle', current: false },
+  );
+  return r;
+};

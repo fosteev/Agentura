@@ -216,6 +216,20 @@ git log --oneline origin/develop..feature/NEWMFC-1482           # commits of suc
 
 A commit is found only if the key is in its message (`NEWMFC-1482: …`) or on a branch whose name has it (`feature/NEWMFC-1482`). "Uncommitted" is not read from git status alone: it is the files agents edited in the task's chats, so hand edits made without an agent are not listed.
 
+### New chats inside a task
+
+With `agentura.tasks.tab=chat` the task strip shows the task's chats as chips: engine mark, title, a dot for a chat that is working, waiting for you or failed (a click opens it). The current chat keeps its turn indicators; with more than four chats the current one and the three latest stay, the rest are under "N more". Three ways to start another chat on the same task:
+
+- **"+ chat"** (or "+" among the inner tabs with `tasks.tab=task`) opens a popover: the first message (optional), the engine (claude, codex, antigravity), what to carry over, where it works, and "create" or "beside" (next to this tab). **Alt+click** skips the questions: a new chat on this tab's engine with the task context.
+- **`/new [engine] [text]`** in the input box of a task chat: the first word may be `claude`, `codex`, `agy` or `antigravity`; the text becomes the first message and is sent by itself.
+- **`/fork [text]`**: the same on this chat's engine, plus a summary of this chat. Both commands exist only in task chats.
+
+What goes to the new chat, each as a text attachment you can remove with the chip's ×: the task context (`<KEY>.md`, as in "Chat for Issue…"), a summary of this chat (`<KEY>-handoff.md`: goal, what is done, what is left, decisions, next steps; written by Claude whatever the source engine) and the task changes (`<KEY>-changes.md`: commits and uncommitted files from the "code" tab). Codex and Antigravity do not take files, so for them the attachments go into the message's context block (the feed does not show it). If the summary or the changes cannot be prepared, the chat opens without them and says so in a notification.
+
+"Own worktree" runs `git worktree add -b feature/<KEY>-<n> <repo>-<KEY>-<n> HEAD` next to the repository and opens the chat there, so two agents do not edit the same files. Uncommitted changes of the source chat do not move over. The branch name carries the key, so the "code" tab finds it. Agentura never deletes the worktree; when the work is merged, run `git worktree remove <path>` (and `git branch -d feature/<KEY>-<n>`) yourself. A chat in a worktree keeps its folder after Reload Window.
+
+The engine of the new chat is not saved to `agentura.defaultProvider`. Outside editors cannot start such a chat: `agentura.openWithContext` ignores a working folder and auto-send, and `agentura.chatForTask` ignores the summary, changes, worktree and "beside" options.
+
 ## MCP servers and skills
 
 What the agent reaches for is visible without opening `/mcp`.

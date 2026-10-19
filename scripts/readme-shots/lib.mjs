@@ -60,7 +60,16 @@ window.acquireVsCodeApi=function(){return{
  getState:function(){return __state},setState:function(s){__state=s}}};
 </script></head>
 <body class="vscode-${theme}" data-vscode-theme-kind="vscode-${theme}" style="margin:0;background:${bg ?? t.bg};color:${t.fg};font-family:var(--vscode-font-family);font-size:13px">
-<div id="root"></div><script type="module" src="${furl(join(ROOT, 'dist', 'webview', `${surface}.js`))}"></script>${click ? `<script>setTimeout(function(){var e=document.querySelector(${json(click)});if(e)e.click()},1500)</script>` : ''}</body></html>`;
+<div id="root"></div><script type="module" src="${furl(join(ROOT, 'dist', 'webview', `${surface}.js`))}"></script>${click ? clickScript(click) : ''}</body></html>`;
+}
+
+/** `click`: a selector, or a list of steps (selector = click it; {type: selector, text} = type into a contenteditable), 600 ms apart. */
+function clickScript(click) {
+  const steps = Array.isArray(click) ? click : [click];
+  return `<script>var __steps=${json(steps)};__steps.forEach(function(s,i){setTimeout(function(){
+ if(typeof s==='string'){var e=document.querySelector(s);if(e)e.click()}
+ else{var t=document.querySelector(s.type);if(t){t.focus();t.textContent=s.text;var r=document.createRange();r.selectNodeContents(t);r.collapse(false);var g=getSelection();g.removeAllRanges();g.addRange(r);t.dispatchEvent(new Event('input',{bubbles:true}))}}
+},1500+600*i)})</script>`;
 }
 
 /** Wrapper page: iframes side by side, plain `rows` of [file, width] with 1 px dividers. */
