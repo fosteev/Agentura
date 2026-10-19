@@ -221,6 +221,32 @@ export interface TaskChatsMessage {
   type: 'task.chats';
   taskKey?: string;
   chats: TaskChatRow[];
+  /**
+   * Что доступно новому чату задачи из этой вкладки (roadmap 26): `worktree` — рабочая папка вкладки в git-репозитории,
+   * `summary` — у вкладки есть сессия и Claude умеет одноразовый запрос (итог чата). Нет поля — ничего из этого.
+   */
+  newChat?: { worktree: boolean; summary: boolean };
+}
+
+/** Что передать в новый чат задачи (roadmap 26): контекст задачи, итог чата-источника, изменения задачи. */
+export interface NewChatCarry {
+  task?: boolean;
+  summary?: boolean;
+  changes?: boolean;
+}
+
+/** Где работает новый чат задачи: та же папка или своя git worktree. */
+export type NewChatWhere = 'same' | 'worktree';
+
+/** Первое сообщение нового чата задачи, символов. */
+export const NEW_CHAT_PROMPT_LIMIT = 2_000;
+
+/** Проверка недоверенного `carry`: объект только с булевыми полями `task`/`summary`/`changes`. */
+export function isNewChatCarry(v: unknown): v is NewChatCarry {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return false;
+  return Object.entries(v as Record<string, unknown>).every(
+    ([k, x]) => (k === 'task' || k === 'summary' || k === 'changes') && typeof x === 'boolean',
+  );
 }
 
 /** Статус файла во вкладке «код»: изменён, добавлен, удалён, переименован, сменился тип. */

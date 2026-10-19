@@ -22,9 +22,15 @@ export interface TaskMeta {
   url: string;
 }
 
+/**
+ * Сессия группы. `cwd` — рабочая папка чата, если она не папка воркспейса (своя worktree, roadmap 26, Д2): по ней список
+ * сессий находит беседы Codex/Antigravity этой папки, а возобновление открывает чат в ней.
+ */
+export type GroupRef = SessionRef & { cwd?: string };
+
 export interface TaskGroup {
   task: TaskMeta;
-  sessions: SessionRef[];
+  sessions: GroupRef[];
   /** Когда сессия вошла в группу (мс) — от этой точки лента изменений задачи относится к чату. */
   openedAt: Record<string, number>;
 }
@@ -104,12 +110,13 @@ function mergeMeta(old: TaskMeta, next: Partial<TaskMeta>): TaskMeta {
   };
 }
 
-function sessionRef(v: unknown): SessionRef | undefined {
+function sessionRef(v: unknown): GroupRef | undefined {
   if (!v || typeof v !== 'object') return undefined;
-  const { provider, id } = v as SessionRef;
-  return isProvider(provider) && typeof id === 'string' && id && id.length <= 200 && id !== '__proto__'
-    ? { provider, id }
-    : undefined;
+  const { provider, id, cwd } = v as Record<string, unknown>;
+  if (!isProvider(provider) || typeof id !== 'string' || !id || id.length > 200 || id === '__proto__') return undefined;
+  // что папка есть — проверит вкладка (`chatCwd`); здесь только форма
+  const okCwd = typeof cwd === 'string' && cwd.length > 0 && cwd.length <= 1_024 && !cwd.includes('\0');
+  return { provider, id, ...(okCwd ? { cwd } : {}) };
 }
 
 function readGroups(state: MementoLike): Record<TaskKey, TaskGroup> {
@@ -124,7 +131,7 @@ function readGroups(state: MementoLike): Record<TaskKey, TaskGroup> {
     if (!task || !Array.isArray(list) || taskKey !== taskKeyOf(task.instanceId, task.key)) continue;
     const sessions = list
       .map(sessionRef)
-      .filter((r): r is SessionRef => !!r)
+      .filter((r): r is GroupRef => !!r)
       .filter((r, i, all) => all.findIndex((x) => x.provider === r.provider && x.id === r.id) === i);
     if (sessions.length === 0) continue;
     const opened = (g as { openedAt?: unknown }).openedAt;
@@ -203,11 +210,30 @@ export class TaskGroups {
     return undefined;
   }
 
+  /** Ссылка группы на сессию `id` (с `cwd`, если он записан); нет — `undefined`. */
+  refOf(sessionId: string): GroupRef | undefined {
+    for (const group of Object.values(this.groups())) {
+      const ref = group.sessions.find((s) => s.id === sessionId);
+      if (ref) return ref;
+    }
+    return undefined;
+  }
+
+  /** Свои рабочие папки (`cwd` ссылок) сессий движка `provider` во всех группах, без повторов (Д2). */
+  cwds(provider: SessionRef['provider']): string[] {
+    const out = new Set<string>();
+    for (const group of Object.values(this.groups())) {
+      for (const s of group.sessions) if (s.provider === provider && s.cwd) out.add(s.cwd);
+    }
+    return [...out];
+  }
+
   /**
    * Добавить сессию в группу (создать её). Из другой группы сессия уходит; уже состоящая в этой — сохраняет
-   * свой `openedAt`. Метаданные обновляются новыми (поля, которых нет в новых, остаются прежними).
+   * свой `openedAt`. Метаданные обновляются новыми (поля, которых нет в новых, остаются прежними). `ref.cwd` —
+   * своя рабочая папка чата (Д2): пишется и обновляет прежнюю; нет — прежняя остаётся.
    */
-  add(taskKey: TaskKey, meta: TaskMeta, ref: SessionRef, openedAt: number): void {
+  add(taskKey: TaskKey, meta: TaskMeta, ref: GroupRef, openedAt: number): void {
     // группа с ключом не своей задачи или битый id отбросились бы при следующем чтении — не пишем вовсе
     if (taskKey !== taskKeyOf(meta.instanceId, meta.key) || !sessionRef(ref)) return;
     const all = this.groups();
@@ -219,7 +245,10 @@ export class TaskGroups {
     }
     const group = (all[taskKey] ??= { task: meta, sessions: [], openedAt: {} });
     group.task = mergeMeta(group.task, meta);
-    if (!group.sessions.some((s) => s.id === ref.id)) group.sessions.push({ provider: ref.provider, id: ref.id });
+    const cwd = sessionRef(ref)?.cwd;
+    const had = group.sessions.find((s) => s.id === ref.id);
+    if (!had) group.sessions.push({ provider: ref.provider, id: ref.id, ...(cwd ? { cwd } : {}) });
+    else if (cwd) had.cwd = cwd;
     group.openedAt[ref.id] = kept;
     this.save(all);
   }

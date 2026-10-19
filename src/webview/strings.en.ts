@@ -359,6 +359,12 @@ export const en: Ui = {
           : 'session closed',
     status: (model: string, mode: string | undefined, cwd: string) =>
       `/status · model ${model}${mode ? ` · mode ${mode}` : ''} · ${cwd}`,
+    autoSendHeld: (why: 'limit' | 'closed' | 'busy') =>
+      why === 'limit'
+        ? 'first message not sent: limit reached — it is in the input, send it after the reset'
+        : why === 'busy'
+          ? 'first message not sent: images are still being prepared — it is in the input'
+          : 'first message not sent: session closed — it is in the input',
     commandUnavailable: (name: string) => `/${name} is not available for this agent`,
     planOn: 'plan mode on',
     remoteOn: (url: string) => `Remote Control on · ${url}`,

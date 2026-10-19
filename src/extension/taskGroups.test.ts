@@ -71,6 +71,32 @@ describe('TaskGroups', () => {
     expect(g.groupOf('нет')).toBeUndefined();
   });
 
+  it('add с cwd (roadmap 26, Д2): своя папка пишется, обновляется, переживает чтение; refOf и cwds', () => {
+    const m = memento();
+    const g = new TaskGroups(m);
+    g.add(K1, meta(), { provider: 'codex', id: 'x1', cwd: '/w/app-NEWMFC-1-2' }, 100);
+    g.add(K1, meta(), { provider: 'claude', id: 's1' }, 100);
+    g.add(K2, meta('NEWMFC-2'), { provider: 'antigravity', id: 'a1', cwd: '/w/app-NEWMFC-2-2' }, 100);
+    // повторный add без cwd прежний не стирает
+    g.add(K1, meta(), { provider: 'codex', id: 'x1' }, 200);
+    expect(g.refOf('x1')).toEqual({ provider: 'codex', id: 'x1', cwd: '/w/app-NEWMFC-1-2' });
+    expect(g.refOf('s1')).toEqual({ provider: 'claude', id: 's1' });
+    expect(g.cwds('codex')).toEqual(['/w/app-NEWMFC-1-2']);
+    expect(g.cwds('antigravity')).toEqual(['/w/app-NEWMFC-2-2']);
+    expect(g.cwds('claude')).toEqual([]);
+    g.add(K1, meta(), { provider: 'codex', id: 'x1', cwd: '/w/app-NEWMFC-1-3' }, 300);
+    expect(new TaskGroups(m).refOf('x1')?.cwd).toBe('/w/app-NEWMFC-1-3');
+    // кривой cwd в хранилище — ссылка без него
+    const bad = new TaskGroups(
+      memento({
+        'agentura.taskGroups': {
+          [K1]: { task: meta(), sessions: [{ provider: 'codex', id: 'x9', cwd: 7 }], openedAt: {} },
+        },
+      }),
+    );
+    expect(bad.refOf('x9')).toEqual({ provider: 'codex', id: 'x9' });
+  });
+
   it('add: ключ не своей задачи и битый id не пишутся', () => {
     const m = memento();
     const g = new TaskGroups(m);

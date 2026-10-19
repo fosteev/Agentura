@@ -15,10 +15,13 @@ import { ChatController, type ChatDeps } from './chatController';
 class Session implements AgentSession {
   readonly events = new EventHub<AgentEvent>();
   sent: string[] = [];
+  /** Файлы каждого `send` (нет — `undefined`). */
+  sentFiles: (readonly { kind: string; path: string }[] | undefined)[] = [];
   disposed = false;
   constructor(public id: string) {}
-  send(text: string) {
+  send(text: string, _images?: unknown, files?: readonly { kind: string; path: string }[]) {
     this.sent.push(text);
+    this.sentFiles.push(files);
     return true;
   }
   responded: [string, string][] = [];
@@ -404,6 +407,35 @@ describe('ChatController: выбор движка engine.set', () => {
     await controller.handle({ type: 'engine.set', provider: 'claude' });
     expect(claude.sessions).toHaveLength(1);
     expect(remembered).toEqual([]);
+  });
+
+  it('текстовые вложения (roadmap 26): Codex — в блок контекста, pdf до адаптера не доходит (Д8); Claude — файлами', async () => {
+    const files = [
+      { kind: 'text', path: 'K-1.md', data: '# K-1', size: 5 },
+      { kind: 'pdf', path: 'a.pdf', data: 'JVBERi0=', size: 6 },
+    ];
+    const cx = setup({ provider: 'codex' });
+    cx.controller.start();
+    await tick();
+    await cx.controller.handle({ type: 'send', sessionId: '', text: 'продолжи', files } as never);
+    const s = cx.codex.sessions[0]!;
+    expect(s.sent[0]).toBe('продолжи\n\n[Agentura: контекст]\n--- K-1.md ---\n# K-1');
+    expect(s.sentFiles[0]).toBeUndefined();
+    const cl = setup();
+    cl.controller.start();
+    await tick();
+    await cl.controller.handle({ type: 'send', sessionId: '', text: 'продолжи', files } as never);
+    expect(cl.claude.sessions[0]!.sent[0]).toBe('продолжи');
+    expect(cl.claude.sessions[0]!.sentFiles[0]?.map((f) => f.path)).toEqual(['K-1.md', 'a.pdf']);
+  });
+
+  it('Д8: движку без файлов только pdf и нет текста — сообщение не уходит (пустое)', async () => {
+    const cx = setup({ provider: 'codex' });
+    cx.controller.start();
+    await tick();
+    const files = [{ kind: 'pdf', path: 'a.pdf', data: 'JVBERi0=', size: 6 }];
+    await cx.controller.handle({ type: 'send', sessionId: '', text: '', files } as never);
+    expect(cx.codex.sessions[0]?.sent ?? []).toEqual([]);
   });
 
   it('после первого сообщения выбор игнорируется', async () => {

@@ -34,7 +34,9 @@ function mount() {
   mounted.push(host);
   document.body.append(host);
   // вкладка «агенты» открыта: виды Б/В/Г на скрытой вкладке модель не строят
-  stored ??= { panel: { tab: 'agents' } };
+  // `chat.info` уже записал в состояние рабочую папку (`panel.cwd`, roadmap 26) — вкладку дописываем рядом
+  const st = (stored ?? {}) as { panel?: Record<string, unknown> };
+  if (!st.panel?.tab) stored = { ...st, panel: { ...st.panel, tab: 'agents' } };
   render(h(Chat, {}), host);
   return host;
 }

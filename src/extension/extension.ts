@@ -89,6 +89,8 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     // беседы Antigravity: база и индекс бесед; без `agy` (или без `node:sqlite` — тогда индекс) строк нет, ошибок тоже
     antigravity: { adapter: antigravityAdapter, available: () => antigravityEngine.available() },
     cwd,
+    // беседы Codex/agy своих worktree чатов задач (roadmap 26, Д2): их папки — в ссылках групп
+    extraCwds: (p) => taskGroups.cwds(p),
     live,
     cache: transcripts,
     log: { debug: (m) => log.debug(m), warn: (m) => log.warn(m) },

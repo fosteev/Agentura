@@ -26,6 +26,17 @@ describe('контекст сообщения', () => {
     expect(p).toContain('````\n```ts\ncode\n```\n````');
   });
 
+  it('текстовые вложения движку без файлов (roadmap 26): в конце блока, лента видит только текст', () => {
+    const p = buildPrompt('продолжи', [], {}, [
+      { name: 'K-1.md', text: '# K-1' },
+      { name: 'K-1-handoff.md', text: 'итог' },
+    ]);
+    expect(p).toBe('продолжи\n\n[Agentura: контекст]\n--- K-1.md ---\n# K-1\n\n--- K-1-handoff.md ---\nитог');
+    expect(splitPrompt(p).text).toBe('продолжи');
+    const both = buildPrompt('x', [{ kind: 'file', path: 'src/a.ts' }], {}, [{ name: 'n.md', text: 't' }]);
+    expect(both).toBe('x\n\n[Agentura: контекст]\n- файл: src/a.ts\n\n--- n.md ---\nt');
+  });
+
   it('текст без маркера — как есть', () =>
     expect(splitPrompt('просто')).toEqual({ text: 'просто' }));
 

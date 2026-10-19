@@ -214,6 +214,92 @@ describe('поле ввода', () => {
     expect(chat.value.title).toBe('новая');
   });
 
+  it('composer.prefill: без send — только текст в поле; с send (roadmap 26) — уходит обычной отправкой с файлами', async () => {
+    const host = mount();
+    handleHostMessage({ type: 'composer.prefill', text: 'просто текст' });
+    await flush();
+    const ed = host.querySelector<HTMLElement>('.typed')!;
+    expect(ed.textContent).toBe('просто текст');
+    expect(posted.filter((m) => (m as { type: string }).type === 'send')).toHaveLength(0);
+    ed.textContent = '';
+    ed.dispatchEvent(new Event('input', { bubbles: true }));
+    await flush();
+    handleHostMessage({
+      type: 'file.picked',
+      items: [{ name: 'K-1.md', path: 'K-1.md', kind: 'text', data: '# K-1', size: 5 }],
+    });
+    handleHostMessage({ type: 'composer.prefill', text: 'продолжи', send: true });
+    await flush();
+    await flush();
+    const sent = posted.filter((m) => (m as { type: string }).type === 'send');
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({
+      type: 'send',
+      text: 'продолжи',
+      files: [{ kind: 'text', path: 'K-1.md', data: '# K-1' }],
+    });
+    expect(ed.textContent).toBe('');
+    // поле живёт на сигналах: не снятое заберёт prefill следующего теста
+    render(null, host);
+  });
+
+  it('composer.prefill с send в непустое поле — не пишет и не отправляет набранное', async () => {
+    const host = mount();
+    const ed = type(host, 'моё');
+    await flush();
+    handleHostMessage({ type: 'composer.prefill', text: 'чужое', send: true });
+    await flush();
+    await flush();
+    expect(ed.textContent).toBe('моё');
+    expect(posted.filter((m) => (m as { type: string }).type === 'send')).toHaveLength(0);
+    render(null, host);
+  });
+
+  it('Д5: автоотправка `/текста` — обычное сообщение с файлами, не локальная команда', async () => {
+    const host = mount();
+    handleHostMessage({
+      type: 'file.picked',
+      items: [{ name: 'K-1.md', path: 'K-1.md', kind: 'text', data: '# K-1', size: 5 }],
+    });
+    handleHostMessage({ type: 'composer.prefill', text: '/clear и продолжи', send: true });
+    await flush();
+    await flush();
+    const sent = posted.filter((m) => (m as { type: string }).type === 'send');
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ text: '/clear и продолжи', files: [{ path: 'K-1.md' }] });
+    expect(posted.some((m) => (m as { type: string }).type === 'session.new')).toBe(false);
+    render(null, host);
+  });
+
+  it('Д5: автоотправка при лимите — текст остаётся в поле, в ленте строка почему', async () => {
+    limits.value = {
+      windows: [{ kind: 'five-hour', percent: 100, resetsAt: Date.now() + 3_600_000 }],
+      updatedAt: Date.now(),
+    } as typeof limits.value;
+    tick.value = Date.now();
+    const host = mount();
+    handleHostMessage({ type: 'composer.prefill', text: 'продолжи', send: true });
+    await flush();
+    await flush();
+    expect(posted.filter((m) => (m as { type: string }).type === 'send')).toHaveLength(0);
+    expect(host.querySelector<HTMLElement>('.typed')!.textContent).toBe('продолжи');
+    const sys = chat.value.rows.filter((r) => r.kind === 'sys');
+    expect(JSON.stringify(sys.at(-1))).toContain('лимит');
+    render(null, host);
+  });
+
+  it('Д5: автоотправка в закрытую сессию — текст остаётся, строка в ленте', async () => {
+    chat.value = { ...chat.value, closed: { reason: 'exit' } };
+    const host = mount();
+    handleHostMessage({ type: 'composer.prefill', text: 'продолжи', send: true });
+    await flush();
+    await flush();
+    expect(posted.filter((m) => (m as { type: string }).type === 'send')).toHaveLength(0);
+    expect(host.querySelector<HTMLElement>('.typed')!.textContent).toBe('продолжи');
+    expect(JSON.stringify(chat.value.rows.filter((r) => r.kind === 'sys').at(-1))).toContain('сессия закрыта');
+    render(null, host);
+  });
+
   it('автоконтекст: чипы из редактора, крестик снимает, отправка несёт вложения', async () => {
     handleHostMessage({
       type: 'editor.context',

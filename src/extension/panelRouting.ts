@@ -53,12 +53,28 @@ export function routeNew(
   panels: readonly PanelView[],
   /** Новый чат вкладки задачи (`tasks.tab = task`): пустой чат занимается только в ней. */
   tab?: string,
+  /** Движок нового чата (roadmap 26): пустая вкладка другого движка не занимается. Нет — любой. */
+  provider?: AgentProvider,
 ): Route {
-  const free = (p: PanelView): boolean => p.pristine && p.tab === tab;
+  const free = (p: PanelView): boolean =>
+    p.pristine && p.tab === tab && (provider === undefined || (p.provider ?? 'claude') === provider);
   const spare = panels.findIndex((p) => free(p) && p.active);
   if (spare >= 0) return { kind: 'reveal', index: spare };
   const any = panels.findIndex(free);
   return any >= 0 ? { kind: 'reveal', index: any } : { kind: 'new' };
+}
+
+/**
+ * Вкладка нового чата с контекстом (`openWithContext`, roadmap 26). Всегда новая — при своей рабочей папке (у пустой
+ * вкладки папка воркспейса), «рядом» и автоотправке (в пустой или ожидающей вкладке поле ввода может быть не пустым:
+ * первое сообщение потерялось бы или ушло с чужим черновиком). Иначе — как «Новая сессия» с движком нового чата.
+ */
+export function routeContextNew(
+  panels: readonly PanelView[],
+  opts: { tab?: string | undefined; provider?: AgentProvider | undefined; cwd?: boolean; beside?: boolean; autoSend?: boolean },
+): Route {
+  if (opts.cwd || opts.beside || opts.autoSend) return { kind: 'new' };
+  return routeNew(panels, opts.tab, opts.provider);
 }
 
 /** «Открыть чат»: активная вкладка, иначе любая, иначе новая. */
@@ -96,4 +112,25 @@ export function restoredSessionId(
     return isTaken(ref) ? undefined : ref;
   }
   return remembered.find((x) => !isTaken(x));
+}
+
+/** Рабочая папка чата из состояния webview вкладки (`panel.cwd`, roadmap 26, Д1); нет или кривая — `undefined`. */
+export function stateCwd(state: unknown): string | undefined {
+  if (typeof state !== 'object' || state === null) return undefined;
+  const panel = (state as { panel?: unknown }).panel;
+  if (typeof panel !== 'object' || panel === null) return undefined;
+  const cwd = (panel as { cwd?: unknown }).cwd;
+  return typeof cwd === 'string' && cwd && cwd.length <= 1_024 ? cwd : undefined;
+}
+
+/**
+ * Рабочая папка восстанавливаемого или возобновляемого чата (roadmap 26, Д1, Д2): первая существующая из кандидатов
+ * по порядку — папка из состояния вкладки, `cwd` строки списка сессий, `cwd` ссылки группы задачи. Нет ни одной —
+ * `undefined` (папка воркспейса). Папка воркспейса среди них — тоже ответ (дальше её отсеет `chatCwd`).
+ */
+export function pickCwd(
+  candidates: readonly (string | undefined)[],
+  exists: (dir: string) => boolean,
+): string | undefined {
+  return candidates.find((c): c is string => !!c && exists(c));
 }

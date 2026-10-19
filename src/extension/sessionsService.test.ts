@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgentAdapter, SessionInfo } from '../agent/types';
 import { LiveSessions, TranscriptCache } from '../data/sessions';
-import { SessionsService } from './sessionsService';
+import { extraDirs, MAX_EXTRA_DIRS, mergeSessionLists, SessionsService } from './sessionsService';
 
 function setup(initial: SessionInfo[]) {
   let list = initial;
@@ -491,5 +491,65 @@ describe('SessionsService: беседы Antigravity (этап 6)', () => {
     expect(m.agyAdapter.renameSession).toHaveBeenCalledWith('a1', 'новое', '/nonexistent/project');
     expect(m.claudeAdapter.renameSession).not.toHaveBeenCalled();
     expect((await m.svc.list()).find((r) => r.id === 'a1')?.title).toBe('новое');
+  });
+});
+
+describe('SessionsService: беседы Codex/agy своих worktree чатов задач (roadmap 26, Д2)', () => {
+  it('extraDirs: папка проекта первой, без повторов, не больше MAX_EXTRA_DIRS своих', () => {
+    expect(extraDirs('/w/app', ['/w/app-K-1-2', '/w/app', '/w/app-K-1-2', ''])).toEqual(['/w/app', '/w/app-K-1-2']);
+    const many = Array.from({ length: 20 }, (_, i) => `/w/d${i}`);
+    expect(extraDirs('/w/app', many)).toHaveLength(MAX_EXTRA_DIRS + 1);
+  });
+
+  it('mergeSessionLists: по id без повторов, первая строка остаётся', () => {
+    const merged = mergeSessionLists([
+      [{ id: 'a', cwd: '/w/app' }],
+      [
+        { id: 'a', cwd: '/w/app-K-1-2' },
+        { id: 'b', cwd: '/w/app-K-1-2' },
+      ],
+    ]);
+    expect(merged).toEqual([
+      { id: 'a', cwd: '/w/app' },
+      { id: 'b', cwd: '/w/app-K-1-2' },
+    ]);
+  });
+
+  it('список Codex читается и по своим папкам, строки сливаются, cwd строки — реальный; сбой своей папки не ломает список', async () => {
+    const byDir: Record<string, SessionInfo[]> = {
+      '/nonexistent/project': [{ id: 'x1', title: 'x1', updatedAt: 1, cwd: '/nonexistent/project' }],
+      '/w/app-K-1-2': [{ id: 'x2', title: 'x2', updatedAt: 2, cwd: '/w/app-K-1-2' }],
+    };
+    const codexAdapter = {
+      listSessions: vi.fn(async (dir: string) => {
+        if (dir === '/w/broken') throw new Error('boom');
+        return byDir[dir] ?? [];
+      }),
+    } as unknown as AgentAdapter;
+    let own = ['/w/app-K-1-2', '/w/broken'];
+    const svc = new SessionsService({
+      adapter: { listSessions: vi.fn(async () => []) } as unknown as AgentAdapter,
+      codex: { adapter: () => codexAdapter, available: async () => true },
+      cwd: '/nonexistent/project',
+      extraCwds: (p) => (p === 'codex' ? own : []),
+      debounceMs: 10,
+      maxWaitMs: 50,
+      live: new LiveSessions(),
+      cache: new TranscriptCache(),
+      log: { debug: vi.fn(), warn: vi.fn() },
+      dir: '/tmp',
+      watch: () => ({ close: () => undefined }),
+    });
+    const rows = await svc.list();
+    expect(rows.map((r) => [r.id, r.provider, r.cwd])).toEqual([
+      ['x2', 'codex', '/w/app-K-1-2'],
+      ['x1', 'codex', '/nonexistent/project'],
+    ]);
+    expect(svc.cwdOfRow('x2')).toBe('/w/app-K-1-2');
+    // набор своих папок сменился — кэш не годится, список перечитывается и с новой папкой
+    own = [];
+    // кэш есть — отдаётся сразу, перечитывание идёт в фоне и пересобирает список
+    await svc.refresh();
+    await vi.waitFor(async () => expect((await svc.list()).map((r) => r.id)).toEqual(['x1']));
   });
 });

@@ -220,4 +220,22 @@ describe('восстановление вкладки задачи из сост
     expect(state).toEqual(persist);
     expect(restoredTabChats(state!, [])).toEqual({ refs: persist.chats, active: 1 });
   });
+
+  it('рабочая папка чата (roadmap 26, Д1) — в persist и обратно из состояния', () => {
+    const { tab, chat, chats } = setup();
+    chat({ ...st('idle', 'sa'), cwd: '/w/app' });
+    const b = chat({ provider: 'codex', status: 'idle', sessionId: 'sb', cwd: '/w/app-NEWMFC-1482-2' });
+    tab.activate(b.id);
+    tab.receive({ type: 'ready' });
+    const persist = chats().at(-1)!.persist;
+    expect(persist.chats).toEqual([
+      { provider: 'claude', id: 'sa', cwd: '/w/app' },
+      { provider: 'codex', id: 'sb', cwd: '/w/app-NEWMFC-1482-2' },
+    ]);
+    const state = readTaskTabState({ taskTab: persist });
+    expect(restoredTabChats(state!, []).refs[1]).toEqual({ provider: 'codex', id: 'sb', cwd: '/w/app-NEWMFC-1482-2' });
+    // кривой cwd в состоянии — чат без него (папку решит список сессий)
+    const bad = readTaskTabState({ taskTab: { taskKey: K, chats: [{ provider: 'claude', id: 'sa', cwd: 5 }] } });
+    expect(bad?.chats).toEqual([{ provider: 'claude', id: 'sa' }]);
+  });
 });

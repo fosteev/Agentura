@@ -364,6 +364,12 @@ const ru = {
           : 'сессия закрыта',
     status: (model: string, mode: string | undefined, cwd: string) =>
       `/status · модель ${model}${mode ? ` · режим ${mode}` : ''} · ${cwd}`,
+    autoSendHeld: (why: 'limit' | 'closed' | 'busy'): string =>
+      why === 'limit'
+        ? 'первое сообщение не отправлено: лимит исчерпан — оно в поле ввода, отправьте после сброса'
+        : why === 'busy'
+          ? 'первое сообщение не отправлено: картинки ещё готовятся — оно в поле ввода'
+          : 'первое сообщение не отправлено: сессия закрыта — оно в поле ввода',
     commandUnavailable: (name: string) => `/${name} недоступна для этого агента`,
     planOn: 'режим plan включён',
     remoteOn: (url: string) => `Remote Control включён · ${url}`,

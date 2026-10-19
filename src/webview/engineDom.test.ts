@@ -130,27 +130,35 @@ describe('chat.info: движок и флаги', () => {
     expect(limitBlocked.value).toBeUndefined();
   });
 
-  it('файлы в Codex-вкладке — красная плашка «агент не принимает», а не молча потерянный файл', () => {
+  it('pdf в Codex-вкладке — красная плашка «агент не принимает»; текстовый файл принят (хост впишет в контекст)', () => {
     info('codex');
-    addFiles([{ name: 'a.txt', path: 'a.txt', kind: 'text', data: 'hi', size: 2 }]);
+    draftFiles.value = [];
+    addFiles([{ name: 'a.pdf', path: 'a.pdf', kind: 'pdf', data: 'JVBERi0=', size: 6 }]);
     expect(draftFiles.value).toHaveLength(1);
-    expect(draftFiles.value[0]).toMatchObject({ name: 'a.txt', problem: 'engine' });
+    expect(draftFiles.value[0]).toMatchObject({ name: 'a.pdf', problem: 'engine' });
     expect(draftFiles.value[0]!.file).toBeUndefined();
+    addFiles([{ name: 'a.txt', path: 'a.txt', kind: 'text', data: 'hi', size: 2 }]);
+    expect(draftFiles.value[1]!.file).toMatchObject({ kind: 'text', path: 'a.txt' });
     info('claude');
     draftFiles.value = [];
-    addFiles([{ name: 'a.txt', path: 'a.txt', kind: 'text', data: 'hi', size: 2 }]);
+    addFiles([{ name: 'a.pdf', path: 'a.pdf', kind: 'pdf', data: 'JVBERi0=', size: 6 }]);
     expect(draftFiles.value[0]!.file).toBeDefined();
+    draftFiles.value = [];
   });
 
-  it('файл, прикреплённый до смены движка на Codex, становится красной плашкой', () => {
+  it('pdf, прикреплённый до смены движка на Codex, становится красной плашкой; текстовый остаётся', () => {
     info('claude');
     draftFiles.value = [];
-    addFiles([{ name: 'a.txt', path: 'a.txt', kind: 'text', data: 'hi', size: 2 }]);
-    expect(draftFiles.value[0]!.file).toBeDefined();
+    addFiles([
+      { name: 'a.txt', path: 'a.txt', kind: 'text', data: 'hi', size: 2 },
+      { name: 'a.pdf', path: 'a.pdf', kind: 'pdf', data: 'JVBERi0=', size: 6 },
+    ]);
+    expect(draftFiles.value.every((d) => d.file)).toBe(true);
     info('codex');
-    expect(draftFiles.value).toHaveLength(1);
-    expect(draftFiles.value[0]).toMatchObject({ name: 'a.txt', problem: 'engine' });
-    expect(draftFiles.value[0]!.file).toBeUndefined();
+    expect(draftFiles.value).toHaveLength(2);
+    expect(draftFiles.value[0]!.file).toBeDefined();
+    expect(draftFiles.value[1]).toMatchObject({ name: 'a.pdf', problem: 'engine' });
+    expect(draftFiles.value[1]!.file).toBeUndefined();
     draftFiles.value = [];
   });
 });

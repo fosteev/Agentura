@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="ru" data-theme="dark" data-width="vscode">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agentura · новые чаты по задаче</title>
+<link rel="stylesheet" href="../shared/tokens.css">
+<link rel="stylesheet" href="../shared/preview.css">
+<link rel="stylesheet" href="../shared/hud.css">
+<link rel="stylesheet" href="../shared/tasks.css">
+<link rel="stylesheet" href="../shared/tooltip.css">
+<style>
+/* Полоса задачи: вкладки «чат | задача | код» */
+.strip.vt { padding-left: 4px; gap: 8px; position: relative; }
+.strip .vtab { display: flex; gap: 6px; align-items: center; align-self: stretch; padding: 0 10px; color: var(--fg-mute); border-bottom: 2px solid transparent; margin-bottom: -1px; font-family: var(--font); font-size: 12.5px; white-space: nowrap; }
+.strip .vtab.on { color: var(--fg); border-bottom-color: var(--fg); }
+.strip .vtab .cnt { font: 10px/14px var(--mono); color: var(--fg-faint); }
+
+/* ── А · чаты задачи прямо в полосе: «Чат 1 · Чат 2 · ＋» ── */
+.strip .cc { display: flex; gap: 5px; align-items: center; align-self: stretch; padding: 0 8px; color: var(--fg-mute); border-bottom: 2px solid transparent; margin-bottom: -1px; font-size: 12.5px; white-space: nowrap; }
+.strip .cc.on { color: var(--fg); border-bottom-color: var(--fg); }
+.strip .cc .lv { width: 6px; height: 6px; border-radius: 50%; background: var(--info); }
+.strip .cc .lv.w { background: var(--warn); }
+.strip .np { display: inline-flex; gap: 4px; align-items: center; height: 20px; padding: 0 7px; border-radius: 3px; color: var(--fg-mute); font-size: 12px; white-space: nowrap; }
+.strip .np b { font-size: 15px; line-height: 1; font-weight: 400; }
+.strip .np.on { background: var(--bg-input); color: var(--fg); box-shadow: inset 0 0 0 1px var(--accent); }
+.strip .np kbd { font: 10px var(--mono); color: var(--fg-faint); }
+
+/* всплывашка «Новый чат по задаче» */
+.nc { position: absolute; z-index: 6; width: 400px; background: var(--bg-raise); border: 1px solid var(--line-strong); border-radius: 5px; box-shadow: 0 10px 28px rgba(0,0,0,.38); padding: 10px 12px 12px; font-family: var(--font); font-size: 12px; line-height: 1.4; color: var(--fg); }
+.nc h6 { margin: 0 0 8px; font-size: 12.5px; font-weight: 600; display: flex; gap: 6px; align-items: baseline; }
+.nc h6 .k { font: 11px var(--mono); color: var(--fg-mute); font-weight: 400; }
+.nc h6 .x { margin-left: auto; color: var(--fg-mute); font-weight: 400; }
+.nc .inp { padding: 6px 8px; background: var(--bg-input); border: 1px solid var(--accent); border-radius: 3px; margin-bottom: 10px; font-size: 12.5px; }
+.nc .inp .ph { color: var(--fg-faint); }
+.nc .inp .cur { display: inline-block; width: 1px; height: 13px; background: var(--fg); vertical-align: -2px; margin-left: 1px; }
+.nc .lb { font-size: 10.5px; font-weight: 600; color: var(--fg-faint); margin: 8px 0 4px; }
+.nc .seg { display: flex; border: 1px solid var(--line-strong); border-radius: 3px; overflow: hidden; width: max-content; }
+.nc .seg span { display: inline-flex; gap: 5px; align-items: center; padding: 2px 9px; color: var(--fg-mute); white-space: nowrap; }
+.nc .seg span + span { border-left: 1px solid var(--line-strong); }
+.nc .seg span.on { background: var(--bg-input); color: var(--fg); }
+.nc .ck { display: grid; grid-template-columns: 14px minmax(0,1fr) auto; gap: 7px; align-items: baseline; padding: 2px 0; }
+.nc .ck i { width: 12px; height: 12px; border: 1px solid var(--line-strong); border-radius: 2px; display: inline-grid; place-items: center; font: 700 9px/1 var(--font); font-style: normal; transform: translateY(2px); }
+.nc .ck i.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.nc .ck small { color: var(--fg-mute); font-size: 11px; }
+.nc .ck em { font: 10.5px var(--mono); color: var(--fg-faint); font-style: normal; white-space: nowrap; }
+.nc .ck code, .nc .ft code { font: 11px var(--mono); background: var(--bg-code); padding: 0 3px; border-radius: 2px; }
+.nc .ft { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
+.nc .ft .hint { color: var(--fg-mute); font-size: 11px; }
+.nc .ft button { margin-left: auto; height: 24px; padding: 0 10px; border-radius: 3px; background: var(--btn); color: var(--btn-fg); font-size: 12px; white-space: nowrap; }
+.nc .ft button + button { margin-left: 0; }
+.nc .ft button.sec { background: var(--btn-2); color: var(--btn-2-fg); }
+
+/* ── В · ответвить с сообщения ── */
+.log .txt.hov { position: relative; background: color-mix(in srgb, var(--fg) 4%, transparent); box-shadow: -8px 0 0 color-mix(in srgb, var(--fg) 4%, transparent); border-radius: 0 3px 3px 0; }
+.mact { position: absolute; right: 6px; top: -12px; display: flex; background: var(--bg-raise); border: 1px solid var(--line-strong); border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,.25); font: 11.5px var(--font); }
+.mact span { padding: 2px 8px; color: var(--fg-mute); white-space: nowrap; }
+.mact span + span { border-left: 1px solid var(--line); }
+.mact span.on { color: var(--fg); background: var(--bg-input); }
+.sel-txt { background: color-mix(in srgb, var(--accent) 28%, transparent); }
+
+/* ── Г · /new в поле ввода ── */
+.cwrap { position: relative; }
+.sl { position: absolute; left: 14px; right: 14px; bottom: calc(100% - 4px); z-index: 6; background: var(--bg-raise); border: 1px solid var(--line-strong); border-radius: 4px; box-shadow: 0 8px 24px rgba(0,0,0,.35); padding: 4px; font-family: var(--font); font-size: 12px; }
+.sl .hd { padding: 3px 8px 5px; color: var(--fg-mute); font-size: 11px; }
+.sl .it { display: grid; grid-template-columns: 110px minmax(0,1fr) auto; gap: 10px; align-items: baseline; padding: 4px 8px; border-radius: 2px; }
+.sl .it.sel { background: var(--sel); }
+.sl .it b { font: 500 12px var(--mono); }
+.sl .it span { color: var(--fg); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sl .it em { font: 10.5px var(--mono); color: var(--fg-mute); font-style: normal; white-space: nowrap; }
+.sl hr { border: 0; border-top: 1px solid var(--line); margin: 4px 0; }
+.prompt .text.typed { color: var(--fg); }
+.prompt .text .cmd { color: var(--accent); }
+
+/* ── результат: новый чат открыт ── */
+.hand { margin: 2px 0 6px 22px; border: 1px solid var(--line); border-left: 3px solid var(--info); border-radius: 3px; padding: 6px 10px; font-family: var(--font); font-size: 12px; line-height: 1.45; background: color-mix(in srgb, var(--info) 5%, transparent); max-width: 76ch; }
+.hand .hh { display: flex; gap: 6px; align-items: center; color: var(--fg-mute); font-size: 11.5px; margin-bottom: 3px; }
+.hand .hh b { color: var(--fg); font-weight: 500; }
+.hand .hh a { margin-left: auto; color: var(--link); text-decoration: none; white-space: nowrap; }
+.hand ul { margin: 0; padding-left: 16px; }
+.hand li { margin: 1px 0; }
+.hand code { font: 11px var(--mono); background: var(--bg-code); padding: 0 3px; border-radius: 2px; }
+.toast2 { position: absolute; right: 14px; bottom: 120px; z-index: 6; display: flex; gap: 8px; align-items: center; padding: 7px 10px; background: var(--bg-raise); border: 1px solid var(--line-strong); border-radius: 4px; box-shadow: 0 8px 22px rgba(0,0,0,.3); font: 12px var(--font); }
+.toast2 a { color: var(--link); text-decoration: none; }
+
+/* сплит: два чата задачи рядом */
+.egrp.half { flex: 1 1 50%; }
+.egrp.half .log { padding: 8px 12px; }
+.egrp.half .compose { padding: 8px 12px 10px; }
+.egrp.half .opts button:not(.send):not(.agent) { display: none; }
+.egrp.half .strip .ttl, .egrp.half .strip a, .egrp.half .strip .key, .egrp.half .strip .pill, .egrp.half .strip .sep ~ .sep { display: none; }
+.egrp.dim .pane { opacity: .92; }
+.gl { display: flex; gap: 6px; align-items: center; height: 22px; padding: 0 12px; flex: none; font: 11px var(--font); color: var(--fg-mute); border-bottom: 1px solid var(--line); }
+.gl b { color: var(--fg); font-weight: 500; }
+.gl .lv { width: 6px; height: 6px; border-radius: 50%; background: var(--info); }
+</style>
+</head>
+<body>
+<div class="preview-bar">
+  <b>Новые чаты по задаче</b>
+  <span class="grp"><button data-set-theme="dark">Тёмная</button><button data-set-theme="light">Светлая</button></span>
+  <span class="grp"><a href="#strip">А ＋ в полосе</a> <a href="#pop">Б всплывашка</a> <a href="#fork">В ответвить</a> <a href="#slash">Г /new</a> <a href="#done">новый чат</a> <a href="#split">рядом</a></span>
+  <a href="../index.html">← оглавление</a>
+</div>
+<div class="preview-stage">
+<div class="webview" id="win"></div>
+</div>
+<script src="../shared/preview.js"></script>
+<script>
+(function () {
+  var v = (location.hash.slice(1) || 'strip').toLowerCase();
+  if (['strip', 'pop', 'fork', 'slash', 'done', 'split'].indexOf(v) < 0) v = 'strip';
+  var KEY = 'NEWMFC-1482';
+  var fresh = v === 'done' || v === 'split';   // Чат 3 уже создан
+
+  var C1 = { n: 1, e: 'claude', t: 'почему не печатает после перерыва', ctx: '168k', w: 'вчера' };
+  var C2 = { n: 2, e: 'codex', t: 'восстановление очереди печати', ctx: '74k', w: fresh ? '14:46' : 'сейчас', live: v === 'split' };
+  var C3 = { n: 3, e: 'claude', t: 'ревью фикса и тест на паузу', ctx: '9k', w: 'сейчас', live: fresh };
+  var T = [
+    { k: KEY, t: 'Электронная очередь: талон не печатается после перерыва', st: 'В работе', c: 'wip', open: true, chats: fresh ? [C1, C2, C3] : [C1, C2] },
+    { k: 'NEWMFC-1490', t: 'Окно записи: неверный часовой пояс', st: 'Тестирование', c: 'test', open: true, chats: [
+      { n: 1, e: 'codex', t: 'часовой пояс в окне записи', ctx: '22k', w: '10:20' } ] },
+    { k: 'GARM-833', t: 'Pulse: пуш о тревоге дублируется', st: 'Открыта', c: 'open', open: false, chats: [
+      { n: 1, e: 'claude', t: 'дубль пуша тревоги', ctx: '96k', w: 'вчера' }, { n: 2, e: 'claude', t: 'тест дедупликации', ctx: '35k', w: 'вчера' } ] }
+  ];
+  var FREE = [
+    { e: 'claude', t: 'мигание счётчика талонов', ctx: '131k', w: '12:40' },
+    { e: 'codex', t: 'почему падает lint в ws-client', ctx: '12k', w: '11:48' }
+  ];
+  var K = { claude: 'C', codex: 'X', agy: 'G' };
+  function mk(e) { return '<i class="mk ' + e + '" title="' + e + '">' + K[e] + '</i>'; }
+  function pill(t) { return '<span class="pill ' + t.c + '">' + t.st + '</span>'; }
+
+  // ───── боковая панель (как в task-git) ─────
+  function acc() {
+    function L(a, p, r) { return '<div class="L lim-hot"><span>' + a + '</span><span class="bar"><i style="width:' + p + '%"></i></span><span class="n">' + p + ' %</span><em class="rs">' + r + '</em></div>'; }
+    return '<section class="sec acc"><h3><span class="tri"></span>Аккаунт и лимиты<button class="refresh">↻</button></h3><div class="who"><b>andrey@example.com</b><span>· Max 5×</span><i class="okd"></i></div><div class="lims">' + L('Окно 5 часов', 62, '→ 17:00') + L('Неделя', 34, '→ чт 09:00') + '</div></section>';
+  }
+  function chatRow(c, cur) {
+    return '<button class="c' + (cur === c ? ' cur' : '') + (c.live ? ' live' : '') + '"><span class="dot"></span>' + mk(c.e) + '<span class="t">' + (c.n ? '<em>Чат ' + c.n + ' ·</em> ' : '') + c.t + '</span><span class="cx">' + c.ctx + '</span><span class="when">' + c.w + '</span></button>';
+  }
+  function group(t, cur) {
+    return '<div class="tgp' + (t.chats.indexOf(cur) >= 0 ? ' sel' : '') + '"><button class="tg-h" title="' + t.t + '"><i class="tw' + (t.open ? ' open' : '') + '"></i><span class="kp"><span class="key">' + t.k + '</span>' + pill(t) + '</span><span class="cn">' + t.chats.length + '</span><span class="plus">＋</span><span class="tt">' + t.t + '</span></button>' +
+      (t.open ? t.chats.map(function (c) { return chatRow(c, cur); }).join('') : '') + '</div>';
+  }
+  function sidebar(cur) {
+    return '<div class="sidebar" data-top="compact" data-list="compact"><div class="head"><span>Agentura</span><button class="gear">⚙</button></div>' + acc() +
+      '<section class="sec"><h3><span class="tri"></span>Задачи</h3></section>' +
+      '<div class="tools"><input type="search" placeholder="Поиск по названию, ключу задачи" disabled><button>⚲</button></div><div class="list">' +
+      T.map(function (t) { return group(t, cur); }).join('') +
+      '<div class="tgp none"><button class="tg-h nokey"><i class="tw open"></i><span class="kp"><b>Без задачи</b></span><span class="cn">2</span><span class="plus">＋</span></button>' + FREE.map(function (c) { return chatRow(c, cur); }).join('') + '</div></div></div>';
+  }
+
+  // ───── полоса задачи ─────
+  // chats: показывать чипы чатов задачи (вариант А и всё, что на нём строится); onN — какой чат открыт
+  function strip(onN, o) {
+    o = o || {};
+    var t = T[0], h = '<div class="strip vt">';
+    if (o.chips) {
+      t.chats.forEach(function (c) {
+        h += '<span class="cc' + (c.n === onN ? ' on' : '') + '" title="Чат ' + c.n + ' · ' + c.e + ' · ' + c.t + '">' + mk(c.e) + 'Чат ' + c.n + (c.live && c.n !== onN ? '<i class="lv"></i>' : '') + '</span>';
+      });
+      h += '<span class="np' + (o.plusOn ? ' on' : '') + '" title="Новый чат по задаче (⌥ — сразу, без вопросов)"><b>＋</b>чат</span>';
+      h += '<span class="sep"></span><span class="vtab">задача</span><span class="vtab">код<i class="cnt">4</i></span>';
+    } else {
+      h += '<span class="vtab on">чат</span><span class="vtab">задача</span><span class="vtab">код<i class="cnt">4</i></span>';
+    }
+    h += '<span class="sep"></span><span class="key">' + t.k + '</span>' + pill(t) + '<span class="ttl" title="' + t.t + '">' + t.t + '</span><a href="#">Jira ↗</a></div>';
+    return h;
+  }
+  function tab(label, o) { o = o || {}; return '<div class="etab' + (o.on ? ' on' : '') + '">' + (o.ic || '') + '<span class="n">' + label + '</span><span class="x">×</span></div>'; }
+  function tabs(a) { return '<div class="etabs">' + a.join('') + '</div>'; }
+
+  // ───── лента Чата 2 ─────
+  function log2(o) {
+    o = o || {};
+    var last = o.fork
+      ? '<div class="txt hov"><div class="mact"><span>копировать</span><span>в Jira</span><span class="on">↳ новый чат отсюда</span></div><p>Флаг <code>busy</code> сбрасывается при паузе — закоммитил. <span class="sel-txt">Переподключение сокета поправил, тесты зелёные, но это ещё не в коммите</span>: глянь дифф <code>socket.ts</code>.</p></div>'
+      : '<div class="txt"><p>Флаг <code>busy</code> сбрасывается при паузе — закоммитил. Переподключение сокета поправил, тесты зелёные, но это ещё не в коммите: глянь дифф <code>socket.ts</code>.</p></div>';
+    return '<div class="log">' +
+      '<div class="ref"><span class="p">✓</span><span>контекст задачи <b>' + KEY + '</b> · описание, 3 комментария, 2 вложения · <a href="#">обновить</a></span><span class="at">14:41</span></div>' +
+      '<div class="u"><span class="p">&gt;</span><span>После паузы ещё бывает, что сокет не поднимается. Добей переподключение и закоммить.</span><span class="at">14:42</span></div>' +
+      '<div class="e"><span class="p">▸</span><span class="op">edit</span><span class="what"><span class="dim">packages/printer/src/</span>PrintQueue.ts</span><span class="r"><span class="add">+9</span> <span class="del">−2</span> · <a href="#">diff</a></span></div>' +
+      '<div class="e run"><span class="p">▸</span><span class="op">bash</span><span class="what">git commit -m "' + KEY + ': reset busy flag when the operator pauses"</span><span class="r">0.2s</span></div>' +
+      '<div class="e"><span class="p">▸</span><span class="op">edit</span><span class="what"><span class="dim">packages/printer/src/</span>socket.ts</span><span class="r"><span class="add">+3</span> <span class="del">−1</span> · <a href="#">diff</a></span></div>' +
+      '<div class="e run"><span class="p">▸</span><span class="op">bash</span><span class="what">pnpm test --filter printer</span><span class="r"><span class="pass">22 ✓</span> · 6.1s</span></div>' +
+      last + '<div class="sum"><span>in 380</span><span>out 640</span><b>$0.05</b><span>21s</span></div>' +
+      (o.live ? '<div class="u"><span class="p">&gt;</span><span>Закоммить socket.ts и запушь ветку.</span><span class="at">14:47</span></div><div class="e run now"><span class="p">▸</span><span class="op">bash</span><span class="what">git push -u origin feature/' + KEY + '</span><span class="r">…</span></div>' : '') +
+      '</div>';
+  }
+  // ───── лента нового Чата 3 ─────
+  function log3() {
+    return '<div class="log">' +
+      '<div class="ref"><span class="p">✓</span><span>контекст задачи <b>' + KEY + '</b> · описание, 3 комментария, 2 вложения</span><span class="at">14:46</span></div>' +
+      '<div class="hand"><div class="hh">↳ <b>из Чата 2 · codex</b><span>· итог, 1 240 токенов</span><a href="#">открыть Чат 2</a></div><ul>' +
+      '<li>Причина — флаг <code>busy</code> в <code>PrintQueue</code> не сбрасывался после паузы; исправлено в <code>a41c9e2</code>.</li>' +
+      '<li>Переподключение сокета в <code>socket.ts</code> поправлено, <b>не закоммичено</b>.</li>' +
+      '<li>Ветка <code>feature/' + KEY + '</code>, тесты printer — 22 ✓.</li></ul></div>' +
+      '<div class="u"><span class="p">&gt;</span><span>Проверь фикс как ревьюер и допиши тест: пауза 5 минут → печать талона.</span><span class="at">14:46</span></div>' +
+      '<div class="e"><span class="p">▸</span><span class="op">read</span><span class="what"><span class="dim">packages/printer/src/</span>PrintQueue.ts</span><span class="r">212 строк</span></div>' +
+      '<div class="e"><span class="p">▸</span><span class="op">bash</span><span class="what">git show a41c9e2 --stat</span><span class="r">0.1s</span></div>' +
+      '<div class="e run now"><span class="p">▸</span><span class="op">read</span><span class="what"><span class="dim">packages/printer/test/</span>resume.test.ts</span><span class="r">…</span></div>' +
+      '</div>';
+  }
+  function compose(o) {
+    o = o || {};
+    var b = '', i, on = o.small ? 1 : 7; for (i = 0; i < 20; i++) b += '<i' + (i < on ? ' class="on"' : '') + '></i>';
+    var text = o.typed ? '<span class="text typed"><span class="cmd">/new</span> ревью фикса и тест на паузу<span class="cur" style="display:inline-block;width:1px;height:13px;background:var(--fg);vertical-align:-2px"></span></span>' : '<span class="text">задача, @файл, /команда</span>';
+    var agent = o.agent || 'codex', model = agent === 'claude' ? 'opus' : 'gpt-5-codex';
+    return '<footer class="compose"><div class="blocks">' + b + '</div><div class="ctx"><span><span class="chip">' + KEY + '</span></span><span class="cn">контекст <b class="ok">' + (o.small ? '9 300' : '74 100') + '</b> / 200 000</span></div>' +
+      '<div class="prompt"><span class="p">$</span>' + text + '</div><div class="opts"><button class="mode">режим <b>manual</b></button><button class="agent">агент <b>' + agent + '</b></button><button>модель <b>' + model + '</b></button><button class="send">' + (o.busy ? 'стоп ■' : 'enter ↵') + '</button></div></footer>';
+  }
+
+  // ───── всплывашка «Новый чат по задаче» ─────
+  function newChatPop(style, fromFork) {
+    var title = fromFork ? 'Новый чат с этого места' : 'Новый чат по задаче';
+    var inp = fromFork
+      ? '<div class="inp">Закоммить socket.ts отдельным коммитом<span class="cur"></span></div>'
+      : '<div class="inp"><span class="ph">о чём — станет первым сообщением (можно пусто)</span><span class="cur"></span></div>';
+    var carry = fromFork
+      ? '<div class="ck"><i class="on">✓</i><span>Контекст задачи <small>описание, комментарии, вложения</small></span><em>≈ 3k</em></div>' +
+        '<div class="ck"><i class="on">✓</i><span>Итог Чата 2 до этого ответа <small>сводку пишет движок Чата 2</small></span><em>≈ 1.2k</em></div>' +
+        '<div class="ck"><i class="on">✓</i><span>Выделенный фрагмент <small>«Переподключение сокета поправил…»</small></span><em>цитатой</em></div>'
+      : '<div class="ck"><i class="on">✓</i><span>Контекст задачи <small>описание, комментарии, вложения</small></span><em>≈ 3k</em></div>' +
+        '<div class="ck"><i class="on">✓</i><span>Итог этого чата <small>Чат 2 · что сделано, что осталось</small></span><em>≈ 1.2k</em></div>' +
+        '<div class="ck"><i></i><span>Изменения задачи <small>коммиты и незакоммиченные файлы</small></span><em>≈ 0.6k</em></div>';
+    return '<div class="nc" style="' + style + '"><h6>' + title + '<span class="k">' + KEY + ' · будет Чат 3</span><span class="x">×</span></h6>' + inp +
+      '<div class="lb">Агент</div><div class="seg"><span class="on">' + mk('claude') + 'claude</span><span>' + mk('codex') + 'codex</span><span>' + mk('agy') + 'antigravity</span></div>' +
+      '<div class="lb">Передать в новый чат</div>' + carry +
+      '<div class="lb">Где работает</div><div class="seg"><span class="on">та же папка</span><span>свой worktree</span></div>' +
+      '<div class="ft"><span class="hint">Чат 2 продолжит работать</span><button class="sec">рядом</button><button>создать ⏎</button></div></div>';
+  }
+
+  // ───── slash-меню ─────
+  function slashMenu() {
+    return '<div class="sl"><div class="hd">команды · задача ' + KEY + '</div>' +
+      '<div class="it sel"><b>/new</b><span>новый чат по задаче — текст станет первым сообщением</span><em>⏎</em></div>' +
+      '<div class="it"><b>/new codex</b><span>то же, но другим агентом</span><em>⇥</em></div>' +
+      '<div class="it"><b>/fork</b><span>новый чат с итогом этого — продолжить в чистом контексте</span><em></em></div>' +
+      '<hr><div class="it"><b>/compact</b><span>сжать контекст этого чата</span><em></em></div></div>';
+  }
+
+  // ───── сборка ─────
+  var ed, cur = C2;
+  var tabs2 = tabs([tab(KEY + ' · Чат 2', { on: true, ic: mk('codex') }), tab(KEY + ' · Чат 1', { ic: mk('claude') }), tab('lint в ws-client', { ic: mk('codex') })]);
+  if (v === 'strip' || v === 'pop') {
+    ed = tabs2 + '<div class="edrow"><div class="egrp"><div class="pane" style="position:relative">' + strip(2, { chips: true, plusOn: v === 'pop' }) + log2() + compose() +
+      (v === 'pop' ? newChatPop('left:132px;top:30px') : '') + '</div></div></div>';
+  } else if (v === 'fork') {
+    ed = tabs2 + '<div class="edrow"><div class="egrp"><div class="pane" style="position:relative">' + strip(2, { chips: true }) + log2({ fork: true }) + compose() +
+      newChatPop('right:22px;top:262px', true) + '</div></div></div>';
+  } else if (v === 'slash') {
+    ed = tabs2 + '<div class="edrow"><div class="egrp"><div class="pane">' + strip(2, { chips: true }) + log2() + '<div class="cwrap">' + slashMenu() + compose({ typed: true }) + '</div></div></div></div>';
+  } else if (v === 'done') {
+    cur = C3;
+    ed = tabs([tab(KEY + ' · Чат 3', { on: true, ic: mk('claude') }), tab(KEY + ' · Чат 2', { ic: mk('codex') }), tab(KEY + ' · Чат 1', { ic: mk('claude') })]) +
+      '<div class="edrow"><div class="egrp"><div class="pane">' + strip(3, { chips: true }) + log3() + compose({ agent: 'claude', small: true, busy: true }) + '</div></div></div>';
+  } else {
+    cur = C3;
+    ed = '<div class="edrow">' +
+      '<div class="egrp half dim">' + tabs([tab(KEY + ' · Чат 2', { on: true, ic: mk('codex') }), tab(KEY + ' · Чат 1', { ic: mk('claude') })]) +
+        '<div class="pane">' + strip(2, { chips: true }) + log2({ live: true }) + compose({ busy: true }) + '</div></div>' +
+      '<div class="egrp half">' + tabs([tab(KEY + ' · Чат 3', { on: true, ic: mk('claude') })]) +
+        '<div class="pane">' + strip(3, { chips: true }) + log3() + compose({ agent: 'claude', small: true, busy: true }) + '</div></div></div>';
+  }
+  document.getElementById('win').innerHTML = sidebar(cur) + '<div class="ed">' + ed + '</div>';
+  window.addEventListener('hashchange', function () { location.reload(); });
+})();
+</script>
+<script src="../shared/tooltip.js"></script>
+</body>
+</html>

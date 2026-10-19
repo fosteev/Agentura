@@ -18,11 +18,14 @@ export interface TabChatRow {
   active: boolean;
 }
 
+/** Чат вкладки задачи в сохранённом состоянии: сессия и рабочая папка чата (roadmap 26, Д1; нет — старое состояние). */
+export type TabChatRef = SessionRef & { cwd?: string };
+
 /** Что webview вкладки задачи кладёт в `setState`: по нему сериализатор вернёт все её чаты. */
 export interface TaskTabState {
   taskKey: string;
   /** Чаты с сессией в порядке внутренних вкладок (чат без единого сообщения не сохраняется). */
-  chats: SessionRef[];
+  chats: TabChatRef[];
   /** Сессия видимого чата; нет — первый. */
   active?: string;
 }
@@ -53,13 +56,14 @@ export function readTaskTabState(state: unknown): TaskTabState | undefined {
   if (typeof t !== 'object' || t === null) return undefined;
   const { taskKey, chats, active } = t as Record<string, unknown>;
   if (typeof taskKey !== 'string' || !taskKey || !Array.isArray(chats)) return undefined;
-  const refs: SessionRef[] = [];
+  const refs: TabChatRef[] = [];
   for (const c of chats) {
     if (typeof c !== 'object' || c === null) continue;
-    const { id, provider } = c as Record<string, unknown>;
+    const { id, provider, cwd } = c as Record<string, unknown>;
     if (typeof id !== 'string' || !id || !isProvider(provider)) continue;
     if (refs.some((r) => r.id === id && r.provider === provider)) continue;
-    refs.push({ provider, id });
+    // что папка есть и годится — проверит хост (`chatCwd`)
+    refs.push({ provider, id, ...(typeof cwd === 'string' && cwd && cwd.length <= 1_024 ? { cwd } : {}) });
     if (refs.length >= TAB_CHATS_MAX) break;
   }
   return {
@@ -77,7 +81,7 @@ export function readTaskTabState(state: unknown): TaskTabState | undefined {
 export function restoredTabChats(
   state: TaskTabState,
   claimed: readonly (SessionRef | undefined)[],
-): { refs: SessionRef[]; active: number } {
+): { refs: TabChatRef[]; active: number } {
   const refs = state.chats.filter(
     (r) => !claimed.some((c) => c?.id === r.id && c.provider === r.provider),
   );

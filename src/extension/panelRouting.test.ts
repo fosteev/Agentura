@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  pickCwd,
   restoredSessionId,
+  routeContextNew,
   routeNew,
   routeOpen,
   routeResume,
+  stateCwd,
   type PanelView,
 } from './panelRouting';
 
@@ -55,6 +58,13 @@ describe('routeNew / routeOpen', () => {
       index: 1,
     });
     expect(routeNew([p({ sessionId: 'a' })])).toEqual({ kind: 'new' });
+  });
+  it('новая с движком (roadmap 26): пустая вкладка другого движка не занимается; без движка — любая', () => {
+    const panels = [p({ pristine: true, provider: 'codex' }), p({ pristine: true })];
+    expect(routeNew(panels, undefined, 'claude')).toEqual({ kind: 'reveal', index: 1 });
+    expect(routeNew(panels, undefined, 'codex')).toEqual({ kind: 'reveal', index: 0 });
+    expect(routeNew(panels, undefined, 'antigravity')).toEqual({ kind: 'new' });
+    expect(routeNew(panels)).toEqual({ kind: 'reveal', index: 0 });
   });
   it('открыть чат: активная, иначе последняя, иначе новая', () => {
     expect(routeOpen([p(), p({ active: true }), p()])).toEqual({ kind: 'reveal', index: 1 });
@@ -114,5 +124,45 @@ describe('restoredSessionId (сериализатор)', () => {
   });
   it('состояния нет совсем — первая незанятая из памяти воркспейса, с движком', () => {
     expect(restoredSessionId(undefined, [cl('a'), undefined], [cl('a'), cx('b')])).toEqual(cx('b'));
+  });
+});
+
+describe('routeContextNew (roadmap 26, Д3)', () => {
+  const panels = [p({ pristine: true, active: true }), p({ pristine: true })];
+
+  it('без опций — как routeNew: пустая вкладка того же движка', () => {
+    expect(routeContextNew(panels, {})).toEqual({ kind: 'reveal', index: 0 });
+    expect(routeContextNew([p({ pristine: true, provider: 'codex' })], { provider: 'claude' })).toEqual({ kind: 'new' });
+  });
+
+  it('автоотправка, своя папка, «рядом» — всегда новая вкладка, пустая не занимается', () => {
+    expect(routeContextNew(panels, { autoSend: true })).toEqual({ kind: 'new' });
+    expect(routeContextNew(panels, { cwd: true })).toEqual({ kind: 'new' });
+    expect(routeContextNew(panels, { beside: true })).toEqual({ kind: 'new' });
+    expect(routeContextNew([p({ pristine: true, tab: 'k' })], { tab: 'k', autoSend: true })).toEqual({ kind: 'new' });
+  });
+});
+
+describe('рабочая папка восстановленного чата (roadmap 26, Д1)', () => {
+  it('stateCwd: panel.cwd из состояния webview; нет или кривой — undefined', () => {
+    expect(stateCwd({ sessionId: 's', panel: { w: 300, cwd: '/w/app-K-1-2' } })).toBe('/w/app-K-1-2');
+    expect(stateCwd({ panel: { cwd: 7 } })).toBeUndefined();
+    expect(stateCwd({ panel: {} })).toBeUndefined();
+    expect(stateCwd({ sessionId: 's' })).toBeUndefined();
+    expect(stateCwd(undefined)).toBeUndefined();
+    expect(stateCwd({ panel: { cwd: `/${'a'.repeat(2000)}` } })).toBeUndefined();
+  });
+
+  it('pickCwd: состояние → строка списка → ссылка группы, только существующие папки', () => {
+    const dirs = new Set(['/w/app', '/w/app-K-1-2', '/w/app-K-1-3']);
+    const exists = (d: string) => dirs.has(d);
+    expect(pickCwd(['/w/app-K-1-2', '/w/app-K-1-3', undefined], exists)).toBe('/w/app-K-1-2');
+    // папки из состояния больше нет — строка списка
+    expect(pickCwd(['/w/gone', '/w/app-K-1-3'], exists)).toBe('/w/app-K-1-3');
+    // строки нет (codex/agy до Д2, список не загружен) — ссылка группы
+    expect(pickCwd([undefined, undefined, '/w/app-K-1-2'], exists)).toBe('/w/app-K-1-2');
+    // папка воркспейса в состоянии — ответ (дальше её отсеет chatCwd), строку не смотрим
+    expect(pickCwd(['/w/app', '/w/app-K-1-2'], exists)).toBe('/w/app');
+    expect(pickCwd([undefined, '/w/gone'], exists)).toBeUndefined();
   });
 });

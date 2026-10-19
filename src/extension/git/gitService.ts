@@ -339,7 +339,13 @@ export class GitService implements vscode.Disposable {
         }
       });
     }
-    return { gitPath: api.git.path, roots: this.reposFor(cwd).map((r) => r.rootUri.fsPath) };
+    let repos = this.reposFor(cwd);
+    // папка вне воркспейса (своя worktree чата, roadmap 26): git-расширение её не открывало — открыть один раз
+    if (!repos.length) {
+      await api.openRepository(vscode.Uri.file(cwd)).catch(() => null);
+      repos = this.reposFor(cwd);
+    }
+    return { gitPath: api.git.path, roots: repos.map((r) => r.rootUri.fsPath) };
   }
 
   private findRepo(client: Client, root: string): Repository | undefined {

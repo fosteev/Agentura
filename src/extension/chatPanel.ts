@@ -1,5 +1,6 @@
+import { realpathSync, statSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import { isAbsolute } from 'node:path';
+import { basename, isAbsolute } from 'node:path';
 import { homedir } from 'node:os';
 import { findSkillFile } from './skillFiles';
 import { samePath } from './pathKey';
@@ -37,10 +38,13 @@ import type { DiffDocuments } from './diffDocuments';
 import type { PreviewPanels } from './previewPanels';
 import { EditorContextTracker } from './editorContext';
 import {
+  pickCwd,
   restoredSessionId,
+  routeContextNew,
   routeNew,
   routeOpen,
   routeResume,
+  stateCwd,
   type PanelView,
   type Route,
 } from './panelRouting';
@@ -48,8 +52,9 @@ import type { ContextRequest } from './contextRequest';
 import type { ArchivedSessions } from './archive';
 import { nextTabTask, parseTaskKey, routeTaskOpen, taskChatRows, taskKeyOf, type TabTask, type TaskGroups, type TaskKey, type TaskMeta } from './taskGroups';
 import { isTaskRequest, type TaskChatsMessage } from '../shared/task';
-import { TaskCode, readTextFile } from './jira/taskCode';
+import { TaskCode, readTextFile, type CodeChatInfo, type CodeCollectDeps } from './jira/taskCode';
 import { TaskTab } from './jira/taskTab';
+import { worktreeRepo, type NewChatOptions } from './jira/handoff';
 import { codeMatchSettings } from './jira/setup';
 import { AgentJiraTools } from './jira/agentTools';
 import { readAgentTools } from '../shared/jiraTools';
@@ -232,6 +237,11 @@ interface OpenOptions {
    * создаётся). Нет — своя вкладка редактора, как до этапа 7.
    */
   task?: TaskKey;
+  /**
+   * Рабочая папка чата не из воркспейса (roadmap 26): своя worktree или папка возобновляемой сессии (`SessionRow.cwd`).
+   * Нет, папки нет или это папка воркспейса — папка воркспейса.
+   */
+  cwd?: string;
 }
 
 /** `agentura.tasks.tab = task`: чаты задачи — внутренними вкладками одной вкладки на задачу. */
@@ -255,6 +265,19 @@ export class ChatPanel {
   private static readonly changed = new vscode.EventEmitter<void>();
   /** Сменилась сессия какой-либо вкладки или фокус — боковая панель обновляет строку `cur`. */
   static readonly onDidChange = ChatPanel.changed.event;
+  /**
+   * Новый чат задачи с опциями из вкладки (roadmap 26): `chatForTask` с этой вкладкой-источником. Прямой вызов, не
+   * `executeCommand`: публичная команда `from`/`where`/`beside`/итог/изменения не принимает (Д4 доводки 1).
+   */
+  private static newTaskChat: ((taskKey: string, opts: NewChatOptions) => Promise<void>) | undefined;
+
+  /** Подключить `chatForTask` (`registerTaskCommands`); dispose — отключить. */
+  static setNewTaskChat(fn: (taskKey: string, opts: NewChatOptions) => Promise<void>): vscode.Disposable {
+    ChatPanel.newTaskChat = fn;
+    return new vscode.Disposable(() => {
+      if (ChatPanel.newTaskChat === fn) ChatPanel.newTaskChat = undefined;
+    });
+  }
 
   private readonly disposables: vscode.Disposable[] = [];
   private readonly controller: ChatController;
@@ -272,6 +295,9 @@ export class ChatPanel {
   private readonly jiraTools: AgentJiraTools;
   /** Вкладка графа агентов этой вкладки чата (roadmap 11, этап 2): одна на чат. */
   private readonly graph: ChatGraphSlot;
+  /** Рабочая папка чата: папка воркспейса или своя (`ownCwd`, roadmap 26 — worktree, папка сессии). */
+  private readonly cwd: string;
+  private readonly ownCwd: boolean;
 
   /** Id сессии активной (или последней активной) вкладки — строка `cur` боковой панели. */
   static currentSessionId(): string | undefined {
@@ -291,8 +317,9 @@ export class ChatPanel {
     return ChatPanel.panels.map((p) => ({
       sessionId: p.controller.sessionId,
       provider: p.provider,
-      // вкладка, ждущая задачу (контекст уже в поле ввода), — не пустая: ни чужой сессии, ни другой задаче её не отдаём
-      pristine: p.controller.pristine && !p.pendingTask,
+      // вкладка, ждущая задачу (контекст уже в поле ввода), — не пустая: ни чужой сессии, ни другой задаче её не отдаём;
+      // вкладка со своей рабочей папкой (worktree) — тоже: чужая сессия или новый чат уехали бы в её папку
+      pristine: p.controller.pristine && !p.pendingTask && !p.ownCwd,
       active: p.surface.active,
       ...(p.surface.shown ? {} : { background: true }),
       // чат вкладки задачи: пустым его занимает только чат той же задачи (`routeResume`/`routeNew` с `tab`)
@@ -378,6 +405,7 @@ export class ChatPanel {
       provider: this.provider,
       title: this.controller.chatTitle,
       status: this.controller.chatStatus,
+      cwd: this.cwd,
     };
   }
 
@@ -400,13 +428,37 @@ export class ChatPanel {
     const fromIndex = from ? ChatPanel.panels.indexOf(from) : undefined;
     // `tasks.tab = task`: чат задачи — во вкладку задачи (пустой чат занимается только там же)
     const task = ChatPanel.taskTabOf(services, ref.id);
+    const cwd = ChatPanel.sessionCwd(services, ref.id);
     const route = routeResume(ChatPanel.views(), ref, fromIndex, task);
-    return ChatPanel.apply(route, context, log, services, {
+    // сессия со своей папкой (worktree): пустую вкладку воркспейса не занимает — у той папка воркспейса
+    return ChatPanel.apply(cwd && route.kind === 'reuse' ? { kind: 'new' } : route, context, log, services, {
       resumeId: ref.id,
       provider: ref.provider,
       ...(column ? { column } : {}),
       ...(task ? { task } : {}),
+      ...(cwd ? { cwd } : {}),
     });
+  }
+
+  /**
+   * Своя рабочая папка чата (roadmap 26, Д1, Д2): первая существующая из папки, сохранённой во вкладке (`saved`),
+   * `cwd` строки списка сессий и `cwd` ссылки группы задачи (беседы Codex/agy своей worktree); не папка воркспейса —
+   * она, иначе `undefined` (папка воркспейса). Список сессий ещё не загружен — строки нет, решают остальные.
+   */
+  private static sessionCwd(services: ChatServices, id: string | undefined, saved?: string): string | undefined {
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    if (!folder) return undefined;
+    const row = id ? services.sessions.cwdOfRow(id) : undefined;
+    const ref = id ? services.taskGroups.refOf(id)?.cwd : undefined;
+    return chatCwd(folder, pickCwd([saved, row, ref], isDir));
+  }
+
+  /**
+   * Список сессий для `sessionCwd` после «Reload Window», если папки чата нет в состоянии вкладки (состояние до
+   * доводки 1 roadmap 26): ждём не дольше 3 с (иначе — папка воркспейса).
+   */
+  private static async loadRows(services: ChatServices): Promise<void> {
+    await Promise.race([services.sessions.list().catch(() => []), new Promise((r) => setTimeout(r, 3_000))]);
   }
 
   /**
@@ -414,6 +466,8 @@ export class ChatPanel {
    * `sessionKey` вида `jiraffe:<инстанс>:<KEY>`) — чат входит в её группу: `session` = id возобновляет этот чат,
    * `'new'` открывает новую вкладку, без поля — последний чат группы (если есть). Чат попадает в группу, когда
    * движок пришлёт id сессии (`onSession`). Без задачи — всегда новая вкладка. `prompt` — в поле ввода, если оно пустое.
+   * Новый чат задачи (roadmap 26): `provider` — движок новой вкладки (пустая занимается только того же движка), `files` —
+   * ещё вложения, `autoSend` — `prompt` уходит сам после вложений, `cwd` (worktree) и `beside` — всегда новая вкладка.
    */
   static async openWithContext(
     context: vscode.ExtensionContext,
@@ -436,26 +490,46 @@ export class ChatPanel {
         if (panel && req.prompt) panel.controller.prefill(req.prompt);
         return;
       }
-      // вкладка этой задачи ещё не отправила ни одного сообщения (повторный клик, `'new'`) — она и есть новый чат
-      const waiting = ChatPanel.panels.find((p) => !p.controller.sessionId && p.pendingTask?.taskKey === taskKey);
+      // вкладка этой задачи ещё не отправила ни одного сообщения (повторный клик, `'new'`) — она и есть новый чат;
+      // с опциями нового чата (roadmap 26) — нет: у неё может быть другой движок, папка, вложения
+      const plain = !req.provider && !req.files?.length && !req.autoSend && !req.cwd && !req.beside;
+      const waiting = plain
+        ? ChatPanel.panels.find((p) => !p.controller.sessionId && p.pendingTask?.taskKey === taskKey)
+        : undefined;
       if (waiting) {
         waiting.surface.reveal(column);
         if (req.prompt) waiting.controller.prefill(req.prompt);
         return;
       }
     }
-    // `tasks.tab = task`: новый чат задачи — внутренней вкладкой её вкладки
+    // `tasks.tab = task`: новый чат задачи — внутренней вкладкой её вкладки («рядом» там не действует)
     const tab = taskKey && taskTabMode() ? taskKey : undefined;
-    const panel = ChatPanel.apply(routeNew(ChatPanel.views(), tab), context, log, services, {
-      ...(column ? { column } : {}),
+    const beside = !!req.beside && !tab;
+    const route = routeContextNew(ChatPanel.views(), {
+      tab,
+      provider: req.provider,
+      cwd: !!req.cwd,
+      beside,
+      autoSend: !!req.autoSend,
+    });
+    const col = beside ? vscode.ViewColumn.Beside : column;
+    const panel = ChatPanel.apply(route, context, log, services, {
+      ...(col ? { column: col } : {}),
       ...(tab ? { task: tab } : {}),
+      ...(req.provider ? { provider: req.provider } : {}),
+      ...(req.cwd ? { cwd: req.cwd } : {}),
     });
     if (!panel) return;
     if (taskKey && meta) panel.bind(taskKey, meta);
-    panel.controller.attachFiles([
-      { name: req.name, path: req.name, kind: 'text', data: req.context, size: req.context.length },
-    ]);
-    if (req.prompt) panel.controller.prefill(req.prompt);
+    // контекст задачи может быть пустым (новый чат задачи без «Контекст задачи»): тогда только доп. вложения
+    const files = [...(req.context ? [{ name: req.name, text: req.context }] : []), ...(req.files ?? [])];
+    if (files.length) {
+      panel.controller.attachFiles(
+        files.map((f) => ({ name: f.name, path: f.name, kind: 'text' as const, data: f.text, size: f.text.length })),
+      );
+    }
+    // после вложений: `postWhenReady` сохраняет порядок, отправка уйдёт уже с ними
+    if (req.prompt) panel.controller.prefill(req.prompt, !!req.autoSend);
   }
 
   /**
@@ -484,7 +558,7 @@ export class ChatPanel {
   bind(taskKey: TaskKey, meta: TaskMeta): void {
     const id = this.controller.sessionId;
     if (id) {
-      this.services.taskGroups.add(taskKey, meta, { provider: this.provider, id }, Date.now());
+      this.services.taskGroups.add(taskKey, meta, { provider: this.provider, id, ...this.ownRef() }, Date.now());
       this.pendingTask = undefined;
       this.member = { taskKey, meta };
     } else {
@@ -494,6 +568,11 @@ export class ChatPanel {
     this.controller.setTask(meta.key);
     this.syncTask();
     ChatPanel.sessionsChanged(this.services);
+  }
+
+  /** `cwd` для ссылки группы задачи (Д2): только своя рабочая папка, папку воркспейса не пишем. */
+  private ownRef(): { cwd?: string } {
+    return this.ownCwd ? { cwd: this.cwd } : {};
   }
 
   /** Ключ задачи вкладки (группа или ожидание первой сессии); нет — чат вне задач. */
@@ -537,6 +616,11 @@ export class ChatPanel {
       deserializeWebviewPanel: async (panel, state: unknown) => {
         // вкладка задачи (`tasks.tab = task`): все её чаты, видимый — сразу, остальные — когда их покажут
         const tabState = readTaskTabState(state);
+        const saved = tabState ? undefined : stateCwd(state);
+        // своя папка чата (worktree, roadmap 26, Д1) — из состояния вкладки; нет там — из списка сессий: он нужен до
+        // создания вкладок (ждём его, только если папки в состоянии нет)
+        const known = tabState ? tabState.chats.every((c) => c.cwd) : saved !== undefined;
+        if (!known) await ChatPanel.loadRows(services);
         if (tabState) {
           ChatPanel.restoreTaskTab(panel, tabState, context, log, services);
           return;
@@ -549,9 +633,11 @@ export class ChatPanel {
           services.memory.openSessions(),
         );
         const visible = panel.visible;
+        const cwd = ChatPanel.sessionCwd(services, ref?.id, saved);
         ChatPanel.apply({ kind: 'new' }, context, log, services, {
           panel,
           ...(ref ? { resumeId: ref.id, provider: ref.provider } : {}),
+          ...(cwd ? { cwd } : {}),
           lazy: !visible,
         });
       },
@@ -586,6 +672,7 @@ export class ChatPanel {
         resumeId: ref.id,
         provider: ref.provider,
         lazy: !(visible && i === active),
+        ...((cwd) => (cwd ? { cwd } : {}))(ChatPanel.sessionCwd(services, ref.id, ref.cwd)),
       }),
     );
     if (!chats.length) {
@@ -613,7 +700,13 @@ export class ChatPanel {
   ) {
     // до этапа 7 здесь была `WebviewPanel`; поверхность отвечает теми же именами (post/title/visible/…)
     const panel = surface;
-    const files = new WorkspaceFiles(folder.uri);
+    // рабочая папка чата (roadmap 26): своя (worktree, папка возобновляемой сессии) или папка воркспейса
+    const own = chatCwd(folder, open.cwd);
+    const root = own ? vscode.Uri.file(own) : folder.uri;
+    const cwd = own ?? folder.uri.fsPath;
+    this.cwd = cwd;
+    this.ownCwd = own !== undefined;
+    const files = new WorkspaceFiles(root);
     // файлы и диффы — в группе самого чата, вкладкой рядом с ним (как Jiraffe), а не в соседней группе;
     // чат в боковой панели — в активную группу редактора
     const editorColumn = (): vscode.ViewColumn => panel.viewColumn ?? vscode.ViewColumn.Active;
@@ -653,8 +746,8 @@ export class ChatPanel {
           panel.changed();
         });
       },
-      cwd: folder.uri.fsPath,
-      project: folder.name,
+      cwd,
+      project: own ? basename(own) : folder.name,
       post: (m) => panel.post(m),
       setTitle: (t) => panel.setTitle(t),
       log,
@@ -689,13 +782,13 @@ export class ChatPanel {
       // «+» (этапы 4 и 8): любые файлы — картинки, текст, pdf; тип решает содержимое
       pickAttachments: async () => {
         const picked = await vscode.window.showOpenDialog({
-          defaultUri: folder.uri,
+          defaultUri: root,
           canSelectFiles: true,
           canSelectFolders: false,
           canSelectMany: true,
           openLabel: hostStrings(currentLanguage()).addLabel,
         });
-        return readAttachments(folder.uri.fsPath, (picked ?? []).slice(0, MAX_DROPPED));
+        return readAttachments(cwd, (picked ?? []).slice(0, MAX_DROPPED));
       },
       // перетаскивание из проводника и вкладок VS Code (этап 8): uri из webview читает хост.
       // Читаем любой путь — решение владельца 2026-10-01; webview может запросить чтение произвольного
@@ -727,13 +820,13 @@ export class ChatPanel {
             const p = uri.scheme === 'file' ? uri.fsPath : uri.path;
             folders.push(
               toHit(
-                modelPath(folder.uri.scheme === 'file' ? folder.uri.fsPath : folder.uri.path, p),
+                modelPath(root.scheme === 'file' ? root.fsPath : root.path, p),
                 true,
               ),
             );
           } else uris.push(uri);
         }
-        const read = await readAttachments(folder.uri.fsPath, uris);
+        const read = await readAttachments(cwd, uris);
         return { ...mergePicked([read, ...rejects]), ...(folders.length ? { folders } : {}) };
       },
       // просмотр миниатюры: временный файл в storage расширения (не в рабочей папке), вкладка редактора
@@ -744,7 +837,7 @@ export class ChatPanel {
       },
       // чип файла в ленте (этап 8): из рабочей папки — сам файл, иначе — копия в storage расширения
       openFile: async (f) => {
-        const inside = workspaceTarget(folder.uri.fsPath, f.path);
+        const inside = workspaceTarget(cwd, f.path);
         let target: vscode.Uri | undefined;
         if (inside) {
           const exists = await Promise.resolve(
@@ -789,7 +882,7 @@ export class ChatPanel {
       openText: (d) => services.diffs.openText(d, editorColumn()),
       openPreview: (p) => services.previews.open(p, editorColumn()),
       // SKILL.md (roadmap 21, решение 6): проект, затем домашняя папка; открывается обычной вкладкой редактора
-      findSkill: (name) => findSkillFile(name, folder.uri.fsPath, homedir()),
+      findSkill: (name) => findSkillFile(name, cwd, homedir()),
       openPath: async (p) => {
         await vscode.window.showTextDocument(vscode.Uri.file(p), { viewColumn: editorColumn(), preview: true });
       },
@@ -802,7 +895,7 @@ export class ChatPanel {
         if (p !== 'antigravity') return listed;
         // у беседы agy без заголовка и превью адаптер подставляет id — такой заголовок не показываем
         if (listed) return listed !== id ? listed : undefined;
-        const row = (await services.antigravityAdapter().listSessions(folder.uri.fsPath)).find((r) => r.id === id);
+        const row = (await services.antigravityAdapter().listSessions(cwd)).find((r) => r.id === id);
         return row && row.title !== id ? row.title : undefined;
       },
       onSession: (id, why) => {
@@ -815,7 +908,7 @@ export class ChatPanel {
         if (next.join && id) {
           // метаданные группы свежее запомненных вкладкой (опрос обновил статус/название, пока шёл прежний чат)
           const meta = services.taskGroups.group(next.join.taskKey)?.task ?? next.join.meta;
-          services.taskGroups.add(next.join.taskKey, meta, { provider: this.provider, id }, Date.now());
+          services.taskGroups.add(next.join.taskKey, meta, { provider: this.provider, id, ...this.ownRef() }, Date.now());
         }
         this.pendingTask = next.pending;
         this.member = next.member;
@@ -835,46 +928,10 @@ export class ChatPanel {
     });
 
     // вкладка «код» задачи (roadmap 24): git — через встроенное расширение VS Code, история чатов — адаптеры движков
-    let gitPath: string | undefined;
     const taskCode = new TaskCode({
-      run: async (args, cwd) => {
-        gitPath ??= (await services.git.rootsFor(cwd)).gitPath;
-        return runGit(gitPath, args, cwd);
-      },
-      repos: async (cwd) => {
-        const r = await services.git.rootsFor(cwd);
-        gitPath = r.gitPath;
-        return r.roots;
-      },
-      history: async (chat, cwd) => {
-        const adapter =
-          chat.provider === 'codex'
-            ? services.codexAdapter()
-            : chat.provider === 'antigravity'
-              ? services.antigravityAdapter()
-              : services.adapter;
-        return (await adapter.loadHistory(chat.id, cwd)).events;
-      },
-      readText: readTextFile,
-      cwd: () => folder.uri.fsPath,
-      chats: async (taskKey) => {
-        const group = services.taskGroups.group(taskKey);
-        if (!group) return [];
-        const rows = await services.sessions.list().catch(() => []);
-        return group.sessions
-          .flatMap((ref) => {
-            const row = rows.find((r) => r.id === ref.id && (r.provider ?? 'claude') === ref.provider);
-            return row ? [{ row, ref }] : [];
-          })
-          .sort((a, b) => b.row.updatedAt - a.row.updatedAt)
-          .map(({ row, ref }) => ({
-            id: ref.id,
-            ...(ref.provider === 'claude' ? {} : { provider: ref.provider }),
-            title: row.title,
-            ...(row.cwd ? { cwd: row.cwd } : {}),
-            updatedAt: row.updatedAt,
-          }));
-      },
+      ...taskCodeDeps(services),
+      cwd: () => cwd,
+      chats: (taskKey) => taskCodeChats(services, taskKey),
       post: (m) => panel.post(m),
       prefill: (text) => this.controller.prefill(text),
       copy: (text) => void vscode.env.clipboard.writeText(text),
@@ -916,7 +973,7 @@ export class ChatPanel {
     ChatPanel.panels.push(this);
     ChatPanel.lastActive = this;
     // вкладка «git»: снимок на каждое изменение репозиториев рабочей папки (cwd панели)
-    const git = services.git.attach(folder.uri.fsPath, (m) => panel.post(m));
+    const git = services.git.attach(cwd, (m) => panel.post(m));
     this.disposables.push(
       panel.onMessage((m) => {
         // действия вкладки «git» — сервису, сессия движка для них не нужна
@@ -924,9 +981,25 @@ export class ChatPanel {
           void git.handle(m).catch((e) => log.error(`${m.type}: ${String(e)}`));
           return;
         }
-        // «＋ новый чат» блока «Чаты по задаче» — как «＋» группы в боковой панели; ключ из webview недоверенный
+        // «＋ новый чат» блока «Чаты по задаче» — как «＋» группы в боковой панели; ключ из webview недоверенный.
+        // С опциями (roadmap 26: всплывашка, ⌥＋, `/new`, `/fork`) — ещё чат-источник: эта вкладка
         if (m.type === 'task.newChat') {
-          if (parseTaskKey(m.taskKey)) void vscode.commands.executeCommand('agentura.chatForTask', m.taskKey);
+          if (!parseTaskKey(m.taskKey)) return;
+          const { provider, prompt, carry, where, beside } = m;
+          const rest: NewChatOptions = {
+            ...(provider ? { provider } : {}),
+            ...(prompt !== undefined ? { prompt } : {}),
+            ...(carry ? { carry } : {}),
+            ...(where ? { where } : {}),
+            ...(beside !== undefined ? { beside } : {}),
+          };
+          if (!Object.keys(rest).length) {
+            void vscode.commands.executeCommand('agentura.chatForTask', m.taskKey);
+            return;
+          }
+          const id = this.controller.sessionId;
+          const opts: NewChatOptions = { ...rest, from: { provider: this.provider, ...(id ? { id } : {}), cwd: this.cwd } };
+          void ChatPanel.newTaskChat?.(m.taskKey, opts).catch((e: unknown) => log.error(`task.newChat: ${String(e)}`));
           return;
         }
         // чат из того же блока: только сессия группы задачи этой вкладки
@@ -1030,6 +1103,18 @@ export class ChatPanel {
   }
 
   private lastChats = '';
+  private repoCheck: Promise<boolean> | undefined;
+
+  /** Рабочая папка вкладки в git-репозитории — можно своя worktree (roadmap 26); `fresh` — перепроверить. */
+  private inRepo(fresh: boolean): Promise<boolean> {
+    if (fresh || !this.repoCheck) {
+      this.repoCheck = this.services.git
+        .rootsFor(this.cwd)
+        .then((r) => worktreeRepo(this.cwd, r.roots) !== undefined)
+        .catch(() => false);
+    }
+    return this.repoCheck;
+  }
 
   /** Чаты группы задачи вкладки → блок «Чаты по задаче»; без изменений не шлёт (`force` — webview пересоздан). */
   private async pushTaskChats(force = false): Promise<void> {
@@ -1040,6 +1125,14 @@ export class ChatPanel {
       type: 'task.chats',
       ...(taskKey ? { taskKey } : {}),
       chats: taskChatRows(group, rows, this.controller.sessionId),
+      ...(taskKey
+        ? {
+            newChat: {
+              worktree: await this.inRepo(force),
+              summary: !!this.controller.sessionId && !!this.services.adapter.complete,
+            },
+          }
+        : {}),
     };
     const json = JSON.stringify(msg);
     if (!force && json === this.lastChats) return;
@@ -1092,6 +1185,76 @@ export class ChatPanel {
     this.disposables.forEach((d) => d.dispose());
     ChatPanel.sessionsChanged(this.services);
   }
+}
+
+/** Адаптер движка `p` (Codex и Antigravity — лениво). */
+export function adapterOf(services: ChatServices, p: AgentProvider | undefined): AgentAdapter {
+  return p === 'codex' ? services.codexAdapter() : p === 'antigravity' ? services.antigravityAdapter() : services.adapter;
+}
+
+/**
+ * Git и история чатов для сборщика вкладки «код» (roadmap 24) и «изменений задачи» нового чата (roadmap 26): git — через
+ * встроенное расширение VS Code (путь к бинарнику — с первого `repos`), история — адаптеры движков.
+ */
+export function taskCodeDeps(services: ChatServices): CodeCollectDeps {
+  let gitPath: string | undefined;
+  return {
+    run: async (args, cwd) => {
+      gitPath ??= (await services.git.rootsFor(cwd)).gitPath;
+      return runGit(gitPath, args, cwd);
+    },
+    repos: async (cwd) => {
+      const r = await services.git.rootsFor(cwd);
+      gitPath = r.gitPath;
+      return r.roots;
+    },
+    history: async (chat, cwd) => (await adapterOf(services, chat.provider).loadHistory(chat.id, cwd)).events,
+    readText: readTextFile,
+  };
+}
+
+/** Чаты группы задачи (новые сверху) с рабочей папкой и временем — как их знает список сессий. */
+export async function taskCodeChats(services: ChatServices, taskKey: string): Promise<CodeChatInfo[]> {
+  const group = services.taskGroups.group(taskKey);
+  if (!group) return [];
+  const rows = await services.sessions.list().catch(() => []);
+  return group.sessions
+    .flatMap((ref) => {
+      const row = rows.find((r) => r.id === ref.id && (r.provider ?? 'claude') === ref.provider);
+      return row ? [{ row, ref }] : [];
+    })
+    .sort((a, b) => b.row.updatedAt - a.row.updatedAt)
+    .map(({ row, ref }) => ({
+      id: ref.id,
+      ...(ref.provider === 'claude' ? {} : { provider: ref.provider }),
+      title: row.title,
+      ...(row.cwd ? { cwd: row.cwd } : {}),
+      updatedAt: row.updatedAt,
+    }));
+}
+
+/** Есть такая папка (для `pickCwd`). */
+function isDir(dir: string): boolean {
+  try {
+    return statSync(dir).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Рабочая папка чата не из воркспейса (roadmap 26): своя worktree или папка возобновляемой сессии. Только локальный
+ * воркспейс, только существующая папка и не сама папка воркспейса (та же через симлинк — тоже нет); иначе `undefined`.
+ */
+function chatCwd(folder: vscode.WorkspaceFolder, wanted: string | undefined): string | undefined {
+  if (!wanted || folder.uri.scheme !== 'file' || !isAbsolute(wanted)) return undefined;
+  try {
+    if (!statSync(wanted).isDirectory()) return undefined;
+    if (samePath(realpathSync(wanted), realpathSync(folder.uri.fsPath))) return undefined;
+  } catch {
+    return undefined;
+  }
+  return wanted;
 }
 
 /** Прочитать выбранные или перетащенные файлы через `workspace.fs` (этап 8 roadmap 0.2). */

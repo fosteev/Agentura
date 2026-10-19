@@ -31,6 +31,11 @@ export interface SessionsServiceDeps {
   /** Нет — без бесед Antigravity. Без `agy` или без `node:sqlite` список просто короче, без ошибок. */
   antigravity?: ExtraSessionsSource;
   cwd: string;
+  /**
+   * Свои рабочие папки чатов задач движка (worktree, roadmap 26, Д2): Codex и Antigravity фильтруют список по папке —
+   * их беседы оттуда читаются отдельными запросами и сливаются с беседами папки проекта. Нет — только папка проекта.
+   */
+  extraCwds?: (provider: ExtraProvider) => readonly string[];
   live: LiveSessions;
   cache: TranscriptCache;
   log: { debug(m: string): void; warn(m: string): void };
@@ -62,10 +67,40 @@ const CODEX_FIRST_WAIT_MS = 3000;
 /** Сколько раз подряд возвращать своё название сессии, которое перебивает движок. */
 const MAX_TITLE_REAPPLY = 5;
 
+/** Своих папок (worktree) на движок в одном чтении списка, не больше: каждая — отдельный запрос. */
+export const MAX_EXTRA_DIRS = 8;
+
+/**
+ * Папки, по которым читается список движка: папка проекта, затем свои папки чатов задач (без повторов и без самой
+ * папки проекта), не больше `MAX_EXTRA_DIRS` своих.
+ */
+export function extraDirs(cwd: string, own: readonly string[]): string[] {
+  const out = [cwd];
+  for (const d of own) {
+    if (out.length > MAX_EXTRA_DIRS) break;
+    if (d && !out.includes(d)) out.push(d);
+  }
+  return out;
+}
+
+/** Слить списки бесед нескольких папок: по id без повторов, первая встреченная строка (её `cwd`) остаётся. */
+export function mergeSessionLists<T extends { id: string }>(lists: readonly (readonly T[])[]): T[] {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const list of lists) {
+    for (const r of list) {
+      if (seen.has(r.id)) continue;
+      seen.add(r.id);
+      out.push(r);
+    }
+  }
+  return out;
+}
+
 /** Состояние чтения списка одного дополнительного движка. */
 interface ExtraState {
-  /** Последние строки и на какой момент они сняты (срок, эпоха живых сессий движка). */
-  cache: { rows: SessionRow[]; at: number; epoch: number; rev: number } | undefined;
+  /** Последние строки и на какой момент они сняты (срок, эпоха живых сессий движка, набор папок). */
+  cache: { rows: SessionRow[]; at: number; epoch: number; rev: number; dirs: string } | undefined;
   /** Растёт, когда строки точно устарели (переименование): кэш, снятый до этого, не годится. */
   rev: number;
   failed: { at: number; rev: number; epoch: number } | undefined;
@@ -248,7 +283,12 @@ export class SessionsService {
     const cache = st.cache;
     const epoch = this.deps.live.epochOf(p);
     const rev = st.rev;
-    const fresh = cache && cache.rev === rev && cache.epoch === epoch && now - cache.at < CODEX_TTL_MS;
+    const fresh =
+      cache &&
+      cache.rev === rev &&
+      cache.epoch === epoch &&
+      cache.dirs === this.dirsOf(p).join('\n') &&
+      now - cache.at < CODEX_TTL_MS;
     if (fresh) return this.withLive(cache.rows);
     const failed = st.failed;
     if (failed && failed.rev === rev && failed.epoch === epoch && now - failed.at < CODEX_BACKOFF_MS) {
@@ -305,7 +345,19 @@ export class SessionsService {
         st.cache = undefined;
         return;
       }
-      const infos = await source.adapter().listSessions(this.deps.cwd);
+      const dirs = this.dirsOf(p);
+      const adapter = source.adapter();
+      const lists = [await adapter.listSessions(this.deps.cwd)];
+      // свои папки (worktree) — по одной; сбой одной не ломает список папки проекта
+      for (const dir of dirs.slice(1)) {
+        lists.push(
+          await adapter.listSessions(dir).catch((e: unknown) => {
+            this.deps.log.debug(`список сессий ${EXTRA_NAMES[p]} (${dir}): ${String(e)}`);
+            return [];
+          }),
+        );
+      }
+      const infos = mergeSessionLists(lists);
       const rows = infos.map(
         (i): SessionRow => ({
           ...i,
@@ -316,7 +368,7 @@ export class SessionsService {
         }),
       );
       for (const r of rows) st.known.add(r.id);
-      st.cache = { rows, at: Date.now(), epoch, rev };
+      st.cache = { rows, at: Date.now(), epoch, rev, dirs: dirs.join('\n') };
       st.failed = undefined;
       st.warned = false;
     } catch (e) {
@@ -327,6 +379,11 @@ export class SessionsService {
         this.deps.log.warn(msg);
       } else this.deps.log.debug(msg);
     }
+  }
+
+  /** Папки чтения списка движка `p`: папка проекта и свои папки чатов задач (Д2). */
+  private dirsOf(p: ExtraProvider): string[] {
+    return extraDirs(this.deps.cwd, this.deps.extraCwds?.(p) ?? []);
   }
 
   /** Состояние живых сессий — поверх закэшированных строк (оно меняется чаще, чем список). */
@@ -417,6 +474,11 @@ export class SessionsService {
       if (row?.provider === p || (!row && this.extras[p].known.has(sessionId))) return p;
     }
     return 'claude';
+  }
+
+  /** `cwd` строки сессии из загруженного списка; строки нет или у неё нет `cwd` — `undefined`. */
+  cwdOfRow(sessionId: string): string | undefined {
+    return this.rows.find((r) => r.id === sessionId)?.cwd;
   }
 
   /** `cwd` сессии (у сессий worktree он свой), иначе папка проекта. */

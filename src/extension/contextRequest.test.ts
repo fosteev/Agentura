@@ -79,4 +79,46 @@ describe('contextRequest', () => {
     expect(contextRequest({ context: 'x', session: 7 })).not.toHaveProperty('session');
     expect(contextRequest({ context: 'x', session: 'a'.repeat(500) })).not.toHaveProperty('session');
   });
+
+  it('новый чат задачи (roadmap 26): движок, доп. файлы, рядом — недоверенные поля', () => {
+    const ok = contextRequest({
+      context: 'x',
+      provider: 'codex',
+      files: [
+        { name: 'K-1-handoff.md', text: 'итог' },
+        { name: '../K-1-changes.md', text: 'изменения' },
+      ],
+      beside: true,
+    });
+    expect(ok).toMatchObject({
+      provider: 'codex',
+      files: [
+        { name: 'K-1-handoff.md', text: 'итог' },
+        { name: '.._K-1-changes.md', text: 'изменения' },
+      ],
+      beside: true,
+    });
+    const bad = contextRequest({
+      context: 'x',
+      provider: 'gemini',
+      files: [{ name: '..', text: 'a' }, { name: 'a.md', text: ' ' }, { name: 'b.md' }, 'c', null],
+      beside: 1,
+    });
+    expect(bad).toEqual({ name: 'context.md', context: 'x' });
+    expect(contextRequest({ context: 'x', files: 'a' })).not.toHaveProperty('files');
+    // больше четырёх — лишние отброшены; текст режется до лимита контекста
+    const many = contextRequest({
+      context: 'x',
+      files: Array.from({ length: 6 }, (_, i) => ({ name: `f${i}.md`, text: 'y'.repeat(MAX_CONTEXT_CHARS + 1) })),
+    });
+    expect(many?.files).toHaveLength(4);
+    expect(many?.files?.[0]?.text).toHaveLength(MAX_CONTEXT_CHARS);
+  });
+
+  it('внешний вход не принимает cwd и autoSend (Д4): ни папки, ни отправки без человека', () => {
+    const req = contextRequest({ context: 'x', prompt: 'rm -rf', autoSend: true, cwd: '/etc', provider: 'claude' });
+    expect(req).toEqual({ name: 'context.md', context: 'x', prompt: 'rm -rf', provider: 'claude' });
+    expect(req).not.toHaveProperty('cwd');
+    expect(req).not.toHaveProperty('autoSend');
+  });
 });

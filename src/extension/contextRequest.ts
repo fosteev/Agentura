@@ -1,3 +1,5 @@
+import type { AgentProvider } from '../agent/types';
+import { isProvider } from '../settings';
 import { taskMeta, type TaskMeta } from './taskGroups';
 
 /** Аргумент `agentura.openWithContext`: `context` уходит файлом `name` в поле ввода новой вкладки. */
@@ -15,6 +17,22 @@ export interface ContextRequest {
   task?: TaskMeta;
   /** `new` — новая вкладка в группе; id чата группы — возобновить его; нет — последний чат группы. */
   session?: string;
+  /** Движок новой вкладки (roadmap 26); нет — `agentura.defaultProvider`. Настройку не меняет. */
+  provider?: AgentProvider;
+  /** Ещё текстовые вложения после `context` (итог чата, изменения задачи), по порядку. */
+  files?: { name: string; text: string }[];
+  /**
+   * `prompt` уходит первым сообщением сам (после вложений); нет — только в поле ввода. Только внутренний вызов
+   * (`agentura.chatForTask` из вкладки чата): `contextRequest()` поле не принимает (Д4 доводки 1).
+   */
+  autoSend?: boolean;
+  /**
+   * Рабочая папка новой вкладки (своя worktree); нет — папка воркспейса. Новая вкладка — всегда новая. Только
+   * внутренний вызов, как `autoSend`: внешний вход не открывает агента в произвольной папке.
+   */
+  cwd?: string;
+  /** Новая вкладка рядом (`ViewColumn.Beside`); при `tasks.tab = task` не действует. */
+  beside?: boolean;
 }
 
 /** Лимит контекста: больше — обрезается (дальше файл проверят лимиты вложений поля ввода). */
@@ -22,12 +40,11 @@ export const MAX_CONTEXT_CHARS = 200_000;
 
 const MAX_PROMPT_CHARS = 2_000;
 const MAX_SESSION_CHARS = 200;
+/** Доп. вложений (`files`) не больше: лимит поля ввода — 10 файлов на сообщение. */
+const MAX_EXTRA_FILES = 4;
 
-/** Проверить недоверенный аргумент команды. Имя — один сегмент пути; нет — `context.md`. */
-export function contextRequest(arg: unknown): ContextRequest | undefined {
-  if (!arg || typeof arg !== 'object') return undefined;
-  const { context, name, prompt, sessionKey, task, session } = arg as Record<string, unknown>;
-  if (typeof context !== 'string' || !context.trim()) return undefined;
+/** Имя файла-вложения: один сегмент пути; пусто или одни точки — `undefined`. */
+function cleanName(name: unknown): string | undefined {
   const clean =
     typeof name === 'string'
       ? name
@@ -36,8 +53,35 @@ export function contextRequest(arg: unknown): ContextRequest | undefined {
           .trim()
           .slice(0, 100)
       : '';
+  return clean && !/^\.+$/.test(clean) ? clean : undefined;
+}
+
+/** Доп. вложения: только `{ name, text }` с непустым текстом, имя — как у `name`, текст обрезается. */
+function extraFiles(v: unknown): { name: string; text: string }[] {
+  if (!Array.isArray(v)) return [];
+  const out: { name: string; text: string }[] = [];
+  for (const f of v.slice(0, MAX_EXTRA_FILES)) {
+    if (!f || typeof f !== 'object') continue;
+    const { name, text } = f as Record<string, unknown>;
+    const clean = cleanName(name);
+    if (!clean || typeof text !== 'string' || !text.trim()) continue;
+    out.push({ name: clean, text: text.slice(0, MAX_CONTEXT_CHARS) });
+  }
+  return out;
+}
+
+/**
+ * Проверить недоверенный аргумент команды `agentura.openWithContext` (её зовёт любое расширение и `command:`-ссылка).
+ * Имя — один сегмент пути; нет — `context.md`. `cwd` и `autoSend` не принимаются: снаружи нельзя открыть агента в
+ * чужой папке или отправить ему сообщение без человека (Д4 доводки 1 roadmap 26).
+ */
+export function contextRequest(arg: unknown): ContextRequest | undefined {
+  if (!arg || typeof arg !== 'object') return undefined;
+  const { context, name, prompt, sessionKey, task, session, provider, files, beside } = arg as Record<string, unknown>;
+  if (typeof context !== 'string' || !context.trim()) return undefined;
+  const extra = extraFiles(files);
   return {
-    name: clean && !/^\.+$/.test(clean) ? clean : 'context.md',
+    name: cleanName(name) ?? 'context.md',
     context: context.slice(0, MAX_CONTEXT_CHARS),
     ...(typeof prompt === 'string' && prompt.trim()
       ? { prompt: prompt.slice(0, MAX_PROMPT_CHARS) }
@@ -48,5 +92,8 @@ export function contextRequest(arg: unknown): ContextRequest | undefined {
     ...(typeof session === 'string' && session.trim() && session.trim().length <= MAX_SESSION_CHARS
       ? { session: session.trim() }
       : {}),
+    ...(isProvider(provider) ? { provider } : {}),
+    ...(extra.length ? { files: extra } : {}),
+    ...(beside === true ? { beside: true } : {}),
   };
 }

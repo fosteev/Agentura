@@ -234,6 +234,31 @@ describe('protocol', () => {
     for (const m of bad) expect(isFromWebview(m), JSON.stringify(m).slice(0, 200)).toBe(false);
   });
 
+  it('новый чат задачи (roadmap 26): task.newChat с опциями — движок, текст, carry, where, beside', () => {
+    const base = { type: 'task.newChat', taskKey: 'jira:x:A-1' };
+    expect(
+      isFromWebview({
+        ...base,
+        provider: 'codex',
+        prompt: 'продолжи',
+        carry: { task: true, summary: true, changes: false },
+        where: 'worktree',
+        beside: true,
+      }),
+    ).toBe(true);
+    expect(isFromWebview({ ...base, carry: {} })).toBe(true);
+    expect(isFromWebview({ ...base, prompt: 'x'.repeat(2000) })).toBe(true);
+    expect(isFromWebview({ ...base, prompt: 'x'.repeat(2001) })).toBe(false);
+    expect(isFromWebview({ ...base, prompt: 5 })).toBe(false);
+    expect(isFromWebview({ ...base, provider: 'gemini' })).toBe(false);
+    expect(isFromWebview({ ...base, carry: { task: 'yes' } })).toBe(false);
+    expect(isFromWebview({ ...base, carry: { evil: true } })).toBe(false);
+    expect(isFromWebview({ ...base, carry: [true] })).toBe(false);
+    expect(isFromWebview({ ...base, carry: null })).toBe(false);
+    expect(isFromWebview({ ...base, where: 'elsewhere' })).toBe(false);
+    expect(isFromWebview({ ...base, beside: 'yes' })).toBe(false);
+  });
+
   it('вкладка «git» (roadmap 12): запросы проверяются по полям', () => {
     const ok = [
       { type: 'git.watch', on: true },

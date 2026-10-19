@@ -321,13 +321,22 @@ export function Composer() {
     return () => stashComposerText(tabChat, textRef.current);
   }, []);
 
-  // текст от хоста (`composer.prefill`, ссылка на задачу из Jiraffe): только в пустое поле
+  // текст от хоста (`composer.prefill`, ссылка на задачу из Jiraffe): только в пустое поле; `send` (новый чат
+  // задачи, roadmap 26) — уходит обычной отправкой, когда поле его покажет (эффект по `text` ниже)
   const pre = prefill.value;
+  const sendPrefill = useRef(false);
   useEffect(() => {
     if (pre === undefined) return;
     prefill.value = undefined;
-    if (!(edRef.current?.textContent ?? '')) writeText(pre);
+    if (edRef.current?.textContent ?? '') return;
+    writeText(pre.text);
+    sendPrefill.current = !!pre.send && !!pre.text.trim();
   }, [pre]);
+  useEffect(() => {
+    if (!sendPrefill.current || !text.trim()) return;
+    sendPrefill.current = false;
+    submitPrefill();
+  }, [text]);
 
   // каретка: selectionchange ловит и клавиши, и мышь
   useEffect(() => {
@@ -488,6 +497,22 @@ export function Composer() {
       }
     }
     if (!sendMessage(t, !t.startsWith('/'))) return;
+    writeText('');
+  }
+
+  /**
+   * Первое сообщение нового чата задачи (`composer.prefill` с `send`, Д5 доводки 1): уходит обычным сообщением с
+   * вложениями поля — не разбирается как `/команда` и не идёт ответом карточке. Не может уйти (лимит, сессия закрыта) —
+   * текст остаётся в поле, в ленте — почему.
+   */
+  function submitPrefill() {
+    const t = text.trim();
+    const why = closed ? 'closed' : blocked ? 'limit' : imagesBusy.value ? 'busy' : undefined;
+    if (why || !sendMessage(t, true, true)) {
+      chat.value = addSys(chat.value, [ui.sys.autoSendHeld(why ?? 'closed')]);
+      return;
+    }
+    setHistIdx(undefined);
     writeText('');
   }
 

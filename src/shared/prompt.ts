@@ -42,16 +42,24 @@ export function attachmentLabel(a: Attachment): { name: string; range: string } 
   return { name: a.kind === 'folder' ? `${name}/` : name, range };
 }
 
+/** Текстовый файл, вписанный в блок контекста (движок без вложений-файлов: Codex, Antigravity). */
+export interface InlineFile {
+  name: string;
+  text: string;
+}
+
 /**
- * Текст для движка. `selectionText` — тексты выделений по `attachmentKey`, читает хост.
+ * Текст для движка. `selectionText` — тексты выделений по `attachmentKey`, читает хост. `inline` — текстовые
+ * вложения движку без `features.files` (roadmap 26): в конце блока как `--- <name> ---` и текст.
  * Без вложений возвращает текст как есть.
  */
 export function buildPrompt(
   text: string,
   attachments: readonly Attachment[],
   selectionText: Readonly<Record<string, string>> = {},
+  inline: readonly InlineFile[] = [],
 ): string {
-  if (attachments.length === 0) return text;
+  if (attachments.length === 0 && inline.length === 0) return text;
   const lines: string[] = [];
   const fences: string[] = [];
   for (const a of attachments) {
@@ -64,7 +72,12 @@ export function buildPrompt(
       if (body) fences.push(fenced(body));
     }
   }
-  return `${text}${SEPARATOR}${lines.join('\n')}${fences.length ? '\n\n' + fences.join('\n\n') : ''}`;
+  const parts = [
+    ...(lines.length ? [lines.join('\n')] : []),
+    ...fences,
+    ...inline.map((f) => `--- ${f.name} ---\n${f.text}`),
+  ];
+  return `${text}${SEPARATOR}${parts.join('\n\n')}`;
 }
 
 /** Блок кода с ограждением длиннее любой серии обратных кавычек внутри текста. */

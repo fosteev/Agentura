@@ -87,7 +87,7 @@ import { cacheView, contextFullAt, contextView, kilo, limitsView } from './hudVi
 import { limitBlock, type LimitBlock } from './limitView';
 import { ui } from './strings';
 import { shortModel } from './toolView';
-import { forgetSession, persistSession, saveTaskTab, send, setTabChat } from './vscode';
+import { forgetSession, persistSession, readPanel, savePanel, saveTaskTab, send, setTabChat } from './vscode';
 
 export const chat = signal<ChatState>(initialState());
 /** Движок вкладки и его возможности (`chat.info`); нет полей в сообщении — Claude. Переживают `session.reset`. */
@@ -126,8 +126,11 @@ export interface DraftFile {
 }
 /** Текстовые файлы и pdf в поле ввода: «+», перетаскивание из проводника VS Code. */
 export const draftFiles = signal<DraftFile[]>([]);
-/** Текст для пустого поля ввода от хоста (`composer.prefill`); поле забирает его и сбрасывает. */
-export const prefill = signal<string | undefined>(undefined);
+/**
+ * Текст для пустого поля ввода от хоста (`composer.prefill`); поле забирает его и сбрасывает. `send` — сразу
+ * отправить (новый чат задачи, roadmap 26).
+ */
+export const prefill = signal<{ text: string; send?: boolean } | undefined>(undefined);
 /**
  * Вложения в истории сессии с последней компакции (снимок хоста `session.attach`): лимиты API —
  * на запрос со всей историей, поэтому новые вложения проверяются с их учётом.
@@ -416,12 +419,15 @@ export function handleHostMessage(m: ToWebview): void {
       if (chat.value.engine !== provider.value)
         chat.value = { ...chat.value, engine: provider.value };
       features.value = m.features ?? providerFeatures(provider.value);
-      // файл прикрепили до смены движка: новый файлов не принимает — плашка, а не молча потерянное вложение
-      if (!features.value.files && draftFiles.value.some((d) => d.file))
+      // файл прикрепили до смены движка: новый файлов не принимает — плашка, а не молча потерянное вложение;
+      // текстовые хост впишет в блок контекста сообщения (roadmap 26)
+      if (!features.value.files && draftFiles.value.some((d) => d.file && d.file.kind !== 'text'))
         draftFiles.value = draftFiles.value.map((d) =>
-          d.file ? { id: d.id, name: d.name, problem: 'engine' } : d,
+          d.file && d.file.kind !== 'text' ? { id: d.id, name: d.name, problem: 'engine' } : d,
         );
       chat.value = { ...chat.value, project: m.project, cwd: m.cwd, allowBypass: m.allowBypass };
+      // рабочая папка вкладки — в состояние: сериализатор вернёт worktree-чат в его папку (roadmap 26, Д1)
+      if (m.cwd && readPanel().cwd !== m.cwd) savePanel({ cwd: m.cwd });
       feedStyle.value = m.feedStyle ?? 'journal';
       composerLayout.value = m.composerLayout ?? 'classic';
       agentsView.value = m.agentsView ?? 'list';
@@ -466,7 +472,7 @@ export function handleHostMessage(m: ToWebview): void {
       for (const hit of m.items) addExtra({ kind: hit.isDir ? 'folder' : 'file', path: hit.path });
       break;
     case 'composer.prefill':
-      prefill.value = m.text;
+      prefill.value = { text: m.text, ...(m.send ? { send: true } : {}) };
       break;
     case 'file.picked':
       addFiles(m.items);
@@ -890,12 +896,17 @@ function filesChars(): number {
  * содержимым второй раз не добавляется.
  */
 export function addFiles(items: readonly PickedFile[]): void {
-  // движок без вложений-файлов (Codex): красная плашка вместо молча потерянного файла
+  // движок без вложений-файлов (Codex): красная плашка вместо молча потерянного файла; текстовые хост впишет
+  // в блок контекста сообщения (roadmap 26)
   if (!features.value.files) {
-    items = items.map((it) => ({
-      name: it.name || (it.path ? fileName(it.path) : 'file'),
-      problem: 'engine',
-    }));
+    items = items.map((it) =>
+      it.kind === 'text'
+        ? it
+        : {
+            name: it.name || (it.path ? fileName(it.path) : 'file'),
+            problem: 'engine',
+          },
+    );
   }
   for (const it of items) {
     const id = ++fileSeq;
@@ -969,12 +980,13 @@ export function openImage(i: ImageRef): void {
   send({ type: 'image.open', mediaType: i.mediaType, data: i.data });
 }
 
-export function sendMessage(text: string, withContext = true): boolean {
+export function sendMessage(text: string, withContext = true, plain = false): boolean {
   const s = chat.value;
   if (s.closed || imagesBusy.value) return false;
   const attachments = withContext ? currentAttachments() : [];
-  // `/команда` картинки и файлы не забирает: с content-массивом CLI не распознал бы команду
-  const command = text.startsWith('/');
+  // `/команда` картинки и файлы не забирает: с content-массивом CLI не распознал бы команду; `plain` (первое
+  // сообщение нового чата задачи, Д5) — текст, а не команда: вложения уходят с ним
+  const command = !plain && text.startsWith('/');
   const images = command ? [] : readyImages();
   const files = command ? [] : readyFiles();
   if (!text && images.length === 0 && files.length === 0) return false;

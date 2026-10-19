@@ -73,6 +73,11 @@ export interface PanelState {
   taskSeenKey?: string;
   /** Охват вкладки «агенты» по видам (список охвата не имеет): последний ход или вся сессия. */
   agScope?: Partial<Record<'tree' | 'lanes' | 'cards', 'turn' | 'session'>>;
+  /**
+   * Рабочая папка чата вкладки (`chat.info`, roadmap 26, Д1): по ней сериализатор вернёт чат своей worktree в его папку,
+   * даже без сообщений и до загрузки списка сессий. Принадлежит вкладке, а не сессии (`/clear` её не сбрасывает).
+   */
+  cwd?: string;
 }
 
 /** Всё, что webview кладёт в `setState`: id сессии (для сериализатора) и панель. Поля независимы. */
@@ -176,6 +181,7 @@ export function readPanel(): PanelState {
   if (typeof p.gitAgent === 'boolean') out.gitAgent = p.gitAgent;
   if (typeof p.gitDescH === 'number' && Number.isFinite(p.gitDescH) && p.gitDescH > 0) out.gitDescH = p.gitDescH;
   if (p.changes === 'session' || p.changes === 'turn') out.changes = p.changes;
+  if (typeof p.cwd === 'string' && p.cwd && p.cwd.length <= 1_024) out.cwd = p.cwd;
   const sc = p.agScope as Record<string, unknown> | undefined;
   if (sc && typeof sc === 'object') {
     const agScope: NonNullable<PanelState['agScope']> = {};

@@ -26,8 +26,12 @@ import {
   isCodeDiffTarget,
   isCodeSha,
   isIsoDate,
+  isNewChatCarry,
   isOpenableLink,
+  NEW_CHAT_PROMPT_LIMIT,
   TASK_LIMITS,
+  type NewChatCarry,
+  type NewChatWhere,
   type TaskActionMessage,
   type TaskChatsMessage,
   type TaskCodeCommitMessage,
@@ -248,8 +252,11 @@ export type ToWebview =
    * или причина отказа. Картинки из тех же источников приходят `image.picked`.
    */
   | { type: 'file.picked'; items: PickedFile[] }
-  /** Текст в пустое поле ввода (`agentura.openWithContext`): набранное не затирается. */
-  | { type: 'composer.prefill'; text: string }
+  /**
+   * Текст в пустое поле ввода (`agentura.openWithContext`): набранное не затирается. `send` (новый чат задачи,
+   * roadmap 26) — сразу отправить его обычной отправкой поля ввода (с вложениями, пришедшими раньше).
+   */
+  | { type: 'composer.prefill'; text: string; send?: boolean }
   /** Начата новая сессия (команда, `/clear`, `new`): очистить ленту. */
   | { type: 'session.reset' }
   /**
@@ -449,8 +456,21 @@ export type FromWebview =
   /** Чат: снимок карты агентов для его вкладки графа — только пока граф открыт (`agents.graph`). */
   | { type: 'agents.snapshot'; sessionId: string; graph: AgentGraphView }
   | { type: 'session.new' }
-  /** «＋» у группы задачи в боковой панели: новый чат по задаче (`agentura.chatForTask`); `taskKey` — `jira:<инстанс>:<KEY>`. */
-  | { type: 'task.newChat'; taskKey: string }
+  /**
+   * «＋» у группы задачи в боковой панели: новый чат по задаче (`agentura.chatForTask`); `taskKey` — `jira:<инстанс>:<KEY>`.
+   * Из вкладки чата (roadmap 26) — с опциями: движок (нет — движок вкладки), первое сообщение (уходит само), что
+   * передать (нет — `{ task: true }`), своя worktree, «рядом». Чат-источник итога — сессия вкладки-отправителя;
+   * из боковой панели `carry.summary`/`carry.changes`/`where`/`beside` игнорируются.
+   */
+  | {
+      type: 'task.newChat';
+      taskKey: string;
+      provider?: AgentProvider;
+      prompt?: string;
+      carry?: NewChatCarry;
+      where?: NewChatWhere;
+      beside?: boolean;
+    }
   /** Выбор движка в пустой вкладке (до первого сообщения); хост запоминает его как дефолт новых чатов. */
   | { type: 'engine.set'; provider: AgentProvider }
   | { type: 'limits.refresh' }
@@ -717,7 +737,15 @@ const FIELD_CHECKS: Partial<Record<FromWebview['type'], (m: Record<string, unkno
   'git.openFile': (m) => str(m.root) && str(m.path),
   'git.openRepository': () => true,
   'git.message': (m) => strings(m.roots),
-  'task.newChat': (m) => str(m.taskKey) && m.taskKey.length > 0 && m.taskKey.length <= 400,
+  'task.newChat': (m) =>
+    str(m.taskKey) &&
+    m.taskKey.length > 0 &&
+    m.taskKey.length <= 400 &&
+    (m.provider === undefined || m.provider === 'claude' || m.provider === 'codex' || m.provider === 'antigravity') &&
+    (m.prompt === undefined || (str(m.prompt) && m.prompt.length <= NEW_CHAT_PROMPT_LIMIT)) &&
+    (m.carry === undefined || isNewChatCarry(m.carry)) &&
+    (m.where === undefined || m.where === 'same' || m.where === 'worktree') &&
+    (m.beside === undefined || bool(m.beside)),
   'integrations.test': (m) => str(m.instanceId) && m.instanceId.length > 0 && m.instanceId.length <= 200,
   'integrations.disconnect': (m) => str(m.instanceId) && m.instanceId.length > 0 && m.instanceId.length <= 200,
   'task.connect': () => true,

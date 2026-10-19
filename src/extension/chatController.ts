@@ -612,9 +612,9 @@ export class ChatController {
     this.postWhenReady({ type: 'file.picked', items });
   }
 
-  /** Текст в поле ввода, если оно пустое (контекст снаружи). */
-  prefill(text: string): void {
-    this.postWhenReady({ type: 'composer.prefill', text });
+  /** Текст в поле ввода, если оно пустое (контекст снаружи); `send` — сразу отправить (новый чат задачи, roadmap 26). */
+  prefill(text: string, send = false): void {
+    this.postWhenReady({ type: 'composer.prefill', text, ...(send ? { send: true } : {}) });
   }
 
   private postWhenReady(m: ToWebview): void {
@@ -1309,13 +1309,29 @@ export class ChatController {
       this.log.warn('send: пустое сообщение (вложения отброшены) — не отправлено');
       return;
     }
-    if (!session.send(buildPrompt(m.text, m.attachments ?? [], texts), images, files)) {
+    // движок без вложений-файлов (Codex, Antigravity) выбросил бы их: текстовые уходят блоком контекста (roadmap 26),
+    // pdf и двоичные отбрасываются здесь (Д8 доводки 1) — webview помечает их плашкой, до адаптера они не доходят
+    const noFiles = !providerFeatures(this.engineProvider).files;
+    const inline =
+      files && noFiles ? files.filter((f) => f.kind === 'text').map((f) => ({ name: f.path, text: f.data })) : [];
+    const sendFiles = noFiles ? undefined : files;
+    if (noFiles && files && files.length > inline.length) {
+      this.log.debug(`send: ${files.length - inline.length} вложений не текст — движку без файлов не уходят`);
+    }
+    if (noFiles && !images && !inline.length && !m.text.trim() && !m.attachments?.length) {
+      this.log.warn('send: пустое сообщение (вложения отброшены) — не отправлено');
+      return;
+    }
+    const prompt = buildPrompt(m.text, m.attachments ?? [], texts, inline);
+    if (!session.send(prompt, images, sendFiles)) {
       this.log.warn('send: сессия закрыта, сообщение не принято');
       return;
     }
-    if (add.chars > 0) {
+    // отброшенные pdf движку без файлов не ушли — их страницы в счёт сессии не идут
+    const pdfPages = noFiles ? 0 : add.pdfPages;
+    if (add.chars > 0 || pdfPages > 0) {
       this.attached = {
-        pdfPages: this.attached.pdfPages + add.pdfPages,
+        pdfPages: this.attached.pdfPages + pdfPages,
         chars: this.attached.chars + add.chars,
       };
     }

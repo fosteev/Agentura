@@ -16,6 +16,8 @@ export interface SlotInfo {
   provider: AgentProvider;
   title?: string | undefined;
   status: ChatStatus;
+  /** Рабочая папка чата (roadmap 26, Д1): в состояние сериализатора — worktree-чат вернётся в свою папку. */
+  cwd?: string | undefined;
 }
 
 interface Disposable {
@@ -200,7 +202,7 @@ export class TabSlots {
       const active = s.id === this.activeId;
       rows.push({ id: s.id, title: info.title ?? '', provider: info.provider, status: info.status, active });
       if (info.sessionId) {
-        persist.chats.push({ provider: info.provider, id: info.sessionId });
+        persist.chats.push({ provider: info.provider, id: info.sessionId, ...(info.cwd ? { cwd: info.cwd } : {}) });
         if (active) persist.active = info.sessionId;
       }
     }
