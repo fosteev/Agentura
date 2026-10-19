@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.19.0 — 2026-10-19
+
+### Added
+
+- **New chats inside a task.** The task strip lists the task's chats as chips (state dot, engine mark, "N more" menu
+  past four) with a "+ chat" button. A click opens a popover: first message, engine (Claude, Codex, Antigravity),
+  what to carry over (task context, a Claude-written summary of this chat, task changes), the same folder or its own
+  git worktree (`feature/<KEY>-<n>` next to the repository), create or open beside. Alt+click starts a chat at once.
+  `/new [engine] [text]` and `/fork [text]` do the same from the input box of a task chat; the text is sent as the
+  first message. The "+" of inner task tabs works the same way.
+- **Working folder of a chat is kept.** A chat opened in a worktree stays there after Reload Window, and its Codex and
+  Antigravity sessions are listed under the task, in the sidebar and in the "code" tab.
+
+### Changed
+
+- **Text attachments reach Codex and Antigravity.** They go into the message's context block instead of being dropped.
+- **External entry points are narrower.** `agentura.openWithContext` ignores a working folder and auto-send;
+  `agentura.chatForTask` ignores the summary, changes, worktree and "beside" options from a command argument, and its
+  first message only goes into the input box.
+- Agentura does not delete worktrees it creates: remove one with `git worktree remove <path>`.
+
 ## 0.18.0 — 2026-10-15
 
 ### Added
