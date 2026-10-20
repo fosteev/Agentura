@@ -680,6 +680,7 @@ const FROM_WEBVIEW_TYPES: Record<FromWebview['type'], true> = {
   'task.toComposer': true,
   'task.openExternal': true,
   'task.openChat': true,
+  'task.archiveChat': true,
   'task.connect': true,
   'task.transitions': true,
   'task.transition': true,
@@ -752,6 +753,7 @@ const FIELD_CHECKS: Partial<Record<FromWebview['type'], (m: Record<string, unkno
   'tab.select': (m) => str(m.id) && m.id.length > 0 && m.id.length <= 100,
   'tab.close': (m) => str(m.id) && m.id.length > 0 && m.id.length <= 100,
   'task.openChat': (m) => str(m.sessionId) && m.sessionId.length > 0 && m.sessionId.length <= 200,
+  'task.archiveChat': (m) => str(m.sessionId) && m.sessionId.length > 0 && m.sessionId.length <= 200,
   'task.toComposer': (m) => m.commentId === undefined || (str(m.commentId) && m.commentId.length > 0 && m.commentId.length <= 200),
   // вкладка «задача» (roadmap 20): запись от имени пользователя — длины и форма здесь, `writer` проверяет ещё раз
   'task.transitions': () => true,

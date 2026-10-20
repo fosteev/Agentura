@@ -132,6 +132,7 @@ const ru = {
     newChatBtnTitle: 'Новый чат по задаче (⌥ — сразу, без вопросов)',
     chipTitle: (title: string, state?: string) => (state ? `${title} · ${state}` : title),
     chipMore: (n: number) => `ещё ${n} ▾`,
+    chipArchive: 'В архив — убрать из чипов (вернуть: «Архив» в боковой панели)',
     chipMoreTitle: 'Остальные чаты задачи',
     chipState: { live: 'идёт ход', waiting: 'ждёт ответа', error: 'ошибка', limit: 'упёрся в лимит' } as Record<string, string>,
     ncp: {

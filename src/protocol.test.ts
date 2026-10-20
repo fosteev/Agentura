@@ -23,6 +23,9 @@ describe('protocol', () => {
     expect(isFromWebview({ type: 'limits.refresh' })).toBe(true);
     expect(isFromWebview({ type: 'task.newChat', taskKey: 'jira:x:A-1' })).toBe(true);
     expect(isFromWebview({ type: 'task.newChat' })).toBe(false);
+    expect(isFromWebview({ type: 'task.archiveChat', sessionId: 's1' })).toBe(true);
+    expect(isFromWebview({ type: 'task.archiveChat', sessionId: '' })).toBe(false);
+    expect(isFromWebview({ type: 'task.archiveChat', sessionId: 'x'.repeat(201) })).toBe(false);
     // settings.open: раздел необязателен; мусор в поле не делает сообщение невалидным (хост его отбрасывает)
     expect(isFromWebview({ type: 'settings.open' })).toBe(true);
     expect(isFromWebview({ type: 'settings.open', section: 'integrations' })).toBe(true);

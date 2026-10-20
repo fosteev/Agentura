@@ -237,6 +237,13 @@ function ChatChips({
   }, [more]);
   const menuOpen = more && hidden.length > 0;
 
+  // контекстное меню VS Code («В архив», package.json `webview/context`, `webviewSection == 'taskChat'`)
+  const ctx = (id: string) => JSON.stringify({ webviewSection: 'taskChat', sessionId: id, preventDefaultContextMenuItems: true });
+  const archive = (id: string) => (
+    <button class="ca" aria-label={t.chipArchive} data-tip={t.chipArchive} onClick={() => send({ type: 'task.archiveChat', sessionId: id })}>
+      ×
+    </button>
+  );
   const current = (c: TaskChatRow | undefined) => {
     const label = c?.title || t.tabUntitled;
     return (
@@ -247,6 +254,7 @@ function ChatChips({
         class={view === 'chat' ? 'cc cur on' : 'cc cur'}
         aria-selected={view === 'chat'}
         data-tip={label}
+        {...(c ? { 'data-vscode-context': ctx(c.id) } : {})}
         onClick={() => onView('chat')}
       >
         <Mark provider={c?.provider} />
@@ -259,19 +267,21 @@ function ChatChips({
     const label = c.title || t.tabUntitled;
     const st = c.state === 'idle' ? undefined : t.chipState[c.state];
     return (
-      <button
-        key={c.id}
-        role="tab"
-        class="cc"
-        aria-selected={false}
-        data-state={c.state}
-        data-tip={t.chipTitle(label, st)}
-        onClick={() => send({ type: 'task.openChat', sessionId: c.id })}
-      >
-        <Mark provider={c.provider} />
-        <span class="n">{label}</span>
-        {st && <span class={`lv ${c.state}`} role="img" aria-label={st} />}
-      </button>
+      <span key={c.id} class="ccw" data-vscode-context={ctx(c.id)}>
+        <button
+          role="tab"
+          class="cc"
+          aria-selected={false}
+          data-state={c.state}
+          data-tip={t.chipTitle(label, st)}
+          onClick={() => send({ type: 'task.openChat', sessionId: c.id })}
+        >
+          <Mark provider={c.provider} />
+          <span class="n">{label}</span>
+          {st && <span class={`lv ${c.state}`} role="img" aria-label={st} />}
+        </button>
+        {archive(c.id)}
+      </span>
     );
   };
   return (
@@ -294,19 +304,21 @@ function ChatChips({
               {hidden.map((c) => {
                 const st = c.state === 'idle' ? undefined : t.chipState[c.state];
                 return (
-                  <button
-                    key={c.id}
-                    role="menuitem"
-                    class="it"
-                    onClick={() => {
-                      setMore(false);
-                      send({ type: 'task.openChat', sessionId: c.id });
-                    }}
-                  >
-                    <Mark provider={c.provider} />
-                    <span class="n">{c.title || t.tabUntitled}</span>
-                    {st && <span class={`lv ${c.state}`} role="img" aria-label={st} />}
-                  </button>
+                  <span key={c.id} class="itw" data-vscode-context={ctx(c.id)}>
+                    <button
+                      role="menuitem"
+                      class="it"
+                      onClick={() => {
+                        setMore(false);
+                        send({ type: 'task.openChat', sessionId: c.id });
+                      }}
+                    >
+                      <Mark provider={c.provider} />
+                      <span class="n">{c.title || t.tabUntitled}</span>
+                      {st && <span class={`lv ${c.state}`} role="img" aria-label={st} />}
+                    </button>
+                    {archive(c.id)}
+                  </span>
                 );
               })}
             </div>

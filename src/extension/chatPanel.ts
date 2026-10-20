@@ -1010,6 +1010,13 @@ export class ChatPanel {
           if (ref && ref.id !== this.controller.sessionId) ChatPanel.resume(context, log, services, ref);
           return;
         }
+        // «×» у чипа: только чат группы задачи этой вкладки; та же команда, что в сайдбаре (уведомление с «Отменить»)
+        if (m.type === 'task.archiveChat') {
+          const key = this.taskTab.taskKey;
+          const g = key ? services.taskGroups.group(key) : undefined;
+          if (g?.sessions.some((x) => x.id === m.sessionId)) void vscode.commands.executeCommand('agentura.archiveSession', m.sessionId);
+          return;
+        }
         // запросы вкладки задачи — сервису задач, сессия движка не нужна
         if (isTaskRequest(m)) {
           this.taskTab.handle(m);
@@ -1064,6 +1071,8 @@ export class ChatPanel {
       }),
       // метаданные и состав групп изменились (привязка из сайдбара, опрос): вкладка перепроверяет свою задачу
       { dispose: services.taskGroups.onChange(() => this.syncTask()) },
+      // чат задачи ушёл в архив или вернулся: чипы полосы и «Чаты по задаче» (roadmap 26)
+      { dispose: services.archive.onChange(() => void this.pushTaskChats()) },
       // источник Jira (запись появилась/пропала) и настройка инструментов агента — набор MCP-инструментов сессии
       { dispose: services.jira.onDidChange(() => jiraTools.changed()) },
       vscode.workspace.onDidChangeConfiguration((e) => {
@@ -1124,7 +1133,7 @@ export class ChatPanel {
     const msg: TaskChatsMessage = {
       type: 'task.chats',
       ...(taskKey ? { taskKey } : {}),
-      chats: taskChatRows(group, rows, this.controller.sessionId),
+      chats: taskChatRows(group, rows, this.controller.sessionId, this.services.archive.ids()),
       ...(taskKey
         ? {
             newChat: {

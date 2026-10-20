@@ -399,6 +399,8 @@ export type TaskRequest =
   | { type: 'task.openExternal'; attachmentId?: string; web?: boolean }
   /** Открыть чат из блока «Чаты по задаче» (должен быть в группе задачи вкладки — хост проверяет). */
   | { type: 'task.openChat'; sessionId: string }
+  /** Чип/строка «ещё N» полосы: чат группы задачи — в архив (roadmap 26). */
+  | { type: 'task.archiveChat'; sessionId: string }
   /** Нет подключения/токен не подошёл: открыть «Agentura: Подключить Jira…». */
   | { type: 'task.connect' }
   /** Вкладка «код» (roadmap 24): собрать коммиты/ветки/правки задачи; `force` — заново, а не из кэша хоста. Ответ — `task.code.state`. */

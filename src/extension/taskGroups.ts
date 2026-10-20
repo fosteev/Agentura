@@ -344,19 +344,20 @@ export function routeTaskOpen(
 }
 
 /**
- * Чаты группы для блока «Чаты по задаче» вкладки: только те, что есть в списке сессий (удалённые транскрипты не
- * показываем), новые сверху; `current` — сессия вкладки.
+ * Чаты группы для блока «Чаты по задаче» вкладки и чипов полосы: только те, что есть в списке сессий (удалённые
+ * транскрипты не показываем) и не в архиве — кроме чата самой вкладки; новые сверху; `current` — сессия вкладки.
  */
 export function taskChatRows(
   group: TaskGroup | undefined,
   rows: readonly SessionSummary[],
   current: string | undefined,
+  archived: ReadonlySet<string> = new Set(),
 ): TaskChatRow[] {
   if (!group) return [];
   const out: TaskChatRow[] = [];
   for (const ref of group.sessions) {
     const r = rows.find((x) => x.id === ref.id);
-    if (!r) continue;
+    if (!r || (archived.has(r.id) && r.id !== current)) continue;
     out.push({
       id: r.id,
       ...(r.provider ? { provider: r.provider } : {}),

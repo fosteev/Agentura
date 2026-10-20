@@ -128,6 +128,7 @@ export const en: Ui = {
     newChatBtnTitle: 'New chat for this task (⌥ — right away, no questions)',
     chipTitle: (title: string, state?: string) => (state ? `${title} · ${state}` : title),
     chipMore: (n: number) => `${n} more ▾`,
+    chipArchive: 'Archive — hide from the chips (restore from “Archive” in the sidebar)',
     chipMoreTitle: 'Other chats of the task',
     chipState: { live: 'turn running', waiting: 'waiting for an answer', error: 'error', limit: 'hit the limit' } as Record<string, string>,
     ncp: {

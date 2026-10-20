@@ -193,7 +193,7 @@ describe('А · чипы чатов задачи в полосе', () => {
       row('c6', { updatedAt: 10, title: 'самый старый' }),
     ]);
     await flush();
-    expect(qa(host, '.tk-strip .vtabs > .cc').map((c) => q(c, '.n').textContent)).toEqual(['чат c1', 'чат c2', 'чат c3', 'чат c5']);
+    expect(qa(host, '.tk-strip .vtabs > .cc, .tk-strip .vtabs > .ccw > .cc').map((c) => q(c, '.n').textContent)).toEqual(['чат c1', 'чат c2', 'чат c3', 'чат c5']);
     const more = q(host, '.tk-strip .cc.more');
     expect(more.textContent).toBe('ещё 2 ▾');
     expect(q(host, '.cmenu')).toBeNull();
@@ -205,6 +205,31 @@ describe('А · чипы чатов задачи в полосе', () => {
     await flush();
     expect(sent).toEqual([{ type: 'task.openChat', sessionId: 'c6' }]);
     expect(q(host, '.cmenu')).toBeNull();
+  });
+
+  it('«×» у чужого чипа и строки «ещё N» — task.archiveChat; у текущего нет; у всех чипов контекст «taskChat»', async () => {
+    const host = mount();
+    handleHostMessage(taskMsg());
+    setChats([
+      row('c1', { updatedAt: 60 }),
+      row('c2', { updatedAt: 50 }),
+      row('c3', { updatedAt: 40 }),
+      row('c4', { updatedAt: 30 }),
+      row('c5', { updatedAt: 20, current: true }),
+    ]);
+    await flush();
+    const cur = q(host, '#vtab-chat');
+    expect(cur.querySelector('.ca')).toBeNull();
+    expect(JSON.parse(cur.getAttribute('data-vscode-context')!)).toMatchObject({ webviewSection: 'taskChat', sessionId: 'c5' });
+    const wraps = qa(host, '.tk-strip .vtabs > .ccw');
+    expect(JSON.parse(wraps[0]!.getAttribute('data-vscode-context')!)).toMatchObject({ webviewSection: 'taskChat', sessionId: 'c1' });
+    click(q(wraps[0]!, '.ca'));
+    expect(sent).toEqual([{ type: 'task.archiveChat', sessionId: 'c1' }]);
+    sent.length = 0;
+    click(q(host, '.tk-strip .cc.more'));
+    await flush();
+    click(q(host, '.cmenu .itw .ca'));
+    expect(sent).toEqual([{ type: 'task.archiveChat', sessionId: 'c4' }]);
   });
 
   it('tasks.tab = task: чипов нет — чаты уже во внутренних вкладках, вкладка «чат» прежняя', async () => {

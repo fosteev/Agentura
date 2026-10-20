@@ -218,7 +218,7 @@ A commit is found only if the key is in its message (`NEWMFC-1482: …`) or on a
 
 ### New chats inside a task
 
-With `agentura.tasks.tab=chat` the task strip shows the task's chats as chips: engine mark, title, a dot for a chat that is working, waiting for you or failed (a click opens it). The current chat keeps its turn indicators; with more than four chats the current one and the three latest stay, the rest are under "N more". Three ways to start another chat on the same task:
+With `agentura.tasks.tab=chat` the task strip shows the task's chats as chips: engine mark, title, a dot for a chat that is working, waiting for you or failed (a click opens it). The current chat keeps its turn indicators; with more than four chats the current one and the three latest stay, the rest are under "N more". A chat you no longer need goes to the archive: × on hover over its chip or "N more" row, or "Archive" in its right-click menu (a notification offers "Undo"; "Archive" in the sidebar brings it back). Archived chats leave the chips and "Chats for this task"; the chat of this tab stays. Three ways to start another chat on the same task:
 
 - **"+ chat"** (or "+" among the inner tabs with `tasks.tab=task`) opens a popover: the first message (optional), the engine (claude, codex, antigravity), what to carry over, where it works, and "create" or "beside" (next to this tab). **Alt+click** skips the questions: a new chat on this tab's engine with the task context.
 - **`/new [engine] [text]`** in the input box of a task chat: the first word may be `claude`, `codex`, `agy` or `antigravity`; the text becomes the first message and is sent by itself.

@@ -113,6 +113,15 @@
 .tk-strip .lv.waiting { background: var(--warn); }
 .tk-strip .lv:is(.error, .limit) { background: var(--err, var(--full)); }
 .tk-strip .cc.more { max-width: none; flex: none; }
+/* «×» — в архив (roadmap 26): у чужого чипа и строки «ещё N» по наведению */
+.tk-strip .ccw { display: flex; align-items: stretch; align-self: stretch; min-width: 0; position: relative; }
+.tk-strip .ccw .cc { padding-right: 14px; }
+.tk-strip .ca { position: absolute; right: 0; top: 50%; transform: translateY(-50%); width: 14px; height: 16px; display: grid; place-items: center; border-radius: 3px; color: var(--fg-mute); font-size: 13px; line-height: 1; opacity: 0; }
+.tk-strip .ccw:hover .ca, .tk-strip .itw:hover .ca, .tk-strip .ca:focus-visible { opacity: 1; }
+.tk-strip .ca:hover { color: var(--fg); background: var(--bg-hover); }
+.tk-strip .cmenu .itw { display: flex; align-items: center; position: relative; }
+.tk-strip .cmenu .itw .it { flex: 1; min-width: 0; padding-right: 22px; }
+.tk-strip .cmenu .itw .ca { right: 4px; }
 .tk-strip .cmore { position: relative; display: flex; align-self: stretch; flex: none; }
 .tk-strip .cmenu { position: absolute; z-index: 6; top: calc(100% + 1px); left: 0; min-width: 200px; max-width: 300px; padding: 4px; display: grid; background: var(--bg-raise); border: 1px solid var(--line-strong); border-radius: 4px; box-shadow: 0 6px 18px rgba(0,0,0,.28); }
 .tk-strip .cmenu .it { display: flex; gap: 6px; align-items: center; padding: 5px 8px; border-radius: 2px; text-align: left; color: var(--fg); font-size: 12.5px; }
