@@ -2,7 +2,7 @@
   "name": "agentura",
   "displayName": "Agentura",
   "description": "%ext.description%",
-  "version": "0.19.0",
+  "version": "0.19.1",
   "private": true,
   "publisher": "fosteev",
   "repository": {
@@ -205,6 +205,11 @@
         {
           "command": "agentura.unarchiveSession",
           "when": "webviewId == 'agentura.sidebar' && webviewSection == 'session' && sessionArchived",
+          "group": "archive@1"
+        },
+        {
+          "command": "agentura.archiveSession",
+          "when": "webviewId == 'agentura.chat' && webviewSection == 'taskChat'",
           "group": "archive@1"
         }
       ],

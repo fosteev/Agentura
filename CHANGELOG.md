@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.19.1 — 2026-10-20
+
+### Added
+
+- **Archive a task chat from the strip.** × on hover over a chat chip or a "N more" row, or "Archive" in the chip's
+  right-click menu, sends the chat to the archive (with "Undo"). Archived chats no longer show as chips or in "Chats for
+  this task"; the chat of the current tab stays.
+
 ## 0.19.0 — 2026-10-19
 
 ### Added
