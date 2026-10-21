@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.19.2 — 2026-10-21
+
+### Fixed
+
+- **"Code" tab lists only the task's commits.** Commits are listed only when the task key is in the message; branch
+  commits without the key show up only when the message search is off.
+- **Branch base is the closest one.** Each task branch is compared with the closest of origin/HEAD, develop, main,
+  master (and their origin/…), so a repo whose origin/HEAD is a release branch no longer shows all of develop as
+  "ahead" and a giant branch diff.
+
 ## 0.19.1 — 2026-10-20
 
 ### Added
