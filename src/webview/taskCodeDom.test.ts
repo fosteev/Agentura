@@ -506,7 +506,7 @@ describe('вкладка «код»: как ищем?', () => {
     expect(text).not.toContain('merged/');
     expect(text).not.toContain('Agentura');
     expect(text).toContain('Смотрим git-репозитории, в которых работали чаты задачи NEWMFC-1482');
-    expect(text).toContain('База — ветка по умолчанию у origin (origin/HEAD), иначе develop, main или master.');
+    expect(text).toContain('База ветки — ближайшая из origin/HEAD, develop, main, master (и их origin/…): та, сверх которой у ветки меньше всего коммитов.');
     expect(q(host, '.tcd .how .rule').textContent).toContain('NEWMFC-1482: …');
     expect(q(host, '.tcd .how .rule').textContent).toContain('Иначе вкладка его не покажет.');
     expect(qa(host, '.tcd .how li.off')).toHaveLength(0);

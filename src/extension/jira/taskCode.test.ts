@@ -6,7 +6,7 @@ import {
   collectCode,
   commitFiles,
   countTextLines,
-  detectBase,
+  baseCandidates,
   editedPaths,
   keyRegex,
   parseLog,
@@ -145,14 +145,17 @@ describe('разборщики git', () => {
   });
 });
 
-describe('detectBase', () => {
-  it('origin/HEAD приоритетнее, иначе первая существующая из списка, иначе нет', async () => {
-    const a = fakeRun([(args) => (args[0] === 'symbolic-ref' ? 'origin/develop\n' : undefined)]);
-    expect(await detectBase(a.run, '/r')).toBe('origin/develop');
+describe('baseCandidates', () => {
+  it('origin/HEAD первым, затем существующие из списка без повторов; нет ничего — пусто', async () => {
+    const a = fakeRun([
+      (args) => (args[0] === 'symbolic-ref' ? 'origin/develop\n' : undefined),
+      (args) => (args[0] === 'rev-parse' && ['main', 'origin/develop'].includes(args[3]!) ? 'abc\n' : undefined),
+    ]);
+    expect(await baseCandidates(a.run, '/r')).toEqual(['origin/develop', 'main']);
+    expect(a.calls.some((c) => c[0] === 'rev-parse' && c[3] === 'origin/develop')).toBe(false);
     const b = fakeRun([(args) => (args[0] === 'rev-parse' && args[3] === 'main' ? 'abc\n' : undefined)]);
-    expect(await detectBase(b.run, '/r')).toBe('main');
-    expect(b.calls.map((c) => c[3]).filter(Boolean)).toEqual(['refs/remotes/origin/HEAD', 'develop', 'main']);
-    expect(await detectBase(fakeRun([]).run, '/r')).toBeUndefined();
+    expect(await baseCandidates(b.run, '/r')).toEqual(['main']);
+    expect(await baseCandidates(fakeRun([]).run, '/r')).toEqual([]);
   });
 });
 
@@ -213,13 +216,12 @@ describe('collectCode', () => {
     const r = res.repos[0]!;
     expect(r).toMatchObject({ root: '/w/r', name: 'r', base: 'origin/develop' });
 
-    // новые сверху; SHA2 найден по ключу (ветка не пишется), SHA3 — только по ветке
+    // новые сверху; только по ключу — SHA3 из ветки без ключа в список не попадает
     expect(r.commits.map((c) => [c.sha, c.src, c.branch, c.unpushed, c.inBase])).toEqual([
-      [SHA3, 'branch', 'feature/GARM-87-x', true, undefined],
       [SHA2, 'key', undefined, undefined, undefined],
       [SHA1, 'key', undefined, undefined, true],
     ]);
-    expect(r.commits[1]).toMatchObject({ subject: 'GARM-87 second', author: 'Anna', at: 1700000500_000 });
+    expect(r.commits[0]).toMatchObject({ subject: 'GARM-87 second', author: 'Anna', at: 1700000500_000 });
 
     // ветка: локальная вытесняет origin/<то же>, origin/HEAD и чужие отброшены
     expect(r.branches).toEqual([
@@ -262,7 +264,7 @@ describe('collectCode', () => {
     expect(grepLog).toContain('-E');
     expect(grepLog).toContain('--grep=(^|[^A-Za-z0-9])GARM-87([^0-9]|$)');
     expect(grepLog.slice(grepLog.indexOf('-n'), grepLog.indexOf('-n') + 2)).toEqual(['-n', '200']);
-    expect(git.calls.find((c) => c[0] === 'rev-list')).toEqual(['rev-list', SHA1, SHA2, SHA3, '--not', '--remotes']);
+    expect(git.calls.find((c) => c[0] === 'rev-list')).toEqual(['rev-list', SHA1, SHA2, '--not', '--remotes']);
     expect(git.calls.find((c) => c[0] === 'status')).toEqual(['status', '--porcelain=v1', '-z', '-uall']);
   });
 
@@ -299,7 +301,7 @@ describe('collectCode', () => {
       const b = await run({ message: true, branch: true });
       expect(a.r).toEqual(b.r);
       expect(a).toMatchObject({ grepAll: true, refs: true, branchLog: true, baseGrep: true, mergeBase: [] });
-      expect(a.r.commits).toHaveLength(3);
+      expect(a.r.commits).toHaveLength(2);
     });
 
     it('только сообщение: for-each-ref и логи веток не запускаются, веток нет, «в базе» — grep по базе', async () => {
@@ -344,6 +346,26 @@ describe('collectCode', () => {
       const cmds = new Set(git.calls.map((c) => c[0]));
       for (const c of ['log', 'for-each-ref', 'merge-base', 'rev-list']) expect(cmds.has(c)).toBe(false);
     });
+  });
+
+  it('база ветки — ближайшая из кандидатов: origin/HEAD релизный, ветка от develop', async () => {
+    const git = fakeRun([
+      (a) => (a[0] === 'symbolic-ref' ? 'origin/7.10\n' : undefined),
+      (a) => (a[0] === 'rev-parse' && a[3] === 'origin/develop' ? 'abc\n' : undefined),
+      (a) => (a[0] === 'rev-list' && a[1] === '--count' ? (a[2] === 'origin/7.10..feature/GARM-87-x' ? '1316\n' : '2\n') : undefined),
+      (a) => (a[0] === 'log' && a[1] === 'origin/develop..feature/GARM-87-x' ? commit(SHA3, 'wip without key', 1700001000) + '\n' : undefined),
+      (a) => (a[0] === 'log' && a[1] === 'origin/7.10..feature/GARM-87-x' ? 'не та база\n' : undefined),
+      (a) => (a[0] === 'diff' && has(a, 'origin/develop...feature/GARM-87-x') ? '' : undefined),
+      ...repoHandlers(),
+    ]);
+    const res = await collectCode(
+      { run: git.run, repos: async () => ['/w/r'], history: async () => [], readText: async () => undefined },
+      { key: 'GARM-87', cwd: '/w/r', chats: [chat1] },
+    );
+    const r = res.repos[0]!;
+    expect(r.base).toBe('origin/7.10');
+    expect(r.branches).toEqual([{ name: 'feature/GARM-87-x', base: 'origin/develop', ahead: 1, add: 0, del: 0, files: [] }]);
+    expect(r.commits.map((c) => c.sha)).toEqual([SHA2, SHA1]);
   });
 
   it('нет базы: ветки по имени без «сверх базы», коммиты только по ключу, inBase нет', async () => {

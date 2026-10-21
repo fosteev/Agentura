@@ -261,22 +261,47 @@ function errText(e: unknown): string {
   return msg.split('\n')[0]!.slice(0, 300);
 }
 
-/** База репозитория: `origin/HEAD`, иначе первая существующая из `BASE_CANDIDATES`; нет — `undefined`. */
-export async function detectBase(run: CodeCollectDeps['run'], root: string): Promise<string | undefined> {
+/** Возможные базы репозитория: `origin/HEAD`, затем существующие из `BASE_CANDIDATES`, без повторов. */
+export async function baseCandidates(run: CodeCollectDeps['run'], root: string): Promise<string[]> {
+  const out: string[] = [];
   try {
     const head = (await run(['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD'], root)).trim();
-    if (head) return head;
+    if (head) out.push(head);
   } catch {
     /* нет origin/HEAD — перебор ниже */
   }
   for (const ref of BASE_CANDIDATES) {
+    if (out.includes(ref)) continue;
     try {
-      if ((await run(['rev-parse', '--verify', '--quiet', ref], root)).trim()) return ref;
+      if ((await run(['rev-parse', '--verify', '--quiet', ref], root)).trim()) out.push(ref);
     } catch {
       /* ref нет */
     }
   }
-  return undefined;
+  return out;
+}
+
+/**
+ * База ветки — ближайшая из кандидатов (меньше всего коммитов сверх неё): `origin/HEAD` бывает релизной веткой
+ * (`origin/7.10`), а задачу вели от `develop` — тогда против `origin/HEAD` «впереди» вся develop.
+ */
+async function closestBase(run: (args: string[]) => Promise<string>, bases: string[], name: string): Promise<string> {
+  let best = bases[0]!;
+  if (bases.length < 2) return best;
+  let min = Infinity;
+  for (const b of bases) {
+    if (b === name) continue;
+    try {
+      const n = Number((await run(['rev-list', '--count', `${b}..${name}`])).trim());
+      if (Number.isFinite(n) && n < min) {
+        min = n;
+        best = b;
+      }
+    } catch {
+      /* нет общей истории — не кандидат */
+    }
+  }
+  return best;
 }
 
 function toCommit(c: RawCommit, src: CodeCommit['src'], branch?: string): CodeCommit {
@@ -299,7 +324,8 @@ async function collectRepo(
   match: CodeMatch,
 ): Promise<CodeRepo> {
   const run = (args: string[]): Promise<string> => deps.run(args, root);
-  const base = await detectBase(deps.run, root);
+  const bases = await baseCandidates(deps.run, root);
+  const base = bases[0];
   const grep = keyPattern(key);
 
   const commits = new Map<string, CodeCommit>();
@@ -319,11 +345,13 @@ async function collectRepo(
       branches.push({ name, ahead: 0, add: 0, del: 0, files: [] });
       continue;
     }
-    if (name === base) continue;
+    if (bases.includes(name)) continue;
     try {
-      const raw = parseLog(await run(['log', `${base}..${name}`, '-n', String(LOG_LIMIT), `--format=${LOG_FORMAT}`]));
-      for (const c of raw) if (!commits.has(c.sha)) commits.set(c.sha, toCommit(c, 'branch', name));
-      const range = `${base}...${name}`;
+      const own = await closestBase(run, bases, name);
+      const raw = parseLog(await run(['log', `${own}..${name}`, '-n', String(LOG_LIMIT), `--format=${LOG_FORMAT}`]));
+      // в список — только коммиты с ключом; коммиты ветки без ключа — лишь когда поиск по сообщению выключен
+      if (!match.message) for (const c of raw) if (!commits.has(c.sha)) commits.set(c.sha, toCommit(c, 'branch', name));
+      const range = `${own}...${name}`;
       const [numstat, nameStatus] = await Promise.all([
         run(['diff', '--numstat', '-z', '-M', range]),
         run(['diff', '--name-status', '-z', '-M', range]),
@@ -335,7 +363,7 @@ async function collectRepo(
         add += f.add ?? 0;
         del += f.del ?? 0;
       }
-      branches.push({ name, ahead: raw.length, add, del, files });
+      branches.push({ name, ...(own !== base ? { base: own } : {}), ahead: raw.length, add, del, files });
     } catch {
       // ветка без общей базы или битый ref: показываем имя, без итога
       branches.push({ name, ahead: 0, add: 0, del: 0, files: [] });

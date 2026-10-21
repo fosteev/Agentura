@@ -195,7 +195,7 @@ export function changesText(key: string, repos: readonly CodeRepo[]): string {
     const out: string[] = [];
     if (r.error) out.push(`- error: ${r.error}`);
     for (const b of r.branches) {
-      out.push(`- branch ${b.name} → ${r.base ?? '?'}: ahead ${b.ahead}, ${plusMinus(b.add, b.del)}`);
+      out.push(`- branch ${b.name} → ${b.base ?? r.base ?? '?'}: ahead ${b.ahead}, ${plusMinus(b.add, b.del)}`);
     }
     if (r.commits.length) {
       out.push('', 'Commits:');

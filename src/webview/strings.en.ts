@@ -230,8 +230,8 @@ export const en: Ui = {
       howMessage: (key: string) =>
         `the key ${key} is in the commit message — on any branch, e.g. “${key}: fixed login”`,
       howBranch: (key: string) =>
-        `the key is in a branch name, e.g. feature/${key} — then we take all commits of that branch that are not in the base yet, even without the key in the message`,
-      howBase: 'The base is the origin default branch (origin/HEAD), otherwise develop, main or master.',
+        `the key is in a branch name, e.g. feature/${key} — the branch goes to the header with a diff against its base; its commits without the key are listed only when the message search is off`,
+      howBase: 'The branch base is the closest of origin/HEAD, develop, main, master (and their origin/…): the one the branch has the fewest commits on top of.',
       howOff: 'turned off in settings',
       howGitOff: 'Git search is turned off — only the agents’ uncommitted edits are shown.',
       howPhBase: '<base>',

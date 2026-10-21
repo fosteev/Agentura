@@ -434,7 +434,7 @@ function BranchHead({
   onOpen: (set: DiffSet, i?: number) => void;
 }) {
   const t = ui.task.code;
-  const base = repo.base;
+  const base = b.base ?? repo.base;
   return (
     <>
       <span class="br" title={b.name}>

@@ -279,6 +279,8 @@ export interface CodeDirty extends CodeFile {
 /** Ветка задачи (ключ в имени): итог сверх базы репозитория. */
 export interface CodeBranch {
   name: string;
+  /** База ветки, если ближе базы репозитория (`origin/develop` при `origin/HEAD` → `origin/7.10`). */
+  base?: string;
   /** Коммитов сверх базы; базы нет — 0. */
   ahead: number;
   add: number;
