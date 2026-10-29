@@ -2,6 +2,7 @@ import { render } from 'preact';
 import { Chat } from '../components/Chat';
 import { handleHostMessage } from '../store';
 import { installAppearance } from '../appearance';
+import { installCopyKeys } from '../copyKeys';
 import { installTooltips } from '../tooltip';
 import { forgetSession, host, onHostMessage, send } from '../vscode';
 import { installGraphSync } from '../graphSync';
@@ -13,6 +14,7 @@ onHostMessage(handleHostMessage);
 installGraphSync();
 installAppearance();
 installTooltips();
+installCopyKeys();
 render(<Chat />, document.getElementById('root')!);
 // пустое состояние = «webview жил, сессии нет»: сериализатор не отдаст такой вкладке чужую сессию из
 // памяти воркспейса (запасной путь только для вкладок, чей webview ни разу не запускался)

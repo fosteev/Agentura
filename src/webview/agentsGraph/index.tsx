@@ -1,5 +1,6 @@
 import { render } from 'preact';
 import { installAppearance } from '../appearance';
+import { installCopyKeys } from '../copyKeys';
 import { installTooltips } from '../tooltip';
 import { onHostMessage, send } from '../vscode';
 import { GraphApp } from './App';
@@ -9,6 +10,7 @@ import { graphLive, graphNow, handleGraphMessage, restoreGraphState } from './st
 onHostMessage(handleGraphMessage);
 installAppearance();
 installTooltips();
+installCopyKeys();
 restoreGraphState();
 // таймеры идущих агентов — раз в секунду, пока что-то идёт
 setInterval(() => {
