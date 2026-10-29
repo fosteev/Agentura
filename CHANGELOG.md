@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.19.3 — 2026-10-29
+
+### Fixed
+
+- **Cmd/Ctrl+C copies selected text from the chat.** VS Code's webview wrapper hijacked the shortcut and moved focus
+  to the input before copying, so the selection collapsed and nothing reached the clipboard. The webviews now copy
+  the selection themselves; inputs keep the default behaviour.
+
 ## 0.19.2 — 2026-10-21
 
 ### Fixed
