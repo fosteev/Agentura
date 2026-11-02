@@ -30,6 +30,8 @@ export interface ProviderFeatures {
    * системная строка скрыты. Claude и Codex.
    */
   mcp: boolean;
+  /** Браузер агента (roadmap 27, `agentura.browser.enabled`): MCP-сервер `browser`. Claude и Codex. */
+  browser: boolean;
   /** «повторить» у сервера (`mcp.reconnect`): Claude (`reconnectMcpServer`). */
   mcpReconnect: boolean;
   /** «перезапустить все» (`mcp.reloadAll`): Codex (`mcpServer/reload`, по одному серверу не умеет). */
@@ -51,6 +53,7 @@ export const CLAUDE_FEATURES: Readonly<ProviderFeatures> = {
   images: true,
   files: true,
   remote: true,
+  browser: true,
   mcp: true,
   mcpReconnect: true,
   mcpReloadAll: false,
@@ -77,6 +80,7 @@ export const CODEX_FEATURES: Readonly<ProviderFeatures> = {
   images: true,
   files: false,
   remote: false,
+  browser: true,
   mcp: true,
   mcpReconnect: false,
   mcpReloadAll: true,
@@ -100,6 +104,7 @@ export const ANTIGRAVITY_FEATURES: Readonly<ProviderFeatures> = {
   images: false,
   files: false,
   remote: false,
+  browser: false,
   mcp: false,
   mcpReconnect: false,
   mcpReloadAll: false,

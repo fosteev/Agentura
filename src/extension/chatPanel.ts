@@ -772,6 +772,7 @@ export class ChatPanel {
           defaultEffort: cfg.get<string>('defaultEffort'),
           remoteControl: cfg.get<boolean>('remoteControl', false),
           mcp: readMcpView(cfg),
+          browser: cfg.get<unknown>('browser.enabled') === true,
         };
       },
       usage: services.usage,

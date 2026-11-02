@@ -1258,6 +1258,9 @@ export function Settings() {
                   options={MCP_FEED_STATUS_MODES.map((m) => [m, T.mcpFeedStatus.options[m] ?? m] as const)}
                 />
               </Row>
+              <Row name={T.browser.name} isNew desc={T.browser.desc} k="browser.enabled">
+                <Toggle k="browser.enabled" value={v['browser.enabled']} />
+              </Row>
             </>,
           )}
 

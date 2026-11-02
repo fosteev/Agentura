@@ -843,6 +843,90 @@ describe('ClaudeSession: инструменты задачи Jira (roadmap 19, �
     }).createSession({ cwd: '/w', taskTools: taskTools(SPEC).tools });
     expect(m.fake.calls[0]!.options['mcpServers']).toBeUndefined();
   });
+
+  // roadmap 27: тумблер «Браузер» — stdio-сервер `browser` рядом с `agentura_jira`
+  const BROWSER = { type: 'stdio', command: 'npx', args: ['-y', '@playwright/mcp@latest', '--extension'] };
+
+  it('браузер: `browser: true` — stdio-сервер `browser` в опциях (с задачей и без), выключен — серверов нет', async () => {
+    const m = await sdkWithMcp();
+    const adapter = new ClaudeAdapter({ loadSdk: async () => m.sdk, loadZod: async () => m.zod });
+    await adapter.createSession({ cwd: '/w', browser: true });
+    expect(m.fake.calls[0]!.options['mcpServers']).toEqual({ browser: BROWSER });
+    await adapter.createSession({ cwd: '/w', browser: true, taskTools: taskTools(SPEC).tools });
+    expect(Object.keys(m.fake.calls[1]!.options['mcpServers'] as object)).toEqual(['agentura_jira', 'browser']);
+    expect((m.fake.calls[1]!.options['mcpServers'] as Record<string, unknown>)['browser']).toEqual(BROWSER);
+    await adapter.createSession({ cwd: '/w', browser: false, taskTools: taskTools(SPEC).tools });
+    expect(Object.keys(m.fake.calls[2]!.options['mcpServers'] as object)).toEqual(['agentura_jira']);
+    await adapter.createSession({ cwd: '/w' });
+    expect(m.fake.calls[3]!.options['mcpServers']).toBeUndefined();
+  });
+
+  it('браузер: setBrowser на ходу — setMcpServers с полным набором (jira + browser); тот же флаг — ничего; выключили — без браузера', async () => {
+    const m = await sdkWithMcp();
+    const session = await new ClaudeAdapter({ loadSdk: async () => m.sdk, loadZod: async () => m.zod }).createSession({
+      cwd: '/w',
+      taskTools: taskTools(SPEC).tools,
+    });
+    session.setBrowser?.(false);
+    expect(m.setCalls).toEqual([]);
+    session.setBrowser?.(true);
+    session.setBrowser?.(true);
+    await tick();
+    expect(m.setCalls.map((s) => Object.keys(s))).toEqual([['agentura_jira', 'browser']]);
+    expect(m.setCalls[0]!['browser']).toEqual(BROWSER);
+    session.setBrowser?.(false);
+    await tick();
+    expect(m.setCalls.map((s) => Object.keys(s))).toEqual([['agentura_jira', 'browser'], ['agentura_jira']]);
+    session.dispose();
+  });
+
+  it('браузер без задачи: включили → {browser}, выключили → {}', async () => {
+    const m = await sdkWithMcp();
+    const session = await new ClaudeAdapter({ loadSdk: async () => m.sdk, loadZod: async () => m.zod }).createSession({ cwd: '/w' });
+    session.setBrowser?.(true);
+    session.setBrowser?.(false);
+    await tick();
+    expect(m.setCalls).toEqual([{ browser: BROWSER }, {}]);
+    session.dispose();
+  });
+
+  it('браузер включён — syncTaskTools его не теряет (привязка, пересборка и снятие jira)', async () => {
+    const m = await sdkWithMcp();
+    const host = taskTools(undefined);
+    const session = await new ClaudeAdapter({ loadSdk: async () => m.sdk, loadZod: async () => m.zod }).createSession({
+      cwd: '/w',
+      browser: true,
+      taskTools: host.tools,
+    });
+    host.set(SPEC);
+    host.set({ ...SPEC, tools: ['comment'] });
+    host.set(undefined);
+    await tick();
+    expect(m.setCalls.map((s) => Object.keys(s))).toEqual([
+      ['agentura_jira', 'browser'],
+      ['agentura_jira', 'browser'],
+      ['browser'],
+    ]);
+    session.dispose();
+  });
+
+  it('браузер: при mcpWatch после setMcpServers запрашивается статус; без — нет', async () => {
+    const status: string[] = [];
+    const make = async (mcpWatch: boolean) => {
+      const fake = fakeSdk({
+        setMcpServers: async (s: Record<string, unknown>) => ({ added: Object.keys(s), removed: [], errors: {} }),
+        mcpServerStatus: async () => (status.push(String(mcpWatch)), []),
+      });
+      const session = await new ClaudeAdapter({ loadSdk: async () => fake.sdk }).createSession({ cwd: '/w', mcpWatch });
+      return session;
+    };
+    (await make(false)).setBrowser?.(true);
+    await tick();
+    expect(status).toEqual([]);
+    (await make(true)).setBrowser?.(true);
+    await tick();
+    expect(status).toEqual(['true']);
+  });
 });
 
 describe('ClaudeSession: статус MCP (roadmap 21)', () => {

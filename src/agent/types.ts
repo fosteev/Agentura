@@ -428,6 +428,11 @@ export interface SessionOptions {
    * (`mcp_servers` в init Claude, уведомления Codex). Меняется на ходу — `setMcpWatch`.
    */
   mcpWatch?: boolean;
+  /**
+   * Браузер агента (roadmap 27, `agentura.browser.enabled`): MCP-сервер `browser` (Playwright `--extension`). Claude и
+   * Codex (`features.browser`); у Claude меняется на ходу — `setBrowser`, у Codex — только со следующего процесса.
+   */
+  browser?: boolean;
 }
 
 /** Что агент может сделать в задаче чата сейчас: ключ задачи по умолчанию и включённые инструменты. */
@@ -546,6 +551,8 @@ export interface AgentSession {
   mcpToggle?(name: string, enabled: boolean): Promise<void>;
   /** Включить/выключить слежение за статусом (`SessionOptions.mcpWatch`) у живой сессии: смена настроек. */
   setMcpWatch?(on: boolean): void;
+  /** Подключить/снять браузерный MCP-сервер у живой сессии (`SessionOptions.browser`). Только Claude. */
+  setBrowser?(on: boolean): void;
   dispose(): void;
 }
 

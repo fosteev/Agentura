@@ -2980,6 +2980,58 @@ describe('ChatController: MCP и скиллы (roadmap 21)', () => {
     expect(created[1]!.mcpWatch).toBe(false);
   });
 
+  it('браузер (roadmap 27): browser в опциях сессии — по настройке и движку; смена настройки — setBrowser живой сессии', async () => {
+    class BrowserSession extends FakeSession {
+      browser: boolean[] = [];
+      setBrowser(on: boolean) {
+        this.browser.push(on);
+      }
+    }
+    const t = setup();
+    const live: BrowserSession[] = [];
+    (t.deps.adapter as { createSession: unknown }).createSession = async (o: SessionOptions) => {
+      t.created.push(o);
+      const s = new BrowserSession();
+      live.push(s);
+      return s;
+    };
+    // выключено (по умолчанию) — ключа в опциях нет
+    t.controller.start();
+    await tick();
+    expect(t.created[0]).not.toHaveProperty('browser');
+    // включили посреди сессии — Claude получает setBrowser(true); выключили — false
+    t.deps.settings = () => ({ allowBypass: false, browser: true });
+    t.controller.pushInfo();
+    t.deps.settings = () => ({ allowBypass: false, browser: false });
+    t.controller.pushInfo();
+    expect(live[0]!.browser).toEqual([true, false]);
+    // новая сессия при включённой настройке
+    t.deps.settings = () => ({ allowBypass: false, browser: true });
+    await t.controller.handle({ type: 'session.new' });
+    await t.controller.handle({ type: 'send', sessionId: '', text: 'hi' });
+    await tick();
+    expect(t.created[1]!.browser).toBe(true);
+    // Antigravity: MCP нет — настройка в опции не попадает и в сессию не пробрасывается
+    const agy = setup();
+    const agyLive: BrowserSession[] = [];
+    (agy.deps.adapter as { createSession: unknown }).createSession = async (o: SessionOptions) => {
+      agy.created.push(o);
+      const s = new BrowserSession();
+      agyLive.push(s);
+      return s;
+    };
+    const agyController = new ChatController({
+      ...agy.deps,
+      provider: 'antigravity',
+      settings: () => ({ allowBypass: false, browser: true }),
+    });
+    agyController.start();
+    await tick();
+    agyController.pushInfo();
+    expect(agy.created[0]).not.toHaveProperty('browser');
+    expect(agyLive[0]!.browser).toEqual([false]);
+  });
+
   it('mcp.status и skill.files уходят в webview и возвращаются при пересеве', async () => {
     const { controller, posted, mcpSessions, deps } = mcpSetup();
     (deps.adapter as { loadHistory: unknown }).loadHistory = async (): Promise<SessionHistory> => ({

@@ -1123,6 +1123,10 @@ export const en: Ui = {
         off: 'never',
       } as Record<string, string>,
     },
+    browser: {
+      name: 'Browser (Playwright MCP)',
+      desc: 'The agent drives your own Chrome through the Playwright Extension (Playwright MCP Bridge) (install it from the Chrome Web Store). Claude and Codex: Claude switches live, Codex from a new chat. Web pages can carry instructions aimed at the agent (prompt injection), and the agent has access to your files and terminal — do not enable it without need and do not approve browser actions blindly.',
+    },
     remoteControlNamePrefix: {
       name: 'Remote Control name prefix',
       desc: 'How the session is named in the claude.ai list: “prefix · session title”. Empty — the machine name.',

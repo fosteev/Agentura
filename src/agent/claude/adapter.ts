@@ -35,8 +35,10 @@ import type {
   SessionInfo,
   SessionOptions,
   TaskTools,
+  TaskToolsSpec,
 } from '../types';
 import { AsyncQueue, EventHub } from '../stream';
+import { BROWSER_ARGS, BROWSER_COMMAND, BROWSER_SERVER } from '../browserMcp';
 import type { Lang } from '../../shared/l10n';
 import { ClaudeEventMapper } from './mapper';
 import { PermissionBroker } from './permissions';
@@ -551,6 +553,8 @@ class ClaudeSession implements AgentSession {
   private readonly taskTools: TaskTools | undefined;
   /** Статус MCP запрашивается сам после старта и каждого хода (`SessionOptions.mcpWatch`, roadmap 21). */
   private mcpWatch: boolean;
+  /** Браузерный MCP-сервер подключён (`SessionOptions.browser`, roadmap 27); меняется на ходу — `setBrowser`. */
+  private browser: boolean;
   /** Номер последнего `mcpServerStatus()` и «ответ обязан дать событие» (`refreshMcp`). */
   private mcpSeq = 0;
   private mcpForce = false;
@@ -574,6 +578,7 @@ class ClaudeSession implements AgentSession {
     this.title = options.title;
     this.model = options.model;
     this.mcpWatch = options.mcpWatch === true;
+    this.browser = options.browser === true;
     this.mapper = new ClaudeEventMapper({
       baselineCostUsd: resume ? options.baselineCostUsd : 0,
       ...(config.lang ? { lang: config.lang } : {}),
@@ -611,10 +616,9 @@ class ClaudeSession implements AgentSession {
     // инструменты задачи Jira: сервер `agentura_jira`, пока у чата есть задача с записью; набор меняется — `setMcpServers`
     const tools = (this.taskTools = kit ? options.taskTools : undefined);
     const spec = tools?.spec();
-    if (kit && tools && spec) {
-      sdkOptions.mcpServers = { [JIRA_SERVER]: buildJiraServer(kit, spec, tools) };
-      this.jiraSig = specSignature(spec);
-    }
+    if (kit && tools && spec) this.jiraSig = specSignature(spec);
+    const servers = this.sdkServers(spec);
+    if (Object.keys(servers).length) sdkOptions.mcpServers = servers;
 
     this.q = sdk.query({ prompt: this.input, options: sdkOptions });
     if (tools) {
@@ -667,6 +671,18 @@ class ClaudeSession implements AgentSession {
     return true;
   }
 
+  /**
+   * Весь набор SDK-серверов сессии: `agentura_jira` (по спецификации задачи) и `browser` (по флагу). `setMcpServers`
+   * заменяет только серверы, добавленные через SDK (серверы из настроек не трогает), но заменяет их ВСЕ — поэтому
+   * начальные опции, `syncTaskTools` и `setBrowser` собирают набор одной функцией, и ни один не сносит чужое.
+   */
+  private sdkServers(spec: TaskToolsSpec | undefined): Record<string, McpServerConfig> {
+    const servers: Record<string, McpServerConfig> = {};
+    if (this.kit && this.taskTools && spec) servers[JIRA_SERVER] = buildJiraServer(this.kit, spec, this.taskTools);
+    if (this.browser) servers[BROWSER_SERVER] = { type: 'stdio', command: BROWSER_COMMAND, args: [...BROWSER_ARGS] };
+    return servers;
+  }
+
   /** Привязка/отвязка задачи, смена источника или настройки: сервер `agentura_jira` подключается, пересобирается или снимается. */
   private syncTaskTools(tools: TaskTools): void {
     if (this.closed || !this.kit) return;
@@ -674,12 +690,8 @@ class ClaudeSession implements AgentSession {
     const sig = specSignature(spec);
     if (sig === this.jiraSig) return;
     this.jiraSig = sig;
-    // `setMcpServers` заменяет только серверы, добавленные через SDK (у нас — один `agentura_jira`); серверы из настроек не трогает
-    const servers: Record<string, McpServerConfig> = spec
-      ? { [JIRA_SERVER]: buildJiraServer(this.kit, spec, tools) }
-      : {};
     this.q
-      .setMcpServers(servers)
+      .setMcpServers(this.sdkServers(spec))
       .then((r) => {
         if (this.mcpWatch) void this.refreshMcp(false);
         const err = r.errors[JIRA_SERVER];
@@ -819,6 +831,20 @@ class ClaudeSession implements AgentSession {
       this.log('warn', `toggleMcpServer(${name}, ${enabled}) не ответил: ${String(error)}`);
     }
     await this.refreshMcp(true);
+  }
+
+  /** Настройка «Браузер» (roadmap 27) переключена посреди сессии: сервер `browser` подключается/снимается без перезапуска. */
+  setBrowser(on: boolean): void {
+    if (this.closed || on === this.browser) return;
+    this.browser = on;
+    this.q
+      .setMcpServers(this.sdkServers(this.taskTools?.spec()))
+      .then((r) => {
+        if (this.mcpWatch) void this.refreshMcp(false);
+        const err = r.errors[BROWSER_SERVER];
+        if (err) this.log('warn', `браузер: сервер не подключился: ${err}`);
+      })
+      .catch((e: unknown) => this.log('warn', `браузер: setMcpServers: ${String(e)}`));
   }
 
   setMcpWatch(on: boolean): void {

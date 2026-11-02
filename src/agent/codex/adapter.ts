@@ -18,6 +18,7 @@ import type {
   AgentEventOf,
 } from '../types';
 import { EventHub } from '../stream';
+import { BROWSER_ARGS, BROWSER_COMMAND, BROWSER_SERVER } from '../browserMcp';
 import type { LogFn } from '../claude/adapter';
 import { CodexRpcClient, type RpcId, type RpcProcess } from './client';
 import { CodexEventMapper, type NotedPrompt } from './mapper';
@@ -98,6 +99,16 @@ const INTERRUPT_WAIT_MS = 10_000;
 const EFFORTS: readonly string[] = ['low', 'medium', 'high', 'xhigh', 'max'];
 /** Счётчик сессий для префикса `toolUseId` карточек подтверждения (id запросов у каждого процесса с 0). */
 let approvalScopes = 0;
+/** Браузерный MCP-сервер (roadmap 27) в конфиг app-server через `-c key=value` (значение — TOML; для строк и массива строк JSON подходит). */
+function browserConfigArgs(): string[] {
+  return [
+    '-c',
+    `mcp_servers.${BROWSER_SERVER}.command=${JSON.stringify(BROWSER_COMMAND)}`,
+    '-c',
+    `mcp_servers.${BROWSER_SERVER}.args=${JSON.stringify(BROWSER_ARGS)}`,
+  ];
+}
+
 function defaultSpawn(path: string, args: string[], options: CodexSpawnOptions): CodexProcess {
   return spawn(path, args, {
     cwd: options.cwd,
@@ -327,7 +338,7 @@ class CodexSession implements AgentSession {
 
     this.proc = (config.spawn ?? defaultSpawn)(
       executable,
-      ['app-server', '--listen', 'stdio://'],
+      ['app-server', '--listen', 'stdio://', ...(options.browser ? browserConfigArgs() : [])],
       { cwd: options.cwd, env: config.env ?? process.env },
     );
     this.proc.on('exit', () => (this.procExited = true));

@@ -137,6 +137,8 @@ describe('sessionList', () => {
     expect(validateSetting('git.layout', 1).ok).toBe(false);
     expect(validateSetting('git.hideClean', true)).toEqual({ ok: true, value: true });
     expect(validateSetting('git.hideClean', 'yes').ok).toBe(false);
+    expect(validateSetting('browser.enabled', true)).toEqual({ ok: true, value: true });
+    expect(validateSetting('browser.enabled', 'yes').ok).toBe(false);
   });
 });
 
@@ -314,6 +316,7 @@ describe('readSettings', () => {
         'agents.view': 'map',
         'git.layout': 'rows',
         'git.hideClean': 'yes',
+        'browser.enabled': 'yes',
       }),
     );
     expect(v).toMatchObject({
@@ -336,6 +339,7 @@ describe('readSettings', () => {
       'agents.view': 'list',
       'git.layout': 'stack',
       'git.hideClean': false,
+      'browser.enabled': false,
       defaultPermissionMode: 'manual',
       defaultEffort: '',
       contextThresholds: [120_000, 150_000],

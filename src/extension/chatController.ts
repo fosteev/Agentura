@@ -113,6 +113,8 @@ export interface ChatDeps {
     remoteControl?: boolean | undefined;
     /** `agentura.mcp.*` (roadmap 21): уходят в `chat.info`; статусные отображения включают слежение за статусом MCP. */
     mcp?: McpView | undefined;
+    /** `agentura.browser.enabled` (roadmap 27): браузерный MCP-сервер в сессиях Claude и Codex. */
+    browser?: boolean | undefined;
   };
   /** Лимиты подписки (этап 4): `refresh` ограничен кулдауном сервиса, ответ уходит в webview. */
   usage?: { refresh(): Promise<{ windows: LimitWindow[]; updatedAt: number; error?: string }> };
@@ -287,6 +289,8 @@ export class ChatController {
     });
     // настройки сменились: живая сессия начинает (или перестаёт) сама спрашивать статус MCP
     this.current?.setMcpWatch?.(mcpWatchOf(s.mcp ?? DEFAULT_MCP_VIEW));
+    // то же для браузера: Claude подключает/снимает сервер на ходу, у Codex метода нет — действует с нового процесса
+    this.current?.setBrowser?.(providerFeatures(this.engineProvider).browser && s.browser === true);
   }
 
   /** Webview прислал `ready` столько раз: второй и дальше — webview пересоздан, ленту надо пересеять. */
@@ -1512,6 +1516,8 @@ export class ChatController {
         ...(claude && deps.taskTools ? { taskTools: deps.taskTools } : {}),
         // статус MCP движок спрашивает сам, только если его что-то покажет (roadmap 21, решение 12); у agy статуса нет
         ...(providerFeatures(provider).mcp ? { mcpWatch: mcpWatchOf(s.mcp ?? DEFAULT_MCP_VIEW) } : {}),
+        // браузер агента (roadmap 27): только у движков с MCP-сервером `browser`; Claude меняет на ходу, Codex — со следующего процесса
+        ...(providerFeatures(provider).browser && s.browser === true ? { browser: true } : {}),
       };
       const open = (): Promise<AgentSession> =>
         resume

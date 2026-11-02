@@ -207,6 +207,7 @@ export type SettingKey =
   | 'mcp.composerButton'
   | 'mcp.panelTab'
   | 'mcp.feedStatus'
+  | 'browser.enabled'
   | 'feed.fontSize'
   | 'ui.fontSize'
   | 'diff.syntaxHighlighting'
@@ -255,6 +256,7 @@ export const SETTING_KEYS: readonly SettingKey[] = [
   'mcp.composerButton',
   'mcp.panelTab',
   'mcp.feedStatus',
+  'browser.enabled',
   'feed.fontSize',
   'ui.fontSize',
   'diff.syntaxHighlighting',
@@ -329,6 +331,8 @@ export interface SettingsValues {
   /** Вкладка «mcp» правой панели. */
   'mcp.panelTab': boolean;
   'mcp.feedStatus': McpFeedStatus;
+  /** Браузер агента (roadmap 27): MCP-сервер Playwright `--extension` в сессиях Claude и Codex. */
+  'browser.enabled': boolean;
   'feed.fontSize': number;
   /** Размер интерфейса (всё, кроме ленты), px; 13 — как есть, иначе всё масштабируется (`--ui-zoom`). */
   'ui.fontSize': number;
@@ -568,6 +572,7 @@ export function validateSetting(key: SettingKey, value: unknown, lang: ErrLang =
     case 'mcp.feedLabels':
     case 'mcp.composerButton':
     case 'mcp.panelTab':
+    case 'browser.enabled':
       return typeof value === 'boolean' ? { ok: true, value } : bad(t.yesNo);
     case 'defaultModel':
     case 'remoteControlNamePrefix':
@@ -731,6 +736,7 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
     'mcp.composerButton': mcp.composerButton,
     'mcp.panelTab': mcp.panelTab,
     'mcp.feedStatus': mcp.feedStatus,
+    'browser.enabled': cfg.get<unknown>('browser.enabled') === true,
     'feed.fontSize': isFeedFontSize(fz) ? fz : DEFAULT_FEED_FONT_SIZE,
     'ui.fontSize': isFeedFontSize(uz) ? uz : DEFAULT_FEED_FONT_SIZE,
     'diff.syntaxHighlighting': cfg.get<unknown>('diff.syntaxHighlighting') !== false,

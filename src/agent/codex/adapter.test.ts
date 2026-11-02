@@ -508,6 +508,28 @@ describe('CodexAdapter: resume, процесс, возможности', () => {
     expect(spawn).not.toHaveBeenCalled();
   });
 
+  it('браузер (roadmap 27): `browser: true` — в аргументах спавна обе пары -c mcp_servers.browser.*; без — как раньше', async () => {
+    const spawned: string[][] = [];
+    const spawn = (_exe: string, args: string[]) => (spawned.push(args), server());
+    const adapter = new CodexAdapter({ executablePath: '/bin/codex', spawn: spawn as never, graceMs: 20 });
+    (await adapter.createSession({ cwd: '/work' })).dispose();
+    expect(spawned[0]).toEqual(['app-server', '--listen', 'stdio://']);
+    (await adapter.createSession({ cwd: '/work', browser: false })).dispose();
+    expect(spawned[1]).toEqual(['app-server', '--listen', 'stdio://']);
+    (await adapter.createSession({ cwd: '/work', browser: true })).dispose();
+    expect(spawned[2]).toEqual([
+      'app-server',
+      '--listen',
+      'stdio://',
+      '-c',
+      'mcp_servers.browser.command="npx"',
+      '-c',
+      'mcp_servers.browser.args=["-y","@playwright/mcp@latest","--extension"]',
+    ]);
+    (await adapter.resumeSession('thr', { cwd: '/work', browser: true })).dispose();
+    expect(spawned[3]).toContain('mcp_servers.browser.command="npx"');
+  });
+
   it('Claude-специфика — no-op', async () => {
     const s = server();
     const { adapter } = open(s);
