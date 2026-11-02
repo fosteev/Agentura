@@ -8,3 +8,4 @@ out/
 test/integration/out/
 .vitest/
 prototype/shots/
+.playwright-mcp/
