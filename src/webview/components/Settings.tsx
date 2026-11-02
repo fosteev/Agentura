@@ -400,6 +400,9 @@ function IntegrationsRows({ v }: { v: SettingsValues }) {
       <Row name={I.agentTools.name} isNew desc={I.agentTools.desc} k="jira.agentTools">
         <AgentToolsBoxes value={v['jira.agentTools']} writes={st?.writes === true} />
       </Row>
+      <Row name={T.browser.name} isNew desc={T.browser.desc} k="browser.enabled">
+        <Toggle k="browser.enabled" value={v['browser.enabled']} />
+      </Row>
     </>
   );
 }
@@ -1257,9 +1260,6 @@ export function Settings() {
                   value={v['mcp.feedStatus']}
                   options={MCP_FEED_STATUS_MODES.map((m) => [m, T.mcpFeedStatus.options[m] ?? m] as const)}
                 />
-              </Row>
-              <Row name={T.browser.name} isNew desc={T.browser.desc} k="browser.enabled">
-                <Toggle k="browser.enabled" value={v['browser.enabled']} />
               </Row>
             </>,
           )}

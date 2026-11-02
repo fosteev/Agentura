@@ -274,12 +274,6 @@
         <span class="key">agentura.mcp.feedStatus</span>
         <span class="ctl"><span class="dd">только сбои</span></span>
       </div>
-      <div class="set">
-        <span class="nm">Браузер (Playwright MCP)<span class="new">новая</span></span>
-        <span class="ds">Агент управляет вашим Chrome через расширение Playwright Extension (Playwright MCP Bridge) (поставьте его из Chrome Web Store). Claude и Codex: у Claude включается на ходу, у Codex — с нового чата. Страницы могут содержать инструкции для агента (prompt injection), а у агента есть доступ к файлам и терминалу — не включайте без нужды и не разрешайте браузерные действия не глядя.</span>
-        <span class="key">agentura.browser.enabled</span>
-        <span class="ctl"><span class="tg" role="switch" aria-checked="false"></span></span>
-      </div>
       </section>
 
       <section class="st-page" id="integrations" hidden>
@@ -336,6 +330,12 @@
         <span class="ds">Что агент (движок Claude) может делать в задаче чата от вашего имени через текущий источник: комментарий — без вопроса, статус и ворклог — через карточку разрешения.</span>
         <span class="key">agentura.jira.agentTools</span>
         <span class="ctl"><div class="cbs"><label><input type="checkbox" checked>комментарий</label><label><input type="checkbox" checked>статус <em>спрашивать разрешение</em></label><label><input type="checkbox" checked>ворклог <em>спрашивать разрешение</em></label></div></span>
+      </div>
+      <div class="set">
+        <span class="nm">Браузер (Playwright MCP)<span class="new">новая</span></span>
+        <span class="ds">Агент управляет вашим Chrome через расширение Playwright Extension из Chrome Web Store (раньше называлось Playwright MCP Bridge). Claude и Codex: у Claude включается на ходу, у Codex — с нового чата. Страницы могут содержать инструкции для агента (prompt injection), а у агента есть доступ к файлам и терминалу — не включайте без нужды и не разрешайте браузерные действия не глядя.</span>
+        <span class="key">agentura.browser.enabled</span>
+        <span class="ctl"><span class="tg" role="switch" aria-checked="false"></span></span>
       </div>
       </section>
 

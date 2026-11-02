@@ -1144,7 +1144,7 @@ const ru = {
     },
     browser: {
       name: 'Браузер (Playwright MCP)',
-      desc: 'Агент управляет вашим Chrome через расширение Playwright Extension (Playwright MCP Bridge) (поставьте его из Chrome Web Store). Claude и Codex: у Claude включается на ходу, у Codex — с нового чата. Страницы могут содержать инструкции для агента (prompt injection), а у агента есть доступ к файлам и терминалу — не включайте без нужды и не разрешайте браузерные действия не глядя.',
+      desc: 'Агент управляет вашим Chrome через расширение Playwright Extension из Chrome Web Store (раньше называлось Playwright MCP Bridge). Claude и Codex: у Claude включается на ходу, у Codex — с нового чата. Страницы могут содержать инструкции для агента (prompt injection), а у агента есть доступ к файлам и терминалу — не включайте без нужды и не разрешайте браузерные действия не глядя.',
     },
     remoteControlNamePrefix: {
       name: 'Префикс имени в Remote Control',
