@@ -7,3 +7,4 @@ out/
 .claude/worktrees/
 test/integration/out/
 .vitest/
+prototype/shots/

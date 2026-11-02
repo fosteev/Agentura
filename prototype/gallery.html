@@ -1,0 +1,456 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+
+
+
+<title>Agentura: экраны прототипа</title>
+<style>
+  :root { color-scheme: dark; --bg: #0c0c0d; --fg: #d8d8d8; --mute: #8f8f8f; --line: #242426; --white: #fff; --chip: #1c1c1e; --new: #3794ff; }
+  body { margin: 0; padding-block: 32px 60px; padding-inline: 16px; background: var(--bg); color: var(--fg); font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
+  main { max-width: 1320px; margin: 0 auto; }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px 24px; margin-bottom: 8px; position: sticky; top: env(safe-area-inset-top, 0px); background: var(--bg); padding: 8px 0; z-index: 5; }
+  h1 { font-size: 22px; font-weight: 600; margin: 0; color: var(--white); }
+  .lead { color: var(--mute); margin: 0 0 8px; max-width: 72ch; }
+  .lead code, .scr p code { font: 12px ui-monospace, Menlo, monospace; background: var(--chip); padding: 1px 5px; border-radius: 3px; color: var(--fg); }
+  nav.toc { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0 0 20px; font-size: 13px; }
+  nav.toc a { color: #8ab4f8; text-decoration: none; }
+  .toggle { display: inline-flex; border: 1px solid #333; border-radius: 5px; overflow: hidden; margin-left: auto; }
+  .toggle button { padding: 4px 12px; color: #bbb; background: none; border: 0; font: inherit; cursor: pointer; }
+  .toggle button + button { border-left: 1px solid #333; }
+  .toggle button[aria-pressed="true"] { background: #2a2a2c; color: var(--white); }
+  h2 { font-size: 13px; font-weight: 600; color: var(--mute); margin: 34px 0 0; }
+  .scr { border-top: 1px solid var(--line); padding: 22px 0 10px; }
+  .scr .head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; }
+  .scr h3 { margin: 0; font-size: 17px; font-weight: 600; color: var(--white); }
+  .scr .tag { font-size: 11px; font-weight: 600; color: var(--new); border: 1px solid var(--new); border-radius: 3px; padding: 0 6px; }
+  .scr .live a { color: #8ab4f8; text-decoration: none; font-size: 13px; }
+  .scr p { margin: 6px 0 14px; color: #bdbdbd; max-width: 76ch; }
+  .shots { display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-start; }
+  figure { margin: 0; min-width: 0; }
+  figure img { display: block; max-width: 100%; height: auto; border: 1px solid #2c2c2e; border-radius: 6px; box-shadow: 0 16px 40px rgba(0,0,0,.45); }
+  figure.w1324 { flex: 1 1 100%; max-width: 1324px; }
+  figcaption { color: var(--mute); font-size: 12px; margin-bottom: 6px; }
+  figcaption b { color: var(--white); font-weight: 600; }
+  :focus-visible { outline: 1px solid #8ab4f8; outline-offset: 2px; }
+</style>
+<main>
+  <header>
+    <h1>Экраны прототипа Agentura</h1>
+    <span class="toggle" role="group" aria-label="Тема"><button data-theme="dark" aria-pressed="true">Тёмная</button><button data-theme="light" aria-pressed="false">Светлая</button></span>
+  </header>
+  <p class="lead">Направление «HUD», все экраны и состояния MVP. Одна сквозная сессия — починка мигающего счётчика талонов в <code>queue-board</code>, 14:41–14:56. На каждой картинке окно VS Code: слева боковая панель Agentura (аккаунт, лимиты, сессии — состояние меняется вместе с экраном), справа вкладка редактора с чатом. Шапка — одна строка вкладок; приборы (шкала и число контекста, кэш, 5-часовое окно) — у поля ввода (вариант Б, выбран 30.09). Цвета из темы VS Code (здесь — запасные значения Dark Modern / Light Modern).</p>
+  <nav class="toc"><a href="#task-chats-real">Новые чаты: в коде</a><a href="#task-chats">Новые чаты в задаче</a><a href="#task-git-real">Код по задаче: в коде</a><a href="#task-git">Код по задаче</a><a href="#archive-real">Архив чатов</a><a href="#mcp-manage">Управление MCP</a><a href="#tools">Скиллы и MCP</a><a href="#tools-real">Скиллы и MCP: в коде</a><a href="#task-tab">Вкладка «задача»</a><a href="#task-real">Задачи: в коде</a><a href="#task-mode">Режим задачи</a><a href="#tasks">Чаты по задачам</a><a href="#limits">Лимиты движков</a><a href="#limits-real">Лимиты: в коде</a><a href="#rc">Remote Control</a><a href="#composer">Поле ввода: варианты</a><a href="#composer-real">Поле ввода: в коде</a><a href="#git">Вкладка «git»</a><a href="#git-real">Вкладка «git»: в коде</a><a href="#feed">Лента: варианты</a><a href="#feed-real">Лента: в коде</a><a href="#tips">Тултипы</a><a href="#lang">Язык</a><a href="#amap">Карта агентов</a><a href="#amap-real">Карта агентов: в коде</a><a href="#changes">Вкладка «изменения»</a><a href="#turn-v">Вкладка «ход»</a><a href="#side">Правая панель</a><a href="#chat">Идёт работа</a><a href="#agents">Несколько агентов</a><a href="#empty">Новая сессия</a><a href="#input">Поле ввода</a><a href="#image">Скриншоты</a><a href="#permission">Разрешение</a><a href="#diff">Правка и дифф</a><a href="#plan">План</a><a href="#error">Ошибка</a><a href="#limit">Лимит исчерпан</a><a href="#dense">Вид списка сессий</a><a href="#top">Вид верха панели</a><a href="#sessions">Аккаунт, лимиты, сессии</a><a href="#settings">Настройки</a></nav>
+  <h2>Чат</h2>
+  <section class="scr" id="task-chats-real">
+    <div class="head"><h3>Новые чаты внутри задачи: настоящий webview</h3><span class="tag">19.10 · roadmap 26 · релиз 0.19.0</span></div>
+    <p>Варианты А, Б и Г в коде. Чипы чатов задачи в полосе (у текущего — индикаторы хода, у других — точка состояния, клик открывает чат), «＋ чат» — всплывашка, ⌥+клик — сразу. Итог чата пишет Claude, изменения задачи берутся из вкладки «код», своя worktree — соседняя папка и ветка <code>feature/&lt;KEY&gt;-N</code>. Данные сцены выдуманные (QUE-214).</p>
+    <div class="shots">
+      <figure class="w1324"><figcaption><b>полоса</b> · чипы трёх чатов разных движков, у фонового — точка «ждёт ответа», затем «＋ чат | задача | код»</figcaption><img data-shot="task-real-newchat-strip" src="shots/task-real-newchat-strip-dark.png" alt="strip" width="1100" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>всплывашка</b> · о чём, агент, что передать, где работает, «beside» / «create»</figcaption><img data-shot="task-real-newchat-pop" src="shots/task-real-newchat-pop-dark.png" alt="popover" width="1100" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>/new</b> · свои команды /new и /fork в меню поля ввода чата задачи</figcaption><img data-shot="task-real-newchat-slash" src="shots/task-real-newchat-slash-dark.png" alt="slash" width="1100" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>много чатов</b> · текущий и три последних, остальные — в меню «ещё 3»</figcaption><img data-shot="task-real-newchat-many" src="shots/task-real-newchat-many-dark.png" alt="many" width="1100" height="760" loading="lazy"></figure>
+    </div>
+  </section>
+  <section class="scr" id="task-chats">
+    <div class="head"><h3>Новые чаты внутри задачи</h3><span class="tag">19.10 · выбраны А, Б, Г · реализовано (0.19.0)</span><span class="live"><a href="screens/task-chats.html#pop">живая страница</a></span></div>
+    <p>Сейчас новый чат по задаче создаётся только «＋» у группы в боковой панели или в блоке «Чаты по задаче» карточки — то есть уйдя из работы. Здесь — как завести Чат 3, не выходя из чата задачи. Новый чат сразу получает контекст задачи и по желанию итог текущего чата, а текущий продолжает работать. Варианты не исключают друг друга: А — основа, Б/В/Г — входы в неё.</p>
+    <div class="shots">
+      <figure class="w1324"><figcaption><b>А · чаты задачи в полосе</b> · вместо одной вкладки «чат» — «Чат 1 · Чат 2 · ＋ чат | задача | код»; переключение между чатами задачи в один клик, точка — чат работает. ⌥+клик по «＋» — сразу, без вопросов. <b>Рекомендую как основу</b></figcaption><img data-shot="task-chats-strip" src="shots/task-chats-strip-dark.png" alt="А: чаты в полосе" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>Б · «＋ чат» → всплывашка</b> · о чём (станет первым сообщением), агент, что передать (контекст задачи, итог этого чата, изменения задачи), та же папка или свой worktree; «создать» или «рядом» — открыть сплитом</figcaption><img data-shot="task-chats-pop" src="shots/task-chats-pop-dark.png" alt="Б: всплывашка" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>В · ответвить с сообщения</b> · у ответа «↳ новый чат отсюда»: итог Чата 2 до этого места + выделенный фрагмент цитатой; удобно, когда разговор ушёл в сторону</figcaption><img data-shot="task-chats-fork" src="shots/task-chats-fork-dark.png" alt="В: ответвить" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>Г · /new в поле ввода</b> · «/new текст» — новый чат с первым сообщением, «/new codex» — другим агентом, «/fork» — продолжить в чистом контексте с итогом этого</figcaption><img data-shot="task-chats-slash" src="shots/task-chats-slash-dark.png" alt="Г: /new" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>Результат · Чат 3 открыт</b> · вкладка «NEWMFC-1482 · Чат 3», в начале ленты — контекст задачи и карточка «из Чата 2» с итогом; в боковой панели группа выросла до 3, Чат 2 и Чат 3 отмечены как работающие</figcaption><img data-shot="task-chats-done" src="shots/task-chats-done-dark.png" alt="новый чат" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>Результат · «рядом»</b> · Чат 3 открыт сплитом справа: codex пушит ветку в Чате 2, claude параллельно ревьюит фикс в Чате 3</figcaption><img data-shot="task-chats-split" src="shots/task-chats-split-dark.png" alt="рядом" width="1324" height="760" loading="lazy"></figure>
+    </div>
+  </section>
+  <section class="scr" id="task-git-real">
+    <div class="head"><h3>Вкладка «код»: настоящий webview</h3><span class="tag">14.10 · roadmap 24, сессии 1–2 · настройки диффа — сессия 3</span></div>
+    <p>Вариант Б в коде. «чат | задача | код N»: репо из рабочих папок чатов задачи, ветка задачи против базы, коммиты с метками «ключ» / «ветка», «↑ local» / «in origin/develop»; незакоммиченные правки агентов с метками чатов (клик открывает чат). Дифф открывается в этой же вкладке: ✕ и Esc закрывают, j/k листают файлы, inline | split. Данные сцены выдуманные (QUE-214).</p>
+    <div class="shots">
+      <figure class="w1324"><figcaption><b>список</b> · справа выбранный коммит: файлы, «commit diff», «to chat», «copy hash»</figcaption><img data-shot="task-real-code-list" src="shots/task-real-code-list-dark.png" alt="list" width="1100" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>встроенный дифф</b> · незакоммиченный файл, подсветка highlight.js (палитра github)</figcaption><img data-shot="task-real-code-diff" src="shots/task-real-code-diff-dark.png" alt="diff" width="1100" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>как ищем?</b> · команды git с ключом задачи и базой репо, «copy» у каждой</figcaption><img data-shot="task-real-code-how" src="shots/task-real-code-how-dark.png" alt="how" width="1100" height="760" loading="lazy"></figure>
+    </div>
+  </section>
+  <section class="scr" id="task-git">
+    <div class="head"><h3>Код по задаче: коммиты и правки агентов</h3><span class="tag">14.10 · выбран Б · реализован в коде (roadmap 24)</span><span class="live"><a href="screens/task-git.html#b">живая страница</a></span></div>
+    <p>Всё, что сделано по задаче, в одном месте. Источники: (1) правки агентов во всех чатах задачи, ещё не закоммиченные (из истории чатов, не из git); (2) коммиты с ключом задачи в сообщении, во всех ветках; (3) коммиты ветки с ключом в имени сверх базы, даже без ключа в сообщении (метка «ветка»). Репозитории берутся из рабочих папок чатов задачи, поэтому их может быть несколько. Цифра в квадрате — номер чата, где сделан коммит или правка.</p>
+    <div class="shots">
+      <figure class="w1324"><figcaption><b>А · охват «задача» во вкладке «изменения»</b> · к «сессия / ход» добавлен охват «задача»: сверху незакоммиченное, ниже коммиты по репо с веткой и ±; узко, зато рядом с чатом. <b>Рекомендую</b></figcaption><img data-shot="task-git-a" src="shots/task-git-a-dark.png" alt="А: охват задача" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>Б · своя вкладка «код» в полосе задачи</b> · «чат | задача | код»: широкий список по репо, справа выбранный коммит, его файлы и «дифф коммита / в чат»</figcaption><img data-shot="task-git-b" src="shots/task-git-b-dark.png" alt="Б: вкладка код" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>В · подвкладка «Код» в карточке задачи</b> · рядом с «Комментарии / История / Ворклог / Изменения»; всё в одном списке, без деталей коммита</figcaption><img data-shot="task-git-c" src="shots/task-git-c-dark.png" alt="В: подвкладка в карточке" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>Пояснялка «как ищем?»</b> · открывается из любого варианта; три команды git с кнопкой «копировать» и правило для команды: ключ в сообщении или в имени ветки</figcaption><img data-shot="task-git-how" src="shots/task-git-how-dark.png" alt="как ищем" width="1324" height="760" loading="lazy"></figure>
+    </div>
+  </section>
+  <section class="scr" id="archive-real">
+    <div class="head"><h3>Архив чатов и сворачивание «Задачи»: настоящий webview</h3><span class="tag">13.10 · реализовано в 0.16.0</span></div>
+    <p>Roadmap 23. Правый клик по строке сессии → «В архив» / «Вернуть из архива» (после архивирования — уведомление с «Отменить»). Архивные чаты уходят из групп задач, «Без задачи» и списка по дням в блок «Архив · N» в самом низу; блок свёрнут по умолчанию, поиск его раскрывает. Задача, у которой все чаты в архиве, пропадает из групп (здесь QUE-198). Заголовок «Задачи · N» сворачивает все группы разом. Файлы сессий не трогаются, удаления нет. На фикстуре в архиве три чата.</p>
+    <div class="shots">
+      <figure style="flex:0 1 300px"><figcaption><b>группы задач</b> · архив свёрнут (по умолчанию)</figcaption><img data-shot="archive-real-groups" src="shots/archive-real-groups-dark.png" alt="архив свёрнут" width="600" height="1520" loading="lazy"></figure>
+      <figure style="flex:0 1 300px"><figcaption><b>группы задач</b> · архив раскрыт, внутри по дням</figcaption><img data-shot="archive-real-groups-open" src="shots/archive-real-groups-open-dark.png" alt="архив раскрыт" width="600" height="1520" loading="lazy"></figure>
+      <figure style="flex:0 1 300px"><figcaption><b>без Jira</b> · список по дням, архив раскрыт</figcaption><img data-shot="archive-real-plain-open" src="shots/archive-real-plain-open-dark.png" alt="без задач, архив раскрыт" width="600" height="1520" loading="lazy"></figure>
+    </div>
+  </section>
+  <section class="scr" id="mcp-manage">
+    <div class="head"><h3>Управление MCP-серверами</h3><span class="tag">13.10 · выбраны 1, 2, 4 · реализовано в 0.15.0 (выключение — в проекте, не в чате)</span><span class="live"><a href="screens/mcp-manage.html#panel">живая страница</a></span></div>
+    <p>Продолжение «Скиллов и MCP» (0.11.0, там только просмотр). Главное — переключатель у каждого сервера: в SDK Claude есть <code>toggleMcpServer</code>, выключенный сервер не грузит тулы в контекст (figma — 46 тулов, ≈ 14k токенов). У каждой строки метка источника (<code>user</code> / <code>project</code> / <code>claude.ai</code> / <code>встроенный</code>) — от неё зависит, где и как выключать насовсем. Открыто: где переключатель (во вкладке 1, во всплывашке 2 или в обоих), нужна ли область «проект / везде» (3), и нужно ли добавление сервера из расширения (5) — это отдельная, бо́льшая работа. Лента — вариант B, как в коде.</p>
+    <div class="shots">
+      <figure class="w1324"><figcaption><b>1 · Переключатели во вкладке «mcp»</b> · у каждого сервера метка источника и тумблер «в этом чате»; подсказка, сколько контекста съедает сервер; «＋ добавить сервер…» под списком</figcaption><img data-shot="mcp-manage-panel" src="shots/mcp-manage-panel-dark.png" alt="Переключатели во вкладке mcp" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>2 · Переключатели во всплывашке у поля</b> · то же в «mcp 5/8»; внизу — «переключатель только для этого чата · как выключить насовсем»</figcaption><img data-shot="mcp-manage-popover" src="shots/mcp-manage-popover-dark.png" alt="Переключатели во всплывашке" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>3 · Меню сервера «⋯»</b> · область выключения: в этом чате / в проекте (<code>.claude/settings.local.json</code>) / везде; у коннектора claude.ai «везде» — ссылкой на claude.ai; плюс «перезапустить», «список тулов»</figcaption><img data-shot="mcp-manage-menu" src="shots/mcp-manage-menu-dark.png" alt="Меню сервера" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>4 · После выключения</b> · figma и marketplace серые, «mcp 3/8» у поля, системная строка в ленте «выключены … −23.3k контекста со следующего хода · вернуть»</figcaption><img data-shot="mcp-manage-off" src="shots/mcp-manage-off-dark.png" alt="После выключения" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>5 · Добавить сервер</b> · форма во вкладке: имя, stdio / http / sse, команда, аргументы, env, где сохранить (только чат / <code>.mcp.json</code> проекта / <code>~/.claude.json</code>), «вставить JSON»; у Codex — <code>config.toml</code></figcaption><img data-shot="mcp-manage-add" src="shots/mcp-manage-add-dark.png" alt="Добавить сервер" width="1324" height="760" loading="lazy"></figure>
+    </div>
+  </section>
+  <section class="scr" id="tools">
+    <div class="head"><h3>Скиллы и MCP-серверы</h3><span class="tag">10.10 · выбраны B, 3, 4, 5 · реализовано в 0.11.0</span><span class="live"><a href="screens/tools-mcp.html#feed-b">живая страница</a></span></div>
+    <p>Два вопроса. Первый — как в ленте отличать вызовы MCP и скиллы: сейчас <code>mcp__serena__find_symbol</code> показывается как просто <code>find_symbol</code>, без сервера, а скилл — обычной строкой инструмента <code>Skill</code>. Выбрать A (1) или B (2). Второй — где показывать, какие серверы подняты: SDK отдаёт статус каждого (<code>connected / failed / needs-auth / pending / disabled</code>, текст ошибки), сейчас он теряется. Варианты 3–5 не взаимоисключающие: можно взять, например, кнопку у поля (3) и системную строку только при сбое (5). Во всех трёх лента нарисована по варианту A.</p>
+    <div class="shots">
+      <figure class="w1324"><figcaption><b>1 · Лента, вариант A</b> · сервер в колонке операции (<code>serena</code>, <code>context7</code>, <code>jira</code>) синим, скилл — строкой <code>skill</code> с акцентом, токенами инструкций и ссылкой на SKILL.md; вызов к упавшему серверу — красным</figcaption><img data-shot="tools-mcp-feed-a" src="shots/tools-mcp-feed-a-dark.png" alt="Лента, вариант A" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>2 · Лента, вариант B</b> · операция остаётся <code>mcp</code>, сервер — чипом перед именем тула; скилл — выделенной полосой-разделителем; в итогах хода счётчики «mcp 5 · скилл 1»</figcaption><img data-shot="tools-mcp-feed-b" src="shots/tools-mcp-feed-b-dark.png" alt="Лента, вариант B" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>3 · Статус у поля ввода</b> · кнопка «mcp 5/8» с жёлтой точкой, если что-то не подключено; по клику — список серверов (статус, версия, тулов, вызовов в сессии, «повторить» / «войти») и скиллы, вызванные в сессии</figcaption><img data-shot="tools-mcp-popover" src="shots/tools-mcp-popover-dark.png" alt="Статус у поля ввода" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>4 · Вкладка «mcp» в правой панели</b> · то же постоянно на виду: серверы с раскрытием вызовов по тулам, скиллы сессии, бейдж при сбое</figcaption><img data-shot="tools-mcp-panel" src="shots/tools-mcp-panel-dark.png" alt="Вкладка «mcp» в правой панели" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>5 · Системная строка в ленте</b> · при старте сессии строка «MCP: 5 подключены · webstorm не подключился · 2 ждут входа» с раскрытым списком; повторяется, если сервер отвалился по ходу</figcaption><img data-shot="tools-mcp-sys" src="shots/tools-mcp-sys-dark.png" alt="Системная строка в ленте" width="1324" height="760" loading="lazy"></figure>
+    </div>
+  </section>
+  <section class="scr" id="tools-real">
+    <div class="head"><h3>Скиллы и MCP: настоящий webview</h3><span class="tag">новое · 12.10 · 0.11.0</span></div>
+    <p>Реализовано в ветке <code>feature/skills-mcp</code> (roadmap 21). Четыре настройки в ⚙ → «Внешний вид» → «MCP и скиллы»: <code>agentura.mcp.feedLabels</code>, <code>.composerButton</code>, <code>.panelTab</code> (вкл) и <code>.feedStatus</code> (<code>failures</code> по умолчанию / <code>start</code> / <code>off</code>). Статус — Claude и Codex (у Codex после первого сообщения), Antigravity — скрыто; у плагинных скиллов ссылки на SKILL.md нет. Отрисовано кодом расширения на фикстуре: 8 серверов, вызов скилла, три вызова MCP и вызов к упавшему webstorm.</p>
+    <div class="shots">
+      <figure style="flex:0 1 1100px"><figcaption><b>лента B</b> · чипы серверов у вызовов MCP (красный — сервер упал), полоса скилла, счётчики «mcp · скилл» в итоге хода</figcaption><img data-shot="tools-real-feed" src="shots/tools-real-feed-dark.png" alt="лента B" width="2200" height="1520" loading="lazy"></figure>
+      <figure style="flex:0 1 1100px"><figcaption><b>кнопка «mcp N/M» у поля, всплывашка открыта</b> · серверы со статусом, версией, тулами и вызовами; «повторить» / подсказка входа; скиллы сессии</figcaption><img data-shot="tools-real-popover" src="shots/tools-real-popover-dark.png" alt="кнопка «mcp N/M» у поля, всплывашка открыта" width="2200" height="1520" loading="lazy"></figure>
+      <figure style="flex:0 1 1100px"><figcaption><b>вкладка «mcp» в правой панели</b> · серверы с раскрытием вызовов по тулам, скиллы сессии, бейдж сбоев</figcaption><img data-shot="tools-real-panel" src="shots/tools-real-panel-dark.png" alt="вкладка «mcp» в правой панели" width="2200" height="1520" loading="lazy"></figure>
+      <figure style="flex:0 1 1100px"><figcaption><b>системная строка</b> · «MCP: 5 подключены · webstorm не подключился · 1 ждёт входа» над ходом (feedStatus = start)</figcaption><img data-shot="tools-real-sys" src="shots/tools-real-sys-dark.png" alt="системная строка" width="2200" height="1520" loading="lazy"></figure>
+    </div>
+  </section>
+  <section class="scr" id="task-tab">
+    <div class="head"><h3>Вкладка «задача» рядом с чатом</h3><span class="tag">09.10 · выбран широкий (3) · реализовано</span><span class="live"><a href="screens/task-tab.html#wide">живая страница</a></span></div>
+    <p>Задача уходит из правой панели в саму вкладку чата: в полосе задачи над лентой две вкладки, «чат» и «задача». В правой панели остаются изменения, git и агенты. Карточка свёрстана по Jiraffe: описание с форматированием, вложения превью, комментарии, история, ворклог, смена статуса и поле для комментария. Агент продолжает работать, пока открыта «задача»: на вкладке «чат» видно, что идёт ход и сколько пришло новых сообщений. Выбрать нужно одно: задача в узкой колонке рядом с правой панелью (2) или во всю ширину с полями справа, как в Jira (3).</p>
+    <div class="shots">
+      <figure class="w1324"><figcaption><b>1 · Чат</b> · вкладки «чат | задача» в полосе задачи, на «задаче» бейдж новых изменений; правая панель без вкладки «задача»</figcaption><img data-shot="task-tab-chat" src="shots/task-tab-chat-dark.png" alt="Вкладка чат" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>2 · Задача, узко</b> · правая панель остаётся, поля строкой под заголовком; «↳ в чат» вставляет задачу или комментарий в поле ввода (на комментарии при наведении)</figcaption><img data-shot="task-tab-task" src="shots/task-tab-task-dark.png" alt="Задача узко" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>3 · Задача, широко</b> · на вкладке «задача» правая панель не показывается: слева описание, вложения, комментарии, справа поля, время и чаты по задаче</figcaption><img data-shot="task-tab-wide" src="shots/task-tab-wide-dark.png" alt="Задача широко" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>4 · Агент работает</b> · на «чате» спиннер и 3 новых, в полосе «ход 1:12»; комментарий агента появился в задаче с меткой «из этого чата»</figcaption><img data-shot="task-tab-busy" src="shots/task-tab-busy-dark.png" alt="Агент работает" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>5 · Агент ждёт ответа</b> · жёлтая точка на «чате» и тост «разрешить git push? · к чату»</figcaption><img data-shot="task-tab-wait" src="shots/task-tab-wait-dark.png" alt="Агент ждёт" width="1324" height="760" loading="lazy"></figure>
+    </div>
+  </section>
+  <section class="scr" id="task-real">
+    <div class="head"><h3>Чаты по задачам: настоящий webview</h3><span class="tag">обновлено · 09.10 · roadmap 20</span></div>
+    <p>Всё из разделов «Режим задачи» и «Чаты по задачам Jira» реализовано (ветка <code>feature/task-groups</code>, версия 0.9.0, ещё не в main). Источник Jira — своё подключение в воркспейсе или Jiraffe 0.8.0 (<code>agentura.jira.source</code>); виды: <code>agentura.tasks.sidebar</code> (группы / секция), <code>agentura.tasks.tab</code> (вкладка на чат / на задачу), <code>agentura.tasks.card</code> (панель / сплит / полоска). Агент Claude пишет в Jira инструментами <code>agentura_jira</code>: комментарий в задачу чата без вопроса, статус и ворклог — через разрешение. Отрисовано кодом расширения на фикстуре. С 09.10 (roadmap 20) карточка задачи — вкладка «задача» рядом с «чатом» в полосе задачи, правая панель без «задачи»; <code>agentura.tasks.card</code> — вкладка / сплит.</p>
+    <div class="shots">
+      <figure style="flex:0 1 300px"><figcaption><b>сайдбар · группы</b> (по умолчанию)</figcaption><img data-shot="task-real-sidebar-groups" src="shots/task-real-sidebar-groups-dark.png" alt="sidebar-groups" width="600" height="1520" loading="lazy"></figure>
+      <figure style="flex:0 1 300px"><figcaption><b>сайдбар · секция «Задачи»</b></figcaption><img data-shot="task-real-sidebar-section" src="shots/task-real-sidebar-section-dark.png" alt="sidebar-section" width="600" height="1520" loading="lazy"></figure>
+      <figure style="flex:0 1 1100px"><figcaption><b>«чат»</b> · вкладки «чат | задача» в полосе, бейдж новых изменений на «задаче»</figcaption><img data-shot="task-real-chat-chat" src="shots/task-real-chat-chat-dark.png" alt="chat-chat" width="2200" height="1520" loading="lazy"></figure>
+      <figure style="flex:0 1 1100px"><figcaption><b>«задача» · комментарии</b> · карточка во всю ширину, поля, время и чаты справа</figcaption><img data-shot="task-real-chat-card" src="shots/task-real-chat-card-dark.png" alt="chat-card" width="2200" height="1520" loading="lazy"></figure>
+      <figure style="flex:0 1 1100px"><figcaption><b>«задача» · изменения</b> · события с открытия чата, комментарий агента «из этого чата»</figcaption><img data-shot="task-real-chat-changes" src="shots/task-real-chat-changes-dark.png" alt="chat-changes" width="2200" height="1520" loading="lazy"></figure>
+      <figure style="flex:0 1 1100px"><figcaption><b>вкладка на задачу</b> · внутренние вкладки чатов</figcaption><img data-shot="task-real-tab" src="shots/task-real-tab-dark.png" alt="tab" width="2200" height="1520" loading="lazy"></figure>
+      <figure style="flex:0 1 1100px"><figcaption><b>Настройки → Интеграции</b></figcaption><img data-shot="task-real-integrations" src="shots/task-real-integrations-dark.png" alt="integrations" width="2200" height="1520" loading="lazy"></figure>
+    </div>
+  </section>
+  <section class="scr" id="task-mode">
+    <div class="head"><h3>Режим задачи: задача в правой панели</h3><span class="tag">08.10 · реализовано</span><span class="live"><a href="screens/task-mode.html#open">живая страница</a></span></div>
+    <p>Если в настройках включена интеграция с Jiraffe, у чата по задаче справа есть вкладка «задача». В ней карточка только для чтения и лента изменений, видно, что сделал агент и что люди. «Открыть в Agentura» в Jiraffe сразу открывает чат в этом режиме. Агент работает с Jira через инструменты (комментарий, статус, ворклог), которые идут через Jiraffe: токены остаются там. Пример: NEWMFC-1482, Чат 2 · codex.</p>
+    <div class="shots">
+      <figure class="w1324"><figcaption><b>Открыт чат по задаче</b> · полоска задачи над лентой, «в Jiraffe ↗»; панель «задача»: шапка с ↻ и временем обновления, описание на 4 строки, вложения, комментарии; внизу «Чаты по задаче» с «＋ новый чат»</figcaption><img data-shot="task-mode-open" src="shots/task-mode-open-dark.png" alt="Режим задачи" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>Агент прокомментировал</b> · в ленте строка <code>jira · комментарий ✓ · в задаче →</code>; в панели новый комментарий «агент (от имени …)» с кромкой и меткой «новое · только что», бейдж на вкладке</figcaption><img data-shot="task-mode-comment" src="shots/task-mode-comment-dark.png" alt="Комментарий агента" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>Изменения задачи</b> · «карточка | изменения»: события с момента открытия чата, у агентских «из этого чата»; сверху плашка «Ольга К. прокомментировала, пока агент работал — отправить агенту?»</figcaption><img data-shot="task-mode-changes" src="shots/task-mode-changes-dark.png" alt="Лента изменений" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>Панель свёрнута</b> · значок «задача» в полосе с бейджем новых изменений, полоска задачи остаётся</figcaption><img data-shot="task-mode-rail" src="shots/task-mode-rail-dark.png" alt="Полоса с бейджем" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>Jiraffe: «Открыть в Agentura ▾»</b> · продолжить один из чатов задачи или новый чат по задаче</figcaption><img data-shot="task-mode-jiraffe" src="shots/task-mode-jiraffe-dark.png" alt="Открыть в Agentura" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>Настройки → Интеграции</b> · Jiraffe установлен · 2 инстанса; интеграция вкл, панель «задача» в чатах по задаче, обновление каждые 30 с / вручную, инструменты для агента (статус и ворклог — с разрешением), изменения от людей</figcaption><img data-shot="task-mode-settings" src="shots/task-mode-settings-dark.png" alt="Настройки: интеграции" width="1324" height="760" loading="lazy"></figure>
+    </div>
+  </section>
+  <section class="scr" id="tasks">
+    <div class="head"><h3>Чаты по задачам Jira</h3><span class="tag">08.10 · реализованы все — настройки tasks.*</span><span class="live"><a href="screens/tasks.html#a">живая страница</a></span></div>
+    <p>Работа в связке с Jiraffe: по одной задаче бывает несколько чатов, их нужно сгруппировать и привязать к задаче, а задачу и ИИ держать в одной вкладке. Сейчас «Спросить ИИ» в карточке Jiraffe открывает одну сессию на задачу (ключ <code>jiraffe:&lt;инстанс&gt;:&lt;задача&gt;</code>). Ключ становится группой: у задачи N чатов, разные движки. Варианты различаются боковой панелью (группы в списке или отдельная секция «Задачи») и вкладкой (вкладка на чат, вкладка на задачу с чатами внутри, сплит с карточкой Jiraffe, карточка в правой панели). Полную карточку с переходами и ворклогом не дублируем — она остаётся в Jiraffe.</p>
+    <div class="shots">
+      <figure class="w1324"><figcaption><b>A · группы в списке, вкладка на чат</b> · задачи — сворачиваемые заголовки (ключ, статус, число чатов, «＋»), ниже «Без задачи»; во вкладке полоска задачи с «Карточка ↗»</figcaption><img data-shot="tasks-a" src="shots/tasks-a-dark.png" alt="Группы в списке" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>B · вкладка на задачу</b> · одна вкладка редактора «NEWMFC-1482», под полоской — внутренние вкладки чатов «Чат 1 · claude», «Чат 2 · codex», «＋»</figcaption><img data-shot="tasks-b" src="shots/tasks-b-dark.png" alt="Вкладка на задачу" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>C · сплит с карточкой Jiraffe</b> · в боковой панели секция «Задачи» над «Сессиями»; слева карточка Jiraffe, справа чат с полоской задачи · поле ввода узкое, effort и кэш скрыты</figcaption><img data-shot="tasks-c" src="shots/tasks-c-dark.png" alt="Сплит с Jiraffe" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>D · вкладка на задачу + панель «задача»</b> · как B, справа вкладка правой панели «задача»: краткая карточка только для чтения, «Открыть в Jiraffe», «Обновить контекст»</figcaption><img data-shot="tasks-d" src="shots/tasks-d-dark.png" alt="Панель задачи" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>«Спросить ИИ», когда чаты уже есть</b> · в карточке Jiraffe меню: продолжить один из чатов задачи или новый чат по задаче; одинаково для всех вариантов</figcaption><img data-shot="tasks-ask" src="shots/tasks-ask-dark.png" alt="Спросить ИИ" width="1324" height="760" loading="lazy"></figure>
+    </div>
+  </section>
+  <section class="scr" id="limits">
+    <div class="head"><h3>Лимиты нескольких движков</h3><span class="tag">07.10 · реализованы все — настройка «agentura.sidebar.limits»</span><span class="live"><a href="screens/limits-multi.html#a">живая страница</a></span></div>
+    <p>Движков теперь три, у каждого свои окна: Claude — 5 часов, неделя, неделя Fable; Codex — 5 часов и неделя; Antigravity — квота по семействам моделей (Gemini, Claude/GPT; agy отдаёт «осталось», показываем «израсходовано», как у остальных). Сейчас в боковой панели только Claude, а квота agy — лишь у поля ввода во вкладке agy. Пять способов показать все движки в боковой панели; за основу — компактный верх, который сейчас в продукте. Пример: открыта вкладка Codex, у Codex 5 часов на 78 % (жёлтый), у Antigravity Claude/GPT на 91 % (красный). Справа на кадре — плюсы, минусы, высота верха и сколько сессий влезло. У поля ввода во вкладке по-прежнему лимиты её движка — это не меняется.</p>
+    <div class="shots">
+      <figure class="w1324"><figcaption><b>A · стопка</b> · блок на движок: метка, аккаунт и план, его лимиты; движок вкладки помечен «вкладка» · верх ~390 px, 11 сессий</figcaption><img data-shot="limits-multi-a" src="shots/limits-multi-a-dark.png" alt="Лимиты: стопка" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>B · переключатель</b> · сегменты Claude / Codex / Antigravity, по умолчанию движок вкладки; точка — цвет худшего лимита · верх ~245 px</figcaption><img data-shot="limits-multi-b" src="shots/limits-multi-b-dark.png" alt="Лимиты: переключатель" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>C · таблица</b> · строка на движок, окна ячейками; сброс и аккаунт — в подсказках · верх ~230 px</figcaption><img data-shot="limits-multi-c" src="shots/limits-multi-c-dark.png" alt="Лимиты: таблица" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>D · активный подробно</b> · движок вкладки раскрыт, остальные — строкой с худшим лимитом и его сбросом · верх ~270 px</figcaption><img data-shot="limits-multi-d" src="shots/limits-multi-d-dark.png" alt="Лимиты: активный подробно" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>E · в заголовке панели</b> · мини-шкала худшего лимита на движок рядом с ↻ и ⚙, подробно — во всплывашке (на кадре открыта) · верх ~105 px</figcaption><img data-shot="limits-multi-e" src="shots/limits-multi-e-dark.png" alt="Лимиты: в заголовке" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>A · нет движка / нет входа</b> · Codex не установлен — «как поставить», Antigravity без входа — «войти»; так же в остальных вариантах</figcaption><img data-shot="limits-multi-a-off" src="shots/limits-multi-a-off-dark.png" alt="Лимиты: движок не установлен" width="1324" height="760" loading="lazy"></figure>
+    </div>
+  </section>
+  <section class="scr" id="limits-real">
+    <div class="head"><h3>Лимиты движков: настоящий webview</h3><span class="tag">новое · 07.10</span></div>
+    <p>Все пять вариантов реализованы (ветка <code>feature/engine-limits</code>): настройка <code>agentura.sidebar.limits</code> — ⚙ → «Боковая панель» → «Лимиты движков» или команда «Agentura: Вид лимитов…», по умолчанию «активный подробно». Лимиты Codex — из <code>codex app-server</code> (<code>account/rateLimits/read</code>), Antigravity — из <code>agy /usage</code> (показано израсходованное). Установлен один Claude — секция как раньше. Отрисовано кодом расширения на фикстуре: боковая панель 380 px, активная вкладка — Codex.</p>
+    <div class="shots">
+      <figure class="w1324"><figcaption><b>активный подробно</b> (по умолчанию) · Codex раскрыт, Claude и Antigravity — строкой с худшим лимитом</figcaption><img data-shot="limits-real-active" src="shots/limits-real-active-dark.png" alt="active" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>стопка</b> · блок на движок, «вкладка» у текущего</figcaption><img data-shot="limits-real-stack" src="shots/limits-real-stack-dark.png" alt="stack" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>переключатель</b> · выбран движок вкладки, точки — худший лимит соседей</figcaption><img data-shot="limits-real-switch" src="shots/limits-real-switch-dark.png" alt="switch" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>таблица</b> · строка на движок</figcaption><img data-shot="limits-real-table" src="shots/limits-real-table-dark.png" alt="table" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>в заголовке</b> · мини-шкалы у ⚙, всплывашка открыта</figcaption><img data-shot="limits-real-header-open" src="shots/limits-real-header-open-dark.png" alt="header-open" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>нет Codex, Antigravity без входа</b> · не установленный не показывается, без входа — «войти»</figcaption><img data-shot="limits-real-stack-off" src="shots/limits-real-stack-off-dark.png" alt="stack-off" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>вид верха «подробно»</b> · лимиты те же, «Новая сессия» кнопкой</figcaption><img data-shot="limits-real-active-detailed" src="shots/limits-real-active-detailed-dark.png" alt="active-detailed" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>вид верха «плотно»</b> · всегда в заголовке</figcaption><img data-shot="limits-real-header-dense" src="shots/limits-real-header-dense-dark.png" alt="header-dense" width="1324" height="760" loading="lazy"></figure>
+    </div>
+  </section>
+  <section class="scr" id="rc">
+    <div class="head"><h3>Remote Control · /rc</h3><span class="tag">06.10 · предложение, ждёт выбора</span><span class="live"><a href="screens/remote.html#menu">живая страница</a></span></div>
+    <p>Управлять открытой сессией с телефона и claude.ai/code — как <code>/remote-control</code> (<code>/rc</code>) в Claude Code. Переключатель живёт в двух местах: в сессии — кнопка «rc выкл / вкл» в строке под полем ввода рядом с effort (и команда <code>/rc</code>), по умолчанию для новых сессий — в настройках «Новая сессия». Когда включено: зелёная метка «remote» в шапке, строка в ленте и отметка «с телефона» у сообщений, пришедших не из VS Code. Ходы, файлы и разрешения остаются на этой машине. Только движок Claude.</p>
+    <div class="shots">
+      <figure class="w1324"><figcaption><b>/r в поле ввода</b> · <code>/rc</code> первым в меню команд, подсказка «выкл → вкл»; в строке под полем — «rc выкл»</figcaption><img data-shot="remote-slash" src="shots/remote-slash-dark.png" alt="Remote Control: /r в поле ввода" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>Включён</b> · «● rc вкл» под полем, «● remote» в шапке, системная строка в ленте, второе сообщение помечено «с телефона»</figcaption><img data-shot="remote-on" src="shots/remote-on-dark.png" alt="Remote Control включён" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>Меню «rc»</b> · переключатель, QR для телефона, «открыть на claude.ai/code», «скопировать ссылку» и напоминание, что исполняется всё здесь</figcaption><img data-shot="remote-menu" src="shots/remote-menu-dark.png" alt="Remote Control: меню" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>Настройки → Новая сессия</b> · «Remote Control для новых сессий» (<code>agentura.remoteControl</code>, выкл) и префикс имени на claude.ai</figcaption><img data-shot="settings-session" src="shots/settings-session-dark.png" alt="Настройки: Remote Control для новых сессий" width="1324" height="760" loading="lazy"></figure>
+    </div>
+  </section>
+  <section class="scr" id="composer">
+    <div class="head"><h3>Поле ввода: варианты</h3><span class="tag">05.10 · реализованы все — настройка «agentura.composer.layout»</span><span class="live"><a href="screens/composer.html#a">живая страница</a></span></div>
+    <p>Тот же момент сессии, меняется только низ вкладки: вложения (<code>Counter.tsx</code> 12–40, <code>reconnect.ts</code>), контекст 131 250 / 200 000 (за порогом 120k — жёлтый), кэш 04:12 · 91%, 5-часовое окно 62%, режим manual, claude · opus-5.5 · high. Что сравнивать: сколько высоты съедает низ, что видно без наведения, и не теряется ли сам текст запроса среди приборов. Ниже — те же варианты, когда агент работает, а ты уже набираешь следующее: Enter ставит в очередь, Esc останавливает.</p>
+    <div class="shots">
+      <figure class="w1324"><figcaption><b>А · как сейчас</b> · полоса контекста над полем; строка вложений со счётчиком контекста справа; под полем — все настройки и приборы одной строкой. Всё видно, но три яруса обвеса вокруг одной строки текста</figcaption><img data-shot="composer-a" src="shots/composer-a-dark.png" alt="Вариант А · как сейчас" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>Б · карточка</b> · как в claude.ai / Cursor: вложения чипами, текст и настройки — внутри одной скруглённой рамки; режим и «claude · модель · effort» — пилюли с меню, контекст — кольцо с %, отправка — круглая кнопка ↑. Числа (контекст, кэш, 5ч) — мелким подстрочником под карточкой</figcaption><img data-shot="composer-b" src="shots/composer-b-dark.png" alt="Вариант Б · карточка" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>В · строка состояния</b> · как в vim / tmux: поле без обвеса, контекст — цветная кромка по верху поля (длина = заполнение), вложения — @-ссылками прямо в тексте. Всё остальное — одна полоса снизу: режим цветным блоком, агент, модель, effort | ctx, кэш, 5ч, подсказка клавиши. Самый плотный</figcaption><img data-shot="composer-c" src="shots/composer-c-dark.png" alt="Вариант В · строка состояния" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>Г · приборы сверху</b> · разводка по смыслу: над полем — что уходит (вложения) и сколько осталось (контекст шкалой с порогами, кэш, 5ч); под полем — только настройки следующего запроса и явная кнопка «отправить ↵»</figcaption><img data-shot="composer-d" src="shots/composer-d-dark.png" alt="Вариант Г · приборы сверху" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>Д · минимум</b> · одна строка: режим — цветом «$» (shift+tab), вложения чипами внутри поля, модель и effort — одна кнопка с меню, контекст — кольцо, и то только после порога 120k; кэш и 5ч не дублируются — они в шапке боковой панели. Под полем — шпаргалка клавиш</figcaption><img data-shot="composer-e" src="shots/composer-e-dark.png" alt="Вариант Д · минимум" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>Е · командная строка</b> · как приглашение starship в терминале, без рамки поля: строка-статус (папка · режим · claude/модель:effort … ctx · кэш · 5ч), строка «+ вложение», затем «❯ » и блочный курсор. Фон чуть темнее ленты, чтобы низ читался как консоль</figcaption><img data-shot="composer-f" src="shots/composer-f-dark.png" alt="Вариант Е · командная строка" width="1324" height="760" loading="lazy"></figure>
+    </div>
+    <p>Набрано во время хода (вырезка низа вкладки):</p>
+    <div class="shots">
+      <figure style="flex:0 1 900px"><figcaption><b>А · как сейчас</b> · набрано во время хода</figcaption><img data-shot="composer-a-typed" src="shots/composer-a-typed-dark.png" alt="А · как сейчас, набрано" width="900" height="210" loading="lazy"></figure>
+      <figure style="flex:0 1 900px"><figcaption><b>Б · карточка</b> · набрано во время хода</figcaption><img data-shot="composer-b-typed" src="shots/composer-b-typed-dark.png" alt="Б · карточка, набрано" width="900" height="210" loading="lazy"></figure>
+      <figure style="flex:0 1 900px"><figcaption><b>В · строка состояния</b> · набрано во время хода</figcaption><img data-shot="composer-c-typed" src="shots/composer-c-typed-dark.png" alt="В · строка состояния, набрано" width="900" height="210" loading="lazy"></figure>
+      <figure style="flex:0 1 900px"><figcaption><b>Г · приборы сверху</b> · набрано во время хода</figcaption><img data-shot="composer-d-typed" src="shots/composer-d-typed-dark.png" alt="Г · приборы сверху, набрано" width="900" height="210" loading="lazy"></figure>
+      <figure style="flex:0 1 900px"><figcaption><b>Д · минимум</b> · набрано во время хода</figcaption><img data-shot="composer-e-typed" src="shots/composer-e-typed-dark.png" alt="Д · минимум, набрано" width="900" height="210" loading="lazy"></figure>
+      <figure style="flex:0 1 900px"><figcaption><b>Е · командная строка</b> · набрано во время хода</figcaption><img data-shot="composer-f-typed" src="shots/composer-f-typed-dark.png" alt="Е · командная строка, набрано" width="900" height="210" loading="lazy"></figure>
+    </div>
+  </section>
+  <section class="scr" id="composer-real">
+    <div class="head"><h3>Поле ввода: настоящий webview</h3><span class="tag">новое · 05.10</span></div>
+    <p>Все шесть раскладок реализованы (в main): настройка <code>agentura.composer.layout</code> — ⚙ → «Внешний вид» (карточки с превью) или команда «Agentura: Вид поля ввода…», по умолчанию «классика». Поведение одинаковое во всех: клавиши, меню <code>/</code> и <code>@</code>, история, черновики, сжатие, пороги. Новое во всех раскладках — пока агент работает, вместо отправки «↵ в очередь» и стоп (esc). Отрисовано кодом расширения на фикстуре: вкладка чата 1000 px, панель 360 px; по паре кадров на раскладку — ответ готов и ход идёт.</p>
+    <div class="shots">
+      <figure style="flex:0 1 1000px"><figcaption><b>классика</b> · ответ готов · по умолчанию</figcaption><img data-shot="composer-real-classic" src="shots/composer-real-classic-dark.png" alt="классика, ответ готов" width="1000" height="760" loading="lazy"></figure>
+      <figure style="flex:0 1 1000px"><figcaption><b>классика</b> · ход идёт: «↵ в очередь» и стоп</figcaption><img data-shot="composer-real-classic-busy" src="shots/composer-real-classic-busy-dark.png" alt="классика, ход идёт: «↵ в очередь» и стоп" width="1000" height="760" loading="lazy"></figure>
+      <figure style="flex:0 1 1000px"><figcaption><b>карточка</b> · ответ готов</figcaption><img data-shot="composer-real-card" src="shots/composer-real-card-dark.png" alt="карточка, ответ готов" width="1000" height="760" loading="lazy"></figure>
+      <figure style="flex:0 1 1000px"><figcaption><b>карточка</b> · ход идёт: «↵ в очередь» и стоп</figcaption><img data-shot="composer-real-card-busy" src="shots/composer-real-card-busy-dark.png" alt="карточка, ход идёт: «↵ в очередь» и стоп" width="1000" height="760" loading="lazy"></figure>
+      <figure style="flex:0 1 1000px"><figcaption><b>строка состояния</b> · ответ готов</figcaption><img data-shot="composer-real-statusline" src="shots/composer-real-statusline-dark.png" alt="строка состояния, ответ готов" width="1000" height="760" loading="lazy"></figure>
+      <figure style="flex:0 1 1000px"><figcaption><b>строка состояния</b> · ход идёт: «↵ в очередь» и стоп</figcaption><img data-shot="composer-real-statusline-busy" src="shots/composer-real-statusline-busy-dark.png" alt="строка состояния, ход идёт: «↵ в очередь» и стоп" width="1000" height="760" loading="lazy"></figure>
+      <figure style="flex:0 1 1000px"><figcaption><b>приборы сверху</b> · ответ готов</figcaption><img data-shot="composer-real-gauges" src="shots/composer-real-gauges-dark.png" alt="приборы сверху, ответ готов" width="1000" height="760" loading="lazy"></figure>
+      <figure style="flex:0 1 1000px"><figcaption><b>приборы сверху</b> · ход идёт: «↵ в очередь» и стоп</figcaption><img data-shot="composer-real-gauges-busy" src="shots/composer-real-gauges-busy-dark.png" alt="приборы сверху, ход идёт: «↵ в очередь» и стоп" width="1000" height="760" loading="lazy"></figure>
+      <figure style="flex:0 1 1000px"><figcaption><b>минимум</b> · ответ готов · кольцо контекста и 5ч появляются только за порогом</figcaption><img data-shot="composer-real-minimal" src="shots/composer-real-minimal-dark.png" alt="минимум, ответ готов" width="1000" height="760" loading="lazy"></figure>
+      <figure style="flex:0 1 1000px"><figcaption><b>минимум</b> · ход идёт: «↵ в очередь» и стоп</figcaption><img data-shot="composer-real-minimal-busy" src="shots/composer-real-minimal-busy-dark.png" alt="минимум, ход идёт: «↵ в очередь» и стоп" width="1000" height="760" loading="lazy"></figure>
+      <figure style="flex:0 1 1000px"><figcaption><b>командная строка</b> · ответ готов</figcaption><img data-shot="composer-real-shell" src="shots/composer-real-shell-dark.png" alt="командная строка, ответ готов" width="1000" height="760" loading="lazy"></figure>
+      <figure style="flex:0 1 1000px"><figcaption><b>командная строка</b> · ход идёт: «↵ в очередь» и стоп</figcaption><img data-shot="composer-real-shell-busy" src="shots/composer-real-shell-busy-dark.png" alt="командная строка, ход идёт: «↵ в очередь» и стоп" width="1000" height="760" loading="lazy"></figure>
+    </div>
+  </section>
+  <section class="scr" id="git">
+    <div class="head"><h3>Вкладка «git»: варианты</h3><span class="tag">04.10 · реализованы все — настройка «agentura.git.layout»</span><span class="live"><a href="screens/git-pane.html#one">живая страница</a></span></div>
+    <p>Третья вкладка правой панели, <code>изменения | git | агенты</code>, по образцу правой панели GitKraken, но в ширину 360 px. Работает на git (рабочее дерево и индекс), а не на ленте: видны и правки через Bash, и твои ручные. Чтобы она не дублировала «изменения», файлы, которые правил агент в этой сессии, помечены фиолетовой точкой, а чип «● агент N» оставляет только их. Строка файла: имя цветом статуса git, папка, +/−, буква (M / U / A / D). На наведении — открыть, отменить изменения, в индекс / из индекса. Внизу коммит: заголовок со счётчиком до 72 символов, ✦ (сообщение пишет агент по индексу), описание, amend, «и push», ▾ (коммит и push / в новую ветку / stash). Первый кадр — один репозиторий, остальные — рабочая папка <code>queue/</code> с тремя репозиториями: board (ветка ↑1), ws-client (ветка ещё не в origin), infra (чистый, ↓3). Что сравнивать в мультирепо: видно ли сразу, где что изменено и на какой ветке, и куда уйдёт коммит.</p>
+    <div class="shots">
+      <figure class="w1324"><figcaption><b>Один репозиторий</b> · шапка: репо, ветка ▾ (сменить), ↓/↑ против origin, fetch / pull / push; секции «неиндексированные» с «+ все в индекс» и «в индексе» с «− все»; последние коммиты (неотправленные — синим, с ↑); коммит прижат к низу</figcaption><img data-shot="git-pane-one" src="shots/git-pane-one-dark.png" alt="Один репозиторий" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>Один репозиторий · дерево</b> · тот же момент с переключателем «дерево»: папки строками, файлы с отступом</figcaption><img data-shot="git-pane-one-tree" src="shots/git-pane-one-tree-dark.png" alt="Один репозиторий, дерево" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>А · стопка репозиториев</b> (как SCM в VS Code) · у каждого репозитория своя шапка (ветка, число изменений, ↓/↑, действия) и свои секции, ниже — своё короткое поле коммита; чистый репозиторий свёрнут в строку «чисто», и pull прямо в ней. Видно всё сразу, но при 4+ репозиториях начинается прокрутка</figcaption><img data-shot="git-pane-ma" src="shots/git-pane-ma-dark.png" alt="Вариант А: стопка" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>Б · выбор сверху</b> (как GitKraken с переключателем репо) · список репозиториев с веткой, ↓/↑ и числом изменений; ниже — выбранный, ровно как в режиме одного репо, с полным полем коммита и историей. Компактно, но изменения в других репо видны только счётчиком</figcaption><img data-shot="git-pane-mb" src="shots/git-pane-mb-dark.png" alt="Вариант Б: выбор сверху" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>В · общий список</b> · одни секции на всю папку, в них подзаголовки репозиториев с веткой; чистые — строкой внизу. Один коммит: чипы «в: ☑ board 2 · ☑ ws-client 2» — одно сообщение, отдельный коммит в каждом отмеченном репо. Удобно, когда агент правил сразу в нескольких репо одной задачей</figcaption><img data-shot="git-pane-mc" src="shots/git-pane-mc-dark.png" alt="Вариант В: общий список" width="1324" height="760" loading="lazy"></figure>
+    </div>
+  </section>
+  <section class="scr" id="git-real">
+    <div class="head"><h3>Вкладка «git»: настоящий webview</h3><span class="tag">новое · 04.10</span></div>
+    <p>Все варианты реализованы (в main): вкладка <code>изменения | git | агенты</code> на API встроенного git VS Code, раскладка для нескольких репозиториев — настройка <code>agentura.git.layout</code> (⚙ → «Вид», команда «Agentura: Git Layout…»), по умолчанию «стопка». Отрисовано кодом расширения на фикстуре: вкладка чата 1000 px, панель 360 px. Фиолетовая точка — файл правил агент; ✦ — сообщение коммита пишет агент по индексу (одноразовый запрос, сессии не оставляет).</p>
+    <div class="shots">
+      <figure style="flex:0 1 1000px"><figcaption><b>один репозиторий</b> · путь</figcaption><img data-shot="git-real-one" src="shots/git-real-one-dark.png" alt="git-real-one" width="1000" height="760" loading="lazy"></figure>
+      <figure style="flex:0 1 1000px"><figcaption><b>один репозиторий</b> · дерево</figcaption><img data-shot="git-real-one-tree" src="shots/git-real-one-tree-dark.png" alt="git-real-one-tree" width="1000" height="760" loading="lazy"></figure>
+      <figure style="flex:0 1 1000px"><figcaption><b>стопка</b> (по умолчанию) · у каждого репо свои секции и строка коммита, раскрывается на фокус</figcaption><img data-shot="git-real-stack" src="shots/git-real-stack-dark.png" alt="git-real-stack" width="1000" height="760" loading="lazy"></figure>
+      <figure style="flex:0 1 1000px"><figcaption><b>выбор сверху</b> · выбран ws-client (ветка новая, не в origin)</figcaption><img data-shot="git-real-picker" src="shots/git-real-picker-dark.png" alt="git-real-picker" width="1000" height="760" loading="lazy"></figure>
+      <figure style="flex:0 1 1000px"><figcaption><b>общий список</b> · один коммит в отмеченные репо</figcaption><img data-shot="git-real-unified" src="shots/git-real-unified-dark.png" alt="git-real-unified" width="1000" height="760" loading="lazy"></figure>
+    </div>
+  </section>
+  <section class="scr" id="feed">
+    <div class="head"><h3>Лента чата: варианты</h3><span class="tag">новое · 03.10 · ждёт выбора</span><span class="live"><a href="screens/chat-feed.html#a">живая страница</a></span></div>
+    <p>Тот же момент сессии в четырёх видах ленты: один завершённый ход и один идущий. Шапка, панель справа и поле ввода не меняются — только лента. Что сравнивать: сколько места съедают инструменты против ответа, насколько быстро видно, где кончается один ход и начинается другой, и где итог хода (цена, время, токены).</p>
+    <div class="shots">
+      <figure class="w1324"><figcaption><b>А · журнал</b> (как сейчас) · каждая операция — строка <code>▸ op · что · результат · время</code>, итог хода строкой под ответом</figcaption><img data-shot="chat-feed-a" src="shots/chat-feed-a-dark.png" alt="Вариант А: журнал" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>Б · свёрнутые действия</b> · у завершённого хода инструменты схлопнуты в одну строку «6 действий» с мини-полосой хода и сводкой (клик раскрывает), у идущего — раскрыты; запрос — плашкой с акцентной кромкой</figcaption><img data-shot="chat-feed-b" src="shots/chat-feed-b-dark.png" alt="Вариант Б: свёрнутые действия" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>В · реплики</b> · как мессенджер: свой запрос пузырём справа, ответ прозой слева под «claude · модель», инструменты — чипами в одну-две строки, итог хода мелко под ответом</figcaption><img data-shot="chat-feed-c" src="shots/chat-feed-c-dark.png" alt="Вариант В: реплики" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>Г · карточки ходов</b> · ход — рамка: в шапке номер, время, запрос и итог (цена, длительность), внутри шаги на вертикальной оси с цветными точками (правка — зелёная, команда — синяя), ответ, внизу токены; идущий ход — синей рамкой со stop</figcaption><img data-shot="chat-feed-d" src="shots/chat-feed-d-dark.png" alt="Вариант Г: карточки ходов" width="1324" height="760" loading="lazy"></figure>
+    </div>
+  </section>
+  <section class="scr" id="feed-real">
+    <div class="head"><h3>Лента чата: настоящий webview</h3><span class="tag">новое · 03.10</span></div>
+    <p>Те же четыре вида, отрисованные кодом расширения (ветка этапа, ещё не в main): настройка <code>agentura.feed.style</code> — ⚙ → «Вид», команда «Agentura: Вид ленты…». Два закрытых хода и один идущий. Только вкладка чата, без боковой панели.</p>
+    <div class="shots">
+      <figure style="flex:0 1 640px"><figcaption><b>журнал</b></figcaption><img data-shot="feed-real-journal" src="shots/feed-real-journal-dark.png" alt="журнал" width="760" height="1000" loading="lazy"></figure>
+      <figure style="flex:0 1 640px"><figcaption><b>свёрнуто</b></figcaption><img data-shot="feed-real-folded" src="shots/feed-real-folded-dark.png" alt="свёрнуто" width="760" height="1000" loading="lazy"></figure>
+      <figure style="flex:0 1 640px"><figcaption><b>реплики</b></figcaption><img data-shot="feed-real-replies" src="shots/feed-real-replies-dark.png" alt="реплики" width="760" height="1000" loading="lazy"></figure>
+      <figure style="flex:0 1 640px"><figcaption><b>карточки</b></figcaption><img data-shot="feed-real-cards" src="shots/feed-real-cards-dark.png" alt="карточки" width="760" height="1000" loading="lazy"></figure>
+    </div>
+  </section>
+  <section class="scr" id="amap">
+    <div class="head"><h3>Карта агентов: варианты</h3><span class="tag">04.10 · реализованы все пять — настройка «Карта агентов»</span><span class="live"><a href="screens/agents-map.html#a">живая страница</a></span></div>
+    <p>Как может выглядеть вкладка «агенты». Один и тот же момент: ход 14 идёт 1:18, основной ждёт четырёх агентов — два ещё работают, один готов, один упал; фоном dev-сервер с хода 11. Панель здесь 360 px (по умолчанию 300, тянется). А — то, что есть сейчас, для сравнения. Что сравнивать: насколько быстро видно «кто ещё работает, кто упал и что вернулось в основной», и что останется читаемым при 8–10 агентах и после длинной сессии.</p>
+    <div class="shots">
+      <figure class="w1324"><figcaption><b>А · список + детали</b> (сейчас) · список агентов хода и фоновых задач, под ним выбранный агент: заголовок, мета, промпт; в узкой панели детали уезжают вниз и часто не помещаются</figcaption><img data-shot="agents-map-a" src="shots/agents-map-a-dark.png" alt="Вариант А: список и детали" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>Б · дерево сессии</b> · охват ход / сессия; ходы с агентами, в ходе — основной и ветки агентов, фон — пунктирной веткой; выбранный агент раскрывается на месте (промпт, последние вызовы, транскрипт / стоп); прошлые ходы свёрнуты в строку с итогом</figcaption><img data-shot="agents-map-b" src="shots/agents-map-b-dark.png" alt="Вариант Б: дерево сессии" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>В · дорожки времени</b> · строка на агента, полоса — сколько шёл, засечки — вызовы инструментов, синяя линия — сейчас; у основного видно, что он думал 6s и дальше ждёт; сразу видна параллельность и кто упал рано; под дорожками — выбранный агент</figcaption><img data-shot="agents-map-c" src="shots/agents-map-c-dark.png" alt="Вариант В: дорожки времени" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>Г · карточки</b> · каждый агент — самодостаточная карточка: идущие сверху с живой строкой и полоской вызовов, упавшие — с причиной и «перезапустить», готовые — с текстом итога; отдельной панели деталей нет; фон — чипами внизу</figcaption><img data-shot="agents-map-d" src="shots/agents-map-d-dark.png" alt="Вариант Г: карточки" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>Д · граф во вкладке редактора</b> · «карта агентов» открывается отдельной вкладкой VS Code (из панели — кнопкой ↗): основной слева со шкалой контекста, агенты справа, на рёбрах — сколько промпта ушло и итога вернулось в основной; ходы переключаются сверху, детали выбранного — справа. Место есть, но это ещё одна вкладка</figcaption><img data-shot="agents-map-e" src="shots/agents-map-e-dark.png" alt="Вариант Д: граф во вкладке редактора" width="1324" height="760" loading="lazy"></figure>
+    </div>
+  </section>
+  <section class="scr" id="amap-real">
+    <div class="head"><h3>Карта агентов: настоящий webview</h3><span class="tag">новое · 04.10</span></div>
+    <p>Пять видов, отрисованные кодом расширения (в main): настройка <code>agentura.agents.view</code> — ⚙ → «Вид» → «Карта агентов», команда «Agentura: Вид карты агентов…». Вкладка чата 1000 px, панель 360 px на «агенты». Момент фикстуры: три субагента — готов / идёт / упал, фоном shell. Граф — отдельная вкладка редактора (кнопка ↗ «граф» во всех видах); при значении «граф» в панели остаётся список. Время у идущих агентов — с момента рендера.</p>
+    <div class="shots">
+      <figure style="flex:0 1 1000px"><figcaption><b>список + детали</b> (по умолчанию)</figcaption><img data-shot="agents-real-list" src="shots/agents-real-list-dark.png" alt="agents-real-list" width="1000" height="760" loading="lazy"></figure>
+      <figure style="flex:0 1 1000px"><figcaption><b>дерево</b> · охват «сессия»</figcaption><img data-shot="agents-real-tree" src="shots/agents-real-tree-dark.png" alt="agents-real-tree" width="1000" height="760" loading="lazy"></figure>
+      <figure style="flex:0 1 1000px"><figcaption><b>дорожки</b></figcaption><img data-shot="agents-real-lanes" src="shots/agents-real-lanes-dark.png" alt="agents-real-lanes" width="1000" height="760" loading="lazy"></figure>
+      <figure style="flex:0 1 1000px"><figcaption><b>карточки</b></figcaption><img data-shot="agents-real-cards" src="shots/agents-real-cards-dark.png" alt="agents-real-cards" width="1000" height="760" loading="lazy"></figure>
+      <figure style="flex:0 1 1000px"><figcaption><b>граф</b> · вкладка редактора 1000 px, детали справа</figcaption><img data-shot="agents-graph-1000" src="shots/agents-graph-1000-dark.png" alt="agents-graph-1000" width="1000" height="760" loading="lazy"></figure>
+      <figure style="flex:0 1 600px"><figcaption><b>граф</b> · узкая вкладка 600 px, детали под холстом</figcaption><img data-shot="agents-graph-600" src="shots/agents-graph-600-dark.png" alt="agents-graph-600" width="1000" height="760" loading="lazy"></figure>
+    </div>
+  </section>
+  <section class="scr" id="changes">
+    <div class="head"><h3>Вкладка «изменения» вместо «ход»</h3><span class="tag">новое · 03.10 · ждёт выбора</span><span class="live"><a href="screens/changes-pane.html#a">живая страница</a></span></div>
+    <p>Решили 03.10: таймлайн хода повторяет ленту, поэтому вкладку «ход» заменяем на «изменения» — что агент поменял за сессию и чем это проверено. Панель становится <code>изменения | агенты</code>, бейдж — число изменённых файлов, в свёрнутой полосе — значок ±. Тот же момент сессии: 14 ходов, правки в шести из них, ход 14 идёт (пишет тест, бежит <code>pnpm test</code>). Клик по файлу — дифф. Что сравнивать: как быстро отвечает на «что поменялось и всё ли зелёное», и что удобнее после длинной сессии.</p>
+    <div class="shots">
+      <figure class="w1324"><figcaption><b>А · по файлам</b> · файлы папками с +/−, пометки «новый» / «откат», номера ходов, где файл трогали (идущий — синим); охват сессия / ход 14 / с коммита; ниже — последний прогон каждой проверки; «дифф всего», «открыть в SCM», «коммит…»</figcaption><img data-shot="changes-pane-a" src="shots/changes-pane-a-dark.png" alt="Вариант А: по файлам" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>Б · по ходам</b> · только ходы с правками или проверками, новые сверху: запрос, файлы с +/−, проверки, diff хода; ходы без правок схлопнуты в строку («ходы 8–10 без правок»)</figcaption><img data-shot="changes-pane-b" src="shots/changes-pane-b-dark.png" alt="Вариант Б: по ходам" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>В · матрица</b> · строки — файлы и проверки, столбцы — ходы с правками; точка — правка (размер — объём, зелёное/красное — добавлено/удалено), ✓ ✗ — проверки; видно, какие файлы правились не раз и после какой правки покраснело; выбранный ход (здесь идущий 14) подсвечен и расписан ниже</figcaption><img data-shot="changes-pane-c" src="shots/changes-pane-c-dark.png" alt="Вариант В: матрица" width="1324" height="760" loading="lazy"></figure>
+    </div>
+  </section>
+  <section class="scr" id="turn-v">
+    <div class="head"><h3>Вкладка «ход»: варианты</h3><span class="tag">03.10 · не берём — заменяем на «изменения»</span><span class="live"><a href="screens/turn-pane.html#a">живая страница</a></span></div>
+    <p>Тот же момент сессии, что и в «Идёт работа»: ход 13 закончен, ход 14 идёт (бежит <code>pnpm test</code>). Лента слева не меняется — только вкладка «ход» правой панели. Сейчас она во многом повторяет ленту другими словами; варианты пробуют дать ей свою работу. Что сравнивать: что видно в панели такого, чего не видно в ленте, и за что взгляд цепляется во время идущего хода.</p>
+    <div class="shots">
+      <figure class="w1324"><figcaption><b>А · таймлайн</b> (как сейчас) · полоска хода и список шагов со смещением от начала и длительностью; предыдущий ход ниже</figcaption><img data-shot="turn-pane-a" src="shots/turn-pane-a-dark.png" alt="Вариант А: таймлайн" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>Б · водопад</b> · шаги на общей оси времени, как Network в DevTools: видно паузы модели (штриховка), что шло параллельно, линия «сейчас» у идущего хода; внизу — куда ушло время хода (думал / модель / инструменты / ответ)</figcaption><img data-shot="turn-pane-b" src="shots/turn-pane-b-dark.png" alt="Вариант Б: водопад" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>В · итоги</b> · сверху «сейчас»: идущая команда с хвостом вывода и ■ остановкой; ниже по ходам — что изменено (файлы с +/− и diff), проверки, что читал и искал, агенты, токены; кнопки «дифф хода» и «откатить ход» (откат — если научимся чекпойнтам)</figcaption><img data-shot="turn-pane-c" src="shots/turn-pane-c-dark.png" alt="Вариант В: итоги" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>Г · оглавление сессии</b> · все 14 ходов: запрос, мини-полоска, время, длительность, правки ✎, цена; сжатие контекста — разделителем, ошибочный ход — красным номером, ход, видимый в ленте, — серой кромкой, идущий — синей и раскрыт по шагам; клик прокручивает ленту к ходу; сверху итог сессии</figcaption><img data-shot="turn-pane-d" src="shots/turn-pane-d-dark.png" alt="Вариант Г: оглавление" width="1324" height="760" loading="lazy"></figure>
+    </div>
+  </section>
+  <section class="scr" id="side">
+    <div class="head"><h3>Правая панель: ресайз, скрытие, вкладки</h3><span class="tag">принято · 02.10</span><span class="live"><a href="screens/panel-resize.html">живая страница</a></span></div>
+    <p>Панель справа от ленты (вкладка шире 700 px). «ход» и «агенты» теперь отдельные вкладки на всю высоту панели, с бейджами; «предыдущий» ход — внутри «ход», «за сессию» — внутри «агенты». Ширина тянется мышкой за левый край (220 px — до «лента ≥ 360 px»), двойной клик возвращает 300. Кнопка в полосе вкладок сворачивает панель в полосу. Каждая вкладка чата помнит свою ширину, свёрнутость и вкладку панели. Узкая вкладка (&lt; 700 px) не меняется: <code>чат | ход | агенты</code> в шапке.</p>
+    <p>Свёрнутая панель — полоса 32 px (вариант B, выбран 02.10): значки «ход» и «агенты» с бейджами, клик по значку разворачивает панель на этой вкладке, внизу — «показать панель».</p>
+    <div class="shots">
+      <figure class="w1324"><figcaption>1 · панель растянута до 440 px, ручка у левого края подсвечена — её тянут</figcaption><img data-shot="panel-resize" src="shots/panel-resize-dark.png" alt="Панель растянута" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption>2 · свёрнута в полосу: значки «ход» и «агенты» с бейджами, внизу — «показать панель»</figcaption><img data-shot="panel-rail" src="shots/panel-rail-dark.png" alt="Вариант B: полоса" width="1324" height="760" loading="lazy"></figure>
+    </div>
+  </section>
+  <section class="scr" id="chat">
+    <div class="head"><h3>Идёт работа</h3><span class="live"><a href="screens/chat.html">живая страница</a></span></div>
+    <p>Главный экран: шапка в одну строку, приборы у поля ввода — полоса контекста по краю поля, число и «сжать» над ним, кэш и 5ч в строке настроек. Стриминг, thinking, строки инструментов, итог хода, остановка. Справа панель с вкладками «ход» (таймлайн, открыта) и «агенты». Строка компакции контекста и вход в дифф из строки edit.</p>
+    <div class="shots"><figure class="w1324"><figcaption>боковая панель + вкладка редактора · панель на «ход»</figcaption><img data-shot="chat" src="shots/chat-dark.png" alt="Идёт работа" width="1324" height="760" loading="lazy"></figure></div>
+  </section>
+  <section class="scr" id="agents">
+    <div class="head"><h3>Несколько агентов</h3><span class="live"><a href="screens/agents.html">живая страница</a> · <a href="screens/agents-done.html">итог</a></span></div>
+    <p>Основной запустил четырёх субагентов параллельно. В ленте — группа «agent ×4»: строка на каждого с текущим вызовом, токенами, временем и ■; готовые показывают итог одной строкой, упавший — ошибку. Вкладка панели «агенты» — список агентов (основной, субагенты, фоновые задачи, токены хода) и под ним детали выбранного: промпт от основного, его ход по времени, транскрипт и остановка. После хода группа остаётся в ленте с итогами, а в деталях — что агент вернул основному.</p>
+    <div class="shots">
+      <figure class="w1324"><figcaption>1 · агенты идут: группа в ленте, панель на «агенты»</figcaption><img data-shot="agents" src="shots/agents-dark.png" alt="Агенты идут параллельно" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption>2 · после хода: итоги агентов в ленте, панель на «ход»</figcaption><img data-shot="agents-done" src="shots/agents-done-dark.png" alt="Итог агентов в ленте" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption>3 · после хода, панель на «агенты»: что агент вернул основному</figcaption><img data-shot="agents-done-agents" src="shots/agents-done-agents-dark.png" alt="Карта агентов после хода" width="1324" height="760" loading="lazy"></figure>
+    </div>
+  </section>
+  <section class="scr" id="empty">
+    <div class="head"><h3>Новая сессия</h3><span class="live"><a href="screens/empty.html">живая страница</a></span></div>
+    <p>Пустая лента с подсказками, приборы на нуле, выбор агента раскрыт из строки настроек (Codex и Gemini — скоро), автоконтекст файла и выделения.</p>
+    <div class="shots"><figure class="w1324"><figcaption>боковая панель + вкладка редактора</figcaption><img data-shot="empty" src="shots/empty-dark.png" alt="Новая сессия" width="1324" height="760" loading="lazy"></figure></div>
+  </section>
+  <section class="scr" id="input">
+    <div class="head"><h3>Поле ввода</h3><span class="live"><a href="screens/input.html">живая страница</a></span></div>
+    <p>Лист состояний: меню «/», @-упоминание, кнопка «+», режим разрешений, модель / effort / thinking, история сообщений.</p>
+    <div class="shots"><figure class="w1324"><figcaption>боковая панель + вкладка редактора</figcaption><img data-shot="input" src="shots/input-dark.png" alt="Поле ввода" width="1324" height="760" loading="lazy"></figure></div>
+  </section>
+  <section class="scr" id="image">
+    <div class="head"><h3>Скриншоты в сообщении</h3><span class="live"><a href="screens/image.html">живая страница</a></span></div>
+    <p>⌘V вставляет картинку из буфера, перетаскивание — с ⇧ (так VS Code пускает файлы в webview), ещё — пункт «Изображение или файл…» в меню «+». Над полем — миниатюры с размером и ценой в токенах (ш×в/750) и ✕; большие скриншоты уменьшаются до 1568 px по длинной стороне прямо при вставке, неподдерживаемый формат (HEIC) — красной плашкой. Число контекста показывает прибавку от картинок. В ленте — миниатюры в реплике, клик открывает картинку во вкладке; итог хода считает токены картинок отдельно.</p>
+    <div class="shots"><figure class="w1324"><figcaption>боковая панель + вкладка редактора</figcaption><img data-shot="image" src="shots/image-dark.png" alt="Скриншоты в сообщении" width="1324" height="760" loading="lazy"></figure></div>
+  </section>
+  <h2>Ждёт ответа</h2>
+  <section class="scr" id="permission">
+    <div class="head"><h3>Разрешение</h3><span class="live"><a href="screens/permission.html">живая страница</a></span></div>
+    <p>Запрос на запуск команды: разрешить, всегда, отклонить. Выше — вопрос агента с вариантами (отвечен).</p>
+    <div class="shots"><figure class="w1324"><figcaption>боковая панель + вкладка редактора</figcaption><img data-shot="permission" src="shots/permission-dark.png" alt="Разрешение" width="1324" height="760" loading="lazy"></figure></div>
+  </section>
+  <section class="scr" id="diff">
+    <div class="head"><h3>Правка и дифф</h3><span class="live"><a href="screens/diff.html">живая страница</a></span></div>
+    <p>Запрос на правку: предпросмотр, открыть нативный дифф, принять или отклонить целиком, перейти в «принимать правки».</p>
+    <div class="shots"><figure class="w1324"><figcaption>боковая панель + вкладка редактора</figcaption><img data-shot="diff" src="shots/diff-dark.png" alt="Правка и дифф" width="1324" height="760" loading="lazy"></figure></div>
+  </section>
+  <section class="scr" id="plan">
+    <div class="head"><h3>План</h3><span class="live"><a href="screens/plan.html">живая страница</a></span></div>
+    <p>Режим plan: шаги и файлы, решение — выполнять, выполнять принимая правки, доработать, отклонить.</p>
+    <div class="shots"><figure class="w1324"><figcaption>боковая панель + вкладка редактора</figcaption><img data-shot="plan" src="shots/plan-dark.png" alt="План" width="1324" height="760" loading="lazy"></figure></div>
+  </section>
+  <h2>Проблемы</h2>
+  <section class="scr" id="error">
+    <div class="head"><h3>Ошибка</h3><span class="live"><a href="screens/error.html">живая страница</a></span></div>
+    <p>Упавшие тесты как строка инструмента и остановка движка карточкой: повторить, открыть журнал.</p>
+    <div class="shots"><figure class="w1324"><figcaption>боковая панель + вкладка редактора</figcaption><img data-shot="error" src="shots/error-dark.png" alt="Ошибка" width="1324" height="760" loading="lazy"></figure></div>
+  </section>
+  <section class="scr" id="limit">
+    <div class="head"><h3>Лимит исчерпан</h3><span class="live"><a href="screens/limit.html">живая страница</a></span></div>
+    <p>5-часовое окно на 100 %: баннер со сбросом, ход не начат, отправка отложена. Контекст в оранжевой зоне.</p>
+    <div class="shots"><figure class="w1324"><figcaption>боковая панель + вкладка редактора</figcaption><img data-shot="limit" src="shots/limit-dark.png" alt="Лимит исчерпан" width="1324" height="760" loading="lazy"></figure></div>
+  </section>
+  <h2>Тултипы и язык</h2>
+  <section class="scr" id="tips">
+    <div class="head"><h3>Тултипы элементов управления</h3><span class="tag">новое · 02.10</span><span class="live"><a href="screens/chat.html">живая страница</a></span></div>
+    <p>Вместо серого системного <code>title</code> — подсказка в стиле hover-виджета VS Code (цвета <code>editorHoverWidget</code>) на всех кнопках чата, боковой панели и настроек. Появляется через 0,5 с; соседние кнопки после первой — сразу. Встаёт под кнопкой, у нижнего края — над ней, к краям панели прижимается; уголок смотрит на кнопку. Вторая строка — приглушённая (время данных, сброс), клавиша — плашкой справа. Показывается и при переходе по Tab, прячется по Esc, клику, скроллу. На живой странице — наведи на любую кнопку.</p>
+    <div class="shots">
+      <figure style="flex:0 1 420px"><figcaption><b>заголовок боковой панели</b> · прижат к правому краю панели</figcaption><img data-shot="tip-gear" src="shots/tip-gear-dark.png" alt="Тултип ⚙" loading="lazy"></figure>
+      <figure style="flex:0 1 420px"><figcaption><b>две строки</b> · время данных приглушено</figcaption><img data-shot="tip-refresh" src="shots/tip-refresh-dark.png" alt="Тултип ↻" loading="lazy"></figure>
+      <figure style="flex:0 1 560px"><figcaption><b>длинный текст</b> · перенос, ширина до 300 px</figcaption><img data-shot="tip-view" src="shots/tip-view-dark.png" alt="Тултип вида списка" loading="lazy"></figure>
+      <figure style="flex:0 1 420px"><figcaption><b>правый край окна</b> · сдвинут влево, уголок над кнопкой</figcaption><img data-shot="tip-phide" src="shots/tip-phide-dark.png" alt="Тултип скрыть панель" loading="lazy"></figure>
+      <figure style="flex:0 1 560px"><figcaption><b>нижний край</b> · переворачивается вверх; клавиша плашкой</figcaption><img data-shot="tip-send" src="shots/tip-send-dark.png" alt="Тултип отправить" loading="lazy"></figure>
+    </div>
+  </section>
+  <section class="scr" id="lang">
+    <div class="head"><h3>Язык интерфейса</h3><span class="tag">новое · 02.10</span><span class="live"><a href="screens/settings.html#look">живая страница</a></span></div>
+    <p>Настройка <code>agentura.language</code> в разделе «Внешний вид»: как в VS Code (по умолчанию) / Русский / English. «Как в VS Code» — русский, если VS Code на русском, иначе английский. Смена применяется после перезагрузки окна (уведомление с кнопкой). Заголовки команд и описания в Settings UI VS Code всегда следуют языку самого VS Code.</p>
+    <div class="shots"><figure class="w1324"><figcaption>строка «Язык интерфейса» в настройках</figcaption><img data-shot="settings-look" src="shots/settings-look-dark.png" alt="Настройки: язык" width="1324" height="760" loading="lazy"></figure></div>
+  </section>
+  <h2>Боковая панель</h2>
+  <section class="scr" id="dense">
+    <div class="head"><h3>Вид списка сессий</h3><span class="tag">новое · 02.10</span><span class="live"><a href="screens/sessions-dense.html#compact">живая страница</a></span></div>
+    <p>Три настройки в разделе «Вид»: <code>agentura.sessionList.view</code> — строк на сессию (подробно / компактно / плотно; ещё кнопка ☰ → ≡ → ≣ в заголовке «Сессии»), <code>.context</code> — колонка контекста («173k ctx»), <code>.time</code> — колонка времени. Обе колонки по умолчанию включены, фиксированной ширины и выровнены вправо — у всех строк в одну линию. Ходы и цена у однострочных — в подсказке строки. Справа на картинке — сколько сессий из 18 видно без прокрутки.</p>
+    <div class="shots">
+      <figure class="w1324"><figcaption><b>компактно</b> (по умолчанию) · одна строка, текущая и ждущие ответа — в две; контекст и время колонками</figcaption><img data-shot="sessions-dense-compact" src="shots/sessions-dense-compact-dark.png" alt="Вид списка: compact" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>плотно</b> · всё в одну строку</figcaption><img data-shot="sessions-dense-dense" src="shots/sessions-dense-dense-dark.png" alt="Вид списка: dense" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>плотно, время выключено</b> · контекст прижат к правому краю</figcaption><img data-shot="sessions-dense-dense-notime" src="shots/sessions-dense-dense-notime-dark.png" alt="Вид списка: dense-notime" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>подробно</b> · две строки; контекст колонкой, во второй строке не повторяется</figcaption><img data-shot="sessions-dense-detailed" src="shots/sessions-dense-detailed-dark.png" alt="Вид списка: detailed" width="1324" height="760" loading="lazy"></figure>
+    </div>
+  </section>
+  <section class="scr" id="top">
+    <div class="head"><h3>Вид верха боковой панели</h3><span class="tag">новое · 02.10</span><span class="live"><a href="screens/sidebar-top.html#compact">живая страница</a></span></div>
+    <p>Настройка <code>agentura.sidebar.top</code> в разделе «Вид» — сколько места над списком сессий занимают аккаунт, лимиты и «Новая сессия»: <b>подробно</b> (как сейчас, ~380 px), <b>компактно</b> (~210 px), <b>плотно</b> (~105 px). В компактном и плотном «Новая сессия» — кнопка ＋ в заголовке «Сессии». Вид списка сессий настраивается отдельно. Справа на картинке — высота верха и сколько сессий из 18 видно без прокрутки. По умолчанию пока «подробно» — остальные экраны не меняются.</p>
+    <div class="shots">
+      <figure class="w1324"><figcaption><b>подробно</b> (по умолчанию) · аккаунт таблицей, у лимитов шкала и строка сброса</figcaption><img data-shot="sidebar-top-detailed" src="shots/sidebar-top-detailed-dark.png" alt="Верх: подробно" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>компактно</b> · аккаунт одной строкой (вход и агент — в подсказке), лимит — строка: шкала, процент, время сброса</figcaption><img data-shot="sidebar-top-compact" src="shots/sidebar-top-compact-dark.png" alt="Верх: компактно" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>плотно</b> · секции аккаунта нет, лимиты мини-шкалами в заголовке панели рядом с ↻ и ⚙, аккаунт — в подсказке</figcaption><img data-shot="sidebar-top-dense" src="shots/sidebar-top-dense-dark.png" alt="Верх: плотно" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>плотно, лимит 100 %</b> · мини-шкала краснеет, как счётчик у поля ввода</figcaption><img data-shot="sidebar-top-dense-limit" src="shots/sidebar-top-dense-limit-dark.png" alt="Верх: плотно, лимит" width="1324" height="760" loading="lazy"></figure>
+      <figure class="w1324"><figcaption><b>плотно + плотный список</b> · максимум сессий на экране</figcaption><img data-shot="sidebar-top-dense-dense" src="shots/sidebar-top-dense-dense-dark.png" alt="Верх: плотно, список плотно" width="1324" height="760" loading="lazy"></figure>
+    </div>
+  </section>
+  <section class="scr" id="sessions">
+    <div class="head"><h3>Аккаунт, лимиты, сессии</h3><span class="live"><a href="screens/sessions.html">живая страница</a></span></div>
+    <p>Единственное содержимое боковой панели: аккаунт, лимиты, список сессий. Кнопка ↻ обновляет лимиты вручную — не чаще раза в минуту, время данных в подсказке. Рядом — вкладка чата с тем же списком по кнопке sessions.</p>
+    <div class="shots"><figure class="w1324"><figcaption>боковая панель + вкладка редактора</figcaption><img data-shot="sessions" src="shots/sessions-dark.png" alt="Аккаунт, лимиты, сессии" width="1324" height="760" loading="lazy"></figure></div>
+  </section>
+  <section class="scr" id="settings">
+    <div class="head"><h3>Настройки</h3><span class="tag">разделы — страницы</span><span class="live"><a href="screens/settings.html">живая страница</a></span></div>
+    <p>Кнопка ⚙ в заголовке боковой панели открывает вкладку настроек — форму над настройками VS Code (<code>agentura.*</code>, раздел «Пользователь»): меняется сразу, рядом — «в настройках VS Code» и settings.json. Разделы теперь отдельные страницы, а не якоря одной ленты: слева пять вкладок (стрелки ↑↓ тоже переключают), открытый раздел запоминается. Шесть старых разделов сведены в пять: «Новая сессия» (разрешения + модель), «Контекст и лимиты», «Боковая панель», «Внешний вид» (лента, шрифты и размер ленты, язык), «Движок». В узком сплите вкладки идут полосой над страницей.</p>
+    <div class="shots"><figure class="w1324"><figcaption><b>Новая сессия: режим, bypass, модель, effort, Remote Control</b></figcaption><img data-shot="settings-session" src="shots/settings-session-dark.png" alt="Настройки: Новая сессия: режим, bypass, модель, effort" width="1324" height="760" loading="lazy"></figure><figure class="w1324"><figcaption><b>Контекст и лимиты</b></figcaption><img data-shot="settings-limits" src="shots/settings-limits-dark.png" alt="Настройки: Контекст и лимиты" width="1324" height="760" loading="lazy"></figure><figure class="w1324"><figcaption><b>Боковая панель</b></figcaption><img data-shot="settings-sidebar" src="shots/settings-sidebar-dark.png" alt="Настройки: Боковая панель" width="1324" height="760" loading="lazy"></figure><figure class="w1324"><figcaption><b>Внешний вид: лента, шрифты, язык</b></figcaption><img data-shot="settings-look" src="shots/settings-look-dark.png" alt="Настройки: Внешний вид: лента, шрифты, язык" width="1324" height="760" loading="lazy"></figure><figure class="w1324"><figcaption><b>Движок</b></figcaption><img data-shot="settings-engine" src="shots/settings-engine-dark.png" alt="Настройки: Движок" width="1324" height="760" loading="lazy"></figure></div>
+  </section>
+</main>
+<script>
+  document.querySelectorAll('.toggle [data-theme]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var t = b.getAttribute('data-theme');
+      document.querySelectorAll('.toggle [data-theme]').forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)); });
+      document.querySelectorAll('img[data-shot]').forEach(function (img) { img.src = 'shots/' + img.getAttribute('data-shot') + '-' + t + '.png'; });
+    });
+  });
+</script>
+
+</body></html>

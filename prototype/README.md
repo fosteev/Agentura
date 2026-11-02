@@ -20,6 +20,7 @@
 | `shared/agents.css` | экраны `agents*`: группа субагентов в ленте и карта «список + детали»; в `media/` не перенесено, пока не принято |
 | `shared/preview.css`, `shared/preview.js` | обёртка предпросмотра в браузере: переключатели темы и ширины; к webview не относится |
 | `shared/sidebar.js` | боковая панель VS Code (аккаунт, лимиты, сессии) в режиме «боковая панель + вкладка»; состояние берётся из `data-sidebar` на экране |
+| `gallery.html`, `shots/` | галерея экранов (копия артефакта на 02.11.2026): открыть `gallery.html` в браузере, ссылки ведут в `screens/`; `shots/` — PNG обеих тем, в git не хранятся (`.gitignore`, ~100 МБ), пополнять через `tools/shots.sh prototype/shots …` |
 | `tools/layout-check.sh` | проверка вёрстки headless-хромом |
 | `tools/shots.sh` | рендер экранов в PNG для галереи: `sh prototype/tools/shots.sh <папка> [экран …]` → `<экран>-dark.png`, `<экран>-light.png` (окно 1324×760) |
 | `screens/sessions-dense.html` | вид списка сессий (`agentura.sessionList.view` / `.context` / `.time`, 02.10): хэш `#вид[-noctx][-notime]`, вид — `detailed`, `compact` (по умолчанию), `dense`; стили видов и колонок, кнопка ☰/≡/≣ в заголовке «Сессии» — в `hud.css` и `sidebar.js` (там вид по умолчанию: компактно, колонки включены) |
