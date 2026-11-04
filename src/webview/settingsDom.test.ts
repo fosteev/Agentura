@@ -2,6 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { h, render } from 'preact';
+import { act } from 'preact/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SettingsValues } from '../settings';
 import type { IntegrationsState } from '../shared/integrations';
@@ -805,20 +806,19 @@ describe('страница «Интеграции»', () => {
   });
 
   it('settings.section от хоста переключает раздел; до значений запрос не теряется', async () => {
-    const host = mount(Settings);
-    state();
-    await flush();
+    let host!: HTMLElement;
+    await act(() => {
+      host = mount(Settings);
+      state();
+    });
     const tab = (id: string) => host.querySelector<HTMLButtonElement>(`[data-section="${id}"]`)!;
     expect(tab('session').getAttribute('aria-selected')).toBe('true');
-    handleSettingsMessage({ type: 'settings.section', section: 'integrations' });
-    await flush();
+    await act(() => handleSettingsMessage({ type: 'settings.section', section: 'integrations' }));
     expect(tab('integrations').getAttribute('aria-selected')).toBe('true');
     expect(requestedSection.value).toBeUndefined();
     // повторный запрос того же раздела после ухода с него работает снова
-    tab('look').click();
-    await flush();
-    handleSettingsMessage({ type: 'settings.section', section: 'integrations' });
-    await flush();
+    await act(() => tab('look').click());
+    await act(() => handleSettingsMessage({ type: 'settings.section', section: 'integrations' }));
     expect(tab('integrations').getAttribute('aria-selected')).toBe('true');
   });
 

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgentAdapter, SessionInfo } from '../agent/types';
+import type { SessionSummary } from '../protocol';
 import { LiveSessions, TranscriptCache } from '../data/sessions';
 import { extraDirs, MAX_EXTRA_DIRS, mergeSessionLists, SessionsService } from './sessionsService';
 
@@ -460,6 +461,12 @@ describe('SessionsService: беседы Antigravity (этап 6)', () => {
 
   it('конец хода agy-сессии перечитывает список, статус Claude-сессии и Codex — нет', async () => {
     const m = trio([info('c1', 1)], [], [agyInfo('a1', 9)]);
+    const nextUpdate = () => new Promise<SessionSummary[]>((resolve) => {
+      const unsubscribe = m.svc.onChange((rows) => {
+        unsubscribe();
+        resolve(rows);
+      });
+    });
     await m.svc.refresh();
     expect(agyCalls(m)).toBe(1);
     m.live.set('c1', 'live');
@@ -472,16 +479,22 @@ describe('SessionsService: беседы Antigravity (этап 6)', () => {
     await m.svc.refresh();
     expect(agyCalls(m)).toBe(2);
     // кэш отдаётся сразу, новые строки приходят пересборкой после фонового чтения
+    const becameLive = nextUpdate();
     await vi.advanceTimersByTimeAsync(1000);
+    // Таймер запускает refresh, но реальный fs.stat Claude-транскрипта ещё может идти.
+    await becameLive;
     let rows = await m.svc.list();
     expect(rows.find((r) => r.id === 'a2')?.state).toBe('live');
     // turn.result: live → idle
     m.live.set('a2', 'idle', undefined, 'antigravity');
     await m.svc.refresh();
+    const becameIdle = nextUpdate();
     await vi.advanceTimersByTimeAsync(1000);
+    await becameIdle;
     rows = await m.svc.list();
     expect(agyCalls(m)).toBe(3);
     expect(rows.find((r) => r.id === 'a2')?.state).toBe('idle');
+    m.svc.dispose();
   });
 
   it('rename беседы agy идёт в адаптер agy и сразу виден в списке', async () => {

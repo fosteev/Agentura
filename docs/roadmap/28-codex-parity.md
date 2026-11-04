@@ -3,6 +3,13 @@
 > Статус: roadmap закрыт, этапы 1–8 приняты; релиз 0.20.0 проверен и готов к публикации · 2026-11-04.
 > Продолжение реализации не требуется. Разрешённые пользователем commit/push, CI и GitHub Release выполняются после итоговой приёмки.
 
+### Исправление CI перед публикацией
+
+- Первый CI релизного коммита 3bc2c5a: integration PASS, unit jobs выявили гонки существующих тестов sessionsService/settingsDom/engineLimits. Ubuntu failures также были у предыдущего main 290b75e. Production-дефект не установлен.
+- Исполнитель `/root/release_ci_fixes`: requested gpt-6.1-sol/high, fork_turns none; cwd подтверждён, независимые runtime model/effort unknown. Только три теста: ждать onChange после фонового fs.stat; использовать Preact act для mount/effects/popup. Assertions и production-код сохранены.
+- Контролируемая задержка воспроизвела исходные Antigravity и popup failures; исправленный вариант проходит. 10 повторов трёх сценариев: 30/30. Full check: 2196/151 + types/lint/build PASS. Родитель прочитал diff, самостоятельно выполнил 71 targeted tests + ESLint и принял исправление. Логи `/tmp/agentura-ci-{full-check,parent-tests,parent-lint}.log`.
+- Новая попытка CI выполняется после push исправления; тег и GitHub Release ещё не публиковались.
+
 ### Приёмка релизного пакета 0.20.0
 
 - Release metadata: version package/lock 0.20.0, зависимости не менялись, CHANGELOG и примеры установки обновлены. Исполнитель `/root/release_020_metadata`, requested model gpt-6.1-sol/high, fork_turns none; runtime model/effort независимо unknown. Cwd подтверждён командой исполнителя.

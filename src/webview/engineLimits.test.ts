@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { h, render } from 'preact';
+import { act } from 'preact/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EngineLimitsSummary, ToWebview } from '../protocol';
 import type { SidebarLimitsMode, SidebarTopMode } from '../settings';
@@ -50,35 +51,35 @@ async function mount(o: Setup = {}) {
   const host = document.createElement('div');
   mounted.push(host);
   document.body.append(host);
-  render(h(Sidebar as never, {}), host);
-  await flush();
-  msg({ type: 'account.info', email: 'a@b.c', plan: 'Max 5×', login: 'ok', engine: '2.1.285' });
-  msg({
-    type: 'limits.update',
-    updatedAt: Date.now(),
-    windows: [
-      { kind: 'five-hour', percent: 62, resetsAt: soon },
-      { kind: 'weekly', percent: 34, resetsAt: soon + 86_400_000 },
-      { kind: 'weekly-model', model: 'Fable', percent: 8, resetsAt: soon + 86_400_000 },
-    ],
+  await act(() => render(h(Sidebar as never, {}), host));
+  await act(() => {
+    msg({ type: 'account.info', email: 'a@b.c', plan: 'Max 5×', login: 'ok', engine: '2.1.285' });
+    msg({
+      type: 'limits.update',
+      updatedAt: Date.now(),
+      windows: [
+        { kind: 'five-hour', percent: 62, resetsAt: soon },
+        { kind: 'weekly', percent: 34, resetsAt: soon + 86_400_000 },
+        { kind: 'weekly-model', model: 'Fable', percent: 8, resetsAt: soon + 86_400_000 },
+      ],
+    });
+    msg({
+      type: 'sidebar.view',
+      view: 'compact',
+      context: true,
+      time: true,
+      top: o.top ?? 'compact',
+      limits: o.limits ?? 'stack',
+      ...(o.hidden ? { hidden: o.hidden } : {}),
+    });
+    msg({ type: 'engines.limits', engines: o.engines ?? [codex(), agy()] });
+    msg({
+      type: 'sessions.update',
+      sessions: [],
+      project: 'p',
+      ...(o.provider ? { currentProvider: o.provider } : {}),
+    });
   });
-  msg({
-    type: 'sidebar.view',
-    view: 'compact',
-    context: true,
-    time: true,
-    top: o.top ?? 'compact',
-    limits: o.limits ?? 'stack',
-    ...(o.hidden ? { hidden: o.hidden } : {}),
-  });
-  msg({ type: 'engines.limits', engines: o.engines ?? [codex(), agy()] });
-  msg({
-    type: 'sessions.update',
-    sessions: [],
-    project: 'p',
-    ...(o.provider ? { currentProvider: o.provider } : {}),
-  });
-  await flush();
   return host;
 }
 
@@ -216,24 +217,20 @@ describe('лимиты нескольких движков в боковой п�
     ]);
     expect(q(host, '.head .hx .m.lim-full')?.getAttribute('data-engine')).toBe('antigravity');
     expect(q(host, '.pop')).toBeNull();
-    q(host, '.hx .mm').click();
-    await flush();
+    await act(() => q(host, '.hx .mm').click());
     expect(qa(host, '.pop .eng').length).toBe(3);
     expect(q(host, '.pop .now')).toBeNull();
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
-    await flush();
+    await act(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); });
     expect(q(host, '.pop')).toBeNull();
-    q(host, '.hx .mm').click();
-    await flush();
-    document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-    await flush();
+    await act(() => q(host, '.hx .mm').click());
+    await act(() => { document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); });
     expect(q(host, '.pop')).toBeNull();
-    q(host, '.hx .mm').click();
-    await flush();
+    await act(() => q(host, '.hx .mm').click());
     expect(q(host, '.pop')).not.toBeNull();
-    q(host, '.hx .mm').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-    q(host, '.hx .mm').click();
-    await flush();
+    await act(() => {
+      q(host, '.hx .mm').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      q(host, '.hx .mm').click();
+    });
     expect(q(host, '.pop')).toBeNull();
     // ↻ в заголовке просит обновить лимиты
     q(host, '.hx .refresh').click();
