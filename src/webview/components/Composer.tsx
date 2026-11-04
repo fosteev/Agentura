@@ -56,6 +56,8 @@ import {
   type DraftFile,
   setEffort,
   setMode,
+  setCodexSettings,
+  codexSettingsPending,
   setModel,
   setRemote,
   showStatus,
@@ -82,7 +84,7 @@ import {
 } from '../imageDraft';
 import { send } from '../vscode';
 
-type MenuName = 'mode' | 'model' | 'effort' | 'agent' | 'plus' | 'engine' | 'remote' | 'mcp';
+type MenuName = 'planning' | 'approval' | 'sandbox' | 'mode' | 'model' | 'effort' | 'agent' | 'plus' | 'engine' | 'remote' | 'mcp';
 
 /** Запасной список, пока движок не прислал `supportedModels()` (сессия ещё поднимается). */
 const FALLBACK_MODELS = [
@@ -296,6 +298,7 @@ export function Composer() {
   const hv = meters.value;
   const edRef = useRef<HTMLDivElement>(null);
   const [text, setText] = useState('');
+  const selectedSkill = useRef<{ name: string; path: string; provider: string; sessionId: string } | undefined>(undefined);
   const [caret, setCaret] = useState(0);
   const [sel, setSel] = useState(0);
   const [hidden, setHidden] = useState(false);
@@ -408,7 +411,7 @@ export function Composer() {
   let items: Item[] = [];
   if (trig?.kind === 'slash') {
     items = slashItems.map((i) => ({
-      key: i.name,
+      key: i.skillPath ?? i.name,
       label: `/${i.name}`,
       small: i.description || undefined,
       hint: i.own ? ui.commands[i.name]?.[1] : i.group === 'skill' ? ui.menus.skillHint : '',
@@ -440,6 +443,8 @@ export function Composer() {
   function accept(i: number) {
     const it = items[i];
     if (!it || !trig) return;
+    const skill = trig.kind === 'slash' ? slashItems[i] : undefined;
+    selectedSkill.current = skill?.skillPath ? { name: skill.name, path: skill.skillPath, provider: provider.value, sessionId: s.sessionId } : undefined;
     const r = applyCompletion(text, caret, trig, it.insert);
     writeText(r.text, r.caret);
     setSel(0);
@@ -458,7 +463,10 @@ export function Composer() {
       writeText('');
       return;
     }
-    const cmd = /^\/([\w:.-]+)(?:\s+([\s\S]*))?$/.exec(t);
+    const selected = selectedSkill.current;
+    const skill = selected && selected.provider === provider.value && selected.sessionId === s.sessionId && (t === `/${selected.name}` || t.startsWith(`/${selected.name} `))
+      ? { name: selected.name, path: selected.path } : undefined;
+    const cmd = skill ? null : /^\/([\w:.-]+)(?:\s+([\s\S]*))?$/.exec(t);
     // `/new` и `/fork` — свои команды только во вкладке задачи (roadmap 26); вне её — обычный текст движку
     const newChatCmd = cmd && (cmd[1] === 'new' || cmd[1] === 'fork') && currentTaskKey() ? cmd[1] : undefined;
     // лимит: уходит к движку всё, кроме локальных команд
@@ -474,7 +482,7 @@ export function Composer() {
     }
     if (cmd && cmd[1] !== 'new' && cmd[1] !== 'fork') {
       const name = cmd[1]!;
-      // команды, которых у движка нет (`/plan`, `/compact` у Codex): не уходят ему текстом, а отвечают на месте
+      // команды, которых у движка нет: не уходят ему текстом, а отвечают на месте
       if (!ownCommands(features.value).includes(name) && OWN_COMMANDS.some((n) => n === name)) {
         chat.value = addSys(chat.value, [ui.sys.commandUnavailable(name)]);
         writeText('');
@@ -496,8 +504,11 @@ export function Composer() {
         return;
       }
       if (name === 'plan') {
-        setMode('plan');
-        chat.value = addSys(chat.value, [ui.sys.planOn]);
+        if (features.value.nativeSettings) setCodexSettings({ kind: 'planning', value: 'plan' });
+        else {
+          setMode('plan');
+          chat.value = addSys(chat.value, [ui.sys.planOn]);
+        }
         writeText('');
         return;
       }
@@ -507,7 +518,8 @@ export function Composer() {
         return;
       }
     }
-    if (!sendMessage(t, !t.startsWith('/'))) return;
+    if (!sendMessage(t, !t.startsWith('/'), false, skill)) return;
+    selectedSkill.current = undefined;
     writeText('');
   }
 
@@ -562,6 +574,9 @@ export function Composer() {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       submit();
+    } else if (e.key === 'Tab' && e.shiftKey && features.value.nativeSettings) {
+      e.preventDefault();
+      setCodexSettings({ kind: 'planning', value: s.planningMode === 'plan' ? 'default' : 'plan' });
     } else if (e.key === 'Tab' && e.shiftKey && features.value.modes) {
       e.preventDefault();
       const i = MODE_ORDER.indexOf(s.mode);
@@ -676,7 +691,7 @@ export function Composer() {
     .filter(Boolean)
     .join(' ');
 
-  const working = s.status === 'working';
+  const working = s.status === 'working' || hv.context.compacting;
   const menuProps: MenuProps = {
     menu,
     toggle,
@@ -1260,6 +1275,42 @@ function PlusMenu({
   );
 }
 
+/** Native planning and each permission axis have separate, explicit session-only choices. */
+function CodexSettingsMenu({ menu, toggle, close }: MenuProps) {
+  const s = chat.value;
+  const busy = !!s.closed || s.status !== 'idle' || !!s.compactingRow || !!s.pending.length || codexSettingsPending.value;
+  const policy = s.sessionPolicy;
+  const button = (name: 'planning' | 'approval' | 'sandbox', label: string, value: string, disabled = false) => (
+    <button class="mode" data-native={name} disabled={busy || disabled}
+      aria-label={`${label}: ${value}`} aria-haspopup="menu" aria-expanded={menu === name}
+      onClick={() => toggle(name)}>{label} <b>{value}</b></button>
+  );
+  return <span class="pop" onKeyDown={menuKeys}>
+    {button('planning', ui.compose.planning, s.planningMode ?? 'default')}
+    {button('approval', ui.compose.approval, policy?.approvalPolicy && typeof policy.approvalPolicy === 'object' ? 'granular' : policy?.approval ?? '…', !policy)}
+    {button('sandbox', ui.compose.sandbox, policy?.sandbox ?? '…', !policy)}
+    {(menu === 'planning' || menu === 'approval' || menu === 'sandbox') && <div class="menu up" role="menu">
+      <div class="hd">{ui.compose.sessionSettings}</div>
+      {menu === 'planning' && (['default', 'plan'] as const).map((value) => <ItemButton
+        it={{ label: value, small: ui.compose.planningHint, dis: busy }} selected={(s.planningMode ?? 'default') === value}
+        onPick={() => { close(); setCodexSettings({ kind: 'planning', value }); }} />)}
+      {menu === 'approval' && <>
+        <div class="hd" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{JSON.stringify(policy?.approvalPolicy ?? policy?.approval, null, 2)}</div>
+        {(['untrusted', 'on-request', 'never'] as const).map((value) => <ItemButton
+          it={{ label: value, dis: busy || !policy }} selected={policy?.approvalPolicy === value}
+          onPick={() => { close(); setCodexSettings({ kind: 'approval', value }); }} />)}
+      </>}
+      {menu === 'sandbox' && <>
+        <div class="hd" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{JSON.stringify(policy?.sandboxPolicy ?? policy?.sandbox, null, 2)}</div>
+        {(['readOnly', 'workspaceWrite', 'dangerFullAccess'] as const).map((value) => <ItemButton
+          it={{ label: value, small: value === 'dangerFullAccess' ? (s.allowBypass ? ui.compose.fullAccessHint : ui.menus.bypassOff) : ui.compose.sandboxHint,
+            dis: busy || !policy || (value === 'dangerFullAccess' && !s.allowBypass) }} selected={policy?.sandbox === value}
+          onPick={() => { close(); setCodexSettings({ kind: 'sandbox', value }); }} />)}
+      </>}
+    </div>}
+  </span>;
+}
+
 function ModeMenu({
   menu,
   toggle,
@@ -1267,7 +1318,7 @@ function ModeMenu({
   look = 'label',
 }: MenuProps & { look?: 'label' | 'pill' | 'dollar' | 'block' | 'text' }) {
   const s = chat.value;
-  // режимы разрешений — Claude; у Codex политику задаёт его конфиг
+  if (features.value.nativeSettings) return <CodexSettingsMenu menu={menu} toggle={toggle} close={close} />;
   if (!features.value.modes) return null;
   const modeLabel = ui.modes[s.mode]?.[0] ?? s.mode;
   return (
@@ -1779,7 +1830,7 @@ function Meters({
   hv: Hv;
   look?: 'classic' | 'time' | 'under' | 'alert';
 }) {
-  // лимиты подписки, кэш и стоимость — Claude; у других движков достоверных чисел нет, виджет прячется целиком.
+  // Этот виджет включает Claude cache TTL; Codex usage показан в итогах ходов, лимиты — в sidebar.
   // Исключение — квота Antigravity (`/usage`): недельные окна семейств моделей, пока она получена и разобрана.
   if (!features.value.cost) {
     const items = provider.value === 'antigravity' ? quotaView(quota.value.rows, Date.now()) : [];

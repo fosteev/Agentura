@@ -2,6 +2,7 @@
 import { computed, signal } from '@preact/signals';
 import type {
   AgentEvent,
+  CodexSettingsChange,
   AgentProvider,
   CommandOption,
   EffortLevel,
@@ -374,8 +375,13 @@ function applyMcpView(v: McpView | undefined): void {
   mcpFeedStatus.value = v?.feedStatus ?? 'failures';
 }
 
+export const codexSettingsPending = signal(false);
+
 export function handleHostMessage(m: ToWebview): void {
   switch (m.type) {
+    case 'codex.settingsResult':
+      codexSettingsPending.value = false;
+      break;
     case 'agent.event':
       if (abandonedSessionId !== undefined && m.sessionId === abandonedSessionId) break;
       // новая сессия поднялась — фильтр больше не нужен; возобновление той же сессии снимает его на
@@ -439,8 +445,8 @@ export function handleHostMessage(m: ToWebview): void {
       gitHideClean.value = m.gitHideClean === true;
       taskCardMode.value = m.taskCard ?? 'tab';
       applyMcpView(m.mcp);
-      // нет compact (Codex) — нет и порогов автосжатия: шкала без зон и засечек, «полный» — только само окно
-      if (!features.value.compact) {
+      // Нет подтверждённых порогов автосжатия — шкала без зон и засечек, «полный» — только само окно
+      if (!features.value.autoCompact) {
         hudState.value = { ...hudState.value, thresholds: [] };
       } else if (m.contextThresholds?.length) {
         hudState.value = { ...hudState.value, thresholds: [...m.contextThresholds] };
@@ -517,7 +523,8 @@ export function handleHostMessage(m: ToWebview): void {
       sessionAttach.value = { pdfPages: 0, chars: 0 };
       abandonSession();
       replyTarget.value = undefined;
-      chat.value = resetSession(chat.value);
+      codexSettingsPending.value = false;
+  chat.value = resetSession(chat.value);
       hudState.value = resetHud(hudState.value);
       selectedAgent.value = undefined;
       extra.value = restoreExtra ?? [];
@@ -661,6 +668,7 @@ function switchTabChat(prev: string, next: string | undefined, seeded: boolean):
 }
 
 export function dispatchEvent(event: AgentEvent, now = Date.now()): void {
+  if (event.type === 'session.closed') codexSettingsPending.value = false;
   chat.value = applyEvent(chat.value, event, now);
   // Antigravity без подтверждений по действию: отказ режима — карточка с повтором; в «всё разрешено» отказывать нечему,
   // после Stop повторять нечего. Следующий ход (повтор, новое сообщение) карточку закрывает
@@ -693,8 +701,8 @@ export function dispatchEvent(event: AgentEvent, now = Date.now()): void {
  * прототипе (`limit.html`). Раз на пересечение: после сжатия и нового роста — снова.
  */
 function noteThreshold(before: HudState, after: HudState, event: AgentEvent): void {
-  // «сжать» у Codex нет: строка про порог и автосжатие была бы фальшивой
-  if (event.type !== 'context.usage' || event.agentId || !features.value.compact) return;
+  // Ручная компакция сама по себе не подтверждает пороги автосжатия.
+  if (event.type !== 'context.usage' || event.agentId || !features.value.autoCompact) return;
   const top = Math.max(0, ...after.thresholds);
   const was = before.context?.used ?? 0;
   const used = after.context?.used ?? 0;
@@ -720,6 +728,7 @@ export function compact(): void {
 }
 
 export function stopAgent(taskId: string): void {
+  if (!features.value.agentStop) return;
   send({ type: 'agent.stop', sessionId: chat.value.sessionId, taskId });
 }
 
@@ -733,6 +742,7 @@ export function stopAgents(taskIds: readonly string[]): void {
 
 /** Транскрипт субагента — документом только для чтения в редакторе (хост читает его с диска). */
 export function openAgentTranscript(agentId: string, taskId: string): void {
+  if (!features.value.agentTranscript) return;
   send({ type: 'agent.transcript', sessionId: chat.value.sessionId, agentId, taskId });
 }
 
@@ -991,7 +1001,7 @@ export function openImage(i: ImageRef): void {
   send({ type: 'image.open', mediaType: i.mediaType, data: i.data });
 }
 
-export function sendMessage(text: string, withContext = true, plain = false): boolean {
+export function sendMessage(text: string, withContext = true, plain = false, skill?: { name: string; path: string }): boolean {
   const s = chat.value;
   if (s.closed || imagesBusy.value) return false;
   const attachments = withContext ? currentAttachments() : [];
@@ -1013,6 +1023,7 @@ export function sendMessage(text: string, withContext = true, plain = false): bo
   noteSentAttach(images, files);
   send({
     type: 'send',
+    skill,
     sessionId: s.sessionId,
     text,
     ...(attachments.length ? { attachments } : {}),
@@ -1024,6 +1035,14 @@ export function sendMessage(text: string, withContext = true, plain = false): bo
 
 export function interrupt(): void {
   send({ type: 'interrupt', sessionId: chat.value.sessionId });
+}
+
+export function setCodexSettings(change: CodexSettingsChange): void {
+  const s = chat.value;
+  if (!features.value.nativeSettings || codexSettingsPending.value || s.closed || s.status !== 'idle' || s.compactingRow !== undefined || s.pending.length ||
+      (change.kind !== 'planning' && !s.sessionPolicy)) return;
+  codexSettingsPending.value = true;
+  send({ type: 'codex.settings', sessionId: chat.value.sessionId, change });
 }
 
 export function setMode(mode: PermissionMode): void {

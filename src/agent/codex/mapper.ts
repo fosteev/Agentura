@@ -177,6 +177,12 @@ export class CodexEventMapper {
       cwd: session.cwd,
       // approval Codex — не режимы Claude (ТЗ §4); `default` — «спрашивает по своей политике»
       permissionMode: 'default',
+      sessionPolicy: {
+        approval: typeof session.approvalPolicy === 'string' ? session.approvalPolicy : JSON.stringify(session.approvalPolicy),
+        sandbox: session.sandbox.type,
+        approvalPolicy: session.approvalPolicy,
+        sandboxPolicy: session.sandbox,
+      },
       tools: [],
       slashCommands: [],
       skills: [],
@@ -254,6 +260,7 @@ export class CodexEventMapper {
         if (this.turnId && turn.id && turn.id !== this.turnId) return [];
         return this.turnCompleted(turn);
       }
+      case 'item/plan/delta':
       case 'item/agentMessage/delta': {
         const m = params as CodexNotifications['item/agentMessage/delta'];
         if (!m.delta) return [];
@@ -438,7 +445,7 @@ export class CodexEventMapper {
 
   private itemCompleted(item: ThreadItem): AgentEvent[] {
     if (item.type === 'reasoning') return this.stopThinking(item.id);
-    if (item.type !== 'agentMessage') return [];
+    if (item.type !== 'agentMessage' && item.type !== 'plan') return [];
     this.finalText = item.text;
     // текст без потока (короткий ответ, повтор): отдаём целиком, чтобы лента его не потеряла
     if (!this.streamed.has(item.id) && item.text) {

@@ -28,7 +28,7 @@ export async function findSkillFile(
  * Обычный файл. Симлинки разрешены (свои скиллы часто — ссылки на папку в dotfiles), но цель должна сама
  * называться `SKILL.md`: чужой репозиторий не подсунет ссылкой `.claude/skills/x/SKILL.md → ~/.ssh/id_rsa`.
  */
-async function fileExists(path: string): Promise<boolean> {
+export async function fileExists(path: string): Promise<boolean> {
   try {
     if (!(await stat(path)).isFile()) return false;
     return basename(await realpath(path)) === 'SKILL.md';

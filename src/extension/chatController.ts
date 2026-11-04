@@ -27,7 +27,7 @@ import type {
   SessionSummary,
   ToWebview,
 } from '../protocol';
-import { ENGINE_MISSING_CODE, isSettingsSection, type SettingsSection } from '../protocol';
+import { ENGINE_MISSING_CODE, isCodexSettingsChange, isSettingsSection, type SettingsSection } from '../protocol';
 import { isAgySession } from '../agent/antigravity/adapter';
 import { providerFeatures } from '../agent/features';
 import type {
@@ -50,6 +50,7 @@ import {
 } from '../shared/files';
 import { DEFAULT_MCP_VIEW, mcpWatchOf, resolveDefaultEffort, resolveDefaultMode, type AgentsView, type ComposerLayout, type FeedStyle, type GitLayout, type McpView, type TaskCardMode } from '../settings';
 import { isPluginSkill, isSkillName } from '../shared/skills';
+import { fileExists } from './skillFiles';
 import { hostStrings, type Lang } from '../shared/l10n';
 import { appliedSides, previewOf, proposedSides, type EditSides } from './editDiff';
 import {
@@ -310,6 +311,8 @@ export class ChatController {
   /** Вложения и текст поля ввода (`agentura.openWithContext`), пришедшие до готовности webview. */
   private queuedPosts: ToWebview[] = [];
   // Снимок для пересева: то, что webview пропустил бы, окажись он пересоздан при живом хосте.
+  private nativeSettingsBusy = false;
+  private lastNativeSettings: Extract<AgentEvent, { type: 'session.settings' }> | undefined;
   private lastInit: Extract<AgentEvent, { type: 'session.init' }> | undefined;
   /** Режим и effort новой сессии из настроек: webview получает их снова, если готов позже создания сессии. */
   private defaults: Extract<ToWebview, { type: 'session.defaults' }> | undefined;
@@ -542,6 +545,7 @@ export class ChatController {
   private async reseed(): Promise<void> {
     const id = this.sessionId;
     if (!id) {
+      if (this.lastNativeSettings) this.forward('', this.lastNativeSettings);
       // новый чат без сообщений: пересеивать нечего, но меню моделей и команд webview получает заново
       // (возврат к нему во вкладке задачи, «Reload Webviews» пустой вкладки)
       void this.ensureSession()
@@ -587,6 +591,7 @@ export class ChatController {
     } else this.deps.post({ type: 'session.reset' });
     this.postAttach();
     if (this.lastInit) this.forward(id, this.lastInit);
+    if (this.lastNativeSettings) this.forward(id, this.lastNativeSettings);
     if (this.lastContext) this.forward(id, this.lastContext);
     if (this.lastRemote) this.forward(id, this.lastRemote);
     if (this.lastMcp) this.forward(id, this.lastMcp);
@@ -598,8 +603,8 @@ export class ChatController {
     for (const e of this.pendingRequests.values()) this.forward(id, e);
     for (const p of this.previews.values()) this.deps.post(p);
     const replay = new Set(merged.replay);
-    // `mcp.status` из накопленного уже покрыт `lastMcp` (он новее): старый повтор дал бы ложное «отключился»
-    for (const b of buffer) if (replay.has(b.event) && b.event.type !== 'mcp.status') this.forward(b.sessionId, b.event);
+    // Native settings/MCP snapshots above already contain the latest effective state.
+    for (const b of buffer) if (replay.has(b.event) && b.event.type !== 'mcp.status' && b.event.type !== 'session.settings') this.forward(b.sessionId, b.event);
     void this.ensureSession()
       .then((s) => this.postCapabilities(s))
       .catch(() => undefined);
@@ -770,6 +775,11 @@ export class ChatController {
         await this.openChanges(m.toolUseIds);
         return;
       case 'agent.transcript': {
+        if (m.sessionId && this.sessionId && m.sessionId !== this.sessionId) return;
+        if (!providerFeatures(this.engineProvider).agentTranscript) {
+          this.log.warn(`agent.transcript: unsupported by ${this.engineProvider}`);
+          return;
+        }
         const id = m.sessionId || this.current?.id;
         if (!id || !this.adapter.agentTranscript || !deps.openText) return;
         const text = await this.adapter.agentTranscript(id, deps.cwd, m.taskId, '');
@@ -892,7 +902,7 @@ export class ChatController {
         await this.current.mcpReloadAll();
         return;
       case 'skill.open':
-        await this.openSkill(m.name);
+        await this.openSkill(m.name, m.path);
         return;
       default:
         break;
@@ -900,6 +910,39 @@ export class ChatController {
     // выключить Remote Control у вкладки без сессии — нечего: движок ради этого не поднимаем
     if (m.type === 'remote.set' && !m.on && !this.session) {
       this.remoteWanted = false;
+      return;
+    }
+    if (m.type === 'codex.settings') {
+      let acquired = false;
+      try {
+        if (!providerFeatures(this.engineProvider).nativeSettings || !isCodexSettingsChange(m.change) ||
+            typeof m.sessionId !== 'string' || m.sessionId !== (this.current?.id ?? this.sessionId ?? '') ||
+            this.nativeSettingsBusy || this.inTurn || this.pending.length ||
+            (m.change.kind === 'sandbox' && m.change.value === 'dangerFullAccess' && !deps.settings().allowBypass)) {
+          this.log.warn('codex.settings: unsupported, invalid, stale or busy request');
+          return;
+        }
+        this.nativeSettingsBusy = true;
+        acquired = true;
+        const nativeSession = await this.ensureSession();
+        if (!nativeSession?.setCodexSettings || m.sessionId !== nativeSession.id) return;
+        await nativeSession.setCodexSettings(m.change);
+      } catch (error) {
+        if (!this.disposed) this.forward(this.current?.id ?? '', { type: 'error', fatal: false, message: String(error) });
+      } finally {
+        if (acquired) this.nativeSettingsBusy = false;
+        if (!this.disposed) deps.post({ type: 'codex.settingsResult' });
+      }
+      return;
+    }
+    if ((m.type === 'mode.set'  && !providerFeatures(this.engineProvider).modes) ||
+        (m.type === 'plan.decide' && !providerFeatures(this.engineProvider).plan)) {
+      this.log.warn(`${m.type}: unsupported by ${this.engineProvider}`);
+      return;
+    }
+    if (m.type === 'agent.stop' && (!providerFeatures(this.engineProvider).agentStop ||
+        !m.taskId || (m.sessionId && m.sessionId !== this.sessionId))) {
+      this.log.warn(`agent.stop: unsupported or stale request for ${this.engineProvider}`);
       return;
     }
     const session = await this.ensureSession();
@@ -966,7 +1009,8 @@ export class ChatController {
           }
           return;
         case 'compact':
-          session.compact();
+          if (!session.compact()) this.deps.post({ type: 'agent.event', sessionId: session.id,
+            event: { type: 'error', fatal: false, message: 'Compaction requires an idle session with an existing thread.' } });
           return;
         // Remote Control (roadmap 17): только Claude — у других движков `setRemote` нет
         case 'remote.set':
@@ -978,6 +1022,10 @@ export class ChatController {
           await session.setRemote(m.on);
           return;
         case 'agent.stop':
+          if (!providerFeatures(this.engineProvider).agentStop) {
+            this.log.warn(`agent.stop: unsupported by ${this.engineProvider}`);
+            return;
+          }
           await session.stopTask(m.taskId);
           return;
         // Ответ на карточку: сессия та же, что прислала запрос, — иначе (после /clear) id не
@@ -1295,6 +1343,15 @@ export class ChatController {
     m: Extract<FromWebview, { type: 'send' }>,
   ): Promise<void> {
     const { deps } = this;
+    if (m.skill) {
+      if (this.engineProvider !== 'codex' || typeof m.skill.name !== 'string' || typeof m.skill.path !== 'string') return;
+      const caps = await session.capabilities();
+      if (session !== this.current || !caps.commands.some((c) => c.name === m.skill!.name && c.skillPath === m.skill!.path) || !(await fileExists(m.skill.path))) {
+        this.log.warn('send: selected skill is unavailable');
+        this.forward(session.id, { type: 'error', fatal: false, message: 'Selected skill is unavailable. Refresh the chat and select it again.' });
+        return;
+      }
+    }
     const texts: Record<string, string> = {};
     for (const a of m.attachments ?? []) {
       if (a.kind !== 'selection') continue;
@@ -1327,7 +1384,7 @@ export class ChatController {
       return;
     }
     const prompt = buildPrompt(m.text, m.attachments ?? [], texts, inline);
-    if (!session.send(prompt, images, sendFiles)) {
+    if (!session.send(prompt, images, sendFiles, m.skill)) {
       this.log.warn('send: сессия закрыта, сообщение не принято');
       return;
     }
@@ -1511,9 +1568,9 @@ export class ChatController {
       const base = {
         cwd: deps.cwd,
         // режимов Claude у Codex нет: его политику задаёт конфиг, а не эти настройки
-        allowBypassPermissions: hasModes && s.allowBypass,
-        // инструменты задачи Jira (roadmap 19, этап 8, решение 13) — только Claude; есть ли они сейчас, решает сам набор
-        ...(claude && deps.taskTools ? { taskTools: deps.taskTools } : {}),
+        allowBypassPermissions: (hasModes || providerFeatures(provider).nativeSettings) && s.allowBypass,
+        // Jira: Claude MCP или Codex dynamic tools; доступность определяет текущий набор хоста
+        ...((claude || provider === 'codex') && deps.taskTools ? { taskTools: deps.taskTools } : {}),
         // статус MCP движок спрашивает сам, только если его что-то покажет (roadmap 21, решение 12); у agy статуса нет
         ...(providerFeatures(provider).mcp ? { mcpWatch: mcpWatchOf(s.mcp ?? DEFAULT_MCP_VIEW) } : {}),
         // браузер агента (roadmap 27): только у движков с MCP-сервером `browser`; Claude меняет на ходу, Codex — со следующего процесса
@@ -1685,6 +1742,9 @@ export class ChatController {
         this.lastRemote = e;
         this.log.info(`Remote Control: ${e.state}${e.error ? ` (${e.error}${e.detail ? ` ${e.detail}` : ''})` : ''}`);
         break;
+      case 'session.settings':
+        if (!e.agentId) this.lastNativeSettings = e;
+        break;
       case 'mode.changed':
         // пересев webview (`lastInit` уходит после истории) не должен вернуть меню к режиму начала сессии
         if (!e.agentId && this.lastInit) this.lastInit = { ...this.lastInit, permissionMode: e.mode };
@@ -1779,7 +1839,15 @@ export class ChatController {
    * «открыть SKILL.md» (roadmap 21, решение 6): имя ещё раз проверяется здесь (сообщение могло прийти мимо
    * `isFromWebview`), путь собирает `findSkill`. Не нашёл — в лог, без ошибки.
    */
-  private async openSkill(name: string): Promise<void> {
+  private async openSkill(name: string, path?: string): Promise<void> {
+    if (this.engineProvider === 'codex') {
+      const session = this.current;
+      if (!session || !path) return;
+      const caps = await session.capabilities();
+      if (session !== this.current || !caps.commands.some((c) => c.name === name && c.skillPath === path) || !(await fileExists(path))) return;
+      await this.deps.openPath?.(path);
+      return;
+    }
     if (!isSkillName(name)) {
       this.log.warn(`skill.open: недопустимое имя скилла ${JSON.stringify(String(name).slice(0, 80))}`);
       return;
@@ -1788,16 +1856,17 @@ export class ChatController {
       this.log.warn(`skill.open: у плагинного скилла ${name} ссылки на SKILL.md нет`);
       return;
     }
-    const path = await this.deps.findSkill?.(name);
-    if (!path) {
+    const skillFile = await this.deps.findSkill?.(name);
+    if (!skillFile) {
       this.log.warn(`skill.open: SKILL.md для ${name} не найден`);
       return;
     }
-    await this.deps.openPath?.(path);
+    await this.deps.openPath?.(skillFile);
   }
 
   /** Какие скиллы из `session.init` можно открыть (решение 6): `skill.files` в webview. */
   private async postSkillFiles(skills: readonly string[]): Promise<void> {
+    if (this.engineProvider !== 'claude') return;
     const { findSkill } = this.deps;
     if (!findSkill) return;
     const seq = ++this.skillFilesSeq;
@@ -1837,6 +1906,7 @@ export class ChatController {
     this.fileSpans.clear();
     this.editInputs.clear();
     this.lastInit = undefined;
+    this.lastNativeSettings = undefined;
     this.defaults = undefined;
     this.lastContext = undefined;
     this.lastRemote = undefined;

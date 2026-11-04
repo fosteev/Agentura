@@ -46,6 +46,7 @@ export interface GraphAgent {
 }
 
 export interface AgentGraphView {
+  actions?: { agentStop: boolean; agentTranscript: boolean };
   /** Название сессии — заголовок вкладки «Агенты · …». */
   title?: string;
   /** Рабочая папка: короткие пути в подписях вызовов. */
@@ -97,6 +98,8 @@ function isGraphAgent(v: unknown): v is GraphAgent {
 /** Проверка снимка, пришедшего снаружи (webview чата → хост → webview графа): форма, без глубины. */
 export function isAgentGraphView(v: unknown): v is AgentGraphView {
   if (!isObj(v) || !isObj(v.main) || !Array.isArray(v.turns) || !Array.isArray(v.agents)) return false;
+  if (v.actions !== undefined && (!isObj(v.actions) ||
+      typeof v.actions.agentStop !== 'boolean' || typeof v.actions.agentTranscript !== 'boolean')) return false;
   const m = v.main;
   return (
     num(m.limit) &&

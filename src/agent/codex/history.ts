@@ -81,11 +81,11 @@ function turnEvents(
     }
     // ход начал сам движок (нет сообщения пользователя): `turn.start` без промпта
     if (!started) start(undefined, []);
-    if (item.type === 'agentMessage') {
+    if (item.type === 'agentMessage' || item.type === 'plan') {
       if (!item.text) continue;
       events.push({ type: 'text.delta', messageId: item.id, text: item.text });
       lastText = item.text;
-      if (item.phase === 'final_answer') finalText = item.text;
+      if (item.type === 'agentMessage' && item.phase === 'final_answer') finalText = item.text;
     } else if (item.type === 'reasoning') {
       const text = reasoningText(item);
       if (!text) continue;
@@ -111,8 +111,9 @@ function turnEvents(
     durationMs,
     apiDurationMs: durationMs,
     numTurns: 1,
-    // `thread/read` токенов хода не отдаёт; нули — «неизвестно», как стоимость
+    // `thread/read` токенов хода не отдаёт; usageKnown отделяет отсутствие данных от измеренного нуля.
     usage: { ...NO_USAGE },
+    usageKnown: false,
     totalCostUsd: 0,
     permissionDenials: [],
   };

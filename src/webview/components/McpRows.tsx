@@ -7,7 +7,7 @@ import type { McpServerInfo } from '../../agent/types';
 import { addSys } from '../chatState';
 import { canOpenSkill, sessionSkills, type McpUsage, type SessionSkill } from '../mcpFeed';
 import { loginCommand, mcpCounts, sourceLabel, usageByServer } from '../mcpView';
-import { chat, features, provider, skillFiles } from '../store';
+import { capabilities, chat, features, provider, skillFiles } from '../store';
 import { ui } from '../strings';
 import { send } from '../vscode';
 
@@ -249,6 +249,8 @@ export function McpSections({ variant, idle }: { variant: 'pop' | 'pane'; idle?:
   const rows = s.rows;
   const f = features.value;
   const engine = s.engine ?? provider.value;
+  const nativeSkills = engine === 'codex' ? capabilities.value.commands.filter((c) => c.skillPath) : [];
+  const availableCount = engine === 'codex' ? nativeSkills.length : s.skills.length;
   const usage = useMemo(
     () => (idle || !servers ? new Map<string, McpUsage>() : usageByServer(servers, rows)),
     [idle, servers, rows],
@@ -312,7 +314,7 @@ export function McpSections({ variant, idle }: { variant: 'pop' | 'pane'; idle?:
           {!pane && <hr />}
           <h5 class={pane ? 'sk-head' : undefined}>
             {pane ? ui.mcp.skillsPaneHead : ui.mcp.skillsHead}
-            <em>{pane ? ui.mcp.usedOf(used.length, s.skills.length) : ui.mcp.available(s.skills.length)}</em>
+            <em>{pane ? ui.mcp.usedOf(used.length, availableCount) : ui.mcp.available(availableCount)}</em>
           </h5>
           {used.length === 0 && <div class="srv dim">{ui.mcp.noSkillsUsed}</div>}
           {used.map((k) => (
@@ -323,6 +325,10 @@ export function McpSections({ variant, idle }: { variant: 'pop' | 'pane'; idle?:
               onOpen={openSkill}
             />
           ))}
+          {nativeSkills.map((skill) => <div class="srv" key={skill.skillPath}>
+            <span title={skill.skillPath}>{skill.name}</span>
+            <button type="button" class="act" title={skill.skillPath} onClick={() => send({ type: 'skill.open', name: skill.name, path: skill.skillPath })}>SKILL.md</button>
+          </div>)}
           <McpAllSkills names={s.skills} label={pane ? ui.mcp.allSkillsPane : ui.mcp.allSkills} />
         </>
       )}

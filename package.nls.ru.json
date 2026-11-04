@@ -22,7 +22,7 @@
   "command.showLogs.title": "Показать журнал",
   "command.debug.showState.title": "Показать состояние (отладка)",
   "config.contextThresholds.description": "Пороги шкалы контекста в токенах: жёлтая и оранжевая зоны.",
-  "config.allowBypassPermissions.description": "Разрешить режим bypassPermissions (запуск инструментов без подтверждений).",
+  "config.allowBypassPermissions.description": "Разрешить bypassPermissions для Claude/Antigravity и явный выбор sandbox с полным доступом для Codex.",
   "config.defaultPermissionMode.description": "С каким режимом разрешений открывается новая сессия. В открытой сессии режим меняется в меню под полем ввода.",
   "config.defaultPermissionMode.enum.manual": "Спрашивать разрешение на правки и команды",
   "config.defaultPermissionMode.enum.acceptEdits": "Принимать правки файлов без вопросов",

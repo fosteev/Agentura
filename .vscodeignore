@@ -8,6 +8,7 @@ CLAUDE.md
 .vscode/**
 .vscode-test/**
 .vitest/**
+.playwright-mcp/**
 .github/**
 docs/**
 prototype/**

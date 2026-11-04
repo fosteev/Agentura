@@ -1,3 +1,6 @@
+import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { describe, expect, it, vi } from 'vitest';
 import { EventHub } from '../agent/stream';
 import { CodexEventMapper } from '../agent/codex/mapper';
@@ -133,6 +136,15 @@ function setup(over: Partial<ChatDeps> = {}) {
 const infos = (posted: ToWebview[]) =>
   posted.filter((m): m is Extract<ToWebview, { type: 'chat.info' }> => m.type === 'chat.info');
 
+describe('subagent action guards', () => {
+  it.each(['codex', 'antigravity'] as const)('does not create %s session for stale stop', async (provider) => {
+    const t = setup({ provider });
+    await t.controller.handle({ type: 'agent.stop', sessionId: 'stale', taskId: 'unknown' });
+    expect(t.codex.created).toHaveLength(0);
+    expect(t.agy.created).toHaveLength(0);
+  });
+});
+
 describe('ChatController: маршрутизация по провайдеру', () => {
   it('Claude по умолчанию: chat.info несёт provider и полные флаги, сессия — у Claude-адаптера', async () => {
     const { controller, claude, codex, posted } = setup();
@@ -153,7 +165,7 @@ describe('ChatController: маршрутизация по провайдеру',
     await tick();
     expect(claude.created).toHaveLength(0);
     expect(codex.created).toEqual([
-      { cwd: '/p', allowBypassPermissions: false, mcpWatch: true, permissionMode: 'default' },
+      { cwd: '/p', allowBypassPermissions: true, mcpWatch: true, permissionMode: 'default' },
     ]);
     expect(codexReady).toHaveBeenCalled();
     controller.pushInfo();
@@ -529,4 +541,155 @@ describe('ChatController: выбор движка engine.set', () => {
     await controller.handle({ type: 'permission.respond', sessionId: '', toolUseId: '0', decision: 'allow-edits' });
     expect(session.responded).toEqual([['0', 'allow-edits']]);
   });
+});
+
+
+it('rejects stale or forged Codex skill identity without falling back to plain text', async () => {
+  const cx = setup({ provider: 'codex' });
+  cx.controller.start();
+  await tick();
+  await cx.controller.handle({ type: 'send', sessionId: '', text: '/review', skill: { name: 'review', path: '/forged/SKILL.md' } });
+  expect(cx.codex.sessions[0]!.sent).toEqual([]);
+  cx.controller.dispose();
+});
+
+
+it('opens and sends the exact API skill path, then rejects a removed file', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'native-skill-'));
+  const path = join(dir, 'SKILL.md');
+  const openPath = vi.fn();
+  const cx = setup({ provider: 'codex', openPath });
+  try {
+    await writeFile(path, '# Skill');
+    cx.controller.start();
+    await tick();
+    const session = cx.codex.sessions[0]!;
+    vi.spyOn(session, 'capabilities').mockResolvedValue({ models: [], commands: [{ name: 'review', description: '', skillPath: path }] } as never);
+    const send = vi.spyOn(session, 'send');
+    await cx.controller.handle({ type: 'skill.open', name: 'review', path });
+    expect(openPath).toHaveBeenCalledWith(path);
+    await cx.controller.handle({ type: 'send', sessionId: '', text: '/review', skill: { name: 'review', path } });
+    expect(send).toHaveBeenCalledWith('/review', undefined, undefined, { name: 'review', path });
+    await rm(path);
+    await cx.controller.handle({ type: 'send', sessionId: '', text: '/review', skill: { name: 'review', path } });
+    expect(send).toHaveBeenCalledTimes(1);
+  } finally {
+    cx.controller.dispose();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+
+describe('Codex Jira host wiring', () => {
+  it('passes TaskTools to Codex without permission-mode overrides', async () => {
+    const taskTools = { spec: () => undefined, onDidChange: () => () => {}, run: vi.fn(async () => ({ text: 'ok' })) };
+    const t = setup({ provider: 'codex', taskTools });
+    t.controller.start(); await tick();
+    expect(t.codex.created[0]).toMatchObject({ taskTools, allowBypassPermissions: true });
+    t.controller.dispose();
+  });
+});
+
+
+it('rejects unsupported Codex mode/plan messages before creating a session', async () => {
+  const t = setup({ provider: 'codex' });
+  await t.controller.handle({ type: 'mode.set', sessionId: '', mode: 'bypassPermissions' });
+  await t.controller.handle({ type: 'plan.decide', sessionId: '', toolUseId: 'stale', decision: 'reject' });
+  expect(t.codex.created).toHaveLength(0);
+});
+
+describe('native Codex settings host boundary', () => {
+  it('rejects foreign providers, forged changes and stale sessions without starting a process', async () => {
+    for (const provider of ['claude', 'antigravity'] as const) {
+      const t = setup({ provider });
+      await t.controller.handle({ type: 'codex.settings', sessionId: '', change: { kind: 'approval', value: 'never' } });
+      expect(t.claude.created).toHaveLength(0);
+      expect(t.agy.created).toHaveLength(0);
+    }
+    const t = setup({ provider: 'codex' });
+    for (const change of [
+      { kind: 'sandbox', value: 'workspaceWrite', writableRoots: ['/'] },
+      { kind: 'planning', value: 'bypassPermissions' },
+      { kind: 'sandbox', value: { type: 'dangerFullAccess' } },
+    ]) {
+      expect(isFromWebview({ type: 'codex.settings', sessionId: '', change })).toBe(false);
+      await t.controller.handle({ type: 'codex.settings', sessionId: '', change } as never);
+    }
+    await t.controller.handle({ type: 'codex.settings', sessionId: 'old', change: { kind: 'planning', value: 'plan' } });
+    expect(t.codex.created).toHaveLength(0);
+  });
+
+  it('routes only explicit native settings, respects the full access gate and keeps actual notification for reload', async () => {
+    const t = setup({ provider: 'codex', settings: () => ({ allowBypass: false }) });
+    t.controller.start();
+    await tick();
+    const session = t.codex.sessions[0]!;
+    const settings = vi.fn(async () => {});
+    Object.assign(session, { setCodexSettings: settings });
+    await t.controller.handle({ type: 'codex.settings', sessionId: session.id, change: { kind: 'sandbox', value: 'dangerFullAccess' } });
+    expect(settings).not.toHaveBeenCalled();
+    await t.controller.handle({ type: 'codex.settings', sessionId: session.id, change: { kind: 'planning', value: 'plan' } });
+    expect(settings).toHaveBeenCalledWith({ kind: 'planning', value: 'plan' });
+    session.events.emit({ type: 'session.init', sessionId: session.id, model: 'gpt', cwd: '/p', permissionMode: 'default', tools: [], slashCommands: [], skills: [], agents: [], apiKeySource: 'none', engineVersion: 'test' });
+    const effective: AgentEvent = { type: 'session.settings', planningMode: 'plan', sessionPolicy: {
+      approval: 'on-request', sandbox: 'workspaceWrite', sandboxPolicy: { type: 'workspaceWrite', writableRoots: ['/exact'], networkAccess: false, excludeTmpdirEnvVar: true, excludeSlashTmp: true },
+    } };
+    session.events.emit(effective);
+    t.posted.length = 0;
+    t.controller.onReady();
+    t.controller.onReady();
+    await tick();
+    await tick();
+    expect(t.posted).toContainEqual({ type: 'agent.event', sessionId: session.id, event: effective });
+    t.controller.dispose();
+  });
+
+  it('failed settings surface an error and release pending state; active turn and approvals are rejected', async () => {
+    const t = setup({ provider: 'codex' });
+    t.controller.start();
+    await tick();
+    const session = t.codex.sessions[0]!;
+    const settings = vi.fn(async () => { throw new Error('policy refused'); });
+    Object.assign(session, { setCodexSettings: settings });
+    await t.controller.handle({ type: 'codex.settings', sessionId: session.id, change: { kind: 'approval', value: 'never' } });
+    expect(t.posted).toContainEqual(expect.objectContaining({ type: 'agent.event', event: expect.objectContaining({ type: 'error', message: expect.stringContaining('policy refused') }) }));
+    expect(t.posted.at(-1)).toEqual({ type: 'codex.settingsResult' });
+    session.events.emit({ type: 'turn.start', at: 1 });
+    await t.controller.handle({ type: 'codex.settings', sessionId: session.id, change: { kind: 'planning', value: 'plan' } });
+    expect(settings).toHaveBeenCalledTimes(1);
+    t.controller.dispose();
+  });
+  it('reload before first thread preserves native planning without starting a thread', async () => {
+    const t = setup({ provider: 'codex' });
+    t.controller.start();
+    await tick();
+    const session = t.codex.sessions[0]!;
+    session.id = '';
+    session.events.emit({ type: 'session.settings', planningMode: 'plan' });
+    t.posted.length = 0;
+    t.controller.onReady();
+    t.controller.onReady();
+    await tick();
+    expect(t.posted).toContainEqual({ type: 'agent.event', sessionId: '', event: { type: 'session.settings', planningMode: 'plan' } });
+    t.controller.dispose();
+  });
+
+  it('concurrent/rejected requests do not release the host lock of an in-flight change', async () => {
+    const t = setup({ provider: 'codex' });
+    t.controller.start();
+    await tick();
+    const session = t.codex.sessions[0]!;
+    let ack!: () => void;
+    const settings = vi.fn(() => new Promise<void>((resolve) => { ack = resolve; }));
+    Object.assign(session, { setCodexSettings: settings });
+    const first = t.controller.handle({ type: 'codex.settings', sessionId: session.id, change: { kind: 'planning', value: 'plan' } });
+    await tick();
+    await t.controller.handle({ type: 'codex.settings', sessionId: session.id, change: { kind: 'approval', value: 'never' } });
+    await t.controller.handle({ type: 'codex.settings', sessionId: session.id, change: { kind: 'sandbox', value: 'workspaceWrite' } });
+    expect(settings).toHaveBeenCalledTimes(1);
+    ack();
+    await first;
+    t.controller.dispose();
+  });
+
 });

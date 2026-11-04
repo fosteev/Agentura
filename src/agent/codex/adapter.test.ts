@@ -1164,3 +1164,304 @@ describe('CodexAdapter: статус MCP (roadmap 21)', () => {
     session.dispose();
   });
 });
+
+
+describe('Codex manual compaction', () => {
+  it('serializes compaction and queued messages; duplicate requests are rejected', async () => {
+    const s = server();
+    s.handle('thread/compact/start', () => ({}));
+    const { adapter } = open(s);
+    const session = await adapter.resumeSession(THREAD, { cwd: '/work' });
+    const events = collect(session);
+    await until(() => types(events).includes('session.init'));
+    expect(session.compact()).toBe(true);
+    expect(session.compact()).toBe(false);
+    await until(() => s.methods().includes('thread/compact/start'));
+    session.send('after compact');
+    await new Promise((r) => setTimeout(r, 10));
+    expect(s.methods()).not.toContain('turn/start');
+    s.notify('turn/started', { threadId: THREAD, turn: t('compact-1') });
+    finishTurn(s, 'compact-1');
+    await until(() => s.methods().includes('turn/start'));
+    expect(events.filter((e) => e.type === 'compaction.start')).toHaveLength(1);
+    expect(events.find((e) => e.type === 'compaction.end')).toMatchObject({ ok: true });
+    expect(session.compact()).toBe(false);
+    session.dispose();
+  });
+
+  it('RPC failure clears the indicator, allows retry, and close clears pending compact', async () => {
+    const s = server();
+    s.handle('thread/compact/start', () => { throw new Error('rejected'); });
+    const { adapter } = open(s);
+    const session = await adapter.resumeSession(THREAD, { cwd: '/work' });
+    const events = collect(session);
+    await until(() => types(events).includes('session.init'));
+    expect(session.compact()).toBe(true);
+    await until(() => types(events).includes('compaction.end'));
+    expect(events.find((e) => e.type === 'compaction.end')).toMatchObject({ ok: false });
+    s.handle('thread/compact/start', () => ({}));
+    expect(session.compact()).toBe(true);
+    session.dispose();
+    expect(events.filter((e) => e.type === 'compaction.end')).toHaveLength(2);
+  });
+});
+
+
+it('compact Stop targets its turn and timeout closes an uncertain session', async () => {
+  const s = server();
+  s.handle('thread/compact/start', () => ({}));
+  const { adapter } = open(s, { startTimeoutMs: 100 });
+  const session = await adapter.resumeSession(THREAD, { cwd: '/work' });
+  const events = collect(session);
+  await until(() => types(events).includes('session.init'));
+  session.compact();
+  s.notify('turn/started', { threadId: THREAD, turn: t('compact-stop') });
+  await session.interrupt();
+  expect(s.paramsOf('turn/interrupt')).toEqual({ threadId: THREAD, turnId: 'compact-stop' });
+  finishTurn(s, 'compact-stop', 'interrupted');
+  await until(() => types(events).includes('compaction.end'));
+  expect(events.find((e) => e.type === 'compaction.end')).toMatchObject({ ok: false });
+  session.compact();
+  await until(() => types(events).includes('session.closed'));
+  expect(events.filter((e) => e.type === 'compaction.end')).toHaveLength(2);
+  expect(events.filter((e) => e.type === 'compaction.end').at(-1)).toMatchObject({ ok: false });
+});
+
+
+describe('Codex native skills', () => {
+  it('keeps duplicate names and sends only the explicitly selected path', async () => {
+    const s = server();
+    const skills = [
+      { name: 'review', description: 'local', path: '/work/SKILL.md', enabled: true },
+      { name: 'review', description: 'home', path: '/home/SKILL.md', enabled: true },
+      { name: 'disabled', description: '', path: '/disabled/SKILL.md', enabled: false },
+    ];
+    s.handle('skills/list', () => ({ data: [{ cwd: '/work', skills, errors: [] }] }));
+    const session = await open(s).adapter.createSession({ cwd: '/work' });
+    const caps = await session.capabilities();
+    expect(caps.commands.map((c) => c.skillPath)).toEqual(['/work/SKILL.md', '/home/SKILL.md']);
+    session.send('/review code', undefined, undefined, { name: 'review', path: '/home/SKILL.md' });
+    await until(() => s.received.some((m) => m.method === 'turn/start'));
+    expect((s.received.find((m) => m.method === 'turn/start')?.params as { input: unknown[] }).input).toContainEqual({ type: 'skill', name: 'review', path: '/home/SKILL.md' });
+    session.dispose();
+  });
+});
+
+describe('Codex dynamic Jira integration', () => {
+  it.each(['comment', 'transition', 'worklog'] as const)('routes %s to TaskTools with native response', async (name) => {
+    const s = server(); const { adapter } = open(s);
+    const run = vi.fn(async () => ({ text: 'written' }));
+    const taskTools = { spec: () => ({ issue: 'A-1', instance: 'jira', tools: [name] }), onDidChange: () => () => {}, run };
+    const session = await adapter.createSession({ cwd: '/work', taskTools });
+    const events = collect(session); session.send('task');
+    await until(() => s.methods().includes('turn/start'));
+    expect(s.paramsOf('thread/start')['dynamicTools']).toMatchObject([{ name: `mcp__agentura_jira__${name}` }]);
+    expect(s.paramsOf('initialize')['capabilities']).toMatchObject({ experimentalApi: true });
+    const args = name === 'comment' ? { text: 'done' } : name === 'transition' ? { to: 'Done' } : { minutes: 2 };
+    s.request(900, 'item/tool/call', { threadId: THREAD, turnId: 'turn-1', callId: 'call-1', namespace: null, tool: `mcp__agentura_jira__${name}`, arguments: args });
+    if (name !== 'comment') {
+      await until(() => events.some((e) => e.type === 'permission.request'));
+      const e = events.find((e) => e.type === 'permission.request')!;
+      expect(session.respondPermission(e.toolUseId, 'allow')).toBe(true);
+    }
+    await until(() => s.methods().includes('<response>'));
+    expect(run).toHaveBeenCalledWith(name, args);
+    expect(s.paramsOf('<response>')).toMatchObject({ id: 900, result: { success: true, contentItems: [{ type: 'inputText', text: 'written' }] } });
+    session.dispose();
+  });
+  it('does not register dynamic tools on resume', async () => {
+    const s = server(); const { adapter } = open(s); const run = vi.fn(async () => ({ text: 'bad' }));
+    const session = await adapter.resumeSession(THREAD, { cwd: '/work', taskTools: { spec: () => ({ issue: 'A-1', instance: 'jira', tools: ['comment'] }), onDidChange: () => () => {}, run } });
+    session.send('task'); await until(() => s.methods().includes('turn/start'));
+    expect(s.paramsOf('thread/resume')).not.toHaveProperty('dynamicTools');
+    s.request(900, 'item/tool/call', { threadId: THREAD, turnId: 'turn-1', callId: 'call-1', namespace: null, tool: 'mcp__agentura_jira__comment', arguments: { text: 'bad' } });
+    await until(() => s.methods().includes('<response>'));
+    expect(s.paramsOf('<response>')).toMatchObject({ result: { success: false } }); expect(run).not.toHaveBeenCalled(); session.dispose();
+  });
+});
+
+describe('Codex native planning and independent session policies', () => {
+  async function idle(s: FakeAppServer, config: Partial<CodexAdapterConfig> = {}, allowBypassPermissions = false) {
+    const session = await open(s, config).adapter.createSession({ cwd: '/work', allowBypassPermissions });
+    const events = collect(session);
+    session.send('open');
+    await until(() => types(events).includes('turn.start'));
+    finishTurn(s, 'turn-1');
+    await until(() => types(events).includes('turn.result'));
+    await new Promise((r) => setTimeout(r, 0));
+    return { session, events };
+  }
+  const effective = (extra: Record<string, unknown> = {}) => ({
+    approvalPolicy: 'on-request', sandboxPolicy: { type: 'readOnly', networkAccess: false },
+    collaborationMode: { mode: 'default', settings: { model: 'gpt-native', reasoning_effort: 'high', developer_instructions: null } },
+    model: 'gpt-native', effort: 'high', ...extra,
+  });
+
+  it('plan before first prompt uses native built-in mode without overriding permissions; plan output is ordinary text', async () => {
+    const s = server();
+    const session = await open(s).adapter.createSession({ cwd: '/work' });
+    const events = collect(session);
+    await session.setCodexSettings!({ kind: 'planning', value: 'plan' });
+    expect(s.methods()).not.toContain('thread/start');
+    session.send('plan this');
+    await until(() => types(events).includes('turn.start'));
+    expect(s.paramsOf('turn/start')).toMatchObject({ collaborationMode: { mode: 'plan', settings: {
+      model: fixture.threadStart.model, developer_instructions: null,
+    } } });
+    expect(s.paramsOf('turn/start').approvalPolicy).toBeUndefined();
+    expect(s.paramsOf('turn/start').sandboxPolicy).toBeUndefined();
+    s.notify('item/plan/delta', { threadId: THREAD, turnId: 'turn-1', itemId: 'p', delta: 'The plan' });
+    s.notify('item/completed', { threadId: THREAD, turnId: 'turn-1', item: { type: 'plan', id: 'p', text: 'The plan' } });
+    finishTurn(s, 'turn-1');
+    await until(() => types(events).includes('turn.result'));
+    expect(events.filter((e) => e.type === 'text.delta')).toEqual([{ type: 'text.delta', messageId: 'p', text: 'The plan' }]);
+    expect(events.some((e) => e.type === 'plan.request')).toBe(false);
+    session.dispose();
+  });
+
+  it('planning/default, approval and sandbox writes contain only their own axis and keep complete current details', async () => {
+    const s = server().handle('thread/settings/update', () => ({}));
+    const custom = { type: 'workspaceWrite', writableRoots: ['/extra'], networkAccess: true, excludeTmpdirEnvVar: true, excludeSlashTmp: false };
+    s.handle('thread/start', () => ({ ...fixture.threadStart, sandbox: custom }));
+    const { session, events } = await idle(s);
+    await session.setCodexSettings!({ kind: 'planning', value: 'plan' });
+    expect(s.paramsOf('thread/settings/update')).toEqual({ threadId: THREAD, collaborationMode: {
+      mode: 'plan', settings: { model: fixture.threadStart.model, reasoning_effort: fixture.threadStart.reasoningEffort, developer_instructions: null },
+    } });
+    await session.setCodexSettings!({ kind: 'planning', value: 'default' });
+    expect(s.paramsOf('thread/settings/update', 1)).not.toHaveProperty('sandboxPolicy');
+    await session.setCodexSettings!({ kind: 'sandbox', value: 'workspaceWrite' });
+    expect(s.received.filter((m) => m.method === 'thread/settings/update')).toHaveLength(2);
+    await session.setCodexSettings!({ kind: 'approval', value: 'never' });
+    expect(s.paramsOf('thread/settings/update', 2)).toEqual({ threadId: THREAD, approvalPolicy: 'never' });
+    expect(events.filter((e) => e.type === 'session.settings').at(-1)).toMatchObject({ sessionPolicy: { sandboxPolicy: custom } });
+    await session.setCodexSettings!({ kind: 'sandbox', value: 'readOnly' });
+    expect(s.paramsOf('thread/settings/update', 3)).toEqual({ threadId: THREAD, sandboxPolicy: { type: 'readOnly', networkAccess: false } });
+    await session.setCodexSettings!({ kind: 'sandbox', value: 'workspaceWrite' });
+    expect(s.paramsOf('thread/settings/update', 4)).toEqual({ threadId: THREAD, sandboxPolicy: {
+      type: 'workspaceWrite', writableRoots: [], networkAccess: false, excludeTmpdirEnvVar: true, excludeSlashTmp: true,
+    } });
+    expect(events.filter((e) => e.type === 'session.settings').at(-1)).toMatchObject({ sessionPolicy: { approvalPolicy: 'never' } });
+    session.dispose();
+  });
+
+  it('effective notification before RPC response wins over requested presets, foreign threads are ignored', async () => {
+    const s = server();
+    const { session, events } = await idle(s);
+    s.handle('thread/settings/update', () => {
+      s.notify('thread/settings/updated', { threadId: THREAD, threadSettings: effective() });
+      return {};
+    });
+    await session.setCodexSettings!({ kind: 'approval', value: 'never' });
+    expect(events.filter((e) => e.type === 'session.settings').at(-1)).toMatchObject({ sessionPolicy: { approval: 'on-request' }, planningMode: 'default' });
+    const count = events.length;
+    s.notify('thread/settings/updated', { threadId: 'other', threadSettings: effective({ approvalPolicy: 'never' }) });
+    expect(events).toHaveLength(count);
+    session.send('next');
+    await until(() => s.received.filter((m) => m.method === 'turn/start').length === 2);
+    expect(s.paramsOf('turn/start', 1)).toMatchObject({ collaborationMode: { mode: 'default', settings: { model: 'gpt-native', reasoning_effort: 'high' } } });
+    session.dispose();
+  });
+
+  it('resume uses effective planning and full policies without policy overrides', async () => {
+    const s = server();
+    s.handle('thread/resume', () => ({ ...fixture.threadStart,
+      collaborationMode: effective().collaborationMode,
+      sandbox: { type: 'externalSandbox', networkAccess: 'restricted' },
+    }));
+    const session = await open(s).adapter.resumeSession(THREAD, { cwd: '/work' });
+    const events = collect(session);
+    await until(() => types(events).includes('session.init'));
+    expect(events[0]).toMatchObject({ planningMode: 'default', sessionPolicy: { sandboxPolicy: { type: 'externalSandbox', networkAccess: 'restricted' } } });
+    expect(s.paramsOf('thread/resume')).not.toHaveProperty('sandbox');
+    expect(s.paramsOf('thread/resume')).not.toHaveProperty('approvalPolicy');
+    session.dispose();
+  });
+
+  it('active turn, pending question, compact and full access guard reject changes without writes', async () => {
+    const s = server();
+    const { session } = await idle(s);
+    await expect(session.setCodexSettings!({ kind: 'sandbox', value: 'dangerFullAccess' })).rejects.toThrow('disabled');
+    s.request(71, 'item/tool/requestUserInput', { threadId: THREAD, turnId: 'turn-1', itemId: 'q', questions: [{ id: 'q', header: 'Q', question: 'Q?', options: null }] });
+    await expect(session.setCodexSettings!({ kind: 'planning', value: 'plan' })).rejects.toThrow('idle');
+    session.answerQuestion(tid(session, 71), { q: 'yes' });
+    s.handle('thread/compact/start', () => ({}));
+    expect(session.compact()).toBe(true);
+    await expect(session.setCodexSettings!({ kind: 'approval', value: 'never' })).rejects.toThrow('idle');
+    session.dispose();
+    expect(s.methods()).not.toContain('thread/settings/update');
+  });
+
+  it('settings failure does not claim success; queued send waits and Stop aborts that pre-start turn', async () => {
+    const s = server();
+    const { session, events } = await idle(s);
+    let fail!: (error: Error) => void;
+    s.handle('thread/settings/update', () => new Promise((_, reject) => { fail = reject; }));
+    const setting = session.setCodexSettings!({ kind: 'planning', value: 'plan' });
+    await until(() => !!fail);
+    session.send('queued');
+    await session.interrupt();
+    expect(s.received.filter((m) => m.method === 'turn/start')).toHaveLength(1);
+    fail(new Error('settings refused'));
+    await expect(setting).rejects.toThrow('settings refused');
+    await until(() => events.filter((e) => e.type === 'turn.result').length === 2);
+    expect(events.filter((e) => e.type === 'turn.result').at(-1)).toMatchObject({ interrupted: true });
+    expect(events.some((e) => e.type === 'session.settings')).toBe(false);
+    expect(s.received.filter((m) => m.method === 'turn/start')).toHaveLength(1);
+    session.dispose();
+  });
+
+  it('queued send uses confirmed mode; close drops late response and timeout closes unknown permission state', async () => {
+    const s = server();
+    const { session, events } = await idle(s);
+    let ack!: () => void;
+    s.handle('thread/settings/update', () => new Promise((resolve) => { ack = () => resolve({}); }));
+    const setting = session.setCodexSettings!({ kind: 'planning', value: 'plan' });
+    await until(() => !!ack);
+    session.send('queued');
+    expect(s.received.filter((m) => m.method === 'turn/start')).toHaveLength(1);
+    ack();
+    await setting;
+    await until(() => s.received.filter((m) => m.method === 'turn/start').length === 2);
+    expect(s.paramsOf('turn/start', 1)).toMatchObject({ collaborationMode: { mode: 'plan' } });
+    session.dispose();
+    expect(events.filter((e) => e.type === 'session.closed')).toHaveLength(1);
+    const s2 = server();
+    const opened = await idle(s2, { timeoutMs: 30 });
+    s2.handle('thread/settings/update', () => new Promise(() => {}));
+    await expect(opened.session.setCodexSettings!({ kind: 'approval', value: 'never' })).rejects.toThrow('timed out');
+    expect(opened.events.filter((e) => e.type === 'session.closed')).toHaveLength(1);
+    expect(opened.events.some((e) => e.type === 'session.settings')).toBe(false);
+  });
+  it('full access is sent only by an explicit allowed choice; active turns reject policy changes', async () => {
+    const s = server().handle('thread/settings/update', () => ({}));
+    const { session } = await idle(s, {}, true);
+    expect(s.paramsOf('thread/start')).not.toHaveProperty('sandbox');
+    await session.setCodexSettings!({ kind: 'sandbox', value: 'dangerFullAccess' });
+    expect(s.paramsOf('thread/settings/update')).toEqual({ threadId: THREAD, sandboxPolicy: { type: 'dangerFullAccess' } });
+    session.send('running');
+    await until(() => s.received.filter((m) => m.method === 'turn/start').length === 2);
+    await expect(session.setCodexSettings!({ kind: 'approval', value: 'never' })).rejects.toThrow('idle');
+    session.dispose();
+  });
+
+  it('permissions before thread and late settings response after close cannot claim a changed state', async () => {
+    const s = server();
+    const session = await open(s).adapter.createSession({ cwd: '/work' });
+    await expect(session.setCodexSettings!({ kind: 'approval', value: 'never' })).rejects.toThrow('existing thread');
+    expect(s.methods()).not.toContain('thread/start');
+    session.dispose();
+    const s2 = server();
+    const opened = await idle(s2);
+    let ack!: () => void;
+    s2.handle('thread/settings/update', () => new Promise((resolve) => { ack = () => resolve({}); }));
+    const pending = opened.session.setCodexSettings!({ kind: 'planning', value: 'plan' });
+    const rejected = expect(pending).rejects.toThrow();
+    await until(() => !!ack);
+    opened.session.dispose();
+    ack();
+    await rejected;
+    expect(opened.events.some((e) => e.type === 'session.settings')).toBe(false);
+  });
+
+});

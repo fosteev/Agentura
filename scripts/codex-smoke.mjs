@@ -5,8 +5,8 @@
 //   node scripts/codex-smoke.mjs --turn --record test/fixtures/codex/ok-turn.json   — записать фикстуру
 //   --model <id> (по умолчанию самая дешёвая из model/list: «affordable»/«fast»), --effort <low|…>
 // Работает во временной папке; approvalPolicy `on-request`, sandbox `read-only` — не ослабляем.
-// Процессы app-server за собой не оставляет (проверка — pgrep в конце).
-import { execFileSync } from 'node:child_process';
+// Проверяет завершение только процессов app-server, созданных этим прогоном.
+import { spawn } from 'node:child_process';
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, hostname, tmpdir, userInfo } from 'node:os';
 import { join } from 'node:path';
@@ -34,7 +34,16 @@ const cwd = realpathSync(mkdtempSync(join(tmpdir(), 'agentura-codex-smoke-')));
 const started = Date.now();
 const t = () => `${((Date.now() - started) / 1000).toFixed(1).padStart(5)}s`;
 const traced = [];
+const children = [];
 const adapter = new CodexAdapter({
+  spawn: (path, args, options) => {
+    const child = spawn(path, args, {
+      cwd: options.cwd, env: options.env,
+      stdio: ['pipe', 'pipe', 'pipe'], shell: false, windowsHide: true,
+    });
+    children.push(child);
+    return child;
+  },
   executablePath: resolved.path,
   clientVersion: 'smoke',
   thread: { approvalPolicy: 'on-request', sandbox: 'read-only' },
@@ -52,6 +61,9 @@ try {
     if (e.type !== 'text.delta' && e.type !== 'thinking.delta') console.log(`${t()} ${e.type}`);
   });
   const caps = await session.capabilities();
+  if (!caps.models.length || events.some((e) => e.type === 'session.closed')) {
+    throw new Error('handshake/model-list failed: no usable models or session closed');
+  }
   console.log(`${t()} model/list: ${caps.models.map((m) => m.value).join(', ')}`);
   const cheapest =
     value('--model') ??
@@ -137,12 +149,12 @@ try {
   session?.dispose();
   await new Promise((r) => setTimeout(r, 2500));
   rmSync(cwd, { recursive: true, force: true });
-  try {
-    const left = execFileSync('pgrep', ['-fl', 'app-server --listen stdio://'], { encoding: 'utf8' }).trim();
-    console.log(`ОСТАЛИСЬ процессы app-server:\n${left}`);
+  const left = children.filter((child) => child.pid && child.exitCode === null && child.signalCode === null);
+  if (left.length) {
+    console.error(`ОСТАЛИСЬ собственные процессы app-server: ${left.map((child) => child.pid).join(', ')}`);
     exitCode = 1;
-  } catch {
-    console.log('процессов app-server не осталось');
+  } else {
+    console.log('собственных процессов app-server не осталось');
   }
 }
 process.exit(exitCode);

@@ -90,12 +90,12 @@ export function pickAgent(agentId: string): void {
 /** Действия — в сессию, которую граф показывает; хост сверит её с сессией чата. */
 export function stopGraphAgent(taskId: string): void {
   const s = graphSnap.value;
-  if (s) send({ type: 'agent.stop', sessionId: s.sessionId, taskId });
+  if (s && s.graph.actions?.agentStop !== false) send({ type: 'agent.stop', sessionId: s.sessionId, taskId });
 }
 
 export function openGraphTranscript(agentId: string, taskId: string): void {
   const s = graphSnap.value;
-  if (s) send({ type: 'agent.transcript', sessionId: s.sessionId, agentId, taskId });
+  if (s && s.graph.actions?.agentTranscript !== false) send({ type: 'agent.transcript', sessionId: s.sessionId, agentId, taskId });
 }
 
 /** Что-то идёт (основной или агенты) — часам есть смысл тикать. */

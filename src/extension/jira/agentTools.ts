@@ -83,7 +83,7 @@ export class AgentJiraTools implements TaskTools {
     const tools = JIRA_TOOLS.filter((n) => on[n]);
     if (!tools.length) return undefined;
     const instance = t.source.instances().find((i) => i.id === t.instanceId)?.name ?? t.instanceId;
-    return { issue: t.key, instance, tools };
+    return { issue: t.key, instance, instanceId: t.instanceId, tools };
   }
 
   onDidChange(listener: () => void): () => void {

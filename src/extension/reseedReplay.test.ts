@@ -158,3 +158,15 @@ describe('StreamTail', () => {
     expect(t.snapshot()).toEqual([]);
   });
 });
+
+
+it('replays pending compaction after webview reload and removes it after completion', () => {
+  const tail = new StreamTail();
+  tail.note({ type: 'compaction.start' });
+  expect(tail.snapshot()).toEqual([{ type: 'compaction.start' }]);
+  tail.note({ type: 'compaction.end', ok: false });
+  expect(tail.snapshot()).toEqual([]);
+  tail.note({ type: 'compaction.start' });
+  tail.note({ type: 'session.closed', reason: 'disposed' });
+  expect(tail.snapshot()).toEqual([]);
+});

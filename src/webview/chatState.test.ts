@@ -724,6 +724,7 @@ describe('ошибки и лимит (этап 7)', () => {
       });
     const sum = (s: ChatState) => s.rows.filter((r) => r.kind === 'sum').at(-1) as { parts: string[] };
     const codex = { ...initialState(), engine: 'codex' as const };
+    expect(sum(applyEvent(turn(codex), ev({ ...result({ input: 5, output: 7, cacheRead: 3, cacheWrite: 0 }), usageKnown: false }), 2)).parts).toEqual([]);
     expect(sum(applyEvent(turn(codex), result({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }), 2)).parts).toEqual([]);
     expect(sum(applyEvent(turn(codex), result({ input: 5, output: 7, cacheRead: 3, cacheWrite: 0 }), 2)).parts).toEqual([
       'in 5',

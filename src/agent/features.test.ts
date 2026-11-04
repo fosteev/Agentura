@@ -3,19 +3,24 @@ import { CLAUDE_FEATURES, CODEX_FEATURES, providerFeatures } from './features';
 
 describe('providerFeatures', () => {
   it('Claude: все возможности включены, кроме «перезапустить все MCP» (это Codex)', () => {
-    const { mcpReloadAll, ...rest } = providerFeatures('claude');
+    const { mcpReloadAll, nativeSettings, ...rest } = providerFeatures('claude');
     expect(Object.values(rest).every(Boolean)).toBe(true);
     expect(rest.mcpToggle).toBe(true);
     expect(mcpReloadAll).toBe(false);
+    expect(nativeSettings).toBe(false);
   });
 
   it('Codex: контекст, субагенты, вопросы и картинки есть; режимов, compact, цены, плана и файлов нет', () => {
     expect(providerFeatures('codex')).toEqual({
       modes: false,
-      compact: false,
+      nativeSettings: true,
+      compact: true,
+      autoCompact: false,
       context: true,
       cost: false,
       subagents: true,
+      agentStop: false,
+      agentTranscript: false,
       plan: false,
       questions: true,
       images: true,
@@ -26,17 +31,21 @@ describe('providerFeatures', () => {
       mcpReconnect: false,
       mcpReloadAll: true,
       mcpToggle: false,
-      skills: false,
+      skills: true,
     });
   });
 
   it('Antigravity: режимы есть; compact, приборов, субагентов, плана, вопросов, картинок и файлов нет', () => {
     expect(providerFeatures('antigravity')).toEqual({
       modes: true,
+      nativeSettings: false,
       compact: false,
+      autoCompact: false,
       context: false,
       cost: false,
       subagents: false,
+      agentStop: false,
+      agentTranscript: false,
       plan: false,
       questions: false,
       images: false,

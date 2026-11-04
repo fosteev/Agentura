@@ -1,6 +1,6 @@
 /**
  * Подмножество протокола `codex app-server` (JSON-RPC 2.0 поверх stdio, newline-delimited), которое
- * нужно Agentura. Сверено с `codex-cli 0.160.0` (`codex app-server generate-ts`). Протокол помечен
+ * нужно Agentura. Сверено с `codex-cli 0.166.0` (`codex app-server generate-ts --experimental`). Протокол помечен
  * experimental: типы НЕ копируем целиком (600+ файлов), а описываем используемое и сверяем скриптом
  * `npm run codex:protocol` (регенерирует схему во временную папку и проверяет, что нужные методы и поля
  * на месте). Всё, чего здесь нет, — `unknown`, а не выдумка.
@@ -9,7 +9,7 @@
  */
 
 /** Версия CLI, с которой сверены типы. Меньшую/большую не блокируем: app-server experimental. */
-export const CODEX_PROTOCOL_VERSION = '0.160.0';
+export const CODEX_PROTOCOL_VERSION = '0.166.0';
 
 export type RequestId = string | number;
 type JsonValue = unknown;
@@ -259,7 +259,15 @@ interface ThreadSettings {
   baseInstructions?: string | null;
   developerInstructions?: string | null;
 }
+export interface DynamicToolSpec {
+  type: 'function';
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+}
+
 export interface ThreadStartParams extends ThreadSettings {
+  dynamicTools?: DynamicToolSpec[];
   ephemeral?: boolean | null;
   serviceName?: string | null;
 }
@@ -276,6 +284,7 @@ export interface ThreadSession {
   approvalPolicy: AskForApproval;
   sandbox: SandboxPolicy;
   reasoningEffort: ReasoningEffort | null;
+  collaborationMode?: CollaborationMode | null;
 }
 export type ThreadStartResponse = ThreadSession;
 export type ThreadResumeResponse = ThreadSession;
@@ -311,9 +320,31 @@ export interface ThreadCompactStartParams {
   threadId: string;
 }
 
+export interface CollaborationMode {
+  mode: 'plan' | 'default';
+  settings: { model: string; reasoning_effort: ReasoningEffort | null; developer_instructions: string | null };
+}
+export interface ThreadSettingsUpdateParams {
+  threadId: string;
+  collaborationMode?: CollaborationMode;
+  approvalPolicy?: AskForApproval;
+  sandboxPolicy?: SandboxPolicy;
+}
+export interface ThreadSettingsUpdatedNotification {
+  threadId: string;
+  threadSettings: {
+    approvalPolicy: AskForApproval;
+    sandboxPolicy: SandboxPolicy;
+    collaborationMode: CollaborationMode;
+    model: string;
+    effort: ReasoningEffort | null;
+  };
+}
+
 export interface TurnStartParams {
   threadId: string;
   input: UserInput[];
+  collaborationMode?: CollaborationMode;
   cwd?: string | null;
   approvalPolicy?: AskForApproval | null;
   sandboxPolicy?: SandboxPolicy | null;
@@ -403,6 +434,7 @@ export interface CodexAccountResponse {
 export interface CodexRequests {
   initialize: [InitializeParams, InitializeResponse];
   'thread/start': [ThreadStartParams, ThreadStartResponse];
+  'thread/settings/update': [ThreadSettingsUpdateParams, Record<string, never>];
   'thread/resume': [ThreadResumeParams, ThreadResumeResponse];
   'thread/read': [ThreadReadParams, ThreadReadResponse];
   'thread/list': [ThreadListParams, ThreadListResponse];
@@ -411,6 +443,7 @@ export interface CodexRequests {
   'turn/start': [TurnStartParams, TurnStartResponse];
   'turn/interrupt': [TurnInterruptParams, Record<string, never>];
   'turn/steer': [TurnSteerParams, { turnId: string }];
+  'skills/list': [{ cwds?: string[]; forceReload?: boolean }, { data: { cwd: string; skills: { name: string; description: string; path: string; enabled: boolean }[]; errors: unknown[] }[] }];
   'model/list': [ModelListParams, ModelListResponse];
   'mcpServerStatus/list': [ListMcpServerStatusParams, ListMcpServerStatusResponse];
   /** Перечитать конфиг и перезапустить все MCP-серверы (по одному сервер не умеет). */
@@ -424,6 +457,7 @@ export type CodexRequestMethod = keyof CodexRequests;
 
 export interface CodexNotifications {
   'thread/started': { thread: Thread };
+  'thread/settings/updated': ThreadSettingsUpdatedNotification;
   'thread/status/changed': { threadId: string; status: ThreadStatus };
   'thread/name/updated': { threadId: string; threadName?: string };
   'thread/tokenUsage/updated': { threadId: string; turnId: string; tokenUsage: ThreadTokenUsage };
@@ -432,6 +466,7 @@ export interface CodexNotifications {
   'turn/completed': { threadId: string; turn: Turn };
   'item/started': { item: ThreadItem; threadId: string; turnId: string; startedAtMs: number };
   'item/completed': { item: ThreadItem; threadId: string; turnId: string; completedAtMs: number };
+  'item/plan/delta': { threadId: string; turnId: string; itemId: string; delta: string };
   'item/agentMessage/delta': { threadId: string; turnId: string; itemId: string; delta: string };
   'item/reasoning/summaryTextDelta': {
     threadId: string;
@@ -477,6 +512,7 @@ export function isCodexNotification(method: string): method is CodexNotification
 }
 const NOTIFICATION_METHODS: Record<CodexNotificationMethod, true> = {
   'thread/started': true,
+  'thread/settings/updated': true,
   'thread/status/changed': true,
   'thread/name/updated': true,
   'thread/tokenUsage/updated': true,
@@ -486,6 +522,7 @@ const NOTIFICATION_METHODS: Record<CodexNotificationMethod, true> = {
   'item/started': true,
   'item/completed': true,
   'item/agentMessage/delta': true,
+  'item/plan/delta': true,
   'item/reasoning/summaryTextDelta': true,
   'item/reasoning/textDelta': true,
   'item/commandExecution/outputDelta': true,
@@ -522,7 +559,7 @@ export interface CommandApprovalParams {
   /** Запрос сетевого доступа к хосту (команды может не быть). */
   networkApprovalContext?: { host: string; protocol: string } | null;
   /**
-   * Нет в сгенерированных типах 0.160.0, но живой сервер шлёт: какие решения запрос принимает
+   * Нет в сгенерированных типах 0.166.0, но живой сервер шлёт: какие решения запрос принимает
    * (например `["accept", {acceptWithExecpolicyAmendment: …}, "cancel"]`). Нет поля — любое из схемы.
    */
   availableDecisions?: (CommandApprovalDecision | string)[] | null;

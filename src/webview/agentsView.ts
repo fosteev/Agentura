@@ -1,3 +1,4 @@
+import type { ProviderFeatures } from '../agent/features';
 /**
  * Несколько агентов (A6, этап 2 roadmap 0.2): из `HudState.agents` и строк ленты — готовые к
  * отрисовке группа субагентов в ленте, карта «список + детали», бейдж вкладки и живая строка
@@ -13,6 +14,17 @@ import type { AgentNode, HudState, TimelineSeg } from './hudState';
 import { compactTokens, segClass, sessionTotals } from './hudView';
 import { ui } from './strings';
 import { formatDuration, shortModel, splitPath, toolView } from './toolView';
+
+export type AgentActions = Pick<ProviderFeatures, 'agentStop' | 'agentTranscript'>;
+
+/** Ограничивает только действия; статус и данные агента остаются видимыми. */
+export function agentActions<T extends { stopTaskId?: string; transcript?: boolean }>(
+  view: T, actions?: AgentActions,
+): T {
+  if (actions?.agentStop === false) delete view.stopTaskId;
+  if (actions?.agentTranscript === false && 'transcript' in view) view.transcript = false;
+  return view;
+}
 
 /** Инструменты основного, которые запускают субагента. */
 export const AGENT_TOOLS: ReadonlySet<string> = new Set(['Agent', 'Task']);
@@ -127,9 +139,10 @@ export function agentGroupView(
   h: HudState,
   now: number,
   cwd?: string,
+  actions?: AgentActions,
 ): GroupView {
   const byId = agentsById(h);
-  const views = rows.map((r) => groupRow(r, byId.get(r.toolUseId), now, cwd));
+  const views = rows.map((r) => agentActions(groupRow(r, byId.get(r.toolUseId), now, cwd), actions));
   const nodes = rows.map((r) => byId.get(r.toolUseId)).filter((a): a is AgentNode => !!a);
   const count = (c: GroupRowView['cls']) => views.filter((v) => v.cls === c).length;
   const running = count('busy');
@@ -414,6 +427,7 @@ export function agentMapView(
     cwd?: string;
     /** Есть сессия движка — значит, есть и транскрипты субагентов на диске. */
     hasSession?: boolean;
+    actions?: AgentActions;
   },
 ): AgentMapView {
   const now = o.now;
@@ -463,11 +477,11 @@ export function agentMapView(
 
   return {
     heading,
-    rows,
-    tasks,
+    rows: rows.map((row) => agentActions(row, o.actions)),
+    tasks: tasks.map((row) => agentActions(row, o.actions)),
     bar,
     totals,
-    ...(detail ? { detail: agentDetail(detail, now, o.cwd, o.hasSession ?? true) } : {}),
+    ...(detail ? { detail: agentActions(agentDetail(detail, now, o.cwd, o.hasSession ?? true), o.actions) } : {}),
   };
 }
 

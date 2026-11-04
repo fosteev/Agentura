@@ -415,6 +415,21 @@ describe('agentOpen / agentsViewPane', () => {
     expect(agentOpen(agent('r', { status: 'running' }), now).stopTaskId).toBe('t-r');
   });
 
+  it.each(['tree', 'lanes', 'cards'] as const)('suppresses unsupported actions in %s', (mode) => {
+    const state = hud([agent('a', { status: 'running' })]);
+    const view = agentsViewPane(state, mode, 'turn', {
+      working: true, waiting: true, now,
+      actions: { agentStop: false, agentTranscript: false },
+    });
+    expect(view.groups[0]!.agents[0]!.stopTaskId).toBeUndefined();
+    expect(view.open?.stopTaskId).toBeUndefined();
+    expect(view.open?.transcript ?? false).toBe(false);
+    const card = view.cardsOf(0)[0]!;
+    expect(card.line.stopTaskId).toBeUndefined();
+    expect(card.transcript).toBe(false);
+    expect(state.agents[0]!.status).toBe('running');
+  });
+
   it('модель панели: охват по умолчанию по виду, выбранный агент раскрыт, карточки без деталей', () => {
     expect([defaultScope('tree'), defaultScope('lanes'), defaultScope('cards')]).toEqual([
       'session',

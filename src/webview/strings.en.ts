@@ -817,6 +817,14 @@ export const en: Ui = {
     descGripTip: 'Drag to resize the field; double-click to reset',
   },
   compose: {
+    planning: 'planning',
+    approval: 'approval',
+    sandbox: 'sandbox',
+    sessionSettings: 'Current session only',
+    planningHint: 'Planning keeps permissions unchanged',
+    sandboxHint: 'No network; workspace-write excludes implicit temporary write roots',
+    fullAccessHint: 'Full filesystem and network access',
+
     mode: 'mode',
     model: 'model',
     effort: 'effort',

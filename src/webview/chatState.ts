@@ -4,6 +4,8 @@
  */
 import type {
   AgentEvent,
+  CodexPlanningMode,
+  SessionPolicy,
   DiffPreview,
   EffortLevel,
   PermissionAlways,
@@ -181,6 +183,8 @@ export interface ChatState {
   title?: string;
   model?: string;
   engineVersion?: string;
+  sessionPolicy?: SessionPolicy;
+  planningMode?: CodexPlanningMode;
   mode: PermissionMode;
   effort?: EffortLevel;
   /** Из `session.init` и `supportedCommands()`. */
@@ -506,6 +510,8 @@ function reduce(s: ChatState, e: AgentEvent, now: number): ChatState {
         sessionId: e.sessionId,
         model: e.model,
         engineVersion: e.engineVersion,
+        ...(e.sessionPolicy ? { sessionPolicy: e.sessionPolicy } : {}),
+        ...(e.planningMode ? { planningMode: e.planningMode } : {}),
         mode: e.permissionMode,
         ...(e.effort ? { effort: e.effort } : {}),
         skills: e.skills,
@@ -528,6 +534,8 @@ function reduce(s: ChatState, e: AgentEvent, now: number): ChatState {
       const note = mcpNote(s.mcp?.servers, e.servers);
       return note ? push(out, { kind: 'sys', text: [], at: clock(now), mcp: note }) : out;
     }
+    case 'session.settings':
+      return { ...s, planningMode: e.planningMode, ...(e.sessionPolicy ? { sessionPolicy: e.sessionPolicy } : {}) };
     case 'mode.changed': {
       // режим, выбранный из интерфейса, уже стоит в состоянии — строка только для смены движком
       if (e.mode === s.mode) return s;
@@ -707,7 +715,7 @@ function reduce(s: ChatState, e: AgentEvent, now: number): ChatState {
       // Codex не сообщает запись в кэш, а токены хода в восстановленной ленте не отдаёт совсем: нули там — «нет
       // данных», не «0 токенов» (roadmap 15, этап 6) — только ненулевое и без `w`
       const codex = s.engine === 'codex';
-      const parts = codex
+      const parts = e.usageKnown === false ? [] : codex
         ? [
             ...(u.input > 0 || u.output > 0 ? [`in ${formatInt(u.input)}`, `out ${formatInt(u.output)}`] : []),
             ...(imageTokens ? [ui.log.imagesTokens(compactTokens(imageTokens))] : []),

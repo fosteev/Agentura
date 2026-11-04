@@ -26,10 +26,12 @@ const METHODS = {
     'thread/list',
     'thread/name/set',
     'thread/compact/start',
+    'thread/settings/update',
     'turn/start',
     'turn/interrupt',
     'turn/steer',
     'model/list',
+    'skills/list',
     'mcpServerStatus/list',
     'config/mcpServer/reload',
   ],
@@ -38,9 +40,11 @@ const METHODS = {
     'item/fileChange/requestApproval',
     'item/permissions/requestApproval',
     'item/tool/requestUserInput',
+    'item/tool/call',
   ],
   'ServerNotification.ts': [
     'thread/started',
+    'thread/settings/updated',
     'thread/status/changed',
     'thread/name/updated',
     'thread/tokenUsage/updated',
@@ -50,6 +54,7 @@ const METHODS = {
     'item/started',
     'item/completed',
     'item/agentMessage/delta',
+    'item/plan/delta',
     'item/reasoning/summaryTextDelta',
     'item/reasoning/textDelta',
     'item/commandExecution/outputDelta',
@@ -62,11 +67,24 @@ const METHODS = {
 
 /** Файл (в корне или v2/) → поля, которые мы читаем или пишем. */
 const FIELDS = {
+  SkillsListParams: ['cwds', 'forceReload'],
+  SkillsListResponse: ['data'],
+  SkillMetadata: ['name', 'description', 'path', 'enabled'],
+  DynamicToolFunctionSpec: ['name', 'description', 'inputSchema'],
+  DynamicToolCallParams: ['threadId', 'turnId', 'callId', 'namespace', 'tool', 'arguments'],
+  DynamicToolCallResponse: ['contentItems', 'success'],
   InitializeParams: ['clientInfo', 'capabilities'],
   InitializeCapabilities: ['experimentalApi', 'requestAttestation'],
-  ThreadStartParams: ['cwd', 'model', 'approvalPolicy', 'sandbox', 'ephemeral'],
+  ThreadStartParams: ['cwd', 'model', 'approvalPolicy', 'sandbox', 'ephemeral', 'dynamicTools'],
   ThreadResumeParams: ['threadId', 'excludeTurns'],
   ThreadStartResponse: ['thread', 'model', 'approvalPolicy', 'sandbox', 'reasoningEffort'],
+  ThreadResumeResponse: ['collaborationMode'],
+  ThreadSettingsUpdateParams: ['threadId', 'collaborationMode', 'approvalPolicy', 'sandboxPolicy'],
+  ThreadSettingsUpdatedNotification: ['threadId', 'threadSettings'],
+  ThreadSettings: ['collaborationMode', 'approvalPolicy', 'sandboxPolicy', 'model', 'effort'],
+  CollaborationMode: ['mode', 'settings'],
+  Settings: ['model', 'reasoning_effort', 'developer_instructions'],
+  SandboxPolicy: ['writableRoots', 'networkAccess', 'excludeTmpdirEnvVar', 'excludeSlashTmp'],
   ThreadReadParams: ['threadId', 'includeTurns'],
   ThreadListParams: ['cursor', 'limit', 'sortKey', 'cwd', 'archived', 'sourceKinds', 'searchTerm'],
   ThreadListResponse: ['data', 'nextCursor'],
@@ -74,6 +92,7 @@ const FIELDS = {
   Thread: ['id', 'preview', 'createdAt', 'updatedAt', 'status', 'path', 'cwd', 'name', 'turns'],
   Turn: ['id', 'items', 'status', 'error', 'startedAt', 'completedAt'],
   TurnStartParams: [
+    'collaborationMode',
     'threadId',
     'input',
     'cwd',
@@ -144,6 +163,8 @@ const LITERALS = {
   TurnStatus: ['completed', 'interrupted', 'failed', 'inProgress'],
   AskForApproval: ['untrusted', 'on-request', 'never'],
   SandboxMode: ['read-only', 'workspace-write', 'danger-full-access'],
+  SandboxPolicy: ['readOnly', 'workspaceWrite', 'dangerFullAccess', 'externalSandbox'],
+  ModeKind: ['default', 'plan'],
   ThreadItem: [
     'userMessage',
     'agentMessage',
@@ -175,7 +196,7 @@ const out = mkdtempSync(join(tmpdir(), 'codex-proto-'));
 const problems = [];
 try {
   const version = execFileSync(codex, ['--version'], { encoding: 'utf8' }).trim();
-  execFileSync(codex, ['app-server', 'generate-ts', '--out', out], { stdio: 'ignore' });
+  execFileSync(codex, ['app-server', 'generate-ts', '--experimental', '--out', out], { stdio: 'ignore' });
   console.log(keep ? `${version}; схема в ${out}` : version);
   const read = (name) => {
     for (const p of [join(out, name), join(out, 'v2', name)])

@@ -59,7 +59,7 @@ function setup(opts: { kind?: 'own' | 'jiraffe'; writes?: boolean; settings?: Ag
 
 describe('AgentJiraTools.spec', () => {
   it('чат в задаче, источник пишет — ключ задачи, имя инстанса и включённые инструменты', () => {
-    expect(setup().tools.spec()).toEqual({ issue: 'NEWMFC-1482', instance: 'Jira DC', tools: ['comment', 'transition', 'worklog'] });
+    expect(setup().tools.spec()).toEqual({ issue: 'NEWMFC-1482', instance: 'Jira DC', instanceId: 'inst', tools: ['comment', 'transition', 'worklog'] });
     expect(setup({ settings: { comment: true, transition: false, worklog: true } }).tools.spec()?.tools).toEqual(['comment', 'worklog']);
   });
 

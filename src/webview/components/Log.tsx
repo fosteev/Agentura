@@ -25,7 +25,7 @@ import { agentGroupView, feedItems, type FeedItem } from '../agentsView';
 import { feedTurns, foldSummary, stepRows, type FoldSummary, type Turn } from '../turnView';
 import { initialHud, type HudState } from '../hudState';
 import { AgentGroup } from './AgentGroup';
-import { chat, mcpFeedLabels, mcpFeedStatus, provider, skillFiles, taskState } from '../store';
+import { features, chat, mcpFeedLabels, mcpFeedStatus, provider, skillFiles, taskState } from '../store';
 import { send } from '../vscode';
 import { canOpenSkill, noteVisible, serverByPrefix, type McpNote } from '../mcpFeed';
 
@@ -606,7 +606,7 @@ export function Log({
         return (
           <AgentGroup
             key={it.id}
-            g={agentGroupView(it.rows, hud ?? initialHud(), now, cwd)}
+            g={agentGroupView(it.rows, hud ?? initialHud(), now, cwd, features.value)}
             onStop={(id) => onStopAgent?.(id)}
             onOpen={(id) => onOpenAgent?.(id)}
           />
@@ -748,7 +748,7 @@ function stillRunning(b: Turn, hud: HudState | undefined, now: number, cwd: stri
       p.items.some((it) =>
         it.kind === 'tool'
           ? it.state === 'run'
-          : it.kind === 'agents' && agentGroupView(it.rows, hud ?? initialHud(), now, cwd).live,
+          : it.kind === 'agents' && agentGroupView(it.rows, hud ?? initialHud(), now, cwd, features.value).live,
       ),
   );
 }

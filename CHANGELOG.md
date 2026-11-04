@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.20.0 — 2026-11-04
+
+### Added
+
+- **Native Codex planning.** Separate `default` / `plan` controls, `/plan` and Shift-Tab; plans stream into the feed.
+  Continue by selecting `default` and sending an instruction. Planning never changes permissions; Claude-style plan
+  approval cards remain Claude-only.
+- **Independent Codex session permissions.** Approval policy and sandbox can be changed while the thread is idle,
+  without pending requests. Settings apply to the current session and do not rewrite `~/.codex/config.toml`.
+  Full access requires an explicit choice and `agentura.allowBypassPermissions`.
+- **Manual Codex `/compact`.** Native compaction handles queued messages and Stop independently of Claude's
+  auto-compact thresholds.
+- **Native Codex skills.** The CLI supplies the list; explicit selection and opening SKILL.md use its exact path,
+  including when skills share a name.
+- **Jira host tools for new Codex chats.** Comment, transition and worklog tools keep Agentura's approval rules.
+  Resumed chats and changed issue bindings or tool settings require a new chat for Jira tools.
+- **Browser integration toggle.** The Integrations settings page can enable Playwright MCP to control Chrome through
+  the Playwright MCP Bridge extension. Claude applies changes live; Codex applies them to a new chat.
+
+### Fixed
+
+- **Unsupported Codex controls are hidden.** Subagent status and summaries remain available; individual Stop and
+  transcript actions are hidden. MCP keeps reload-all without unsupported per-server reconnect or toggle controls.
+- **Codex usage stays honest.** Live input/output/cache-read counts appear without a USD cost. Restored per-turn
+  usage stays unknown; cache TTL and Claude auto-compact thresholds are not invented. Sidebar subscription limits remain.
+
 ## 0.19.3 — 2026-10-29
 
 ### Fixed

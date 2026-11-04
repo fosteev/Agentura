@@ -116,3 +116,12 @@ describe('собственные команды по возможностям д
     expect(names).toEqual(['clear', 'status']);
   });
 });
+
+
+it('keeps native skill paths distinct even when names collide with commands', () => {
+  const items = buildSlashItems([
+    { name: 'plan', description: 'one', skillPath: '/one/SKILL.md' },
+    { name: 'plan', description: 'two', skillPath: '/two/SKILL.md' },
+  ], [], [], {});
+  expect(items.filter((i) => i.skillPath).map((i) => i.skillPath)).toEqual(['/one/SKILL.md', '/two/SKILL.md']);
+});

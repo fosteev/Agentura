@@ -11,6 +11,7 @@ import { Composer } from './components/Composer';
 import {
   addFiles,
   capabilities,
+  codexSettingsPending,
   chat,
   composerLayout,
   dispatchEvent,
@@ -75,6 +76,7 @@ const key = (el: HTMLElement, k: string, init: KeyboardEventInit = {}) =>
 beforeEach(() => {
   document.body.innerHTML = '';
   posted.length = 0;
+  codexSettingsPending.value = false;
   vi.spyOn(vscode, 'send').mockImplementation((m) => void posted.push(m));
   chat.value = { ...initialState(), project: 'p', cwd: '/p' };
   composerLayout.value = 'classic';
@@ -88,6 +90,15 @@ beforeEach(() => {
 });
 
 describe('chat.info: движок и флаги', () => {
+  it('Codex has separate native planning, approval and sandbox controls', () => {
+    info('codex');
+    chat.value = { ...chat.value, sessionPolicy: { approval: 'on-request', sandbox: 'readOnly' } };
+    const host = mount();
+    expect(host.querySelectorAll('[data-native]')).toHaveLength(3);
+    expect(host.querySelector('[data-native="approval"]')?.textContent).toContain('on-request');
+    expect(host.querySelector('[data-native="sandbox"]')?.textContent).toContain('readOnly');
+  });
+
   it('нет полей (старое сообщение) — Claude со всеми возможностями', () => {
     provider.value = 'codex';
     features.value = providerFeatures('codex');
@@ -102,7 +113,7 @@ describe('chat.info: движок и флаги', () => {
     expect(provider.value).toBe('codex');
     expect(features.value).toMatchObject({
       modes: false,
-      compact: false,
+      compact: true,
       context: true,
       cost: false,
       subagents: true,
@@ -176,7 +187,7 @@ describe.each<ComposerLayout>(['classic', 'card', 'gauges', 'statusline', 'minim
       composerLayout.value = layout;
     });
 
-    it('нет режимов, кэша и лимитов; контекст есть без «сжать»; движок назван codex', async () => {
+    it('нет режимов, кэша и лимитов; контекст и ручное сжатие доступны; движок назван codex', async () => {
       info('codex');
       handleHostMessage({
         type: 'agent.event',
@@ -189,10 +200,12 @@ describe.each<ComposerLayout>(['classic', 'card', 'gauges', 'statusline', 'minim
       } as typeof limits.value;
       const host = mount();
       await flush();
-      expect(host.querySelector(MODE_SEL)).toBeNull();
+      expect(host.querySelector('[data-native="planning"]')).not.toBeNull();
+      expect(host.querySelector('[data-native="approval"]')?.hasAttribute('disabled')).toBe(true);
       expect(host.querySelector(METER_SEL)).toBeNull();
       expect(host.querySelector(CTX_SEL), layout).not.toBeNull();
-      expect(host.querySelector('.cn button, .cs button')).toBeNull();
+      if (['classic', 'card', 'gauges', 'statusline'].includes(layout))
+        expect(host.querySelector('.cn button, .cs button')).not.toBeNull();
       // в `minimal` имя агента на кнопке не показывается (только «модель · effort»)
       if (layout !== 'minimal') {
         expect(host.textContent).not.toContain('claude');
@@ -244,7 +257,7 @@ describe('Composer: контекст Codex без порогов', () => {
 });
 
 describe('Composer: Codex', () => {
-  it('меню «/»: только /clear и /status, без /plan и /compact', async () => {
+  it('Codex slash menu includes compact and native plan', async () => {
     info('codex');
     const host = mount();
     const ed = type(host, '/');
@@ -252,8 +265,8 @@ describe('Composer: Codex', () => {
     const items = [...host.querySelectorAll('.menu .it')].map((i) => i.textContent ?? '');
     expect(items.some((t) => t.startsWith('/clear'))).toBe(true);
     expect(items.some((t) => t.startsWith('/status'))).toBe(true);
-    expect(items.some((t) => t.startsWith('/plan'))).toBe(false);
-    expect(items.some((t) => t.startsWith('/compact'))).toBe(false);
+    expect(items.some((t) => t.startsWith('/plan'))).toBe(true);
+    expect(items.some((t) => t.startsWith('/compact'))).toBe(true);
     ed.blur();
   });
 
@@ -266,12 +279,24 @@ describe('Composer: Codex', () => {
     expect(items.some((t) => t.startsWith('/compact'))).toBe(true);
   });
 
-  it('/compact вручную: движку не уходит, в ленте — «недоступна для этого агента»', async () => {
+  it('offers Stop while manual compaction runs outside a user turn', async () => {
+    info('codex');
+    handleHostMessage({ type: 'agent.event', sessionId: 's', event: { type: 'compaction.start' } });
+    const host = mount();
+    await flush();
+    const stop = host.querySelector<HTMLButtonElement>('.stopb');
+    expect(stop).not.toBeNull();
+    stop!.click();
+    expect(posted).toContainEqual(expect.objectContaining({ type: 'interrupt' }));
+  });
+
+  it('Codex manual compact sends compact request', async () => {
     info('codex');
     const host = mount();
     const ed = type(host, '/compact');
     await flush();
     key(ed, 'Escape');
+    await flush();
     key(ed, 'Enter');
     await flush();
     expect(
@@ -279,8 +304,7 @@ describe('Composer: Codex', () => {
         (m) =>
           (m as { type: string }).type === 'compact' || (m as { type: string }).type === 'send',
       ),
-    ).toEqual([]);
-    expect(JSON.stringify(chat.value.rows)).toContain('/compact');
+    ).toEqual([expect.objectContaining({ type: 'compact' })]);
   });
 
   it('Shift+Tab режим не переключает', async () => {
@@ -515,4 +539,73 @@ describe('Antigravity: карточка отказа', () => {
     await flush();
     expect(buttons(host)).toHaveLength(0);
   });
+});
+
+it('Codex explicit native skill wins over /plan command and carries exact path', async () => {
+  info('codex');
+  capabilities.value = { models: [], commands: [
+    { name: 'plan', description: 'one', skillPath: '/one/SKILL.md' },
+    { name: 'plan', description: 'two', skillPath: '/two/SKILL.md' },
+  ] };
+  const host = mount();
+  const ed = type(host, '/plan');
+  await flush();
+  const items = [...host.querySelectorAll<HTMLElement>('.menu .it')].filter((el) => el.textContent?.includes('SKILL.md'));
+  expect(items).toHaveLength(2);
+  items[1]!.click();
+  await flush();
+  key(ed, 'Enter');
+  await flush();
+  expect(posted).toContainEqual(expect.objectContaining({ type: 'send', skill: { name: 'plan', path: '/two/SKILL.md' } }));
+  expect(posted).not.toContainEqual(expect.objectContaining({ type: 'mode.set' }));
+});
+
+it('Codex native menus send one axis and wait for confirmed state; preserve full policy display', async () => {
+  info('codex');
+  chat.value = { ...chat.value, sessionId: 's', sessionPolicy: { approval: 'on-request', sandbox: 'workspaceWrite',
+    approvalPolicy: 'on-request', sandboxPolicy: { type: 'workspaceWrite', writableRoots: ['/exact'], networkAccess: true, excludeTmpdirEnvVar: true, excludeSlashTmp: false } } };
+  const host = mount();
+  host.querySelector<HTMLButtonElement>('[data-native="sandbox"]')!.click();
+  await flush();
+  expect(host.querySelector('.menu')?.textContent).toContain('/exact');
+  expect(host.querySelector('.menu')?.textContent).toContain('networkAccess');
+  expect(host.querySelector('.menu')?.textContent).toContain('excludeSlashTmp');
+  const full = [...host.querySelectorAll<HTMLButtonElement>('.menu .it')].find((el) => el.textContent?.startsWith('dangerFullAccess'))!;
+  expect(full.getAttribute('aria-disabled')).toBe('true');
+  host.querySelector<HTMLButtonElement>('[data-native="planning"]')!.click();
+  await flush();
+  const plan = [...host.querySelectorAll<HTMLButtonElement>('.menu .it')].find((el) => el.textContent?.startsWith('plan'))!;
+  plan.click();
+  await flush();
+  expect(posted).toContainEqual({ type: 'codex.settings', sessionId: 's', change: { kind: 'planning', value: 'plan' } });
+  expect(chat.value.planningMode).toBeUndefined();
+  expect(codexSettingsPending.value).toBe(true);
+  expect(host.querySelector<HTMLButtonElement>('[data-native="planning"]')!.disabled).toBe(true);
+  handleHostMessage({ type: 'agent.event', sessionId: 's', event: { type: 'session.settings', planningMode: 'plan', sessionPolicy: chat.value.sessionPolicy } });
+  handleHostMessage({ type: 'codex.settingsResult' });
+  await flush();
+  expect(chat.value.planningMode).toBe('plan');
+  expect(chat.value.sessionPolicy?.sandboxPolicy).toMatchObject({ writableRoots: ['/exact'], networkAccess: true });
+  expect(posted).not.toContainEqual(expect.objectContaining({ type: 'mode.set' }));
+});
+
+it('Codex Shift-Tab and /plan select native planning; errors leave confirmed mode unchanged', async () => {
+  info('codex');
+  const host = mount();
+  const ed = host.querySelector<HTMLElement>('.typed')!;
+  key(ed, 'Tab', { shiftKey: true });
+  await flush();
+  expect(posted).toContainEqual({ type: 'codex.settings', sessionId: '', change: { kind: 'planning', value: 'plan' } });
+  handleHostMessage({ type: 'codex.settingsResult' });
+  expect(chat.value.planningMode).toBeUndefined();
+  posted.length = 0;
+  type(host, '/plan');
+  await flush();
+  key(ed, 'Escape');
+  await flush();
+  key(ed, 'Enter');
+  await flush();
+  expect(posted).toContainEqual({ type: 'codex.settings', sessionId: '', change: { kind: 'planning', value: 'plan' } });
+  expect(chat.value.mode).toBe('default');
+  expect(chat.value.rows.some((r) => r.kind === 'plan')).toBe(false);
 });

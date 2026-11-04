@@ -42,6 +42,7 @@ describe('buildCodexHistory', () => {
       model: 'gpt-x',
       text: 'здравствуйте',
       usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      usageKnown: false,
     });
     expect(h).toMatchObject({ turns: 1, skippedTurns: 0, model: 'gpt-x' });
   });
@@ -179,4 +180,12 @@ describe('buildCodexHistory', () => {
   it('пустой тред — пустая история', () => {
     expect(buildCodexHistory(thread([], { model: null }))).toEqual({ events: [], turns: 0, skippedTurns: 0 });
   });
+});
+
+
+it('restores native plan as text without synthetic approval', () => {
+  const history = buildCodexHistory(thread([turn('p', [user('plan'), { type: 'plan', id: 'plan', text: '1. Inspect\n2. Implement' }])]));
+  expect(history.events.filter((e) => e.type === 'text.delta')).toEqual([{ type: 'text.delta', messageId: 'plan', text: '1. Inspect\n2. Implement' }]);
+  expect(history.events.some((e) => e.type === 'plan.request')).toBe(false);
+  expect(history.events.at(-1)).toMatchObject({ type: 'turn.result', text: '1. Inspect\n2. Implement' });
 });

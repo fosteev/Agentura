@@ -127,6 +127,17 @@ describe('вкладка графа', () => {
     expect(state.stored).toMatchObject({ sessionId: 'sess', graph: { selected: subs[1]!.agentId } });
   });
 
+  it('Codex snapshot hides stop and transcript while retaining agents', async () => {
+    await play();
+    const snap = graphSnapshot();
+    handleGraphMessage({ ...snap, graph: { ...snap.graph, actions: { agentStop: false, agentTranscript: false } } });
+    const host = mountGraph();
+    await flush();
+    expect(qa(host, '.gmap .n[data-agent]').length).toBeGreaterThan(0);
+    expect(qa(host, '.gmap button.stop')).toHaveLength(0);
+    expect(qa(host, '.gmap .gd .ac button')).toHaveLength(0);
+  });
+
   it('agents.focus выбирает агента (и до снимка, и после); смена сессии сбрасывает выбор', async () => {
     const { subs } = await play();
     handleGraphMessage({ type: 'agents.focus', agentId: subs[2]!.agentId });

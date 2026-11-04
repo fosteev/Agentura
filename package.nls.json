@@ -22,7 +22,7 @@
   "command.showLogs.title": "Show Log",
   "command.debug.showState.title": "Show State (debug)",
   "config.contextThresholds.description": "Context gauge thresholds in tokens: the yellow and orange zones.",
-  "config.allowBypassPermissions.description": "Allow the bypassPermissions mode (run tools without confirmations).",
+  "config.allowBypassPermissions.description": "Allow bypassPermissions for Claude/Antigravity and explicit full-access sandbox selection for Codex.",
   "config.defaultPermissionMode.description": "Permission mode a new session starts with. In an open session the mode is changed in the menu under the input field.",
   "config.defaultPermissionMode.enum.manual": "Ask for permission on edits and commands",
   "config.defaultPermissionMode.enum.acceptEdits": "Accept file edits without asking",

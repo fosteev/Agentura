@@ -40,6 +40,7 @@ export interface SlashItem {
   description: string;
   group: 'command' | 'skill';
   own: boolean;
+  skillPath?: string;
 }
 
 /** Собственные команды расширения: обрабатываются в webview/хосте, не уходят движку. */
@@ -50,10 +51,10 @@ export const OWN_COMMANDS = ['plan', 'compact', 'clear', 'status', 'rc', 'remote
  * `/rc` и `/remote-control` — Remote Control (`remote`, только Claude), `/new` и `/fork` — новый чат по задаче
  * (roadmap 26, `task`: только во вкладке чата по задаче, движок любой).
  */
-export function ownCommands(f: { modes: boolean; compact: boolean; remote?: boolean; task?: boolean }): string[] {
+export function ownCommands(f: { modes: boolean; nativeSettings?: boolean; compact: boolean; remote?: boolean; task?: boolean }): string[] {
   return OWN_COMMANDS.filter((n) =>
     n === 'plan'
-      ? f.modes
+      ? f.modes || !!f.nativeSettings
       : n === 'compact'
         ? f.compact
         : n === 'rc' || n === 'remote-control'
@@ -83,7 +84,10 @@ export function buildSlashItems(
     seen.add(name);
     out.push({ name, description: ownDescriptions[name] ?? '', group: 'command', own: true });
   }
-  const names = [...engine.map((c) => c.name), ...slashCommands, ...skills];
+  for (const skill of engine.filter((c) => c.skillPath)) {
+    out.push({ name: skill.name, description: `${skill.description} (${skill.skillPath})`, group: 'skill', own: false, skillPath: skill.skillPath });
+  }
+  const names = [...engine.filter((c) => !c.skillPath).map((c) => c.name), ...slashCommands, ...skills];
   for (const name of names) {
     if (seen.has(name)) continue;
     seen.add(name);

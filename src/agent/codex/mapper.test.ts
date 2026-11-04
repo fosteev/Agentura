@@ -46,6 +46,7 @@ describe('CodexEventMapper: живая запись хода (fixtures/codex/ok-
       sessionId: fixture.threadStart.thread.id,
       model: fixture.threadStart.model,
       permissionMode: 'default',
+      sessionPolicy: { approval: fixture.threadStart.approvalPolicy, sandbox: fixture.threadStart.sandbox.type, approvalPolicy: fixture.threadStart.approvalPolicy, sandboxPolicy: fixture.threadStart.sandbox },
       engineVersion: fixture.cliVersion,
     });
     expect(init.cwd).toBe('/tmp/agentura-codex');

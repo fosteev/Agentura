@@ -826,6 +826,14 @@ const ru = {
     descGripTip: 'Потяните, чтобы изменить высоту поля; двойной клик — по умолчанию',
   },
   compose: {
+    planning: 'планирование',
+    approval: 'подтверждения',
+    sandbox: 'sandbox',
+    sessionSettings: 'Только текущая сессия',
+    planningHint: 'Планирование не меняет разрешения',
+    sandboxHint: 'Без сети; workspace-write исключает неявные временные корни записи',
+    fullAccessHint: 'Полный доступ к файлам и сети',
+
     mode: 'режим',
     model: 'модель',
     effort: 'effort',

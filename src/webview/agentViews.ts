@@ -7,6 +7,8 @@
 import { clock } from './chatState';
 import {
   AGENT_TOOLS,
+  agentActions,
+  type AgentActions,
   agentDetail,
   backgroundTasks,
   currentCall,
@@ -653,9 +655,13 @@ export function agentsViewPane(
     now: number;
     cwd?: string;
     hasSession?: boolean;
+    actions?: AgentActions;
   },
 ): ViewsPane {
   const groups = agentTurns(h, scope, { now: o.now, ...(o.cwd ? { cwd: o.cwd } : {}) });
+  for (const group of groups) {
+    for (const row of [...group.agents, ...group.tasks]) agentActions(row, o.actions);
+  }
   const selectedId = pickSelected(groups, o.selected);
   const node = selectedId
     ? groups.flatMap((g) => g.nodes).find((a) => a.agentId === selectedId)
@@ -669,11 +675,14 @@ export function agentsViewPane(
     groups,
     ...(selectedId ? { selectedId } : {}),
     ...(node && mode !== 'cards'
-      ? { open: agentOpen(node, o.now, o.cwd, o.hasSession ?? true) }
+      ? { open: agentActions(agentOpen(node, o.now, o.cwd, o.hasSession ?? true), o.actions) }
       : {}),
     laneOf: lazy((i) => (groups[i] ? laneView(h, groups[i], o.now) : undefined)),
     cardsOf: lazy((i) =>
-      groups[i] ? cardList(groups[i], o.now, o.cwd, o.hasSession ?? true) : [],
+      groups[i] ? cardList(groups[i], o.now, o.cwd, o.hasSession ?? true).map((card) => {
+        agentActions(card.line, o.actions);
+        return agentActions(card, o.actions);
+      }) : [],
     ),
     tokens: compactTokens(groups.reduce((n, g) => n + g.tokens, 0)),
     statusLine: c
@@ -716,9 +725,10 @@ function graphAgent(a: AgentNode): GraphAgent {
  */
 export function agentGraphView(
   h: HudState,
-  o: { state: AgentGraphView['main']['state']; model?: string; title?: string; cwd?: string },
+  o: { state: AgentGraphView['main']['state']; model?: string; title?: string; cwd?: string; actions?: AgentActions },
 ): AgentGraphView {
   return {
+    ...(o.actions ? { actions: o.actions } : {}),
     ...(o.title ? { title: o.title } : {}),
     ...(o.cwd ? { cwd: o.cwd } : {}),
     main: {

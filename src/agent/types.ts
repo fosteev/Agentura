@@ -4,6 +4,20 @@
  * (`src/protocol.ts`, сообщение `agent.event`), поэтому здесь только сериализуемые данные.
  */
 
+/** Native Codex settings stay independent of Claude permission modes. */
+export type CodexPlanningMode = 'plan' | 'default';
+export type CodexSettingsChange =
+  | { kind: 'planning'; value: CodexPlanningMode }
+  | { kind: 'approval'; value: 'untrusted' | 'on-request' | 'never' }
+  | { kind: 'sandbox'; value: 'readOnly' | 'workspaceWrite' | 'dangerFullAccess' };
+export interface SessionPolicy {
+  approval: string;
+  sandbox: string;
+  /** Complete native values for display only; never round-trip through UI presets. */
+  approvalPolicy?: import('./codex/protocol').AskForApproval;
+  sandboxPolicy?: import('./codex/protocol').SandboxPolicy;
+}
+
 export type PermissionMode = 'default' | 'acceptEdits' | 'plan' | 'bypassPermissions';
 /** Внешний движок сессии. Во всех долговечных ссылках id хранится вместе с провайдером. */
 export type AgentProvider = 'claude' | 'codex' | 'antigravity';
@@ -171,6 +185,9 @@ export type AgentEvent =
       model: string;
       cwd: string;
       permissionMode: PermissionMode;
+      /** Native policy, independent of Claude permission modes. */
+      sessionPolicy?: SessionPolicy;
+      planningMode?: CodexPlanningMode;
       tools: string[];
       slashCommands: string[];
       skills: string[];
@@ -290,6 +307,8 @@ export type AgentEvent =
       apiDurationMs: number;
       numTurns: number;
       usage: TokenUsage;
+      /** False when restored history has no measured usage. */
+      usageKnown?: boolean;
       /** Стоимость хода: разность `total_cost_usd` соседних ходов. Нет — неизвестна база (resume). */
       costUsd?: number;
       totalCostUsd: number;
@@ -365,6 +384,7 @@ export type AgentEvent =
       resetsAt?: number;
     })
   | (Base & { type: 'mode.changed'; mode: PermissionMode })
+  | (Base & { type: 'session.settings'; planningMode: CodexPlanningMode; sessionPolicy?: SessionPolicy })
   /**
    * Remote Control (roadmap 17): состояние моста к claude.ai. `on` — сессия видна на claude.ai/code и в
    * приложении, `url` — её ссылка. `error` — причина: нет токена, OAuth отвергнут, сервер отказал, сеть,
@@ -420,7 +440,7 @@ export interface SessionOptions {
   title?: string;
   /** Разрешить `bypassPermissions` (настройка `agentura.allowBypassPermissions`). */
   allowBypassPermissions?: boolean;
-  /** Инструменты задачи Jira (roadmap 19, этап 8): подключает только Claude (MCP-сервер `agentura_jira`), остальные движки — нет. */
+  /** Jira хоста: Claude MCP или Codex dynamic tools нового треда. */
   taskTools?: TaskTools;
   /**
    * Следить за статусом MCP (roadmap 21, решение 12): включено хотя бы одно статусное отображение. Движок сам
@@ -437,6 +457,8 @@ export interface SessionOptions {
 
 /** Что агент может сделать в задаче чата сейчас: ключ задачи по умолчанию и включённые инструменты. */
 export interface TaskToolsSpec {
+  /** Stable instance identity; display names are not unique. */
+  instanceId?: string;
   /** Ключ задачи чата (`NEWMFC-1482`). */
   issue: string;
   /** Имя инстанса Jira — для описания сервера модели. */
@@ -498,6 +520,8 @@ export interface CommandOption {
   name: string;
   description: string;
   argumentHint?: string;
+  /** Exact engine-provided skill identity; names need not be unique. */
+  skillPath?: string;
 }
 
 /** Что движок умеет в этой сессии; доступно до первого сообщения. */
@@ -515,11 +539,12 @@ export interface AgentSession {
    * текстом (этап 4 roadmap 0.2); формат и размер проверяет вызывающий (`src/shared/images.ts`).
    * `files` — `document`-блоками после картинок (этап 8, проверка — `src/shared/files.ts`).
    */
-  send(text: string, images?: readonly PromptImage[], files?: readonly PromptFile[]): boolean;
+  send(text: string, images?: readonly PromptImage[], files?: readonly PromptFile[], skill?: { name: string; path: string }): boolean;
   respondPermission(toolUseId: string, decision: PermissionDecision, message?: string): boolean;
   answerQuestion(toolUseId: string, answers: Record<string, string>): boolean;
   decidePlan(toolUseId: string, decision: PlanDecision): boolean;
   setMode(mode: PermissionMode): Promise<void>;
+  setCodexSettings?(change: CodexSettingsChange): Promise<void>;
   setModel(model: string): Promise<void>;
   setEffort(effort: EffortLevel): Promise<void>;
   interrupt(): Promise<void>;

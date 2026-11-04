@@ -5,7 +5,7 @@
  */
 import type { AgentGraphView } from '../../shared/agentsGraph';
 import { GRAPH_SEGS } from '../../shared/agentsGraph';
-import { elapsed, isSubagent } from '../agentsView';
+import { agentActions, elapsed, isSubagent } from '../agentsView';
 import {
   agentOpen,
   agentTurns,
@@ -182,12 +182,12 @@ export function graphModel(
       time: formatDuration((g.live ? o.now : (g.endedAt ?? o.now)) - g.startedAt),
     },
     main,
-    nodes,
+    nodes: nodes.map((node) => agentActions(node, v.actions)),
     layout: {
       agents: g.agents.map((a) => ({ id: a.agentId, depth: a.depth, ...(a.parentId ? { parentId: a.parentId } : {}) })),
       tasks: g.taskNodes.map((t) => ({ id: t.agentId })),
     },
     ...(selectedId ? { selectedId } : {}),
-    ...(sel && isSubagent(sel) ? { detail: agentOpen(sel, o.now, cwd, o.hasSession, GRAPH_SEGS) } : {}),
+    ...(sel && isSubagent(sel) ? { detail: agentActions(agentOpen(sel, o.now, cwd, o.hasSession, GRAPH_SEGS), v.actions) } : {}),
   };
 }

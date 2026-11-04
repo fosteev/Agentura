@@ -4,6 +4,7 @@
  */
 import type {
   AgentEvent,
+  CodexSettingsChange,
   AgentProvider,
   CommandOption,
   EffortLevel,
@@ -133,6 +134,7 @@ export const AGENT_EVENT_TYPES = [
   'agent.end',
   'limit.update',
   'mode.changed',
+  'session.settings',
   'remote.state', // roadmap 17: мост Remote Control (connecting/on/off/error, ссылка claude.ai)
   'remote.prompt', // roadmap 17: промпт с claude.ai или телефона
   'mcp.status', // roadmap 21: MCP-серверы сессии, всегда полный список
@@ -164,6 +166,7 @@ export function isSettingsSection(v: unknown): v is SettingsSection {
  * текущую сессию вкладки (до первого `session.init` id ещё пуст).
  */
 export type ToWebview =
+  | { type: 'codex.settingsResult' }
   | { type: 'init'; surface: Surface; version: string }
   /**
    * Шрифты, размер ленты и интерфейса (`agentura.font.*`, `agentura.feed.fontSize`, `agentura.ui.fontSize`): всем поверхностям после `init` и при
@@ -380,6 +383,7 @@ export type FromWebview =
       attachments?: Attachment[];
       images?: PromptImage[];
       files?: PromptFile[];
+      skill?: { name: string; path: string };
     }
   | { type: 'files.find'; requestId: number; query: string }
   | { type: 'attach.pick' }
@@ -428,6 +432,7 @@ export type FromWebview =
       feedback?: string;
     }
   | { type: 'mode.set'; sessionId: string; mode: PermissionMode }
+  | { type: 'codex.settings'; sessionId: string; change: CodexSettingsChange }
   | { type: 'model.set'; sessionId: string; model: string }
   | { type: 'effort.set'; sessionId: string; effort: string }
   /** Roadmap 17: Remote Control вкладки — кнопка «rc», `/rc`, `/remote-control`. Только Claude. */
@@ -443,7 +448,7 @@ export type FromWebview =
   /** Roadmap 22: тумблер сервера (Claude, `features.mcpToggle`): выключение в проекте (папке чата), не в этом чате. */
   | { type: 'mcp.toggle'; name: string; enabled: boolean }
   /** Roadmap 21, решение 6: открыть SKILL.md скилла в редакторе; путь собирает хост, имя — `SKILL_NAME_RE`. */
-  | { type: 'skill.open'; name: string }
+  | { type: 'skill.open'; name: string; path?: string }
   | { type: 'compact'; sessionId: string }
   | { type: 'agent.stop'; sessionId: string; taskId: string }
   /**
@@ -632,6 +637,7 @@ const FROM_WEBVIEW_TYPES: Record<FromWebview['type'], true> = {
   'question.answer': true,
   'plan.decide': true,
   'mode.set': true,
+  'codex.settings': true,
   'model.set': true,
   'effort.set': true,
   'remote.set': true,
@@ -712,6 +718,7 @@ const gitFiles = (m: Record<string, unknown>): boolean => str(m.root) && strings
  * проверяет по полям обработчик.
  */
 const FIELD_CHECKS: Partial<Record<FromWebview['type'], (m: Record<string, unknown>) => boolean>> = {
+  'codex.settings': (m) => str(m.sessionId) && isCodexSettingsChange(m.change),
   'engine.set': (m) => m.provider === 'claude' || m.provider === 'codex' || m.provider === 'antigravity',
   'engine.login': (m) => m.engine === 'codex' || m.engine === 'antigravity',
   'agy.retry': (m) => m.mode === 'acceptEdits' || m.mode === 'bypassPermissions',
@@ -783,6 +790,15 @@ const FIELD_CHECKS: Partial<Record<FromWebview['type'], (m: Record<string, unkno
     (m.attachmentId === undefined || (str(m.attachmentId) && m.attachmentId.length <= 200)) &&
     (m.web === undefined || typeof m.web === 'boolean'),
 };
+
+export function isCodexSettingsChange(value: unknown): value is CodexSettingsChange {
+  if (!value || typeof value !== 'object') return false;
+  const c = value as Record<string, unknown>;
+  if (Object.keys(c).some((k) => k !== 'kind' && k !== 'value')) return false;
+  return c.kind === 'planning' ? c.value === 'plan' || c.value === 'default'
+    : c.kind === 'approval' ? c.value === 'untrusted' || c.value === 'on-request' || c.value === 'never'
+    : c.kind === 'sandbox' && (c.value === 'readOnly' || c.value === 'workspaceWrite' || c.value === 'dangerFullAccess');
+}
 
 /** Проверка входящего от webview сообщения: снаружи приходит `unknown`. */
 export function isFromWebview(value: unknown): value is FromWebview {

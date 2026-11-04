@@ -2,11 +2,15 @@ import { spawn } from 'node:child_process';
 import { realpathSync } from 'node:fs';
 import type {
   AccountInfo,
+  CodexSettingsChange,
+  CodexPlanningMode,
+  SessionPolicy,
   AgentAdapter,
   AgentEvent,
   AgentSession,
   EffortLevel,
   ModelOption,
+  CommandOption,
   PromptFile,
   PermissionDecision,
   PromptImage,
@@ -23,11 +27,13 @@ import type { LogFn } from '../claude/adapter';
 import { CodexRpcClient, type RpcId, type RpcProcess } from './client';
 import { CodexEventMapper, type NotedPrompt } from './mapper';
 import { CodexApprovals } from './approvals';
+import { CodexJiraTools } from './jiraTools';
 import { buildCodexHistory } from './history';
 import type {
   AskForApproval,
   CodexRequestMethod,
   CodexRequests,
+  CodexNotifications,
   ListMcpServerStatusResponse,
   Model,
   SandboxMode,
@@ -243,7 +249,7 @@ export async function queryAppServer<T>(
   try {
     await client.request('initialize', {
       clientInfo: { name: 'agentura', title: 'Agentura', version: config.clientVersion ?? '0.0.0' },
-      capabilities: null,
+      capabilities: { experimentalApi: true, requestAttestation: false },
     });
     client.notify('initialized');
     return await fn(rpc);
@@ -294,20 +300,27 @@ class CodexSession implements AgentSession {
   readonly events: EventHub<AgentEvent>;
   private readonly mapper = new CodexEventMapper();
   private readonly approvals: CodexApprovals;
+  private readonly jira: CodexJiraTools;
   private readonly log: LogFn;
   private readonly proc: CodexProcess;
   private readonly client: CodexRpcClient;
   private readonly ready: Promise<void>;
-  private readonly queue: { prompt: NotedPrompt; text: string }[] = [];
+  private readonly queue: { prompt: NotedPrompt; text: string; skill?: { name: string; path: string } }[] = [];
   private readonly cwd: string;
   private readonly resumedId: string | undefined;
   private readonly graceMs: number;
+  private readonly allowBypass: boolean;
   private model: string | undefined;
-  private effort: EffortLevel | undefined;
+  private effort: string | undefined;
+  private planningMode: CodexPlanningMode | undefined;
+  private sessionPolicy: SessionPolicy | undefined;
+  private settingsBarrier: Promise<void> | undefined;
+  private settingsRevision = 0;
   private closed = false;
   private procExited = false;
   private threadReady = false;
   private draining = false;
+  private compacting: { done: Deferred; timer: NodeJS.Timeout; turnId?: string } | undefined;
   /** Растёт на каждый `interrupt()`: сообщения, взятые из очереди до него, до `turn/start` не доходят. */
   private generation = 0;
   /** Ход идёт: от отправки `turn/start` до `turn/completed` (или смерти процесса). */
@@ -326,6 +339,7 @@ class CodexSession implements AgentSession {
   ) {
     this.log = config.log ?? (() => {});
     this.cwd = options.cwd;
+    this.allowBypass = options.allowBypassPermissions === true;
     this.resumedId = resume;
     this.model = options.model;
     this.effort = options.effort;
@@ -349,12 +363,19 @@ class CodexSession implements AgentSession {
       log: this.log,
       changesOf: (itemId) => this.mapper.changesOf(itemId),
     }, `codex-${++approvalScopes}:`);
+    this.jira = new CodexJiraTools(options.taskTools, (event) => this.emit(event), `codex-jira-${approvalScopes}:`);
     this.client = new CodexRpcClient(this.proc, {
       timeoutMs: config.timeoutMs ?? 15_000,
       maxLineBytes: MAX_LINE_BYTES,
       onNotification: (method, params) => this.onNotification(method, params),
       // approval, вопросы и неизвестные запросы — брокер: каждый получает ответ (в том числе отказ)
-      onServerRequest: (id, method, params) => this.approvals.handle(id, method, params),
+      onServerRequest: (id, method, params) => {
+        if (method === 'item/tool/call') {
+          void this.jira.call(params, this.id, this.turn?.id).then((result) => {
+            if (!this.closed) this.client.respond(id, result);
+          });
+        } else this.approvals.handle(id, method, params);
+      },
       onStderr: (line) => this.log('debug', `codex: ${line}`),
       onClose: (error) => this.onClientClose(error.message),
     });
@@ -368,11 +389,11 @@ class CodexSession implements AgentSession {
     return this.mapper.threadId ?? this.resumedId ?? '';
   }
 
-  send(text: string, images?: readonly PromptImage[], files?: readonly PromptFile[]): boolean {
+  send(text: string, images?: readonly PromptImage[], files?: readonly PromptFile[], skill?: { name: string; path: string }): boolean {
     if (this.closed) return false;
     // У Codex нет document-блоков: файлы и pdf не отправляем, а не подменяем чем-то похожим.
     if (files?.length) this.log('warn', `codex: ${files.length} file attachment(s) are not supported and were dropped`);
-    this.queue.push({ text, prompt: { text, ...(images?.length ? { images } : {}) } });
+    this.queue.push({ text, skill, prompt: { text, ...(images?.length ? { images } : {}) } });
     this.drain().catch((error) => this.log('error', `codex queue failed: ${String(error)}`));
     return true;
   }
@@ -383,19 +404,95 @@ class CodexSession implements AgentSession {
    */
   respondPermission(toolUseId: string, decision: PermissionDecision): boolean {
     if (this.closed) return false;
-    return this.approvals.respondPermission(toolUseId, decision);
+    return this.jira.respond(toolUseId, decision) || this.approvals.respondPermission(toolUseId, decision);
   }
   answerQuestion(toolUseId: string, answers: Record<string, string>): boolean {
     if (this.closed) return false;
     return this.approvals.answerQuestion(toolUseId, answers);
   }
-  // Режимы разрешений, план, компакция, задачи — Claude-специфика: no-op (UI прячет флагами, этап 3).
+  // Native plans are text; Claude plan approvals and task control are unsupported.
   decidePlan(): boolean {
     return false;
   }
   async setMode(): Promise<void> {}
+
+  async setCodexSettings(change: CodexSettingsChange): Promise<void> {
+    if (this.closed || this.turn || this.draining || this.compacting || this.settingsBarrier || this.approvals.size || this.jira.size)
+      throw new Error('Codex settings require an idle session without pending requests.');
+    if (change.kind !== 'planning' && !this.threadReady)
+      throw new Error('Codex permissions require an existing thread.');
+    if (change.kind === 'sandbox' && change.value === 'dangerFullAccess' && !this.allowBypass)
+      throw new Error('Full access is disabled by agentura.allowBypassPermissions.');
+    const update = async () => {
+      await this.ready;
+      if (this.closed) throw new Error('Codex session is closed.');
+      const params: CodexRequests['thread/settings/update'][0] = { threadId: this.id };
+      if (change.kind === 'planning') {
+        if (change.value === this.planningMode) return;
+        if (this.threadReady) params.collaborationMode = this.collaboration(change.value);
+      } else if (change.kind === 'approval') {
+        if (change.value === this.sessionPolicy?.approvalPolicy) return;
+        params.approvalPolicy = change.value;
+      } else {
+        // Selecting the existing type preserves its roots/network/tmp restrictions exactly.
+        if (change.value === this.sessionPolicy?.sandbox) return;
+        params.sandboxPolicy = change.value === 'workspaceWrite'
+          ? { type: 'workspaceWrite', writableRoots: [], networkAccess: false, excludeTmpdirEnvVar: true, excludeSlashTmp: true }
+          : change.value === 'readOnly' ? { type: 'readOnly', networkAccess: false } : { type: 'dangerFullAccess' };
+      }
+      const revision = this.settingsRevision;
+      if (this.threadReady) await this.rpc('thread/settings/update', params);
+      // Notifications report effective values and take precedence over requested presets.
+      if (revision !== this.settingsRevision) return;
+      if (this.closed) throw new Error('Codex session is closed.');
+      if (change.kind === 'planning') this.planningMode = change.value;
+      if (params.approvalPolicy && this.sessionPolicy)
+        this.sessionPolicy = { ...this.sessionPolicy, approval: change.value, approvalPolicy: params.approvalPolicy };
+      if (params.sandboxPolicy && this.sessionPolicy)
+        this.sessionPolicy = { ...this.sessionPolicy, sandbox: params.sandboxPolicy.type, sandboxPolicy: params.sandboxPolicy };
+      this.emitSettings();
+    };
+    const pending = update();
+    this.settingsBarrier = pending;
+    try { await pending; }
+    catch (error) {
+      // A timed-out write may already have taken effect. Never continue with unknown permissions.
+      if (isTimeout(error)) this.fatal(error);
+      throw error;
+    } finally { if (this.settingsBarrier === pending) this.settingsBarrier = undefined; }
+  }
+
+  private collaboration(mode: CodexPlanningMode): NonNullable<CodexRequests['turn/start'][0]['collaborationMode']> {
+    if (!this.model) throw new Error('Codex has not reported its model yet.');
+    return { mode, settings: { model: this.model, reasoning_effort: this.effort ?? null, developer_instructions: null } };
+  }
+
+  private emitSettings(): void {
+    this.emit({ type: 'session.settings', planningMode: this.planningMode ?? 'default',
+      ...(this.sessionPolicy ? { sessionPolicy: this.sessionPolicy } : {}) });
+  }
   compact(): boolean {
-    return false;
+    if (this.closed || !this.threadReady || this.turn || this.draining || this.compacting || this.settingsBarrier || this.approvals.size) return false;
+    const timer = setTimeout(() => this.fatal(new Error('compaction completion timed out')),
+      this.config.startTimeoutMs ?? START_TIMEOUT_MS);
+    const pending = { done: deferred(), timer };
+    this.compacting = pending;
+    this.emit({ type: 'compaction.start' });
+    void this.rpc('thread/compact/start', { threadId: this.id }).catch((error) => {
+      if (this.compacting !== pending) return;
+      if (isTimeout(error)) this.fatal(error);
+      else this.finishCompact(false, errorText(error));
+    });
+    return true;
+  }
+
+  private finishCompact(ok: boolean, error?: string): void {
+    const pending = this.compacting;
+    if (!pending) return;
+    this.compacting = undefined;
+    clearTimeout(pending.timer);
+    this.emit({ type: 'compaction.end', ok, trigger: 'manual', ...(error ? { error } : {}) });
+    pending.done.resolve();
   }
   async stopTask(): Promise<void> {}
 
@@ -413,6 +510,18 @@ class CodexSession implements AgentSession {
     this.generation++;
     // открытые подтверждения хода закрываем отменой: иначе сервер ждёт ответа, а карточка висит
     this.approvals.cancelAll();
+    this.jira.cancel();
+    if (this.compacting) {
+      const pending = this.compacting;
+      if (!pending.turnId) {
+        this.fatal(new Error('compaction interrupted before turn id was received'));
+        return;
+      }
+      try {
+        await this.rpc('turn/interrupt', { threadId: this.id, turnId: pending.turnId });
+      } catch (error) { this.fatal(error); }
+      return;
+    }
     const turn = this.turn;
     if (!turn || turn.done.settled || this.closed) return;
     try {
@@ -441,13 +550,14 @@ class CodexSession implements AgentSession {
   private abandon(turn: NonNullable<CodexSession['turn']>): void {
     if (turn.done.settled || this.closed) return;
     this.approvals.cancelAll();
+    this.jira.cancel();
     this.emitAll(this.mapper.abandonTurn(turn.id, turn.prompt));
     turn.done.resolve();
   }
 
   capabilities(): Promise<SessionCapabilities> {
     this.modelsCache ??= this.loadModels();
-    return this.modelsCache.then((models) => ({ models, commands: [] }));
+    return Promise.all([this.modelsCache, this.loadSkills()]).then(([models, commands]) => ({ models, commands }));
   }
 
   async contextUsage(): Promise<AgentEventOf<'context.usage'> | undefined> {
@@ -515,7 +625,7 @@ class CodexSession implements AgentSession {
   private async handshake(): Promise<void> {
     await this.rpc('initialize', {
       clientInfo: { name: 'agentura', title: 'Agentura', version: this.config.clientVersion ?? '0.0.0' },
-      capabilities: null,
+      capabilities: { experimentalApi: true, requestAttestation: false },
     });
     this.client.notify('initialized');
   }
@@ -543,9 +653,17 @@ class CodexSession implements AgentSession {
     };
     const session = this.resumedId
       ? await this.resumeThread(this.resumedId, settings)
-      : await this.rpc('thread/start', settings, this.config.startTimeoutMs ?? START_TIMEOUT_MS);
+      : await this.rpc('thread/start', { ...settings, ...(() => {
+          const dynamicTools = this.jira.register();
+          return dynamicTools.length ? { dynamicTools } : {};
+        })() }, this.config.startTimeoutMs ?? START_TIMEOUT_MS);
     this.threadReady = true;
-    this.emit(this.mapper.init(session, this.effort));
+    const init = this.mapper.init(session, this.effort && EFFORTS.includes(this.effort) ? this.effort as EffortLevel : undefined);
+    this.model ??= session.model;
+    this.effort ??= session.reasoningEffort ?? undefined;
+    this.sessionPolicy = init.sessionPolicy;
+    this.planningMode ??= session.collaborationMode?.mode;
+    this.emit({ ...init, planningMode: this.planningMode ?? 'default' });
     if (this.mcpWatch) void this.mcpStatus();
   }
 
@@ -581,11 +699,14 @@ class CodexSession implements AgentSession {
     this.draining = true;
     try {
       while (!this.closed) {
+        if (this.compacting) await this.compacting.done.promise;
+        if (this.closed) break;
         const item = this.queue.shift();
         if (!item) break;
         const generation = this.generation;
         const turn: NonNullable<CodexSession['turn']> = { done: deferred(), prompt: item.prompt };
         try {
+          if (this.settingsBarrier) await this.settingsBarrier.catch(() => undefined);
           await this.ready;
           await this.openThread();
         } catch (error) {
@@ -636,8 +757,9 @@ class CodexSession implements AgentSession {
     }
   }
 
-  private turnParams(item: { text: string; prompt: NotedPrompt }): CodexRequests['turn/start'][0] {
+  private turnParams(item: { text: string; prompt: NotedPrompt; skill?: { name: string; path: string } }): CodexRequests['turn/start'][0] {
     const input: UserInput[] = [];
+    if (item.skill) input.push({ type: 'skill', ...item.skill });
     // картинки перед текстом, как у Claude; `image.url` принимает data-URL
     for (const image of item.prompt.images ?? [])
       input.push({ type: 'image', url: `data:${image.mediaType};base64,${image.data}` });
@@ -645,6 +767,7 @@ class CodexSession implements AgentSession {
     return {
       threadId: this.id,
       input,
+      ...(this.planningMode ? { collaborationMode: this.collaboration(this.planningMode) } : {}),
       ...(this.model ? { model: this.model } : {}),
       ...(this.effort && EFFORTS.includes(this.effort) ? { effort: this.effort } : {}),
     };
@@ -657,7 +780,39 @@ class CodexSession implements AgentSession {
       const p = params as { threadId?: string; turn?: { id?: string } } | undefined;
       // ход чужого треда (субагент, review) не трогает наш: ни id, ни очередь
       const ours = !p?.threadId || !this.id || p.threadId === this.id;
+      if (method === 'thread/settings/updated') {
+        if (!this.threadReady || p?.threadId !== this.id) return;
+        const settings = (params as CodexNotifications['thread/settings/updated']).threadSettings;
+        this.sessionPolicy = { approval: typeof settings.approvalPolicy === 'string' ? settings.approvalPolicy : JSON.stringify(settings.approvalPolicy),
+          sandbox: settings.sandboxPolicy.type, approvalPolicy: settings.approvalPolicy, sandboxPolicy: settings.sandboxPolicy };
+        this.settingsRevision++;
+        this.planningMode = settings.collaborationMode.mode;
+        this.model = settings.model;
+        this.mapper.setModel(settings.model);
+        this.effort = settings.effort ?? undefined;
+        this.emitSettings();
+        return;
+      }
       const turnId = p?.turn?.id;
+      if (ours && this.compacting) {
+        if (method === 'turn/started') {
+          this.compacting.turnId = turnId;
+          return;
+        }
+        if (method === 'turn/completed') {
+          const turn = (params as CodexNotifications['turn/completed']).turn;
+          if (turn.id === this.compacting.turnId) {
+            this.finishCompact(turn.status === 'completed', turn.error?.message ??
+              (turn.status === 'completed' ? undefined : turn.status));
+          }
+          return;
+        }
+        if (method === 'error') {
+          const error = params as CodexNotifications['error'];
+          if (!error.willRetry) this.fatal(new Error(error.error.message));
+          return;
+        }
+      }
       if (method === 'turn/started' && ours && this.turn && turnId) this.turn.id ??= turnId;
       if (method === 'serverRequest/resolved' && ours) {
         this.approvals.resolved((params as { requestId: RpcId }).requestId);
@@ -676,6 +831,19 @@ class CodexSession implements AgentSession {
       }
     } catch (error) {
       this.log('error', `codex notification ${method} failed: ${String(error)}`);
+    }
+  }
+
+  private async loadSkills(): Promise<CommandOption[]> {
+    try {
+      await this.ready;
+      const result = await this.rpc('skills/list', { cwds: [this.cwd], forceReload: true });
+      return result.data.flatMap((entry) => entry.skills)
+        .filter((skill) => skill.enabled)
+        .map((skill) => ({ name: skill.name, description: skill.description, skillPath: skill.path }));
+    } catch (error) {
+      this.log('warn', `skills/list failed: ${String(error)}`);
+      return [];
     }
   }
 
@@ -721,6 +889,8 @@ class CodexSession implements AgentSession {
     if (this.closed) return;
     // отвечать некому (процесс ушёл или закрываем): карточки снимаем до `session.closed`
     this.approvals.dropAll();
+    this.jira.close();
+    this.finishCompact(false, message ?? reason);
     this.closed = true;
     this.queue.length = 0;
     this.turn?.done.resolve();

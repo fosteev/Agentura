@@ -14,7 +14,11 @@ engine as Claude Code, through your installed `claude` and its login. Codex CLI 
 
 Personal project, not on the Marketplace. Install it from a `.vsix` (see [Install](#install)).
 
-> **New in 0.11 — MCP servers and skills in view.** MCP calls carry a server chip in the feed, a skill call is a strip
+> **New in 0.20 — native Codex planning and session controls.** Planning, approval policy and sandbox have separate
+> controls for the current session. Manual `/compact`, native skills selected by path and Jira tools in new chats
+> are also available. See [Codex](#codex) for scope and remaining limits.
+>
+> **0.11 — MCP servers and skills in view.** MCP calls carry a server chip in the feed, a skill call is a strip
 > with "open SKILL.md", and an "mcp N/M" button by the input box (plus an "mcp" tab in the right panel) shows which
 > servers are up. See [MCP servers and skills](#mcp-servers-and-skills).
 >
@@ -112,7 +116,7 @@ The extension does not ship the engine binary (200+ MB). It finds the system `cl
 `~/.claude/local` or Homebrew (on Windows it looks for `claude.exe`). To point it somewhere else, set `agentura.claudeExecutable`.
 
 ```
-code --install-extension agentura-0.7.1.vsix
+code --install-extension agentura-0.20.0.vsix
 ```
 
 To build from source:
@@ -120,7 +124,7 @@ To build from source:
 ```
 npm ci
 npm run check      # types, lint, unit tests, build
-npm run package    # agentura-0.7.1.vsix
+npm run package    # agentura-0.20.0.vsix
 ```
 
 ## Codex
@@ -128,7 +132,8 @@ npm run package    # agentura-0.7.1.vsix
 Pick Codex in the "agent" menu of an empty tab, or set `agentura.defaultProvider` (the menu writes it, so the next new
 tab opens on the same engine). A tab keeps its engine for the whole session. Agentura starts `codex app-server` per
 tab and talks to it over stdio, the same way it runs `claude`. Approval policy and sandbox come from your
-`~/.codex/config.toml`; Agentura does not override them.
+`~/.codex/config.toml` initially. The separate planning, approval and sandbox controls apply only to the current session;
+Agentura does not write the global configuration.
 
 Supported: streaming replies, Stop, the model and effort pickers, command, file-change and permission approvals,
 agent questions, images in a message, tool rows, the `changes` and `agents` tabs (subagent graph, status, and summary), the context size next to the input box (after the
@@ -137,19 +142,31 @@ Codex threads of the project folder, up to 500 (including ones started in the Co
 and you can resume and rename them. When `codex` is installed, the sidebar starts a short `codex app-server` to read
 that list (at most every 30 seconds); a thread started in the CLI shows up on the next refresh.
 
-Not in this version (hidden in the interface, not faked):
+Also supported: manual `/compact` with queue/Stop handling; native skills listed by the CLI,
+explicit selection by path and opening the matching SKILL.md; Jira comment/transition/worklog host tools in new chats.
+Jira writes keep Agentura's approval rules. Resumed chats and changed Jira bindings/tool settings require a new chat
+for Jira tools. Native planning has its own `default` / `plan` picker, `/plan` and Shift-Tab; it never changes permissions.
+Plans stream into the feed as text. Continue by selecting `default` and sending an instruction; no synthetic plan approval card is created.
+The approval and sandbox pickers become available after the thread opens and can be changed while idle with no pending requests.
+Menus show the complete current policies. Selecting the current sandbox preserves its exact roots, network and temporary-directory settings.
+New read-only/workspace-write presets disable network. Workspace-write also excludes implicit temporary write roots;
+these flags do not restrict reading temporary files. Full access requires an explicit choice and
+`agentura.allowBypassPermissions`. Pending changes wait for the server; errors keep the last confirmed state.
 
-- Permission modes, plan review and `/compact`. Codex has no equivalents in the app-server protocol Agentura uses.
-- Cost and cache: Codex does not report them. The context gauge has no thresholds or auto-compact marks for the
-  same reason. Subscription limits (5-hour and weekly, from `account/rateLimits/read`) are shown in the sidebar.
-- File attachments (text and PDF). Images are sent.
-- Restored Codex history has no per-turn token counts, and a thread row in the sidebar shows no turns or cost.
-- A Codex subagent has no separate transcript: app-server does not provide it in the parent stream.
-- "Always" on a command approval writes a permanent rule to `~/.codex/rules`; the card says so.
-- An edit shows in the `changes` tab and the diff as the changed fragment, not as a whole-file before/after.
+Remaining limits:
 
-The app-server protocol is marked experimental by Codex. Agentura is checked against `codex-cli 0.160.0`; newer
-versions usually work, but see [docs/codex-protocol.md](docs/codex-protocol.md) before updating.
+- Codex has no native plan-acceptance callback equivalent to Claude `ExitPlanMode`; approval/refine/deny plan cards remain Claude-only.
+- Live input/output/cache-read counts appear in turn summaries; USD cost, cache TTL and Claude auto-compact thresholds
+  are unavailable. Subscription limits remain in the sidebar. Restored per-turn usage is unknown.
+- Text attachments are included in the prompt. Images are supported; PDF/document blocks are not.
+- Subagent status and summary are available; individual Stop/transcript actions are not implemented and are hidden.
+- MCP supports reload-all; per-server reconnect/toggle is unavailable. Browser changes apply to a new Codex chat.
+- “Always” on a command approval writes a permanent rule to `~/.codex/rules`; the card says so.
+- Diffs show changed fragments, not reliable whole-file before/after snapshots. Remote Control is not integrated.
+
+The app-server protocol is experimental. Schema checks and handshake were run with `codex-cli 0.166.0`;
+new feature flows have automated adapter/UI tests, but live model turns were not run for this change.
+See [docs/codex-protocol.md](docs/codex-protocol.md) before updating.
 
 ## Antigravity engine (experimental)
 
@@ -282,7 +299,7 @@ user settings only, so a cloned repository can't change them through its `.vscod
 | `agentura.codexExecutable`        | empty    | Path to `codex`; empty means auto-detect         |
 | `agentura.antigravityExecutable`  | empty    | Path to `agy`; empty means auto-detect           |
 | `agentura.defaultProvider`        | `claude` | Engine for new tabs: `claude`, `codex` or `antigravity`        |
-| `agentura.allowBypassPermissions` | `false`  | Allow the `bypassPermissions` mode (Claude only) |
+| `agentura.allowBypassPermissions` | `false`  | Allow `bypassPermissions` (Claude/Antigravity) and explicit Codex full-access sandbox selection |
 | `agentura.remoteControl`          | `false`  | Remote Control for every Claude tab              |
 | `agentura.remoteControlNamePrefix`| empty    | Session name prefix on claude.ai; empty means the machine name |
 

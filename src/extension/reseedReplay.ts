@@ -160,12 +160,20 @@ function lastIndexOf<T>(list: readonly T[], pred: (x: T) => boolean): number {
  * пропали бы — текст в ленте начинался бы с середины.
  */
 export class StreamTail {
+  private compacting = false;
   private messageId: string | undefined;
   private events: AgentEvent[] = [];
 
   note(e: AgentEvent): void {
     if (e.agentId) return;
     switch (e.type) {
+      case 'compaction.start':
+        this.compacting = true;
+        break;
+      case 'compaction.end':
+      case 'session.closed':
+        this.compacting = false;
+        break;
       case 'text.delta':
       case 'thinking.start':
       case 'thinking.delta':
@@ -186,10 +194,11 @@ export class StreamTail {
   }
 
   snapshot(): AgentEvent[] {
-    return [...this.events];
+    return [...this.events, ...(this.compacting ? [{ type: 'compaction.start' as const }] : [])];
   }
 
   clear(): void {
+    this.compacting = false;
     this.messageId = undefined;
     this.events = [];
   }

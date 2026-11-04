@@ -2,7 +2,7 @@ import { effect, signal } from '@preact/signals';
 import type { FromWebview } from '../protocol';
 import { waitingAgents } from './agentsView';
 import { agentGraphView } from './agentViews';
-import { chat, hudState } from './store';
+import { chat, hudState, features } from './store';
 import { onHostMessage, send } from './vscode';
 
 /**
@@ -29,6 +29,7 @@ export function graphSnapshot(): Extract<FromWebview, { type: 'agents.snapshot' 
     type: 'agents.snapshot',
     sessionId: s.sessionId,
     graph: agentGraphView(h, {
+      actions: { agentStop: features.value.agentStop, agentTranscript: features.value.agentTranscript },
       state: !working ? 'idle' : waiting ? 'waiting' : 'working',
       ...(s.model ? { model: s.model } : {}),
       ...(s.title ? { title: s.title } : {}),

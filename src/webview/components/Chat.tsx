@@ -258,7 +258,7 @@ export function Chat() {
         }
         if (card?.kind === 'perm') respondPermission(card.toolUseId, 'deny');
         else if (card?.kind === 'question') declineQuestion(card.toolUseId);
-        else if (chat.value.status === 'working') interrupt();
+        else if (chat.value.status === 'working' || hudState.value.compacting) interrupt();
         return;
       }
       // с модификаторами — хоткеи VS Code (Cmd+1 — группа редактора), не карточке
@@ -348,6 +348,7 @@ export function Chat() {
   // вид вкладки «агенты»: `graph` в панели показывает список (граф — вкладка редактора, этап 2 roadmap 11)
   const agentsMode = agentsView.value === 'graph' ? 'list' : agentsView.value;
   const agentsOpts = {
+    actions: features.value,
     working,
     waiting: awaited.length > 0,
     now,
@@ -371,7 +372,7 @@ export function Chat() {
               agentsOpts,
             ),
           };
-  const liveText = awaited.length
+  const liveText = h.compacting ? ui.log.compacting : awaited.length
     ? `${ui.log.waitingAgents(awaited.length)}${s.turnStartedAt ? ` · ${formatDuration(now - s.turnStartedAt)}` : ''}`
     : live;
   // граф агентов во вкладке редактора (roadmap 11, этап 2): хост открывает или показывает вкладку графа этого чата
@@ -596,7 +597,7 @@ export function Chat() {
                     }
                   />{' '}
                   {liveText}{' '}
-                  {awaited.length ? (
+                  {awaited.length && features.value.agentStop ? (
                     // Esc по-прежнему останавливает ход целиком (interrupt), кнопка — только агентов
                     <button
                       class="stop"

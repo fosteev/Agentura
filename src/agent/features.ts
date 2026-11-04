@@ -2,19 +2,25 @@ import type { AgentProvider } from './types';
 
 /**
  * Что движок умеет, а что UI обязан спрятать (roadmap 15, этап 3). Приходит в `chat.info`; webview прячет по
- * флагам, а не по имени провайдера. Нет флагов в сообщении — Claude (все `true`).
+ * флагам, а не по имени провайдера. Нет флагов в сообщении — возможности Claude.
  */
 export interface ProviderFeatures {
-  /** Режимы разрешений Claude (`ModeMenu`, shift-tab, `/plan`): у Codex политику задаёт его конфиг. */
+  /** Claude/Antigravity permission modes; native Codex controls use nativeSettings. */
   modes: boolean;
+  /** Native Codex collaboration and session policies, separate from Claude modes/cards. */
+  nativeSettings: boolean;
   /** `/compact` и кнопки «сжать». */
   compact: boolean;
+  /** Claude context thresholds/auto-compaction hints, independent of manual compact. */
+  autoCompact: boolean;
   /** Заполнение контекстного окна (кольцо, полоса, счётчик): нужны настоящие `context.usage`. */
   context: boolean;
   /** Цена, кэш промпта, лимиты подписки (и блокировка отправки по лимиту): нет достоверных чисел — не рисовать. */
   cost: boolean;
   /** Субагенты: вкладка «агенты», карта, транскрипты. */
   subagents: boolean;
+  agentStop: boolean;
+  agentTranscript: boolean;
   /** Карточка плана (`ExitPlanMode`). */
   plan: boolean;
   /** Вопросы агента (`AskUserQuestion`). */
@@ -43,11 +49,15 @@ export interface ProviderFeatures {
 }
 
 export const CLAUDE_FEATURES: Readonly<ProviderFeatures> = {
+  nativeSettings: false,
   modes: true,
   compact: true,
+  autoCompact: true,
   context: true,
   cost: true,
   subagents: true,
+  agentStop: true,
+  agentTranscript: true,
   plan: true,
   questions: true,
   images: true,
@@ -62,7 +72,7 @@ export const CLAUDE_FEATURES: Readonly<ProviderFeatures> = {
 };
 
 /**
- * Codex (app-server 0.160): режимов, compact и плана в нашем адаптере нет (no-op); субагенты маппятся из
+ * Codex (app-server 0.166): native planning/policies отдельны от Claude plan approvals; ручной compact поддержан; субагенты маппятся из
  * `collabAgentToolCall`/`subAgentActivity`; вопросы агента
  * (`item/tool/requestUserInput`) приходят карточкой — `questions: true`;
  * контекст есть (настоящий `context.usage` из `thread/tokenUsage/updated`, без порогов и автосжатия), цены/кэша/лимитов нет
@@ -70,11 +80,15 @@ export const CLAUDE_FEATURES: Readonly<ProviderFeatures> = {
  * Картинки уходят data-URL'ом (на живом не проверено).
  */
 export const CODEX_FEATURES: Readonly<ProviderFeatures> = {
+  nativeSettings: true,
   modes: false,
-  compact: false,
+  compact: true,
+  autoCompact: false,
   context: true,
   cost: false,
   subagents: true,
+  agentStop: false,
+  agentTranscript: false,
   plan: false,
   questions: true,
   images: true,
@@ -85,7 +99,7 @@ export const CODEX_FEATURES: Readonly<ProviderFeatures> = {
   mcpReconnect: false,
   mcpReloadAll: true,
   mcpToggle: false,
-  skills: false,
+  skills: true,
 };
 
 /**
@@ -94,11 +108,15 @@ export const CODEX_FEATURES: Readonly<ProviderFeatures> = {
  * картинки и файлы адаптер отбрасывает (не проверены).
  */
 export const ANTIGRAVITY_FEATURES: Readonly<ProviderFeatures> = {
+  nativeSettings: false,
   modes: true,
   compact: false,
+  autoCompact: false,
   context: false,
   cost: false,
   subagents: false,
+  agentStop: false,
+  agentTranscript: false,
   plan: false,
   questions: false,
   images: false,
