@@ -1,6 +1,6 @@
 # 29 — Cursor как четвёртый движок
 
-> Статус: этап 3 принят 2026-11-05 · следующий — 4
+> Статус: этап 4 принят 2026-11-05 · следующий — 5
 >
 > Исполнитель отмечает чекбоксы по ходу, только после проверки из «Готово, когда». Статусы живут здесь.
 
@@ -130,13 +130,25 @@
 
 **Сессия:** sonnet, high. После этапа 3. Источник списка — только тот, который спайк пометил рабочим.
 
-- [ ] `listSessions(dir)` фильтрует по cwd. Источник: ACP-метод из отчёта либо разовый `agent ls`, если отчёт привёл его формат и код выхода. Нет ни того ни другого — пустой список, `warn` один раз, без чтения файлов Cursor.
-- [ ] `loadHistory` собирает `AgentEvent` из `session/load` (или из транскрипта, если спайк отдал формат и только его). `live: true` оставляет последний ход открытым. Нет данных — пустая история, не ошибка вкладки.
-- [ ] `renameSession`: метод из отчёта или тихий no-op. Свой ключ в `globalState` не заводить.
-- [ ] `accountInfo`: поля, которые реально печатает `agent status` / `about`. Нет — пустой объект.
-- [ ] Фикстура списка и истории без путей и текста владельца. Тесты на временной папке и на фикстуре. `TZ=UTC npm run check` зелёный.
+- [x] `listSessions(dir)` фильтрует по cwd. Источник: ACP-метод из отчёта либо разовый `agent ls`, если отчёт привёл его формат и код выхода. Нет ни того ни другого — пустой список, `warn` один раз, без чтения файлов Cursor.
+- [x] `loadHistory` собирает `AgentEvent` из `session/load` (или из транскрипта, если спайк отдал формат и только его). `live: true` оставляет последний ход открытым. Нет данных — пустая история, не ошибка вкладки.
+- [x] `renameSession`: метод из отчёта или тихий no-op. Свой ключ в `globalState` не заводить.
+- [x] `accountInfo`: поля, которые реально печатает `agent status` / `about`. Нет — пустой объект.
+- [x] Фикстура списка и истории без путей и текста владельца. Тесты на временной папке и на фикстуре. `TZ=UTC npm run check` зелёный.
 
 **Готово, когда:** тест поднимает pong-сессию из фикстуры в ленту событий `turn.start` + текст + `turn.result`. Падение бинарника на списке не роняет `SessionsService` (ошибка одного extra-провайдера уже гасится для Codex).
+
+**Решения (2026-11-05, по итогам сессии 4):**
+
+- Раскладка: сборка ленты и строк списка — `src/agent/cursor/history.ts`; разбор `agent about` / `agent status` — `src/agent/cursor/account.ts`. Короткий `agent acp` (initialize, authenticate, один запрос, тот же shutdown, что у сессии) живёт в адаптере. Меню, фабрика, `sessionsService`, `providerOf` и README не трогались.
+- Список: `session/list {cwd}`. В выдаче только тот же `cwd` (строго, без realpath). Поля title нет — заголовок строки `sessionId`, `provider: cursor`. `updatedAt` — ISO в мс; не разобрать — 0, строку не выбрасываем. Сортировка по `updatedAt` убыванием. Кривой payload — `[]`. `-32601` — `[]` и один `warn` на адаптер. Иная ошибка и падение процесса — отказ промиса: extra-провайдер его уже ловит и не стирает чужие списки. Нет бинарника — `CURSOR_NOT_FOUND`.
+- История: кадры `session/update` до result `session/load`, не через живой `resumeSession` и не через глушитель `loading`. Граница хода — `user_message_chunk` (подряд идущие склеиваются в промпт). Лента — `CursorMapper`: текст только `agent_message_chunk`, id инструмента из кадра как есть. Преамбула до первого промпта не лента. Закрытый ход — `turn.result` / `end_turn` (в повторе нет `stopReason` на ход). `live: true` не закрывает последний ход. `maxTurns` по умолчанию 200. `model` — `currentModelId`. `mode: plan` только если `currentModeId` равен `plan`; `agent` и `ask` режим не задают. Ошибка load, включая not found, — пустая история и `warn`. Нет бинарника — throw. `stopBefore` не к чему привязать: у кадра нет id сообщения. `tasksAlive` не используется.
+- Фикстура `test/fixtures/cursor/history.ndjson`. Tool-кадр — форма permission (`tool_` id, `kind`, `rawInput`, `completed` и `rawOutput`), не `replay-*` из load спайка. Путей, почты и текста владельца в файле нет.
+- Переименование: no-op, процесс не стартует, файлов и ключа `globalState` нет.
+- Аккаунт: живой `agent about` печатает `User Email` и `Subscription Tier` — это `email` и `subscriptionType`. Нет почты в about — строка `Logged in as` из `agent status`. Модель, ОС, версию, цену и токены не берём. Нет строк, сбой команды или нет бинарника — `{}`. Процесс `acp` для аккаунта не запускается.
+- Отступления: `session_info_update.title` в список не подмешиваем. Permission или plan посреди короткого load клиент закрывает сам и в ленту истории не кладёт: в повторе спайка этих запросов нет, карточка была бы без живой сессии.
+- Не проверено: живой `session/list` и `session/load` этим этапом, Windows, `stopBefore`.
+- Приёмка (2026-11-05): код сессии оставлен. `stopBefore`, заголовок списка и карточки permission/plan в истории — скоуп, записан в pending.
 
 ### 5. Подключение к чату
 
@@ -303,6 +315,8 @@ DoD: TZ=UTC npm run check зелёный; тест истории даёт turn.
 По реальному коду (сессия 2, приёмка 2026-11-05): `PROVIDERS`, `isProvider`, `package.json` (`cursorExecutable`, enum `cursor`), `package.nls.json` / `package.nls.ru.json` и `providerFeatures('cursor')` уже есть. Меню, `EngineRow`, пункт провайдера на своей странице настроек, `adapterOf` и extra-провайдер — ещё нет. `providerNames.cursor`, `limitsHidden.engines.cursor` и метка `ENGINE_MARK` `cursor` = `R` уже есть. `settings.engine` с `engine: cursor` страница настроек игнорирует, пока нет строки «проверить». `providerOf` не возвращает `cursor`. `resolveCursorExecutable` на явный путь без штампа возвращает `path` и `problem` вместе — `acp` стартовать только когда `problem` нет. `createSession({model})` шлёт `session/set_config_option` до `session.init`. Пока `adapterOf` без ветки cursor, `defaultProvider: cursor` из настроек VS Code открывает Claude-адаптер с флагами Cursor.
 
 По реальному коду (сессия 3, приёмка 2026-11-05): `providerFeatures('cursor').plan` true, `questions` false — не опускать plan и не подменять флагами Claude. `cursor/ask_question` отвечает `{outcome:{outcome:"skipped"}}` без `question.request`. `cursor/create_plan` — `plan.request`; `decidePlan` шлёт `accepted` или `rejected` в обёртке `{outcome:{outcome}}`, как живой отказ спайка. `respondPermission` и `setMode` живые: `default` и `acceptEdits` → `modeId` `agent`, `acceptEdits` не авторазрешает; `bypassPermissions` без `allowBypassPermissions` молча `default`. Разрешение или план после Stop, пока ход не закрыт, — отказ без карточки. Карточки webview всё ещё не подключены.
+
+По реальному коду (сессия 4, приёмка 2026-11-05): `listSessions` и `loadHistory` уже не заглушки. Список — `session/list {cwd}`, чужой cwd отфильтрован строго, заголовок строки — `sessionId` (`session_info_update.title` не подмешивать), `provider: cursor`. Падение списка — отказ промиса (`-32601` — `[]` и один warn на экземпляр адаптера, его держать один, как Codex). `loadHistory` сам читает `session/update` до result, не через глушитель `loading`; ошибка load — пустая история, не throw; нет бинарника — throw. `live: true` не закрывает последний ход. `stopBefore` ленту не режет: id сообщения в кадре нет, не выдумывать. `history.model` — `currentModelId`; `history.mode` — только `plan`. Мысли и `plan.entries` в текст хода не входят. Id инструмента — как в кадре (`tool_`), `replay-*` не синтезировать. `renameSession` — no-op без процесса. `accountInfo` — `agent about` (`User Email` → `email`, `Subscription Tier` → `subscriptionType`); нет почты в about — `Logged in as` из `agent status`; нет строк, сбой или нет бинарника — `{}`. Процесс `acp` для аккаунта не стартует. Permission и plan посреди короткого load в ленту истории не класть. `providerOf` по-прежнему не возвращает `cursor`. Меню и extra-провайдер — эта сессия, в этапе 4 их нет.
 
 Порядок:
 1. Фабрика, adapterOf и второе ветвление адаптера в chatPanel.ts.

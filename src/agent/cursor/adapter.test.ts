@@ -1,4 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { mkdtemp, readdir, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { AgentEvent, AgentSession, PromptFile, PromptImage } from '../types';
 import { CursorAdapter, type CursorAdapterConfig, type CursorSpawnOptions } from './adapter';
 import { CURSOR_NOT_FOUND } from './executable';
@@ -803,5 +807,260 @@ describe('CursorAdapter', () => {
     expect(deaf.exited).toBe(false);
     await until(() => deaf.exited, 'SIGKILL');
     expect(deaf.signals).toEqual(['SIGTERM', 'SIGKILL']);
+  });
+});
+
+interface HistoryRow {
+  dir: 'in' | 'out';
+  scenario: string;
+  msg: {
+    method?: string;
+    result?: unknown;
+    params?: unknown;
+  };
+}
+
+function historyRows(): HistoryRow[] {
+  return readFileSync(new URL('../../../test/fixtures/cursor/history.ndjson', import.meta.url), 'utf8')
+    .trim()
+    .split('\n')
+    .filter((line) => line)
+    .map((line) => JSON.parse(line) as HistoryRow);
+}
+
+/** Повтор `session/load` из фикстуры: кадры `session/update`, затем result. */
+function replayLoad(s: FakeAcp): void {
+  s.handle('session/load', () => {
+    let result: unknown = {};
+    for (const row of historyRows()) {
+      if (row.scenario !== 'load' || row.dir !== 'out') continue;
+      if (row.msg.method === 'session/update') s.notify('session/update', row.msg.params);
+      if (row.msg.result !== undefined) result = row.msg.result;
+    }
+    return result;
+  });
+}
+
+const textOf = (events: AgentEvent[]) =>
+  events.filter((e) => e.type === 'text.delta').map((e) => (e.type === 'text.delta' ? e.text : '')).join('');
+
+describe('Cursor list, history, account', () => {
+  let dir = '';
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'agentura-cursor-'));
+  });
+
+  afterEach(async () => {
+    if (dir) await rm(dir, { recursive: true, force: true });
+  });
+
+  it('listSessions: session/list по cwd, чужой cwd не входит, заголовок — id', async () => {
+    const s = server();
+    s.handle('session/list', (p) => ({
+      sessions: [
+        { sessionId: 'sess-old', cwd: p.cwd, updatedAt: '2026-11-05T16:45:04.674Z' },
+        { sessionId: 'sess-other', cwd: `${String(p.cwd)}-other`, updatedAt: '2026-11-05T19:00:00.000Z' },
+        { sessionId: 'sess-new', cwd: p.cwd, updatedAt: '2026-11-05T18:00:00.000Z' },
+      ],
+    }));
+    const { adapter, spawned } = open(s, { timeoutMs: 1000 });
+    const list = await adapter.listSessions(dir);
+    expect(s.paramsOf('session/list')).toEqual({ cwd: dir });
+    expect(s.methods().filter((m) => m !== '<response>')).toEqual([
+      'initialize',
+      'authenticate',
+      'session/list',
+    ]);
+    expect(spawned[0]?.args).toEqual(['/bin/agent', 'acp']);
+    expect(spawned[0]?.options.shell).toBe(false);
+    expect(JSON.stringify(spawned)).not.toContain('--force');
+    expect(list).toEqual([
+      {
+        id: 'sess-new',
+        title: 'sess-new',
+        cwd: dir,
+        updatedAt: Date.parse('2026-11-05T18:00:00.000Z'),
+        provider: 'cursor',
+      },
+      {
+        id: 'sess-old',
+        title: 'sess-old',
+        cwd: dir,
+        updatedAt: Date.parse('2026-11-05T16:45:04.674Z'),
+        provider: 'cursor',
+      },
+    ]);
+    await until(() => s.exited, 'list process exit');
+  });
+
+  it('listSessions: кривой ответ — пусто; -32601 — пусто и один warn; падение процесса не затирает чужой список', async () => {
+    const bad = server();
+    bad.handle('session/list', () => ({ sessions: 'nope' }));
+    expect(await open(bad, { timeoutMs: 1000 }).adapter.listSessions(dir)).toEqual([]);
+
+    const logs: string[] = [];
+    const missing = new CursorAdapter({
+      executablePath: '/bin/agent',
+      graceMs: 20,
+      timeoutMs: 1000,
+      log: (level, message) => logs.push(`${level}: ${message}`),
+      spawn: () => server(),
+    });
+    expect(await missing.listSessions(dir)).toEqual([]);
+    expect(await missing.listSessions(dir)).toEqual([]);
+    expect(logs.filter((line) => line.startsWith('warn:'))).toHaveLength(1);
+    expect(logs[0]).toContain('session/list');
+
+    const dead = server();
+    dead.handle('session/list', () => {
+      dead.exit(1);
+      return new Promise(() => {});
+    });
+    const claude = [{ id: 'c1' }];
+    let sidebar: { id: string }[] = claude;
+    try {
+      sidebar = await open(dead, { timeoutMs: 1000 }).adapter.listSessions(dir);
+    } catch {
+      // отказ списка не подменяет соседний список
+    }
+    expect(sidebar).toBe(claude);
+
+    await expect(new CursorAdapter().listSessions(dir)).rejects.toThrow(CURSOR_NOT_FOUND);
+  });
+
+  it('loadHistory: pong из фикстуры — turn.start, текст, turn.result; live оставляет последний ход', async () => {
+    const s = server();
+    replayLoad(s);
+    const { adapter } = open(s, { timeoutMs: 1000 });
+    const history = await adapter.loadHistory('sess-pong', dir);
+    expect(s.paramsOf('session/load')).toEqual({ sessionId: 'sess-pong', cwd: dir, mcpServers: [] });
+    expect(history.turns).toBe(2);
+    expect(history.skippedTurns).toBe(0);
+    expect(history.model).toBe('gpt-5.4-nano[reasoning=medium]');
+    expect(history.mode).toBeUndefined();
+    expect(history.events.map((e) => e.type)).toEqual([
+      'turn.start',
+      'text.delta',
+      'text.delta',
+      'turn.result',
+      'turn.start',
+      'tool.start',
+      'tool.result',
+      'text.delta',
+      'turn.result',
+    ]);
+    expect(history.events[0]).toMatchObject({
+      type: 'turn.start',
+      prompt: 'Reply with exactly one word: pong.',
+    });
+    expect(history.events[3]).toMatchObject({ type: 'turn.result', ok: true, subtype: 'end_turn', text: 'pong' });
+    expect(textOf(history.events)).toBe('pongok');
+    expect(textOf(history.events)).not.toContain('wants');
+    expect(JSON.stringify(history.events)).not.toContain('One Word Pong');
+    expect(JSON.stringify(history.events)).not.toContain('step');
+    const tool = history.events.find((e) => e.type === 'tool.start');
+    expect(tool).toMatchObject({
+      type: 'tool.start',
+      toolUseId: 'tool_90fc4a4e-6e6d-46b2-83b5-3c3412526a7',
+      name: 'execute',
+      input: { command: 'printf ok' },
+    });
+    expect(history.events.some((e) => e.type === 'tool.start' && e.toolUseId.startsWith('replay-'))).toBe(false);
+    const ids = new Set(
+      history.events.filter((e) => e.type === 'text.delta').map((e) => (e.type === 'text.delta' ? e.messageId : '')),
+    );
+    expect(ids.size).toBe(2);
+
+    const liveServer = server();
+    replayLoad(liveServer);
+    const live = await open(liveServer, { timeoutMs: 1000 }).adapter.loadHistory('sess-pong', dir, { live: true });
+    expect(live.events.filter((e) => e.type === 'turn.result')).toHaveLength(1);
+    expect(live.events.at(-1)).toMatchObject({ type: 'text.delta', text: 'ok' });
+
+    const shortServer = server();
+    replayLoad(shortServer);
+    const short = await open(shortServer, { timeoutMs: 1000 }).adapter.loadHistory('sess-pong', dir, {
+      maxTurns: 1,
+    });
+    expect(short.turns).toBe(2);
+    expect(short.skippedTurns).toBe(1);
+    expect(short.events.filter((e) => e.type === 'turn.start')).toHaveLength(1);
+    expect(short.events[0]).toMatchObject({ type: 'turn.start', prompt: 'Run the command.' });
+  });
+
+  it('loadHistory: нет данных и ошибка load — пустая история; нет бинарника — отказ', async () => {
+    const empty = server();
+    empty.handle('session/load', () => ({ modes: { currentModeId: 'agent' } }));
+    const quiet = await open(empty, { timeoutMs: 1000 }).adapter.loadHistory('sess-pong', dir);
+    expect(quiet).toEqual({ events: [], turns: 0, skippedTurns: 0 });
+
+    const missing = server();
+    const logs: string[] = [];
+    missing.handle('session/load', () => {
+      throw new Error('Session not found');
+    });
+    const { adapter } = open(missing, { timeoutMs: 1000, log: (level, message) => logs.push(`${level}: ${message}`) });
+    await expect(adapter.loadHistory('missing', dir)).resolves.toEqual({ events: [], turns: 0, skippedTurns: 0 });
+    expect(logs.some((line) => line.startsWith('warn:') && line.includes('session/load'))).toBe(true);
+
+    await expect(new CursorAdapter().loadHistory('sess-pong', dir)).rejects.toThrow(CURSOR_NOT_FOUND);
+  });
+
+  it('renameSession дважды не создаёт файл и не запускает процесс', async () => {
+    const s = server();
+    const { adapter, spawned } = open(s);
+    expect(await readdir(dir)).toEqual([]);
+    await adapter.renameSession('sess-pong', 'One', dir);
+    await adapter.renameSession('sess-pong', 'Two', dir);
+    expect(await readdir(dir)).toEqual([]);
+    expect(spawned).toEqual([]);
+    expect(s.methods()).toEqual([]);
+  });
+
+  it('accountInfo: email и тариф из about, без acp; сбой — пустой объект', async () => {
+    const about = [
+      'About Cursor CLI',
+      'CLI Version         2026.11.05-86047df',
+      'Model               Auto',
+      'Subscription Tier   Premium',
+      'OS                  test-os',
+      'User Email          person@example.com',
+    ].join('\n');
+    const calls: string[] = [];
+    const { adapter, spawned } = open(server(), {
+      run: async (_path, args) => {
+        calls.push(args[0] ?? '');
+        return about;
+      },
+    });
+    await expect(adapter.accountInfo(dir)).resolves.toEqual({
+      email: 'person@example.com',
+      subscriptionType: 'Premium',
+    });
+    expect(calls).toEqual(['about']);
+    expect(spawned).toEqual([]);
+
+    const fallback = new CursorAdapter({
+      executablePath: '/bin/agent',
+      spawn: () => {
+        throw new Error('acp spawned');
+      },
+      run: async (_path, args) => {
+        if (args[0] === 'about') throw new Error('about down');
+        return 'Logged in as person@example.com\n';
+      },
+    });
+    await expect(fallback.accountInfo(dir)).resolves.toEqual({ email: 'person@example.com' });
+
+    const blank = new CursorAdapter({
+      executablePath: '/bin/agent',
+      spawn: () => {
+        throw new Error('acp spawned');
+      },
+      run: async () => 'Model               Auto\n',
+    });
+    await expect(blank.accountInfo(dir)).resolves.toEqual({});
+    await expect(new CursorAdapter().accountInfo(dir)).resolves.toEqual({});
   });
 });
