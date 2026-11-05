@@ -191,6 +191,7 @@ export type ToWebview =
     }
   /** Вкладка настроек (этап 3 roadmap 0.2): значения `agentura.*` и ключи, перекрытые настройками рабочей папки. */
   | { type: 'settings.state'; values: SettingsValues; overridden: SettingKey[] }
+  | { type: 'settings.codexModels'; models: ModelOption[]; loading: boolean; error?: string }
   /** Открыть вкладку настроек сразу на разделе (`settings.open` с `section`). */
   | { type: 'settings.section'; section: SettingsSection }
   /** Страница «Интеграции» (roadmap 19, этап 6): Jiraffe и свои подключения Jira. */
@@ -500,6 +501,7 @@ export type FromWebview =
   | { type: 'settings.set'; key: SettingKey; value: unknown }
   /** «проверить»: найти claude по этому пути (пусто — системный) и показать версию и источник. */
   | { type: 'settings.checkEngine'; path: string; /** Чей путь проверять; нет — claude. */ engine?: AgentProvider }
+  | { type: 'settings.codexModels' }
   /** Страница «Интеграции»: команды этапа 2 (`agentura.jira.connect|test|disconnect`) и «поставить» Jiraffe. */
   | { type: 'integrations.connect' }
   | { type: 'integrations.test'; instanceId: string }
@@ -664,6 +666,7 @@ const FROM_WEBVIEW_TYPES: Record<FromWebview['type'], true> = {
   'settings.open': true,
   'settings.set': true,
   'settings.checkEngine': true,
+  'settings.codexModels': true,
   'settings.reveal': true,
   'integrations.connect': true,
   'integrations.test': true,

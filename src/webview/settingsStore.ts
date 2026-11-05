@@ -3,9 +3,11 @@ import { signal } from '@preact/signals';
 import type { SettingsSection, ToWebview } from '../protocol';
 import type { IntegrationsState } from '../shared/integrations';
 import type { EngineCheck, SettingKey, SettingsValues } from '../settings';
+import type { ModelOption } from '../agent/types';
 import { send } from './vscode';
 
 export const settingsValues = signal<SettingsValues | undefined>(undefined);
+export const codexModels = signal<{ models: ModelOption[]; loading: boolean; error?: string }>({ models: [], loading: true });
 /** Jiraffe и свои подключения Jira (страница «Интеграции»); до ответа хоста — `undefined`. */
 export const integrations = signal<IntegrationsState | undefined>(undefined);
 /** Хост просит открыть раздел (`settings.section`); страница забирает запрос и сбрасывает его в `undefined`. */
@@ -24,6 +26,9 @@ function checkSignal(engine: 'claude' | 'codex' | 'antigravity') {
 
 export function handleSettingsMessage(m: ToWebview): void {
   switch (m.type) {
+    case 'settings.codexModels':
+      codexModels.value = { models: m.models, loading: m.loading, ...(m.error ? { error: m.error } : {}) };
+      break;
     case 'settings.state':
       settingsValues.value = m.values;
       overridden.value = m.overridden;

@@ -3,6 +3,7 @@ import { CodexEventMapper } from './mapper';
 import { buildCodexHistory } from './history';
 import type { Thread, ThreadItem } from './protocol';
 import { applyHud, initialHud } from '../../webview/hudState';
+import { agentDetail } from '../../webview/agentsView';
 import { agentGraphView } from '../../webview/agentViews';
 import { graphModel } from '../../webview/agentsGraph/model';
 import { graphLayout } from '../../webview/agentsGraph/layout';
@@ -29,6 +30,38 @@ const graph = (events: AgentEvent[]) => {
 };
 
 describe('Codex subagents → graph', () => {
+  it('activity carries effort even when thread/read has no launch prompt', () => {
+    const mapper = new CodexEventMapper();
+    mapper.threadId = 'root';
+    const item = { ...activity('alpha', 'started', 1100), reasoningEffort: 'high' } as ThreadItem;
+    const events = mapper.collaborationItem(item, 1100);
+    const thread = child('alpha');
+    thread.turns[0]!.items = thread.turns[0]!.items.filter((i) => i.type !== 'userMessage');
+    events.push(...mapper.enrichSubagent(thread));
+    const { snapshot, model } = graph(events);
+    expect(snapshot.agents[0]).toMatchObject({ model: 'gpt-6.1-sol', reasoningEffort: 'high', subagentType: 'Codex' });
+    expect(snapshot.agents[0]?.prompt).toBeUndefined();
+    expect(model.nodes[0]?.head).toBe('Codex · gpt-6.1-sol');
+  });
+
+  it('running child exposes full prompt, model and effort in panel and graph details', () => {
+    const mapper = new CodexEventMapper();
+    mapper.threadId = 'root';
+    const events = mapper.collaborationItem(activity('alpha', 'started', 1100), 1100);
+    const thread = child('alpha');
+    thread.reasoningEffort = 'high';
+    thread.turns[0]!.status = 'inProgress';
+    events.push(...mapper.enrichSubagent(thread));
+    const { snapshot, model } = graph(events);
+    expect(snapshot.agents[0]).toMatchObject({ status: 'running', prompt: 'Task alpha',
+      model: 'gpt-6.1-sol', reasoningEffort: 'high' });
+    const detail = agentDetail(snapshot.agents[0]!, 5000);
+    expect(detail.prompt).toBe('Task alpha');
+    expect(detail.meta).toContainEqual({ value: 'gpt-6.1-sol' });
+    expect(detail.meta).toContainEqual({ label: 'effort', value: 'high' });
+    expect(model.detail?.meta).toContainEqual({ label: 'effort', value: 'high' });
+  });
+
   it('живые activity: два агента, два ребра, метаданные после завершения не сбрасывают статус и время', () => {
     const mapper = new CodexEventMapper();
     mapper.threadId = 'root';
@@ -44,7 +77,7 @@ describe('Codex subagents → graph', () => {
     expect(layout.edges.map((e) => e.from)).toEqual(['main', 'main']);
     expect(snapshot.agents).toHaveLength(2);
     expect(snapshot.agents[0]).toMatchObject({ status: 'completed', startedAt: 1100, endedAt: 2000,
-      prompt: 'Task alpha', summary: 'alpha_OK', subagentType: 'gpt-6.1-sol' });
+      prompt: 'Task alpha', summary: 'alpha_OK', subagentType: 'Codex' });
   });
 
   it('история воспроизводит activity и читает промпт/итог дочернего треда', () => {

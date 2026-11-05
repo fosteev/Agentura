@@ -146,6 +146,25 @@ describe('subagent action guards', () => {
 });
 
 describe('ChatController: маршрутизация по провайдеру', () => {
+  it('новый Codex-чат получает только свои дефолты, resume их не применяет', async () => {
+    const settings = () => ({ allowBypass: false, defaultModel: 'opus', defaultPermissionMode: 'acceptEdits',
+      codexDefaults: { model: 'gpt-test', effort: 'high' as const, approval: 'never' as const, sandbox: 'workspaceWrite' as const } });
+    const fresh = setup({ provider: 'codex', settings });
+    fresh.controller.start();
+    await tick();
+    expect(fresh.codex.created[0]).toMatchObject({ model: 'gpt-test', codexDefaults: settings().codexDefaults });
+    const resumed = setup({ provider: 'codex', resumeId: 'existing', settings });
+    resumed.controller.start();
+    await tick();
+    await tick();
+    expect(resumed.codex.resumed[0]![1]).not.toHaveProperty('codexDefaults');
+    expect(resumed.codex.resumed[0]![1]).not.toHaveProperty('model');
+    const claude = setup({ provider: 'claude', settings });
+    claude.controller.start();
+    await tick();
+    expect(claude.claude.created[0]).toMatchObject({ model: 'opus', permissionMode: 'acceptEdits' });
+    expect(claude.claude.created[0]).not.toHaveProperty('codexDefaults');
+  });
   it('Claude по умолчанию: chat.info несёт provider и полные флаги, сессия — у Claude-адаптера', async () => {
     const { controller, claude, codex, posted } = setup();
     controller.start();

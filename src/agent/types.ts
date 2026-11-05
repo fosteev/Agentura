@@ -6,6 +6,12 @@
 
 /** Native Codex settings stay independent of Claude permission modes. */
 export type CodexPlanningMode = 'plan' | 'default';
+export interface CodexNewChatDefaults {
+  model?: string;
+  effort?: EffortLevel;
+  approval?: 'untrusted' | 'on-request' | 'never';
+  sandbox?: 'readOnly' | 'workspaceWrite' | 'dangerFullAccess';
+}
 export type CodexSettingsChange =
   | { kind: 'planning'; value: CodexPlanningMode }
   | { kind: 'approval'; value: 'untrusted' | 'on-request' | 'never' }
@@ -347,6 +353,8 @@ export type AgentEvent =
       subagentType?: string;
       background: boolean;
       prompt?: string;
+      model?: string;
+      reasoningEffort?: string;
       /** Задачу запустил субагент (например, его фоновый Bash) — id этого субагента. */
       parentAgentId?: string;
       /** Время запуска, мс: есть у восстановленной истории (живой `task_started` без времени). */
@@ -432,6 +440,8 @@ export interface EventStream<T> extends AsyncIterable<T> {
 }
 
 export interface SessionOptions {
+  /** Только для нового Codex-треда; resume сохраняет настройки существующего. */
+  codexDefaults?: CodexNewChatDefaults;
   /** Папка воркспейса — `cwd` движка. */
   cwd: string;
   model?: string;
@@ -571,7 +581,7 @@ export interface AgentSession {
   mcpReloadAll?(): Promise<void>;
   /**
    * Включить/выключить один сервер (`toggleMcpServer`: выключение в проекте, `disabledMcpServers` в `~/.claude.json`),
-   * затем `mcpStatus()`. Только Claude (`features.mcpToggle`).
+   * затем `mcpStatus()`. Codex пишет enabled в cwd/.codex/config.toml и перезагружает MCP.
    */
   mcpToggle?(name: string, enabled: boolean): Promise<void>;
   /** Включить/выключить слежение за статусом (`SessionOptions.mcpWatch`) у живой сессии: смена настроек. */

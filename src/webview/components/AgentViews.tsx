@@ -185,36 +185,23 @@ export function AgentOpen({
   return (
     <div class={variant}>
       {variant === 'ldet' && (
-        <>
-          <div class="t">
-            {d.title} <span class="ty">· {d.type}</span>
-          </div>
-          <div class="m">
-            <span
-              class={
-                d.status === 'busy'
-                  ? 'run'
-                  : d.status === 'err'
-                    ? 'err'
-                    : d.status === 'ok'
-                      ? 'ok'
-                      : ''
-              }
-            >
-              {d.statusText}
-            </span>
-            {d.meta.map((m) =>
-              m.label ? (
-                <span>
-                  {m.label} <b>{m.value}</b>
-                </span>
-              ) : (
-                <span>{m.value}</span>
-              ),
-            )}
-          </div>
-        </>
+        <div class="t">
+          {d.title} <span class="ty">· {d.type}</span>
+        </div>
       )}
+      <div class="m">
+        <span class={d.status === 'busy' ? 'run' : d.status === 'err' ? 'err' : d.status === 'ok' ? 'ok' : ''}>
+          {d.statusText}
+        </span>
+        {d.meta.map((m) =>
+          m.label ? (
+            <span>{m.label} <b>{m.value}</b></span>
+          ) : (
+            <span>{m.value}</span>
+          ),
+        )}
+      </div>
+      {!d.prompt && <div class="lbl">{v().promptUnavailable}</div>}
       {d.prompt && (
         <>
           <div class="lbl" data-tip={v().estTip}>

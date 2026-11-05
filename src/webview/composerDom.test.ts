@@ -577,7 +577,7 @@ describe('кнопка «mcp N/M» (roadmap 21, этап 3)', () => {
     expect(row('bare').querySelector('.src')).toBeNull();
   });
 
-  it('тумблера нет у Codex (чип источника — есть, если scope пришёл)', async () => {
+  it('Codex: переключатель сервера для папки и чип источника', async () => {
     chat.value = { ...initialState(), project: 'p', cwd: '/p', engine: 'codex' };
     features.value = providerFeatures('codex');
     withStatus([srv('serena', 'connected', { scope: 'user' }), srv('old', 'disabled')]);
@@ -585,8 +585,10 @@ describe('кнопка «mcp N/M» (roadmap 21, этап 3)', () => {
     await flush();
     btn(host)!.click();
     await flush();
-    expect(host.querySelector('.mcpmenu .tg')).toBeNull();
-    expect(host.querySelector('.mcpmenu .srv.tgl')).toBeNull();
+    const toggle = host.querySelector<HTMLButtonElement>('.mcpmenu .srv[data-name="serena"] .tg')!;
+    expect(toggle.getAttribute('data-tip')).toContain('.codex/config.toml');
+    toggle.click();
+    expect(vi.mocked(vscode.send)).toHaveBeenCalledWith({ type: 'mcp.toggle', name: 'serena', enabled: false });
     expect(host.querySelector('.mcpmenu .srv[data-name="serena"] .src')!.textContent).toBe('user');
   });
 

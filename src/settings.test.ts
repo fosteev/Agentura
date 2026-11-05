@@ -39,6 +39,21 @@ describe('thresholdsError', () => {
 });
 
 describe('validateSetting', () => {
+  it('дефолты Codex независимы от Claude; неизвестные политики не принимаются', () => {
+    const values = readSettings(cfgOf({ defaultModel: 'opus', defaultPermissionMode: 'acceptEdits',
+      'codex.defaultModel': 'gpt-test', 'codex.defaultEffort': 'high', 'codex.defaultApproval': 'never', 'codex.defaultSandbox': 'workspaceWrite' }));
+    expect(values.defaultModel).toBe('opus');
+    expect(values['codex.defaultModel']).toBe('gpt-test');
+    expect(values['codex.defaultEffort']).toBe('high');
+    expect(validateSetting('codex.defaultEffort', 'invalid').ok).toBe(false);
+    expect(values['codex.defaultApproval']).toBe('never');
+    expect(validateSetting('codex.defaultModel', ' gpt-test ')).toEqual({ ok: true, value: 'gpt-test' });
+    expect(validateSetting('codex.defaultApproval', 'acceptEdits').ok).toBe(false);
+    expect(validateSetting('codex.defaultSandbox', 'bypassPermissions').ok).toBe(false);
+    const invalid = readSettings(cfgOf({ 'codex.defaultApproval': 'wrong', 'codex.defaultSandbox': 'wrong' }));
+    expect(invalid['codex.defaultApproval']).toBe('');
+    expect(invalid['codex.defaultSandbox']).toBe('');
+  });
   it('режим и effort — только из списка', () => {
     expect(validateSetting('defaultPermissionMode', 'plan')).toEqual({ ok: true, value: 'plan' });
     expect(validateSetting('defaultPermissionMode', 'default').ok).toBe(false);

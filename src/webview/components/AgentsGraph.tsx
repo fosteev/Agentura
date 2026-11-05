@@ -140,6 +140,7 @@ function Detail({
           )}
         </div>
       </div>
+      {!d.prompt && <div class="lbl">{ui.agents.view.promptUnavailable}</div>}
       {d.prompt && (
         <>
           <div class="lbl" data-tip={ui.agents.view.estTip}>

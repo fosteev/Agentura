@@ -3,6 +3,7 @@ import { realpathSync } from 'node:fs';
 import type {
   AccountInfo,
   CodexSettingsChange,
+  CodexNewChatDefaults,
   CodexPlanningMode,
   SessionPolicy,
   AgentAdapter,
@@ -29,6 +30,7 @@ import { CodexEventMapper, type NotedPrompt } from './mapper';
 import { CodexApprovals } from './approvals';
 import { CodexJiraTools } from './jiraTools';
 import { buildCodexHistory } from './history';
+import { setProjectMcpEnabled } from './mcpConfig';
 import type {
   AskForApproval,
   CodexRequestMethod,
@@ -37,6 +39,7 @@ import type {
   ListMcpServerStatusResponse,
   Model,
   SandboxMode,
+  SandboxPolicy,
   Thread,
   ThreadListResponse,
   UserInput,
@@ -103,6 +106,11 @@ const RESUME_RETRIES = 3;
 /** Сколько `interrupt()` ждёт `turn/completed`, прежде чем вернуть управление. */
 const INTERRUPT_WAIT_MS = 10_000;
 const EFFORTS: readonly string[] = ['low', 'medium', 'high', 'xhigh', 'max'];
+function sandboxPreset(value: NonNullable<CodexNewChatDefaults['sandbox']>): SandboxPolicy {
+  return value === 'workspaceWrite'
+    ? { type: 'workspaceWrite', writableRoots: [], networkAccess: false, excludeTmpdirEnvVar: true, excludeSlashTmp: true }
+    : value === 'readOnly' ? { type: 'readOnly', networkAccess: false } : { type: 'dangerFullAccess' };
+}
 /** Счётчик сессий для префикса `toolUseId` карточек подтверждения (id запросов у каждого процесса с 0). */
 let approvalScopes = 0;
 /** Браузерный MCP-сервер (roadmap 27) в конфиг app-server через `-c key=value` (значение — TOML; для строк и массива строк JSON подходит). */
@@ -132,6 +140,11 @@ export class CodexAdapter implements AgentAdapter {
 
   async createSession(options: SessionOptions): Promise<AgentSession> {
     return new CodexSession(this.config, await this.executable(), options);
+  }
+
+  /** Каталог для настроек новых чатов: короткий app-server без тредов и MCP. */
+  async listModels(cwd: string): Promise<ModelOption[]> {
+    return this.query(cwd, readModels);
   }
 
   async resumeSession(sessionId: string, options: ResumeOptions): Promise<AgentSession> {
@@ -329,6 +342,8 @@ class CodexSession implements AgentSession {
   private settingsBarrier: Promise<void> | undefined;
   private settingsRevision = 0;
   private closed = false;
+  private mcpChanges: Promise<void> = Promise.resolve();
+  private readonly newChatDefaults: CodexNewChatDefaults | undefined;
   private readonly subagentReads = new Map<string, Promise<void>>();
   private procExited = false;
   private threadReady = false;
@@ -354,8 +369,9 @@ class CodexSession implements AgentSession {
     this.cwd = options.cwd;
     this.allowBypass = options.allowBypassPermissions === true;
     this.resumedId = resume;
-    this.model = options.model;
-    this.effort = options.effort;
+    this.newChatDefaults = resume ? undefined : options.codexDefaults;
+    this.model = options.model ?? this.newChatDefaults?.model;
+    this.effort = options.effort ?? this.newChatDefaults?.effort;
     this.mcpWatch = options.mcpWatch === true;
     this.graceMs = config.graceMs ?? DEFAULT_GRACE_MS;
     this.events = new EventHub<AgentEvent>((e) =>
@@ -449,9 +465,7 @@ class CodexSession implements AgentSession {
       } else {
         // Selecting the existing type preserves its roots/network/tmp restrictions exactly.
         if (change.value === this.sessionPolicy?.sandbox) return;
-        params.sandboxPolicy = change.value === 'workspaceWrite'
-          ? { type: 'workspaceWrite', writableRoots: [], networkAccess: false, excludeTmpdirEnvVar: true, excludeSlashTmp: true }
-          : change.value === 'readOnly' ? { type: 'readOnly', networkAccess: false } : { type: 'dangerFullAccess' };
+        params.sandboxPolicy = sandboxPreset(change.value);
       }
       const revision = this.settingsRevision;
       if (this.threadReady) await this.rpc('thread/settings/update', params);
@@ -626,6 +640,36 @@ class CodexSession implements AgentSession {
     if (on && !was && this.threadReady) void this.mcpStatus();
   }
 
+  /** Переключатель для cwd: локальный TOML + штатная перезагрузка MCP, без записи общего конфига. */
+  async mcpToggle(name: string, enabled: boolean): Promise<void> {
+    if (this.closed || !this.threadReady || !name || name.length > 128 || /\p{Cc}/u.test(name)) return;
+    const change = this.mcpChanges.then(async () => {
+      if (this.closed) return;
+      try {
+        const result = await this.rpc('mcpServerStatus/list', {
+          threadId: this.id, serverName: name, detail: 'toolsAndAuthOnly',
+        });
+        const server = result.data.find((s) => s.name === name);
+        if (!server || server.pluginId) throw new Error('Only configured, non-plugin MCP servers can be toggled.');
+        await setProjectMcpEnabled(this.cwd, name, enabled);
+        if (!this.closed) await this.rpc('config/mcpServer/reload', undefined);
+        if (!this.closed && !this.turn && !this.draining) {
+          const refreshed = await this.rpc('mcpServerStatus/list', {
+            threadId: this.id, serverName: name, detail: 'toolsAndAuthOnly',
+          });
+          const current = refreshed.data.find((s) => s.name === name);
+          if (!current || (current.runtimeStatus === 'disabled') === enabled)
+            throw new Error('Project MCP setting was not applied. Check project trust and managed configuration.');
+        }
+      } catch (error) {
+        if (!this.closed) this.emit({ type: 'error', fatal: false, message: `MCP ${name}: ${errorText(error)}` });
+      }
+      await this.mcpStatus();
+    });
+    this.mcpChanges = change.catch(() => {});
+    await change;
+  }
+
   dispose(): void {
     if (this.closed) return;
     this.close('disposed');
@@ -663,6 +707,7 @@ class CodexSession implements AgentSession {
       ...(this.model ? { model: this.model } : {}),
       ...(this.config.thread?.approvalPolicy ? { approvalPolicy: this.config.thread.approvalPolicy } : {}),
       ...(this.config.thread?.sandbox ? { sandbox: this.config.thread.sandbox } : {}),
+      ...(this.newChatDefaults?.approval ? { approvalPolicy: this.newChatDefaults.approval } : {}),
     };
     const session = this.resumedId
       ? await this.resumeThread(this.resumedId, settings)
@@ -670,6 +715,17 @@ class CodexSession implements AgentSession {
           const dynamicTools = this.jira.register();
           return dynamicTools.length ? { dynamicTools } : {};
         })() }, this.config.startTimeoutMs ?? START_TIMEOUT_MS);
+    if (this.newChatDefaults?.effort && this.effort === this.newChatDefaults.effort) {
+      const model = (await readModels((method, params) => this.rpc(method, params))).find((m) => m.value === session.model);
+      if (model && !model.effortLevels?.includes(this.newChatDefaults.effort))
+        this.effort = session.reasoningEffort ?? undefined;
+    }
+    if (this.newChatDefaults?.sandbox) {
+      const selected = this.newChatDefaults.sandbox;
+      const sandboxPolicy = sandboxPreset(selected === 'dangerFullAccess' && !this.allowBypass ? 'workspaceWrite' : selected);
+      await this.rpc('thread/settings/update', { threadId: session.thread.id, sandboxPolicy });
+      session.sandbox = sandboxPolicy;
+    }
     this.threadReady = true;
     const init = this.mapper.init(session, this.effort && EFFORTS.includes(this.effort) ? this.effort as EffortLevel : undefined);
     this.model ??= session.model;
@@ -843,11 +899,20 @@ class CodexSession implements AgentSession {
         const read = (async () => {
           if (event.type === 'agent.end') await started;
           if (this.closed) return;
-          try {
-            const { thread } = await this.rpc('thread/read', { threadId: event.agentId, includeTurns: true });
-            if (!this.closed) this.emitAll(this.mapper.enrichSubagent(thread));
-          } catch (error) {
-            this.log('debug', `subagent metadata ${event.agentId}: ${errorText(error)}`);
+          // Activity can arrive before the child's first turn has been persisted.
+          for (const delay of [0, 250, 750, 1500]) {
+            if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+            if (this.closed) return;
+            try {
+              const { thread } = await this.rpc('thread/read', { threadId: event.agentId, includeTurns: true });
+              if (this.closed) return;
+              const metadata = this.mapper.enrichSubagent(thread);
+              this.emitAll(metadata);
+              if (event.type === 'agent.end' || metadata.some((e) => e.type === 'agent.start' && e.prompt)) return;
+            } catch (error) {
+              this.log('debug', `subagent metadata ${event.agentId}: ${errorText(error)}`);
+              if (event.type === 'agent.end') return;
+            }
           }
         })();
         this.subagentReads.set(key, read);
@@ -880,15 +945,7 @@ class CodexSession implements AgentSession {
   private async loadModels(): Promise<ModelOption[]> {
     try {
       await this.ready;
-      const models: Model[] = [];
-      let cursor: string | null = null;
-      for (let page = 0; page < 10; page++) {
-        const res: CodexRequests['model/list'][1] = await this.rpc('model/list', cursor ? { cursor } : {});
-        models.push(...res.data);
-        cursor = res.nextCursor;
-        if (!cursor) break;
-      }
-      return models.filter((m) => !m.hidden).map(modelOption);
+      return await readModels((method, params) => this.rpc(method, params));
     } catch (error) {
       this.log('warn', `model/list failed: ${String(error)}`);
       // сбой не кэшируем навсегда: следующий `capabilities()` спросит снова
@@ -984,6 +1041,19 @@ function isWriterBusy(error: unknown): boolean {
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+async function readModels(rpc: AppServerRpc): Promise<ModelOption[]> {
+  const models: Model[] = [];
+  let cursor: string | null = null;
+  for (let page = 0; page < 10; page++) {
+    const res: CodexRequests['model/list'][1] = await rpc('model/list', cursor ? { cursor } : {});
+    models.push(...res.data);
+    const next = res.nextCursor;
+    if (!next || next === cursor) break;
+    cursor = next;
+  }
+  return models.filter((m) => !m.hidden).map(modelOption);
 }
 
 function modelOption(m: Model): ModelOption {

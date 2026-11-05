@@ -135,6 +135,17 @@ tab and talks to it over stdio, the same way it runs `claude`. Approval policy a
 `~/.codex/config.toml` initially. The separate planning, approval and sandbox controls apply only to the current session;
 Agentura does not write the global configuration.
 
+The MCP panel can enable or disable individual Codex servers for the chat's working folder.
+It updates only `enabled` in that folder's `.codex/config.toml` and reloads MCP for the current chat.
+Other chats pick up the change after MCP reload; tools change from the next turn. Codex must trust the project
+for project configuration to apply. Plugin-managed servers have no switch.
+
+In **Settings → New session**, Claude and Codex have separate model and permission defaults.
+Claude uses the existing model, mode and effort fields. Codex has a model list from the installed CLI,
+an effort list for the selected model, approval policy and sandbox. Changing the model clears an incompatible effort.
+Empty Codex fields inherit the CLI configuration. These defaults apply to new chats; resumed sessions keep their settings.
+Read-only and workspace-write presets disable network access. Full access requires `agentura.allowBypassPermissions`.
+
 Supported: streaming replies, Stop, the model and effort pickers, command, file-change and permission approvals,
 agent questions, images in a message, tool rows, the `changes` and `agents` tabs (subagent graph, status, and summary), the context size next to the input box (after the
 first turn: until Codex reports its window, there is no gauge), and session history: the sidebar lists the recent

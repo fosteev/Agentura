@@ -7,6 +7,8 @@ import type { AgentProvider, EffortLevel, PermissionMode } from './agent/types';
 import { isAgentToolsSetting, readAgentTools, type AgentToolsSetting } from './shared/jiraTools';
 
 export const EFFORT_LEVELS: readonly EffortLevel[] = ['low', 'medium', 'high', 'xhigh', 'max'];
+export const CODEX_DEFAULT_APPROVALS = ['', 'untrusted', 'on-request', 'never'] as const;
+export const CODEX_DEFAULT_SANDBOXES = ['', 'readOnly', 'workspaceWrite', 'dangerFullAccess'] as const;
 /** Режимы по умолчанию как в настройке: `manual` — обычный режим с подтверждениями. */
 export const DEFAULT_MODES = ['manual', 'acceptEdits', 'plan', 'bypassPermissions'] as const;
 export type DefaultMode = (typeof DEFAULT_MODES)[number];
@@ -173,6 +175,10 @@ export type SettingKey =
   | 'defaultPermissionMode'
   | 'allowBypassPermissions'
   | 'defaultModel'
+  | 'codex.defaultModel'
+  | 'codex.defaultEffort'
+  | 'codex.defaultApproval'
+  | 'codex.defaultSandbox'
   | 'defaultEffort'
   | 'remoteControl'
   | 'remoteControlNamePrefix'
@@ -222,6 +228,10 @@ export const SETTING_KEYS: readonly SettingKey[] = [
   'defaultPermissionMode',
   'allowBypassPermissions',
   'defaultModel',
+  'codex.defaultModel',
+  'codex.defaultEffort',
+  'codex.defaultApproval',
+  'codex.defaultSandbox',
   'defaultEffort',
   'remoteControl',
   'remoteControlNamePrefix',
@@ -286,6 +296,10 @@ export interface SettingsValues {
   defaultPermissionMode: DefaultMode;
   allowBypassPermissions: boolean;
   defaultModel: string;
+  'codex.defaultModel': string;
+  'codex.defaultEffort': '' | EffortLevel;
+  'codex.defaultApproval': (typeof CODEX_DEFAULT_APPROVALS)[number];
+  'codex.defaultSandbox': (typeof CODEX_DEFAULT_SANDBOXES)[number];
   /** Пусто — выбор движка. */
   defaultEffort: '' | EffortLevel;
   /** Remote Control (roadmap 17) для каждой новой и восстановленной вкладки Claude. */
@@ -551,11 +565,18 @@ export function validateSetting(key: SettingKey, value: unknown, lang: ErrLang =
   const t = ERRORS[lang];
   const bad = (error: string): Checked => ({ ok: false, error });
   switch (key) {
+    case 'codex.defaultApproval':
+      return CODEX_DEFAULT_APPROVALS.includes(value as SettingsValues['codex.defaultApproval'])
+        ? { ok: true, value } : bad(t.allowedOrEmpty(CODEX_DEFAULT_APPROVALS.slice(1).join(', ')));
+    case 'codex.defaultSandbox':
+      return CODEX_DEFAULT_SANDBOXES.includes(value as SettingsValues['codex.defaultSandbox'])
+        ? { ok: true, value } : bad(t.allowedOrEmpty(CODEX_DEFAULT_SANDBOXES.slice(1).join(', ')));
     case 'defaultPermissionMode':
       return isDefaultMode(value) ? { ok: true, value } : bad(t.unknownMode);
     case 'defaultProvider':
       return isProvider(value) ? { ok: true, value } : bad(t.allowed(PROVIDERS.join(', ')));
     case 'defaultEffort':
+    case 'codex.defaultEffort':
       return value === '' || isEffort(value)
         ? { ok: true, value }
         : bad(t.allowedOrEmpty(EFFORT_LEVELS.join(', ')));
@@ -575,6 +596,7 @@ export function validateSetting(key: SettingKey, value: unknown, lang: ErrLang =
     case 'browser.enabled':
       return typeof value === 'boolean' ? { ok: true, value } : bad(t.yesNo);
     case 'defaultModel':
+    case 'codex.defaultModel':
     case 'remoteControlNamePrefix':
     case 'claudeExecutable':
     case 'codexExecutable':
@@ -669,6 +691,7 @@ export function validateSetting(key: SettingKey, value: unknown, lang: ErrLang =
 export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
   const mode = cfg.get<unknown>('defaultPermissionMode');
   const effort = cfg.get<unknown>('defaultEffort');
+  const codexEffort = cfg.get<unknown>('codex.defaultEffort');
   const th = cfg.get<unknown>('contextThresholds');
   const poll = cfg.get<unknown>('usagePollMinutes');
   const list = cfg.get<unknown>('sessionList.view');
@@ -698,6 +721,10 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
     defaultPermissionMode: isDefaultMode(mode) ? mode : 'manual',
     allowBypassPermissions: cfg.get<unknown>('allowBypassPermissions') === true,
     defaultModel: str('defaultModel'),
+    'codex.defaultModel': str('codex.defaultModel'),
+    'codex.defaultEffort': isEffort(codexEffort) ? codexEffort : '',
+    'codex.defaultApproval': CODEX_DEFAULT_APPROVALS.find((v) => v === cfg.get<unknown>('codex.defaultApproval')) ?? '',
+    'codex.defaultSandbox': CODEX_DEFAULT_SANDBOXES.find((v) => v === cfg.get<unknown>('codex.defaultSandbox')) ?? '',
     defaultEffort: isEffort(effort) ? effort : '',
     remoteControl: cfg.get<unknown>('remoteControl') === true,
     remoteControlNamePrefix: str('remoteControlNamePrefix'),

@@ -37,6 +37,7 @@ import {
   commit,
   agyCheck,
   codexCheck,
+  codexModels,
   engineCheck,
   errors,
   integrations,
@@ -66,6 +67,7 @@ import {
   SETTINGS_SECTIONS,
   readSettingsSection,
   saveSettingsSection,
+  send,
   type SettingsSection as Section,
 } from '../vscode';
 
@@ -153,10 +155,12 @@ function Select({
   k,
   value,
   options,
+  disabled,
 }: {
   k: SettingKey;
   value: string;
-  options: readonly (readonly [string, string])[];
+  options: readonly (readonly [string, string, boolean?])[];
+  disabled?: boolean;
 }) {
   // отказ записи: перерисовать, чтобы <select> вернулся к значению из настроек
   void errors.value[k];
@@ -165,10 +169,11 @@ function Select({
       <select
         aria-label={k}
         value={value}
+        disabled={disabled}
         onChange={(e) => commit(k, (e.currentTarget as HTMLSelectElement).value)}
       >
-        {options.map(([v, label]) => (
-          <option key={v} value={v}>
+        {options.map(([v, label, off]) => (
+          <option key={v} value={v} disabled={off}>
             {label}
           </option>
         ))}
@@ -764,6 +769,19 @@ export function Settings() {
     ['', T.effort.engine],
     ...EFFORT_LEVELS.map((e): [string, string] => [e, e]),
   ];
+  const catalog = codexModels.value;
+  const codexModel = catalog.models.find((m) => m.value === v['codex.defaultModel']);
+  const codexModelOptions: [string, string, boolean?][] = [
+    ['', T.newChat.inherit], ...catalog.models.map((m): [string, string] => [m.value, m.displayName]),
+  ];
+  if (v['codex.defaultModel'] && !codexModel) codexModelOptions.push([
+    v['codex.defaultModel'], `${v['codex.defaultModel']}${catalog.loading ? '' : ` (${T.newChat.unavailable})`}`, true,
+  ]);
+  const codexEfforts: [string, string, boolean?][] = [
+    ['', T.newChat.inherit], ...(codexModel?.effortLevels ?? []).map((e): [string, string] => [e, e]),
+  ];
+  if (v['codex.defaultEffort'] && !codexModel?.effortLevels?.includes(v['codex.defaultEffort']))
+    codexEfforts.push([v['codex.defaultEffort'], `${v['codex.defaultEffort']} (${T.newChat.unavailable})`, true]);
 
   // примеряемый шрифт перекрывает свою переменную только у образцов; '' — значение по умолчанию
   // (у панелей — `initial`: var(--panel-font, …) берёт прежний шрифт)
@@ -863,9 +881,7 @@ export function Settings() {
           {page(
             'session',
             <>
-              <Row name={T.mode.name} isNew desc={T.mode.desc} k="defaultPermissionMode">
-                <Select k="defaultPermissionMode" value={v.defaultPermissionMode} options={modes} />
-              </Row>
+              <p>{T.newChat.note}</p>
               <Row
                 name={T.bypass.name}
                 desc={T.bypass.desc}
@@ -880,6 +896,10 @@ export function Settings() {
                 }
               >
                 <Toggle k="allowBypassPermissions" value={v.allowBypassPermissions} danger />
+              </Row>
+              <h3 class="st-sub">Claude</h3>
+              <Row name={T.mode.name} isNew desc={T.mode.desc} k="defaultPermissionMode">
+                <Select k="defaultPermissionMode" value={v.defaultPermissionMode} options={modes} />
               </Row>
               <Row name={T.model.name} desc={T.model.desc} k="defaultModel">
                 <TextField
@@ -911,6 +931,30 @@ export function Settings() {
                   placeholder={T.remoteControlNamePrefix.placeholder}
                   wide
                 />
+              </Row>
+              <h3 class="st-sub">Codex</h3>
+              <Row name={T.model.name} desc={T.newChat.modelDesc} k="codex.defaultModel">
+                <Select k="codex.defaultModel" value={v['codex.defaultModel']} options={codexModelOptions} disabled={catalog.loading} />
+                <button type="button" class="btn" disabled={catalog.loading} onClick={() => send({ type: 'settings.codexModels' })}>
+                  {catalog.loading ? T.newChat.modelsLoading : T.newChat.modelsReload}
+                </button>
+              </Row>
+              {!catalog.loading && (catalog.error || !catalog.models.length) &&
+                <div class="err" role="alert">{catalog.error ?? T.newChat.noModels}</div>}
+              <Row name={T.effort.name} desc={T.newChat.effortDesc} k="codex.defaultEffort">
+                <Select k="codex.defaultEffort" value={v['codex.defaultEffort']} options={codexEfforts} disabled={catalog.loading || !codexModel} />
+              </Row>
+              <Row name={T.newChat.approval} desc={T.newChat.approvalDesc} k="codex.defaultApproval">
+                <Select k="codex.defaultApproval" value={v['codex.defaultApproval']} options={[
+                  ['', T.newChat.inherit], ['untrusted', 'untrusted'], ['on-request', 'on-request'], ['never', 'never'],
+                ]} />
+              </Row>
+              <Row name={T.newChat.sandbox} desc={T.newChat.sandboxDesc} k="codex.defaultSandbox">
+                <Select k="codex.defaultSandbox" value={v['codex.defaultSandbox']} options={[
+                  ['', T.newChat.inherit], ['readOnly', T.newChat.readOnly], ['workspaceWrite', T.newChat.workspaceWrite],
+                  ...(v.allowBypassPermissions || v['codex.defaultSandbox'] === 'dangerFullAccess'
+                    ? [['dangerFullAccess', T.newChat.dangerFullAccess] as [string, string]] : []),
+                ]} />
               </Row>
             </>,
           )}

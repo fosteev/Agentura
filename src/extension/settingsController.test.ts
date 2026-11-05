@@ -36,6 +36,37 @@ function setup(values: Record<string, unknown> = {}, over: Partial<SettingsDeps>
 }
 
 describe('SettingsController', () => {
+  it('каталог Codex приходит с effort; смена модели сбрасывает несовместимый уровень', async () => {
+    const models = [{ value: 'beta', displayName: 'Beta', effortLevels: ['low' as const] }];
+    const t = setup({ 'codex.defaultModel': 'alpha', 'codex.defaultEffort': 'high', defaultEffort: 'max' },
+      { listCodexModels: async () => models });
+    await t.c.handle({ type: 'settings.codexModels' });
+    expect(t.posted.at(-1)).toEqual({ type: 'settings.codexModels', models, loading: false });
+    await t.c.handle({ type: 'settings.set', key: 'codex.defaultModel', value: 'beta' });
+    expect(t.updates).toEqual([
+      { key: 'codex.defaultModel', value: 'beta', target: GLOBAL },
+      { key: 'codex.defaultEffort', value: '', target: GLOBAL },
+    ]);
+    expect(t.deps.config().get('defaultEffort')).toBe('max');
+  });
+
+  it('ошибка загрузки моделей не оставляет pending, повторный запрос восстанавливает каталог', async () => {
+    const load = vi.fn().mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce([]);
+    const t = setup({}, { listCodexModels: load });
+    await t.c.handle({ type: 'settings.codexModels' });
+    expect(t.posted.at(-1)).toMatchObject({ type: 'settings.codexModels', loading: false, error: expect.stringContaining('offline') });
+    await t.c.handle({ type: 'settings.codexModels' });
+    expect(t.posted.at(-1)).toEqual({ type: 'settings.codexModels', models: [], loading: false });
+  });
+  it('полный доступ новых чатов Codex требует machine-разрешения', async () => {
+    const off = setup();
+    await off.c.handle({ type: 'settings.set', key: 'codex.defaultSandbox', value: 'dangerFullAccess' });
+    expect(off.updates).toEqual([]);
+    expect(off.posted[0]).toMatchObject({ type: 'settings.error', key: 'codex.defaultSandbox' });
+    const on = setup({ allowBypassPermissions: true });
+    await on.c.handle({ type: 'settings.set', key: 'codex.defaultSandbox', value: 'dangerFullAccess' });
+    expect(on.updates[0]).toMatchObject({ key: 'codex.defaultSandbox', value: 'dangerFullAccess' });
+  });
   it('showSection: до ready ждёт первого состояния, после — уходит сразу', async () => {
     const { c, posted } = setup();
     c.showSection('integrations');

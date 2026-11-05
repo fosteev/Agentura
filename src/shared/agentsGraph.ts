@@ -40,6 +40,7 @@ export interface GraphAgent {
   turnNo: number;
   prompt?: string;
   model?: string;
+  reasoningEffort?: string;
   summary?: string;
   segs: GraphSeg[];
   calls: number;
@@ -89,6 +90,8 @@ function isGraphAgent(v: unknown): v is GraphAgent {
     num(v.calls) &&
     optStr(v.parentAgentId) &&
     optStr(v.prompt) &&
+    optStr(v.model) &&
+    optStr(v.reasoningEffort) &&
     optStr(v.summary) &&
     Array.isArray(v.segs) &&
     v.segs.every((s) => isObj(s) && typeof s.id === 'string' && num(s.at))

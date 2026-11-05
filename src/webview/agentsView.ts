@@ -583,7 +583,8 @@ export function agentDetail(
           : ui.agents.detail.stopped(time);
   const calls = Math.max(a.calls, a.toolUses ?? 0);
   const meta: AgentDetailView['meta'] = [
-    ...(a.model ? [{ value: shortModel(a.model) }] : []),
+    ...(a.model ? [{ value: a.model }] : []),
+    ...(a.reasoningEffort ? [{ label: 'effort', value: a.reasoningEffort }] : []),
     ...(a.tokens !== undefined
       ? [{ label: ui.agents.detail.tokens, value: compactTokens(a.tokens) }]
       : []),

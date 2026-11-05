@@ -98,7 +98,7 @@ export function McpServerRow({
   const disabled = s.status === 'disabled';
   const showCalls = s.status === 'connected' || disabled || calls > 0;
   const src = s.builtin ? undefined : sourceLabel(s.scope);
-  const switchable = !!canSwitch && !s.builtin;
+  const switchable = !!canSwitch && !s.builtin && !(engine === 'codex' && s.scope === 'plugin');
   const expandable = !!onToggle && calls > 0;
   const nm = (
     <>
@@ -162,7 +162,9 @@ export function McpServerRow({
             class={`tg${disabled ? '' : ' on'}`}
             aria-checked={!disabled}
             aria-label={ui.mcp.chipTip(s.name)}
-            data-tip={disabled ? ui.mcp.toggleOnTip(s.name) : ui.mcp.toggleOffTip(s.name)}
+            data-tip={engine === 'codex'
+              ? ui.mcp.toggleCodexTip(s.name, disabled)
+              : disabled ? ui.mcp.toggleOnTip(s.name) : ui.mcp.toggleOffTip(s.name)}
             onClick={() => onSwitch?.(s.name, disabled)}
           />
         ) : (

@@ -551,7 +551,7 @@ describe('вкладка «mcp» (roadmap 21, этап 3)', () => {
     expect(rail.querySelector('.b.warn')?.textContent).toBe('2');
   });
 
-  it('тумблер сервера во вкладке (roadmap 22): шлёт mcp.toggle; у Codex его нет', async () => {
+  it('тумблер сервера во вкладке: Claude и Codex шлют mcp.toggle', async () => {
     stored = { panel: { tab: 'mcp' } };
     const host = mount();
     seed();
@@ -562,7 +562,9 @@ describe('вкладка «mcp» (roadmap 21, этап 3)', () => {
     expect(vi.mocked(vscode.send)).toHaveBeenCalledWith({ type: 'mcp.toggle', name: 'serena', enabled: false });
     features.value = providerFeatures('codex');
     await flush();
-    expect(host.querySelector('#pane-mcp .tg')).toBeNull();
+    const codexSwitch = q(host, '#pane-mcp .srv[data-name="serena"] button.tg');
+    codexSwitch.click();
+    expect(vi.mocked(vscode.send)).toHaveBeenLastCalledWith({ type: 'mcp.toggle', name: 'serena', enabled: false });
   });
 
   it('клик по серверу с вызовами раскрывает вызовы по тулам', async () => {

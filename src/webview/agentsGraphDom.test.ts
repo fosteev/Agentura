@@ -9,6 +9,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgentEvent } from '../agent/types';
 import { agentsParallelEvents } from '../agent/claude/__fixtures__/agentsParallel';
 import type { ToWebview } from '../protocol';
+import { AgentOpen } from './components/AgentViews';
+import { agentOpen } from './agentViews';
+import { ui } from './strings';
 import { GraphApp } from './agentsGraph/App';
 import { handleGraphMessage, restoreGraphState } from './agentsGraph/store';
 import { initialState } from './chatState';
@@ -80,6 +83,23 @@ function mountGraph() {
 const fromHost = (m: ToWebview) => window.dispatchEvent(new MessageEvent('message', { data: m }));
 
 describe('вкладка графа', () => {
+  it('missing launch prompt is explicit; tree details show model and effort', async () => {
+    const { subs } = await play();
+    const agent = { ...subs[1]!, prompt: undefined, model: 'gpt-6-astra', reasoningEffort: 'high' };
+    hudState.value = { ...hudState.value, agents: [agent] };
+    handleGraphMessage(graphSnapshot());
+    const graph = mountGraph();
+    await flush();
+    expect(q(graph, '.gd').textContent).toContain(ui.agents.view.promptUnavailable);
+    const host = document.createElement('div');
+    mounted.push(host);
+    document.body.append(host);
+    render(h(AgentOpen, { d: agentOpen(agent, Date.now()), variant: 'open', onStop() {}, onTranscript() {} }), host);
+    expect(q(host, '.open .m').textContent).toContain('gpt-6-astra');
+    expect(q(host, '.open .m').textContent).toContain('effort high');
+    expect(host.textContent).toContain(ui.agents.view.promptUnavailable);
+  });
+
   it('узел на каждого агента и фоновую задачу, ребро на каждый узел; выбран идущий, детали — с промптом', async () => {
     const { subs } = await play();
     handleGraphMessage(graphSnapshot());

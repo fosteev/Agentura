@@ -1,4 +1,4 @@
-import type { AgentProvider } from '../agent/types';
+import type { AgentProvider, ModelOption } from '../agent/types';
 import type { IntegrationsState } from '../shared/integrations';
 import type { FromWebview, SettingsSection, ToWebview } from '../protocol';
 import { hostStrings, type Lang } from '../shared/l10n';
@@ -21,6 +21,7 @@ export interface SettingsDeps {
   post(m: ToWebview): void;
   /** Тот же поиск, что при старте движка (`resolveExecutable`). */
   checkEngine(path: string, engine: AgentProvider): Promise<EngineCheck>;
+  listCodexModels?(): Promise<ModelOption[]>;
   reveal(target: 'ui' | 'json'): void;
   warn(message: string): void;
   /** Скачать шрифт из Google Fonts (`kind` — назначение карточки) / удалить скачанный. */
@@ -42,6 +43,9 @@ export const BYPASS_NOT_ALLOWED = hostStrings('ru').bypassNotAllowed;
 
 /** Логика вкладки настроек без `vscode`: приём сообщений webview и выдача текущих значений. */
 export class SettingsController {
+  private models: ModelOption[] = [];
+  private modelsSeq = 0;
+  private modelsPath: string | undefined;
   /** Номер последней «проверить» — ответ приходит только на неё. */
   private checkSeq: Record<AgentProvider, number> = { claude: 0, codex: 0, antigravity: 0 };
 
@@ -67,6 +71,25 @@ export class SettingsController {
       overridden: overriddenKeys(cfg),
     });
     this.pushIntegrations();
+    const path = cfg.get<string>('codexExecutable') ?? '';
+    if (this.deps.listCodexModels && this.modelsPath !== path) void this.loadCodexModels();
+  }
+
+  private async loadCodexModels(): Promise<void> {
+    if (!this.deps.listCodexModels) return;
+    this.modelsPath = this.deps.config().get<string>('codexExecutable') ?? '';
+    const seq = ++this.modelsSeq;
+    this.deps.post({ type: 'settings.codexModels', models: this.models, loading: true });
+    try {
+      const models = await this.deps.listCodexModels();
+      if (seq !== this.modelsSeq) return;
+      this.models = models;
+      this.deps.post({ type: 'settings.codexModels', models, loading: false });
+    } catch (e) {
+      if (seq !== this.modelsSeq) return;
+      this.models = [];
+      this.deps.post({ type: 'settings.codexModels', models: [], loading: false, error: String(e) });
+    }
   }
 
   /** Состояние Jiraffe и своих подключений → webview (на `ready`, при смене источников/подключений и настройки). */
@@ -86,6 +109,9 @@ export class SettingsController {
 
   async handle(m: FromWebview): Promise<void> {
     switch (m.type) {
+      case 'settings.codexModels':
+        await this.loadCodexModels();
+        break;
       case 'ready':
         this.pushState();
         this.ready = true;
@@ -147,8 +173,8 @@ export class SettingsController {
     // «без разрешений» по умолчанию — только когда сам режим разрешён (machine-настройка)
     if (
       checked.ok &&
-      key === 'defaultPermissionMode' &&
-      checked.value === 'bypassPermissions' &&
+      ((key === 'defaultPermissionMode' && checked.value === 'bypassPermissions') ||
+        (key === 'codex.defaultSandbox' && checked.value === 'dangerFullAccess')) &&
       !readSettings(this.deps.config()).allowBypassPermissions
     ) {
       this.deps.post({ type: 'settings.error', key, message: t.bypassNotAllowed });
@@ -160,6 +186,12 @@ export class SettingsController {
     }
     try {
       await writeSetting(this.deps.config(), key, checked.value, this.deps.globalTarget);
+      if (key === 'codex.defaultModel') {
+        const effort = readSettings(this.deps.config())['codex.defaultEffort'];
+        const levels = this.models.find((m) => m.value === checked.value)?.effortLevels ?? [];
+        if (effort && !levels.includes(effort))
+          await writeSetting(this.deps.config(), 'codex.defaultEffort', '', this.deps.globalTarget);
+      }
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       this.deps.warn(`не удалось записать agentura.${key}: ${message}`);

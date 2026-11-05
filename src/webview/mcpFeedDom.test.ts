@@ -10,6 +10,7 @@ import { applyEvent, initialState, queueUser, seedHistory } from './chatState';
 import { feedItems } from './agentsView';
 import { feedTurns } from './turnView';
 import { Chat } from './components/Chat';
+import { McpServerRow } from './components/McpRows';
 import { initialHud } from './hudState';
 import { mcpNote, mcpPrefix, noteVisible, mcpUsage, serverByPrefix, sessionSkills, turnCounts } from './mcpFeed';
 import {
@@ -196,6 +197,22 @@ describe('чистые функции', () => {
 });
 
 describe('метки B в ленте', () => {
+  it('Codex: переключатель для папки есть у обычного сервера, но отсутствует у плагинного', () => {
+    const host = document.createElement('div');
+    mounted.push(host);
+    const onSwitch = vi.fn();
+    const props = { engine: 'codex', canReconnect: false, onReconnect: vi.fn(), canSwitch: true, onSwitch };
+    render(h(McpServerRow, { ...props, server: { name: 'probe', status: 'connected' } }), host);
+    const toggle = host.querySelector<HTMLButtonElement>('[role="switch"]')!;
+    expect(toggle.getAttribute('data-tip')).toContain('.codex/config.toml');
+    toggle.click();
+    expect(onSwitch).toHaveBeenCalledWith('probe', false);
+    render(h(McpServerRow, { ...props, server: { name: 'probe', status: 'disabled' } }), host);
+    host.querySelector<HTMLButtonElement>('[role="switch"]')!.click();
+    expect(onSwitch).toHaveBeenLastCalledWith('probe', true);
+    render(h(McpServerRow, { ...props, server: { name: 'plugin', status: 'connected', scope: 'plugin' } }), host);
+    expect(host.querySelector('[role="switch"]')).toBeNull();
+  });
   it('чип сервера и op mcp; упавший сервер — красные чип и op; имя из статуса', async () => {
     const host = mount();
     play([init(), status([srv('serena', 'connected'), srv('webstorm', 'failed', 'ECONNREFUSED'), srv('claude.ai Gmail', 'connected')]), ...turn()]);

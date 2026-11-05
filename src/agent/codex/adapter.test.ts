@@ -1,4 +1,7 @@
 import { readFileSync } from 'node:fs';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import type { AgentEvent, AgentEventOf, AgentSession } from '../types';
 import { CodexAdapter, type CodexAdapterConfig } from './adapter';
@@ -76,6 +79,102 @@ const finishTurn = (s: FakeAppServer, id: string, status = 'completed', extra: R
   s.notify('turn/completed', { threadId: THREAD, turn: t(id, status, extra) });
 
 describe('CodexAdapter: handshake и ход', () => {
+  it('каталог настроек получает модели и их effort без создания треда, загрузки скиллов или MCP', async () => {
+    const s = server();
+    const { adapter } = open(s);
+    const models = await adapter.listModels('/work');
+    expect(models.length).toBeGreaterThan(0);
+    expect(models.some((m) => (m.effortLevels?.length ?? 0) > 0)).toBe(true);
+    expect(s.methods()).toContain('model/list');
+    expect(s.methods()).not.toContain('thread/start');
+    expect(s.methods()).not.toContain('skills/list');
+    expect(s.methods()).not.toContain('mcpServerStatus/list');
+  });
+  it.each(['high', 'low'] as const)('effort нового чата %s применяется до первого запроса; несовместимый берётся из Codex', async (effort) => {
+    const s = server();
+    s.handle('thread/start', () => ({ ...fixture.threadStart, model: 'test', reasoningEffort: 'medium' }));
+    s.handle('model/list', () => ({ data: [{ model: 'test', displayName: 'Test', hidden: false,
+      supportedReasoningEfforts: [{ reasoningEffort: 'high' }, { reasoningEffort: 'medium' }] }], nextCursor: null }));
+    const session = await open(s).adapter.createSession({ cwd: '/work', codexDefaults: { model: 'test', effort } });
+    session.send('test');
+    await until(() => s.methods().includes('turn/start'));
+    expect(s.paramsOf('turn/start')).toMatchObject({ model: 'test', effort: effort === 'high' ? 'high' : 'medium' });
+    session.dispose();
+  });
+  it('дефолты нового чата применяются до первого turn/start с точной sandbox-политикой', async () => {
+    const s = server();
+    s.handle('thread/start', (p) => ({ ...fixture.threadStart, model: p.model, approvalPolicy: p.approvalPolicy }));
+    s.handle('thread/settings/update', () => ({}));
+    const { adapter } = open(s);
+    const session = await adapter.createSession({ cwd: '/work', codexDefaults: {
+      model: 'gpt-test', approval: 'never', sandbox: 'workspaceWrite',
+    } });
+    const events = collect(session);
+    session.send('test');
+    await until(() => types(events).includes('turn.start'));
+    expect(s.paramsOf('thread/start')).toMatchObject({ model: 'gpt-test', approvalPolicy: 'never' });
+    const sandboxPolicy = { type: 'workspaceWrite', writableRoots: [], networkAccess: false,
+      excludeTmpdirEnvVar: true, excludeSlashTmp: true };
+    expect(s.paramsOf('thread/settings/update')).toEqual({ threadId: THREAD, sandboxPolicy });
+    expect(s.methods().indexOf('thread/settings/update')).toBeLessThan(s.methods().indexOf('turn/start'));
+    expect(s.paramsOf('turn/start')).toMatchObject({ model: 'gpt-test' });
+    // turn/start наследует уже подтверждённые настройки треда.
+    expect(s.paramsOf('turn/start')).not.toHaveProperty('sandboxPolicy');
+    expect(events.find((e) => e.type === 'session.init')).toMatchObject({
+      sessionPolicy: { approval: 'never', sandbox: 'workspaceWrite', sandboxPolicy },
+    });
+    session.dispose();
+  });
+
+  it('полный доступ в дефолтах без allowBypass ограничивается рабочей папкой', async () => {
+    const s = server();
+    s.handle('thread/settings/update', () => ({}));
+    const session = await open(s).adapter.createSession({ cwd: '/work', codexDefaults: { sandbox: 'dangerFullAccess' } });
+    session.send('test');
+    await until(() => s.methods().includes('turn/start'));
+    expect(s.paramsOf('thread/settings/update')).toMatchObject({ sandboxPolicy: { type: 'workspaceWrite', networkAccess: false } });
+    session.dispose();
+  });
+
+  it('resume игнорирует дефолты нового Codex-чата', async () => {
+    const s = server();
+    const session = await open(s).adapter.resumeSession(THREAD, { cwd: '/work', codexDefaults: {
+      model: 'gpt-new', effort: 'max', approval: 'never', sandbox: 'dangerFullAccess',
+    } });
+    await until(() => s.methods().includes('thread/resume'));
+    session.send('continue');
+    await until(() => s.methods().includes('turn/start'));
+    expect(s.paramsOf('thread/resume')).not.toHaveProperty('model');
+    expect(s.paramsOf('thread/resume')).not.toHaveProperty('approvalPolicy');
+    expect(s.methods()).not.toContain('thread/settings/update');
+    session.dispose();
+  });
+
+  it('retries child metadata while the first turn is not yet persisted', async () => {
+    const s = server();
+    let reads = 0;
+    s.handle('thread/read', () => ({ thread: {
+      id: 'child', parentThreadId: THREAD, model: 'gpt-6.1-sol', reasoningEffort: 'high',
+      turns: ++reads === 1 ? [] : [t('child-turn', 'inProgress', { items: [
+        { type: 'userMessage', id: 'u', content: [{ type: 'text', text: 'Live child task' }] },
+      ] })],
+    } }));
+    const { adapter } = open(s);
+    const session = await adapter.createSession({ cwd: '/work' });
+    const events = collect(session);
+    session.send('test');
+    await until(() => types(events).includes('turn.start'));
+    s.notify('item/completed', { threadId: THREAD, item: {
+      type: 'subAgentActivity', id: 'start', kind: 'started', agentThreadId: 'child', agentPath: '/root/child',
+    } });
+    await until(() => events.some((e) => e.type === 'agent.start' && e.prompt === 'Live child task'));
+    expect(events).toContainEqual(expect.objectContaining({ type: 'agent.start',
+      prompt: 'Live child task', model: 'gpt-6.1-sol', reasoningEffort: 'high' }));
+    expect(events.some((e) => e.type === 'agent.end')).toBe(false);
+    expect(reads).toBe(2);
+    session.dispose();
+  });
+
   it('activity обогащается дочерним thread/read; ответ ребёнка не попадает в текст основного', async () => {
     const s = server();
     s.handle('thread/read', () => ({ thread: {
@@ -95,7 +194,7 @@ describe('CodexAdapter: handshake и ход', () => {
       item: { type: 'subAgentActivity', id: kind, kind, agentThreadId: 'child', agentPath: '/root/child', model: null },
     });
     await until(() => events.some((e) => e.type === 'agent.end' && e.summary === 'CHILD_OK'));
-    expect(events).toContainEqual(expect.objectContaining({ type: 'agent.start', prompt: 'Child task', subagentType: 'gpt-6.1-sol' }));
+    expect(events).toContainEqual(expect.objectContaining({ type: 'agent.start', prompt: 'Child task', subagentType: 'Codex' }));
     expect(events.some((e) => e.type === 'text.delta')).toBe(false);
     expect(s.received.filter((m) => m.method === 'thread/read')).toHaveLength(2);
     session.dispose();
@@ -1037,6 +1136,60 @@ describe('CodexAdapter: история (этап 5)', () => {
 });
 
 describe('CodexAdapter: статус MCP (roadmap 21)', () => {
+  it('не сообщает об успешном отключении, если Codex проигнорировал проектный конфиг', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'agentura-mcp-toggle-'));
+    const s = server();
+    s.handle('mcpServerStatus/list', () => ({ data: [srv('probe', 'connected')], nextCursor: null }));
+    s.handle('config/mcpServer/reload', () => ({}));
+    const session = await open(s).adapter.resumeSession(THREAD, { cwd });
+    const events = collect(session);
+    try {
+      await until(() => types(events).includes('session.init'));
+      await session.mcpToggle!('probe', false);
+      expect(events).toContainEqual(expect.objectContaining({ type: 'error', fatal: false,
+        message: expect.stringContaining('project trust') }));
+      expect(mcpOf(events).at(-1)?.servers).toMatchObject([{ name: 'probe', status: 'connected' }]);
+    } finally { session.dispose(); await rm(cwd, { recursive: true, force: true }); }
+  });
+  it('переключает MCP через конфиг текущей папки и reload; общий config API не вызывается', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'agentura-mcp-toggle-'));
+    const s = server();
+    let enabled = true;
+    s.handle('mcpServerStatus/list', () => ({ data: [srv('probe', enabled ? 'connected' : 'disabled')], nextCursor: null }));
+    s.handle('config/mcpServer/reload', async () => {
+      enabled = !(await readFile(join(cwd, '.codex/config.toml'), 'utf8')).includes('= false');
+      return {};
+    });
+    const session = await open(s).adapter.resumeSession(THREAD, { cwd });
+    const events = collect(session);
+    try {
+      await until(() => types(events).includes('session.init'));
+      await session.mcpToggle!('probe', false);
+      expect(mcpOf(events).at(-1)?.servers).toMatchObject([{ name: 'probe', status: 'disabled' }]);
+      await session.mcpToggle!('probe', true);
+      expect(mcpOf(events).at(-1)?.servers).toMatchObject([{ name: 'probe', status: 'connected' }]);
+      expect(s.methods()).not.toContain('config/value/write');
+      expect(s.methods()).not.toContain('config/batchWrite');
+      expect(s.received.filter((m) => m.method === 'config/mcpServer/reload')).toHaveLength(2);
+      expect(events.some((e) => e.type === 'error')).toBe(false);
+    } finally { session.dispose(); await rm(cwd, { recursive: true, force: true }); }
+  });
+
+  it.each([null, 'plugin'])('не создаёт конфиг для отсутствующего или плагинного сервера: %s', async (plugin) => {
+    const cwd = await mkdtemp(join(tmpdir(), 'agentura-mcp-toggle-'));
+    const s = server();
+    s.handle('mcpServerStatus/list', () => ({ data: plugin ? [{ ...srv('probe', 'connected'), pluginId: plugin }] : [], nextCursor: null }));
+    const session = await open(s).adapter.resumeSession(THREAD, { cwd });
+    const events = collect(session);
+    try {
+      await until(() => types(events).includes('session.init'));
+      await session.mcpToggle!('probe', false);
+      expect(events).toContainEqual(expect.objectContaining({ type: 'error', fatal: false }));
+      await expect(readFile(join(cwd, '.codex/config.toml'))).rejects.toMatchObject({ code: 'ENOENT' });
+      expect(s.methods()).not.toContain('config/mcpServer/reload');
+    } finally { session.dispose(); await rm(cwd, { recursive: true, force: true }); }
+  });
+
   const srv = (name: string, runtimeStatus: string | null) => ({
     name,
     runtimeStatus,

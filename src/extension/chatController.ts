@@ -91,6 +91,7 @@ export interface ChatDeps {
     error(m: string): void;
   };
   settings(): {
+    codexDefaults?: import('../agent/types').CodexNewChatDefaults;
     defaultModel?: string;
     allowBypass: boolean;
     contextThresholds?: number[];
@@ -1626,8 +1627,9 @@ export class ChatController {
               });
             })()
           : !hasModes
-            ? // настройки режима, effort и модели — про Claude; Codex стартует со своими дефолтами (`model/list`)
-              adapter.createSession({ ...base, permissionMode: 'default' })
+            ? adapter.createSession({ ...base, permissionMode: 'default',
+                ...(s.codexDefaults ? { codexDefaults: s.codexDefaults, model: s.codexDefaults.model } : {}),
+              })
             : (() => {
               // настройки «режим» и «effort по умолчанию» — только новым сессиям (resume берёт своё)
               const mode = resolveDefaultMode(s.defaultPermissionMode, s.allowBypass);

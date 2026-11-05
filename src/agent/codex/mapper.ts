@@ -136,7 +136,7 @@ export class CodexEventMapper {
   private contextWindow: number | null = null;
   private readonly tools: CodexToolMapper;
   /** Метаданные дочерних тредов приходят в `spawnAgent`, а их жизнь — отдельными item. */
-  private readonly subagents = new Map<string, { parentThreadId: string; prompt?: string; model?: string; name?: string }>();
+  private readonly subagents = new Map<string, { parentThreadId: string; prompt?: string; model?: string; reasoningEffort?: string; name?: string }>();
   private readonly startedSubagents = new Set<string>();
   private readonly endedSubagents = new Map<string, AgentEventOf<'agent.end'>>();
   /** MCP-серверы (roadmap 21): последний список; уведомление о запуске правит один сервер в нём. */
@@ -306,7 +306,8 @@ export class CodexEventMapper {
         this.prevTotal = total;
         this.lastCall = m.tokenUsage.last;
         this.contextWindow = m.tokenUsage.modelContextWindow;
-        return [];
+        const context = this.contextEvent();
+        return context ? [context] : [];
       }
       case 'error': {
         const m = params as CodexNotifications['error'];
@@ -478,9 +479,11 @@ export class CodexEventMapper {
             parentThreadId: item.senderThreadId,
             ...(item.prompt ? { prompt: item.prompt } : {}),
             ...(item.model ? { model: item.model } : {}),
+            ...(item.reasoningEffort ? { reasoningEffort: item.reasoningEffort } : {}),
           });
           const changed = previous && (previous.prompt !== this.subagents.get(agentId)?.prompt ||
-            previous.model !== this.subagents.get(agentId)?.model);
+            previous.model !== this.subagents.get(agentId)?.model ||
+            previous.reasoningEffort !== this.subagents.get(agentId)?.reasoningEffort);
           events.push(...this.startSubagent(agentId, !!changed));
         }
       }
@@ -496,6 +499,7 @@ export class CodexEventMapper {
       ...previous,
       name: item.agentPath.split('/').filter(Boolean).at(-1),
       ...(item.model ? { model: item.model } : {}),
+      ...(item.reasoningEffort ? { reasoningEffort: item.reasoningEffort } : {}),
     });
     if (item.kind === 'started') return this.startSubagent(item.agentThreadId);
     if (item.kind === 'interacted')
@@ -515,9 +519,11 @@ export class CodexEventMapper {
       taskId: agentId,
       description: meta?.prompt ?? meta?.name ?? 'Codex subagent',
       taskType: 'subagent',
-      subagentType: meta?.model,
+      subagentType: 'Codex',
       background: false,
       ...(meta?.prompt ? { prompt: meta.prompt } : {}),
+      ...(meta?.model ? { model: meta.model } : {}),
+      ...(meta?.reasoningEffort ? { reasoningEffort: meta.reasoningEffort } : {}),
     };
     if (meta?.parentThreadId && meta.parentThreadId !== this.threadId) event.parentAgentId = meta.parentThreadId;
     return [event];
@@ -540,6 +546,7 @@ export class CodexEventMapper {
       ...(thread.parentThreadId ? { parentThreadId: thread.parentThreadId } : {}),
       ...(prompt ? { prompt } : {}),
       ...(thread.model ? { model: thread.model } : {}),
+      ...(thread.reasoningEffort ? { reasoningEffort: thread.reasoningEffort } : {}),
     });
     const events = this.startSubagent(thread.id, true);
     const last = thread.turns?.at(-1);

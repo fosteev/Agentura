@@ -133,7 +133,7 @@ const FIELDS = {
   ThreadTokenUsage: ['total', 'last', 'modelContextWindow'],
   CollabAgentState: ['status', 'message'],
   ErrorNotification: ['error', 'willRetry', 'threadId', 'turnId'],
-  ListMcpServerStatusParams: ['cursor', 'limit', 'detail', 'threadId'],
+  ListMcpServerStatusParams: ['cursor', 'limit', 'detail', 'threadId', 'serverName'],
   ListMcpServerStatusResponse: ['data', 'nextCursor'],
   McpServerStatus: ['name', 'runtimeStatus', 'serverInfo', 'tools', 'toolsError', 'pluginId'],
   McpServerInfo: ['name', 'version'],

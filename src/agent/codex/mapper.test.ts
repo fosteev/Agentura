@@ -57,7 +57,7 @@ describe('CodexEventMapper: живая запись хода (fixtures/codex/ok-
     mapper.init(fixture.threadStart);
     mapper.notePrompt({ text: 'ответь одним словом OK' });
     const events = replay(mapper);
-    expect(events.map((e) => e.type)).toEqual(['turn.start', 'text.delta', 'turn.result']);
+    expect(events.map((e) => e.type)).toEqual(['turn.start', 'text.delta', 'context.usage', 'turn.result']);
     expect(ofType(events, 'turn.start')[0]).toMatchObject({ prompt: 'ответь одним словом OK' });
     const delta = ofType(events, 'text.delta')[0]!;
     expect(delta.text).toBe('OK');
@@ -154,7 +154,9 @@ describe('CodexEventMapper: рассуждение и токены', () => {
     m.map('turn/started', { threadId: 't', turn: turn('inProgress') });
     const upd = (total: ReturnType<typeof breakdown>, last: ReturnType<typeof breakdown>) =>
       m.map('thread/tokenUsage/updated', { threadId: 't', turnId: 't1', tokenUsage: { total, last, modelContextWindow: 1000 } });
-    upd(breakdown(100, 40, 10), breakdown(100, 40, 10));
+    expect(upd(breakdown(100, 40, 10), breakdown(100, 40, 10))).toEqual([
+      { type: 'context.usage', source: 'usage', usedTokens: 110, maxTokens: 1000, percentage: 11 },
+    ]);
     upd(breakdown(100, 40, 10), breakdown(100, 40, 10)); // повтор того же обновления
     upd(breakdown(250, 140, 30, 5), breakdown(150, 100, 20, 5));
     const result = m.map('turn/completed', { threadId: 't', turn: turn('completed') })[0] as AgentEventOf<'turn.result'>;
@@ -231,7 +233,9 @@ describe('CodexEventMapper: субагенты', () => {
         description: 'Find test gaps',
         prompt: 'Find test gaps',
         taskType: 'subagent',
-        subagentType: 'gpt-6-luna',
+        subagentType: 'Codex',
+        model: 'gpt-6-luna',
+        reasoningEffort: 'high',
         background: false,
       },
       { type: 'agent.progress', agentId: 'child', taskId: 'child', status: 'running' },

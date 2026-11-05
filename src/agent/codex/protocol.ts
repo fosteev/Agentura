@@ -140,6 +140,7 @@ export type ThreadItem =
       agentThreadId: string;
       agentPath: string;
       model?: string | null;
+      reasoningEffort?: ReasoningEffort | null;
       startedAtMs?: number;
       completedAtMs?: number | null;
     }
@@ -387,6 +388,7 @@ export interface ModelListResponse {
  * `runtimeStatus` пуст); `toolsAndAuthOnly` — без ресурсов и шаблонов.
  */
 export interface ListMcpServerStatusParams {
+  serverName?: string;
   cursor?: string | null;
   limit?: number | null;
   detail?: 'full' | 'toolsAndAuthOnly' | null;

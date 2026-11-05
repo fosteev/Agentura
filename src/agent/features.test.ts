@@ -30,7 +30,7 @@ describe('providerFeatures', () => {
       mcp: true,
       mcpReconnect: false,
       mcpReloadAll: true,
-      mcpToggle: false,
+      mcpToggle: true,
       skills: true,
     });
   });

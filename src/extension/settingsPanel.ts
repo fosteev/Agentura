@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import { homedir } from 'node:os';
+import { CodexAdapter } from '../agent/codex/adapter';
 import { AGY_NOT_FOUND, resolveAgyExecutable } from '../agent/antigravity/executable';
 import { resolveExecutable } from '../agent/claude/executable';
 import { CODEX_NOT_FOUND, resolveCodexExecutable } from '../agent/codex/executable';
@@ -50,6 +52,14 @@ export class SettingsPanel {
       config: () => vscode.workspace.getConfiguration('agentura'),
       globalTarget: vscode.ConfigurationTarget.Global,
       post: (m) => postToWebview(webview, m),
+      listCodexModels: async () => {
+        const path = vscode.workspace.getConfiguration('agentura').get<string>('codexExecutable') ?? '';
+        const executable = await resolveCodexExecutable(path);
+        if (!executable.path) throw new Error(executable.problem ?? hostStrings(currentLanguage()).codexNotFound);
+        return new CodexAdapter({ executablePath: executable.path,
+          clientVersion: String(context.extension.packageJSON.version), log: (level, message) => log[level](message),
+        }).listModels(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? homedir());
+      },
       checkEngine: async (path, engine) => {
         // «не найден» — на языке интерфейса, как в карточке чата; прочие проблемы резолвера английские
         const r =

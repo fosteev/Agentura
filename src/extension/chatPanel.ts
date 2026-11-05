@@ -753,7 +753,14 @@ export class ChatPanel {
       log,
       settings: () => {
         const cfg = vscode.workspace.getConfiguration('agentura');
+        const values = readSettings(cfg);
         return {
+          codexDefaults: {
+            model: values['codex.defaultModel'] || undefined,
+            effort: values['codex.defaultEffort'] || undefined,
+            approval: values['codex.defaultApproval'] || undefined,
+            sandbox: values['codex.defaultSandbox'] || undefined,
+          },
           defaultModel: cfg.get<string>('defaultModel') || undefined,
           allowBypass: cfg.get<boolean>('allowBypassPermissions', false),
           // кривые пороги из settings.json (вкладка настроек такие не пишет) — по умолчанию

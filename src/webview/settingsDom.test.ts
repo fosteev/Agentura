@@ -11,6 +11,7 @@ import { Sidebar } from './components/Sidebar';
 import {
   agyCheck,
   codexCheck,
+  codexModels,
   engineCheck,
   errors,
   handleSettingsMessage,
@@ -39,6 +40,10 @@ const values: SettingsValues = {
   defaultPermissionMode: 'manual',
   allowBypassPermissions: false,
   defaultModel: '',
+  'codex.defaultModel': '',
+  'codex.defaultEffort': '',
+  'codex.defaultApproval': '',
+  'codex.defaultSandbox': '',
   defaultEffort: '',
   remoteControl: false,
   remoteControlNamePrefix: '',
@@ -111,6 +116,7 @@ beforeEach(() => {
   errors.value = {};
   engineCheck.value = { pending: false };
   codexCheck.value = { pending: false };
+  codexModels.value = { models: [], loading: true };
   agyCheck.value = { pending: false };
   userFonts.value = { ui: [], code: [] };
 });
@@ -126,6 +132,52 @@ describe('⚙ в боковой панели', () => {
 });
 
 describe('вкладка настроек', () => {
+  it('список моделей Codex задаёт доступные effort; выборы сохраняются отдельно от Claude', async () => {
+    const host = mount(Settings);
+    state({ 'codex.defaultModel': 'alpha', 'codex.defaultEffort': 'high', defaultModel: 'opus' });
+    handleSettingsMessage({ type: 'settings.codexModels', loading: false, models: [
+      { value: 'alpha', displayName: 'Alpha', effortLevels: ['low', 'high'] },
+      { value: 'beta', displayName: 'Beta', effortLevels: ['medium', 'max'] },
+    ] });
+    await flush();
+    const options = (k: string) => [...host.querySelectorAll<HTMLOptionElement>(`select[aria-label="${k}"] option`)].map((o) => o.value);
+    expect(options('codex.defaultModel')).toEqual(['', 'alpha', 'beta']);
+    expect(options('codex.defaultEffort')).toEqual(['', 'low', 'high']);
+    change(host.querySelector('[aria-label="codex.defaultModel"]')!, 'beta');
+    state({ 'codex.defaultModel': 'beta', 'codex.defaultEffort': '' });
+    await flush();
+    expect(options('codex.defaultEffort')).toEqual(['', 'medium', 'max']);
+    change(host.querySelector('[aria-label="codex.defaultEffort"]')!, 'max');
+    expect(sets()).toEqual([
+      { type: 'settings.set', key: 'codex.defaultModel', value: 'beta' },
+      { type: 'settings.set', key: 'codex.defaultEffort', value: 'max' },
+    ]);
+  });
+
+  it('ошибка каталога видна и список можно запросить повторно', async () => {
+    const host = mount(Settings);
+    state();
+    handleSettingsMessage({ type: 'settings.codexModels', loading: false, models: [], error: 'CLI unavailable' });
+    await flush();
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain('CLI unavailable');
+    [...host.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent === 'Обновить модели')!.click();
+    expect(posted).toContainEqual({ type: 'settings.codexModels' });
+  });
+  it('Claude и Codex имеют отдельные поля; Codex пишет свои разрешения', async () => {
+    const host = mount(Settings);
+    state({ defaultModel: 'opus', 'codex.defaultModel': 'gpt-test' });
+    await flush();
+    expect([...host.querySelectorAll('#session h3')].map((e) => e.textContent)).toEqual(['Claude', 'Codex']);
+    expect(host.querySelector<HTMLInputElement>('[aria-label="defaultModel"]')!.value).toBe('opus');
+    expect(host.querySelector<HTMLInputElement>('[aria-label="codex.defaultModel"]')!.value).toBe('gpt-test');
+    change(host.querySelector('[aria-label="codex.defaultApproval"]')!, 'never');
+    change(host.querySelector('[aria-label="codex.defaultSandbox"]')!, 'workspaceWrite');
+    expect(sets()).toEqual([
+      { type: 'settings.set', key: 'codex.defaultApproval', value: 'never' },
+      { type: 'settings.set', key: 'codex.defaultSandbox', value: 'workspaceWrite' },
+    ]);
+    expect(host.querySelector('[aria-label="codex.defaultSandbox"] option[value="dangerFullAccess"]')).toBeNull();
+  });
   it('пока значений нет — пустая оболочка; пришли — все разделы и поля', async () => {
     const host = mount(Settings);
     expect(host.querySelector('.st-body')).toBeNull();
@@ -141,12 +193,16 @@ describe('вкладка настроек', () => {
     ]);
     expect([...host.querySelectorAll('.set .key')].map((e) => e.textContent)).toEqual([
       // режим по умолчанию можно задать на проект (решение владельца 2026-10-01)
-      'agentura.defaultPermissionMode',
       'agentura.allowBypassPermissions · только эта машина',
+      'agentura.defaultPermissionMode',
       'agentura.defaultModel',
       'agentura.defaultEffort',
       'agentura.remoteControl · только движок Claude',
       'agentura.remoteControlNamePrefix',
+      'agentura.codex.defaultModel',
+      'agentura.codex.defaultEffort',
+      'agentura.codex.defaultApproval',
+      'agentura.codex.defaultSandbox',
       'agentura.contextThresholds',
       'agentura.usagePollMinutes · не меньше 5',
       'agentura.limits.readKeychain',
@@ -203,7 +259,8 @@ describe('вкладка настроек', () => {
     await flush();
     const classes = (root: ParentNode, sel: string) =>
       [...root.querySelectorAll(sel)].map((e) => [...e.classList].sort().join('.'));
-    expect(classes(host, '.set')).toEqual(classes(proto, '.set'));
+    // Новые поля используют те же типы строк; число полей проверяется выше.
+    expect([...new Set(classes(host, '.set'))].sort()).toEqual([...new Set(classes(proto, '.set'))].sort());
     expect(classes(host, '.st-nav [role="tab"]').length).toBe(
       classes(proto, '.st-nav [role="tab"]').length,
     );

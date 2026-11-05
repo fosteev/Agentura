@@ -1283,7 +1283,8 @@ function CodexSettingsMenu({ menu, toggle, close }: MenuProps) {
   const button = (name: 'planning' | 'approval' | 'sandbox', label: string, value: string, disabled = false) => (
     <button class="mode" data-native={name} disabled={busy || disabled}
       aria-label={`${label}: ${value}`} aria-haspopup="menu" aria-expanded={menu === name}
-      onClick={() => toggle(name)}>{label} <b>{value}</b></button>
+      data-tip={`${label}: ${value}`}
+      onClick={() => toggle(name)}><b>{value}</b></button>
   );
   return <span class="pop" onKeyDown={menuKeys}>
     {button('planning', ui.compose.planning, s.planningMode ?? 'default')}
