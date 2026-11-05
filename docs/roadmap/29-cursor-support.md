@@ -1,6 +1,6 @@
 # 29 — Cursor как четвёртый движок
 
-> Статус: этап 2 принят 2026-11-05 · следующий — 3
+> Статус: этап 3 принят 2026-11-05 · следующий — 4
 >
 > Исполнитель отмечает чекбоксы по ходу, только после проверки из «Готово, когда». Статусы живут здесь.
 
@@ -105,16 +105,24 @@
 
 **Сессия:** sonnet, high. После этапа 2. Если таблица спайка не различила tool-кадры и id опций разрешения — этап не начинать, дописать отчёт.
 
-- [ ] Tool-кадры из отчёта → `tool.start` / `tool.result`. Имя инструмента — как у сервера. Неизвестный вид — одна карточка с сырым именем, не падение хода.
-- [ ] `session/request_permission` → `permission.request`. Ответ `respondPermission` собирается из option id, которые прислал сервер (таблица спайка): `allow` → один раз, `allow-always` → всегда, если такая опция была (`canAlwaysAllow`), иначе один раз, `deny` → отказ. `allow-edits` для Cursor равен `allow`. Нет карточки — ход не блокировать молчанием: отказ по форме спайка и `warn`.
-- [ ] `bypassPermissions` при `allowBypassPermissions` отвечает «один раз» само, без карточки. Без флага — как `default`.
-- [ ] `cursor/ask_question`, если спайк его видел, → `question.request`. Id опций помнить в сессии: `answerQuestion` приходит метками `Question`, наружу уходит `selectedOptionIds`. Не видели — метод отвечает `skipped`, флаг `questions` остаётся false.
-- [ ] `cursor/create_plan`, если спайк его видел, → `plan.request`. `decidePlan(approve)` → outcome `accepted` / `rejected` по форме доков и кадру спайка. Не видели — `rejected`, флаг `plan` остаётся false.
-- [ ] `cursor/task`, `cursor/update_todos`, `cursor/generate_image` — в журнал `debug`, в ленту не эмитить.
-- [ ] `setMode`: `plan` выставляет режим способом из отчёта; `default` и `acceptEdits` выставляют `agent`; смена режима, которую сервер отверг, даёт `error` нефатальный и не рвёт сессию.
-- [ ] Тесты фейка: tool, разрешение allow/deny, зависший запрос не остаётся после `interrupt`, план accept/reject. `TZ=UTC npm run check` зелёный.
+- [x] Tool-кадры из отчёта → `tool.start` / `tool.result`. Имя инструмента — как у сервера. Неизвестный вид — одна карточка с сырым именем, не падение хода.
+- [x] `session/request_permission` → `permission.request`. Ответ `respondPermission` собирается из option id, которые прислал сервер (таблица спайка): `allow` → один раз, `allow-always` → всегда, если такая опция была (`canAlwaysAllow`), иначе один раз, `deny` → отказ. `allow-edits` для Cursor равен `allow`. Нет карточки — ход не блокировать молчанием: отказ по форме спайка и `warn`.
+- [x] `bypassPermissions` при `allowBypassPermissions` отвечает «один раз» само, без карточки. Без флага — как `default`.
+- [x] `cursor/ask_question`, если спайк его видел, → `question.request`. Id опций помнить в сессии: `answerQuestion` приходит метками `Question`, наружу уходит `selectedOptionIds`. Не видели — метод отвечает `skipped`, флаг `questions` остаётся false.
+- [x] `cursor/create_plan`, если спайк его видел, → `plan.request`. `decidePlan(approve)` → outcome `accepted` / `rejected` по форме доков и кадру спайка. Не видели — `rejected`, флаг `plan` остаётся false.
+- [x] `cursor/task`, `cursor/update_todos`, `cursor/generate_image` — в журнал `debug`, в ленту не эмитить.
+- [x] `setMode`: `plan` выставляет режим способом из отчёта; `default` и `acceptEdits` выставляют `agent`; смена режима, которую сервер отверг, даёт `error` нефатальный и не рвёт сессию.
+- [x] Тесты фейка: tool, разрешение allow/deny, зависший запрос не остаётся после `interrupt`, план accept/reject. `TZ=UTC npm run check` зелёный.
 
 **Готово, когда:** фейковый сервер проходит сценарии выше, а маппер — фикстуру этапа 1, если в ней есть tool или permission. Новых вариантов `AgentEvent` нет.
+
+**Решения (2026-11-05, по итогам сессии 3):**
+
+- Раскладка: tool, permission и plan в `src/agent/cursor/mapper.ts` и `adapter.ts`; option id и формы ответов — `protocol.ts`. `providerFeatures('cursor').plan` true, `questions` false. Меню, фабрика чата, README и сайдбар не трогались.
+- Контракт: `tool.start` / `tool.result` из `tool_call` / `tool_call_update`. Имя — `kind` (`read` | `search` | `edit` | `execute`); у `other` имя из `rawInput._toolName` (`createPlan`); неизвестный kind — сырая строка. `toolCallId` берётся из кадра как есть, в том числе `replay-*` в load; без id карточки нет, `replay-*` не синтезируется. Пустой `rawInput` ждёт следующий кадр, `in_progress` или `completed`. `in_progress` не даёт `tool.progress`. `sessionUpdate: plan` с entries по-прежнему пусто. Карточка плана — только `cursor/create_plan` → `plan.request` (`toolUseId` = `toolCallId`, текст = поле `plan`). `decidePlan(approve)` → `{outcome:{outcome:"accepted"}}` (форма доков; живого accept не было). Отказ → `{outcome:{outcome:"rejected", reason}}`, reason — feedback. `cursor/ask_question` → `{outcome:{outcome:"skipped"}}` без `question.request` (форма доков; кадра не было). Разрешение: JSON-RPC id из кадра (0 валиден), `toolUseId` из `toolCall.toolCallId`. `allow` и `allow-edits` → option id «один раз» из кадра. `allow-always` → «всегда», если такая опция была (`canAlwaysAllow`), иначе один раз. `deny` → `reject-once` из кадра. Нет `toolCallId` — отказ формой спайка и `warn`, без карточки. Обработчик возвращает `true` и сам шлёт result. `bypassPermissions` при `allowBypassPermissions` отвечает `allow-once` без карточки; без флага режим молча `default`. `acceptEdits` ставит `modeId: agent` и не авторазрешает. `setMode`: `plan` → `plan`, `default` и `acceptEdits` → `agent`. Отказ `session/set_mode` — `error` с `fatal: false`, сессия жива. `cursor/task`, `cursor/update_todos`, `cursor/generate_image` — `debug`; если придут запросом, клиент по-прежнему отвечает одним `-32601`. Interrupt и dispose снимают висящее разрешение отказом и `permission.resolved` с `by: abort`.
+- Отступления: `planUri` не шлём — в кадре пути нет. Пока идёт `session/load` (`loading`), permission и plan отвечаются отказом без события: resume не виснет и не рисует историю как живой ход. У execute `exitCode` не 0 → `tool.result` с `isError`. Статус кроме `completed` карточку не закрывает. Начальный `permissionMode: plan` шлёт `session/set_mode` до `session.init`; `default` и `acceptEdits` при уже `agent` этот вызов на старте не делают.
+- Не проверено: живой CLI, Windows, живой `cursor/ask_question`, живой accept плана, картинки, доллары хода.
+- Приёмка (2026-11-05): разрешение или план, пришедшие после Stop, пока этот ход не закрыт, получают отказ без карточки. `abandonTurn` и завершение `session/prompt` тоже снимают ещё висящий запрос. Иначе JSON-RPC оставался без ответа и держал очередь. Формы `accepted` и `skipped` сверены с доками CLI: та же обёртка `{outcome:{outcome}}`, что у живого отказа `cursor/create_plan` (`rejected` + `reason`). `planUri` по-прежнему нет.
 
 ### 4. История
 
@@ -262,6 +270,8 @@ DoD: TZ=UTC npm run check зелёный; фейк покрывает tool, allo
 
 По реальному коду (сессия 2, 2026-11-05): `listSessions` и `loadHistory` — пустые заглушки, не «метода нет». Реализовать `session/list`. `renameSession` уже тихий no-op, `accountInfo` уже `{}`. Живой `resumeSession` глушит `session/update` до result `session/load` — это не лента истории; `loadHistory` читает кадры сам. `providerOf` в `sessionsService` всё ещё только claude|codex|antigravity.
 
+По реальному коду (сессия 3, 2026-11-05): `CursorMapper` уже эмитит `tool.start` / `tool.result`. Имя — `kind`; у `other` — `rawInput._toolName`. Id не синтезируется, `replay-*` из load проходит как есть. `sessionUpdate: plan` с entries по-прежнему пусто. Пока `loading`, `session/request_permission` и `cursor/create_plan` получают отказ без события ленты — `loadHistory` этот глушитель не использует, кадры читает сам и может звать маппер.
+
 Порядок:
 1. Выбрать источник строго по отчёту. Источника нет — заглушки и тест «пустой список не бросает».
 2. loadHistory в AgentEvent, live оставляет последний ход открытым.
@@ -290,7 +300,9 @@ DoD: TZ=UTC npm run check зелёный; тест истории даёт turn.
 
 Уже решено, не переспрашивать: warm() на активации нет. Флаги v1 не расширять сверх отчёта спайка и этапа 3: чисел usage не было — context и cost false; cursor/ask_question не было — questions false; cursor/create_plan был — plan можно true. acceptEdits не авторазрешает правки, в README это написано прямо. Третий extra-провайдер не роняет список, если Cursor не установлен. Новую страницу настроек не делать.
 
-По реальному коду (сессия 2, приёмка 2026-11-05): `PROVIDERS`, `isProvider`, `package.json` (`cursorExecutable`, enum `cursor`), `package.nls.json` / `package.nls.ru.json` и `providerFeatures('cursor')` уже есть. `questions` false, `plan` false — не откатывать на флаги Claude; `plan` true только если этап 3 его поднял. Меню, `EngineRow`, пункт провайдера на своей странице настроек, `adapterOf` и extra-провайдер — ещё нет. `providerNames.cursor`, `limitsHidden.engines.cursor` и метка `ENGINE_MARK` `cursor` = `R` уже есть. `settings.engine` с `engine: cursor` страница настроек игнорирует, пока нет строки «проверить». `providerOf` не возвращает `cursor`. `resolveCursorExecutable` на явный путь без штампа возвращает `path` и `problem` вместе — `acp` стартовать только когда `problem` нет. `createSession({model})` шлёт `session/set_config_option` до `session.init`. Пока `adapterOf` без ветки cursor, `defaultProvider: cursor` из настроек VS Code открывает Claude-адаптер с флагами Cursor.
+По реальному коду (сессия 2, приёмка 2026-11-05): `PROVIDERS`, `isProvider`, `package.json` (`cursorExecutable`, enum `cursor`), `package.nls.json` / `package.nls.ru.json` и `providerFeatures('cursor')` уже есть. Меню, `EngineRow`, пункт провайдера на своей странице настроек, `adapterOf` и extra-провайдер — ещё нет. `providerNames.cursor`, `limitsHidden.engines.cursor` и метка `ENGINE_MARK` `cursor` = `R` уже есть. `settings.engine` с `engine: cursor` страница настроек игнорирует, пока нет строки «проверить». `providerOf` не возвращает `cursor`. `resolveCursorExecutable` на явный путь без штампа возвращает `path` и `problem` вместе — `acp` стартовать только когда `problem` нет. `createSession({model})` шлёт `session/set_config_option` до `session.init`. Пока `adapterOf` без ветки cursor, `defaultProvider: cursor` из настроек VS Code открывает Claude-адаптер с флагами Cursor.
+
+По реальному коду (сессия 3, приёмка 2026-11-05): `providerFeatures('cursor').plan` true, `questions` false — не опускать plan и не подменять флагами Claude. `cursor/ask_question` отвечает `{outcome:{outcome:"skipped"}}` без `question.request`. `cursor/create_plan` — `plan.request`; `decidePlan` шлёт `accepted` или `rejected` в обёртке `{outcome:{outcome}}`, как живой отказ спайка. `respondPermission` и `setMode` живые: `default` и `acceptEdits` → `modeId` `agent`, `acceptEdits` не авторазрешает; `bypassPermissions` без `allowBypassPermissions` молча `default`. Разрешение или план после Stop, пока ход не закрыт, — отказ без карточки. Карточки webview всё ещё не подключены.
 
 Порядок:
 1. Фабрика, adapterOf и второе ветвление адаптера в chatPanel.ts.

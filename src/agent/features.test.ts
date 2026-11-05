@@ -60,7 +60,7 @@ describe('providerFeatures', () => {
     });
   });
 
-  it('Cursor: режимы есть; вопросы не подняты, план и приборы Claude не достаются по умолчанию', () => {
+  it('Cursor: режимы и план есть; вопросы не подняты, приборы Claude не достаются', () => {
     expect(providerFeatures('cursor')).toEqual({
       modes: true,
       nativeSettings: false,
@@ -71,7 +71,7 @@ describe('providerFeatures', () => {
       subagents: false,
       agentStop: false,
       agentTranscript: false,
-      plan: false,
+      plan: true,
       questions: false,
       images: false,
       files: false,

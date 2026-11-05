@@ -6,7 +6,9 @@ import type {
   AgentEvent,
   AgentSession,
   ModelOption,
+  PermissionDecision,
   PermissionMode,
+  PlanDecision,
   PromptFile,
   PromptImage,
   ResumeOptions,
@@ -15,10 +17,26 @@ import type {
   SessionInfo,
   SessionOptions,
 } from '../types';
-import { CursorRpcClient, MAX_LINE_BYTES, type RpcProcess } from './client';
+import { CursorRpcClient, MAX_LINE_BYTES, type RpcId, type RpcProcess } from './client';
 import { CURSOR_NOT_FOUND } from './executable';
-import { CursorMapper } from './mapper';
-import { AUTH_METHOD, PROTOCOL_VERSION, currentModelId, modelsFrom, sessionIdOf } from './protocol';
+import { CursorMapper, permissionRequestFrom, planRequestFrom } from './mapper';
+import {
+  AUTH_METHOD,
+  CURSOR_DEBUG_METHODS,
+  PERMISSION_METHOD,
+  PLAN_METHOD,
+  PROTOCOL_VERSION,
+  QUESTION_METHOD,
+  currentModeId,
+  currentModelId,
+  cursorModeId,
+  modelsFrom,
+  permissionOutcome,
+  permissionRefusal,
+  planOutcome,
+  questionSkipped,
+  sessionIdOf,
+} from './protocol';
 
 export interface CursorProcess extends RpcProcess {
   kill(signal?: NodeJS.Signals): boolean;
@@ -99,6 +117,10 @@ export class CursorAdapter implements AgentAdapter {
   }
 }
 
+type Pending =
+  | { kind: 'permission'; rpcId: RpcId; options: unknown }
+  | { kind: 'plan'; rpcId: RpcId };
+
 interface Deferred {
   promise: Promise<void>;
   resolve(): void;
@@ -131,7 +153,11 @@ class CursorSession implements AgentSession {
   private readonly ready: Promise<void>;
   private readonly queue: string[] = [];
   private readonly cwd: string;
-  private readonly permissionMode: PermissionMode;
+  private permissionMode: PermissionMode;
+  private readonly allowBypass: boolean;
+  /** Режим, который сейчас принял сервер. `session/new` без поля — `agent`. */
+  private serverMode: 'agent' | 'plan' = 'agent';
+  private readonly pending = new Map<string, Pending>();
   private readonly graceMs: number;
   private readonly interruptWaitMs: number;
   private sessionId = '';
@@ -144,6 +170,8 @@ class CursorSession implements AgentSession {
   private procExited = false;
   /** Растёт на каждый `interrupt()`: сообщение, взятое до него, в `session/prompt` не уходит. */
   private generation = 0;
+  /** Поколение хода, который уже ушёл в `session/prompt`. После Stop они расходятся, и поздний запрос — не карточка. */
+  private turnGeneration = 0;
   private turn: { done: Deferred; prompt: string; startedAt: number } | undefined;
 
   constructor(
@@ -154,7 +182,9 @@ class CursorSession implements AgentSession {
   ) {
     this.log = config.log ?? (() => {});
     this.cwd = options.cwd;
-    this.permissionMode = options.permissionMode ?? 'default';
+    this.allowBypass = options.allowBypassPermissions === true;
+    const requested = options.permissionMode ?? 'default';
+    this.permissionMode = requested === 'bypassPermissions' && !this.allowBypass ? 'default' : requested;
     this.model = options.model ?? '';
     this.graceMs = config.graceMs ?? DEFAULT_GRACE_MS;
     this.interruptWaitMs = config.interruptWaitMs ?? INTERRUPT_WAIT_MS;
@@ -171,6 +201,7 @@ class CursorSession implements AgentSession {
       timeoutMs: config.timeoutMs ?? 120_000,
       maxLineBytes: MAX_LINE_BYTES,
       onNotification: (method, params) => this.onNotification(method, params),
+      onServerRequest: (id, method, params) => this.onServerRequest(id, method, params),
       onStderr: (line) => this.log('debug', `cursor: ${line}`),
       onClose: (error) => this.onClientClose(error.message),
     });
@@ -198,17 +229,62 @@ class CursorSession implements AgentSession {
     return true;
   }
 
-  respondPermission(): boolean {
-    return false;
+  respondPermission(toolUseId: string, decision: PermissionDecision): boolean {
+    const pending = this.pending.get(toolUseId);
+    if (!pending || pending.kind !== 'permission') return false;
+    this.pending.delete(toolUseId);
+    this.client.respond(pending.rpcId, permissionOutcome(pending.options, decision));
+    this.emit({
+      type: 'permission.resolved',
+      toolUseId,
+      decision: decision === 'deny' ? 'deny' : 'allow',
+      by: 'user',
+    });
+    return true;
   }
+
+  /** `cursor/ask_question` спайк не видел: ответа с карточки нет. */
   answerQuestion(): boolean {
     return false;
   }
-  decidePlan(): boolean {
-    return false;
+
+  decidePlan(toolUseId: string, decision: PlanDecision): boolean {
+    const pending = this.pending.get(toolUseId);
+    if (!pending || pending.kind !== 'plan') return false;
+    this.pending.delete(toolUseId);
+    this.client.respond(
+      pending.rpcId,
+      decision.approve ? planOutcome({ approve: true }) : planOutcome({ approve: false, feedback: decision.feedback }),
+    );
+    if (!decision.approve && decision.interrupt) void this.interrupt();
+    return true;
   }
-  /** Режим — этап 3 (`session/set_mode`). Здесь сервер остаётся на том, что прислал `session/new`. */
-  async setMode(): Promise<void> {}
+
+  /**
+   * `session/set_mode`. `plan` → `plan`; `default` и `acceptEdits` → `agent`.
+   * `acceptEdits` не включает автопринятие. `bypassPermissions` без флага молча становится `default`.
+   * Отказ сервера — нефатальный `error`, сессия остаётся.
+   */
+  async setMode(mode: PermissionMode): Promise<void> {
+    const next = mode === 'bypassPermissions' && !this.allowBypass ? 'default' : mode;
+    try {
+      await this.ready;
+    } catch {
+      return;
+    }
+    if (this.closed || !this.sessionId) return;
+    const modeId = cursorModeId(next);
+    try {
+      await this.client.request('session/set_mode', { sessionId: this.sessionId, modeId });
+    } catch (error) {
+      if (!this.closed)
+        this.emit({ type: 'error', fatal: false, message: `session/set_mode failed: ${errorText(error)}` });
+      return;
+    }
+    this.serverMode = modeId;
+    this.permissionMode = next;
+    this.emit({ type: 'mode.changed', mode: next });
+  }
 
   async setModel(model: string): Promise<void> {
     try {
@@ -234,6 +310,7 @@ class CursorSession implements AgentSession {
    */
   async interrupt(): Promise<void> {
     this.generation++;
+    this.abortPending();
     const turn = this.turn;
     if (!turn || turn.done.settled || this.closed) return;
     try {
@@ -272,6 +349,7 @@ class CursorSession implements AgentSession {
 
   dispose(): void {
     if (this.closed) return;
+    this.abortPending();
     this.finishTurnInterrupted();
     this.close('disposed');
     this.client.dispose();
@@ -317,6 +395,16 @@ class CursorSession implements AgentSession {
     }
     if (this.closed) return;
     this.model = model;
+    const reportedMode = currentModeId(result);
+    if (reportedMode === 'plan' || reportedMode === 'agent') this.serverMode = reportedMode;
+    try {
+      await this.syncInitialMode();
+    } catch (error) {
+      if (this.closed) return;
+      this.emit({ type: 'error', fatal: false, message: `session/set_mode failed: ${errorText(error)}` });
+      this.permissionMode = this.serverMode === 'plan' ? 'plan' : 'default';
+    }
+    if (this.closed) return;
     this.loading = false;
     this.emit({
       type: 'session.init',
@@ -355,6 +443,7 @@ class CursorSession implements AgentSession {
         const startedAt = Date.now();
         const done = deferred();
         this.turn = { done, prompt, startedAt };
+        this.turnGeneration = generation;
         this.emitAll(this.mapper.startTurn(prompt, startedAt));
         try {
           const result = await this.client.request('session/prompt', {
@@ -362,6 +451,7 @@ class CursorSession implements AgentSession {
             prompt: [{ type: 'text', text: prompt }],
           });
           if (this.closed) break;
+          if (generation !== this.generation) this.abortPending();
           if (this.turn === undefined || this.turn.done.settled) continue;
           this.emitAll(this.mapper.finish(result, startedAt));
           done.resolve();
@@ -380,6 +470,10 @@ class CursorSession implements AgentSession {
   }
 
   private onNotification(method: string, params: unknown): void {
+    if ((CURSOR_DEBUG_METHODS as readonly string[]).includes(method)) {
+      this.log('debug', `cursor: ${method}`);
+      return;
+    }
     if (this.closed || this.loading || method !== 'session/update') return;
     const turn = this.turn;
     if (!turn || turn.done.settled) return;
@@ -394,9 +488,99 @@ class CursorSession implements AgentSession {
     this.fatal(new Error(message), exited ? 'exit' : 'error');
   }
 
+  /**
+   * Запрос сервера. `true` — ответ ушёл отсюда (или уйдёт из `respondPermission` / `decidePlan`).
+   * `false` — клиент отвечает сам: разрешение отказом, прочее `-32601`, и только один кадр.
+   */
+  private onServerRequest(id: RpcId, method: string, params: unknown): boolean {
+    if ((CURSOR_DEBUG_METHODS as readonly string[]).includes(method)) {
+      this.log('debug', `cursor: ${method}`);
+      return false;
+    }
+    try {
+      if (method === PERMISSION_METHOD) return this.onPermission(id, params);
+      if (method === PLAN_METHOD) return this.onPlan(id, params);
+      if (method === QUESTION_METHOD) {
+        this.client.respond(id, questionSkipped());
+        return true;
+      }
+    } catch (error) {
+      this.log('warn', `cursor: ${method} failed: ${errorText(error)}`);
+      if (method === PERMISSION_METHOD) this.client.respond(id, permissionRefusal());
+      else if (method === PLAN_METHOD) this.client.respond(id, planOutcome({ approve: false, feedback: 'rejected' }));
+      else this.client.respond(id, questionSkipped());
+      return true;
+    }
+    return false;
+  }
+
+  private onPermission(id: RpcId, params: unknown): boolean {
+    const built = permissionRequestFrom(params);
+    if (!built || this.loading || this.generation !== this.turnGeneration) {
+      this.log('warn', 'cursor: session/request_permission had no card; refusing');
+      this.client.respond(id, built ? permissionOutcome(built.options, 'deny') : permissionRefusal());
+      return true;
+    }
+    if (this.permissionMode === 'bypassPermissions' && this.allowBypass) {
+      this.client.respond(id, permissionOutcome(built.options, 'allow'));
+      return true;
+    }
+    this.track(built.toolUseId, { kind: 'permission', rpcId: id, options: built.options });
+    this.emit(built.event);
+    return true;
+  }
+
+  private onPlan(id: RpcId, params: unknown): boolean {
+    const built = planRequestFrom(params);
+    if (!built || this.loading || this.generation !== this.turnGeneration) {
+      this.log('warn', 'cursor: cursor/create_plan had no card; rejecting');
+      this.client.respond(id, planOutcome({ approve: false, feedback: 'rejected' }));
+      return true;
+    }
+    this.track(built.toolUseId, { kind: 'plan', rpcId: id });
+    this.emit(built.event);
+    return true;
+  }
+
+  private track(toolUseId: string, next: Pending): void {
+    const prev = this.pending.get(toolUseId);
+    if (prev) this.settle(toolUseId, prev);
+    this.pending.set(toolUseId, next);
+  }
+
+  /** Висящий запрос не остаётся: отказ серверу, карточка разрешения закрывается как abort. */
+  private abortPending(): void {
+    const open = [...this.pending];
+    this.pending.clear();
+    for (const [toolUseId, pending] of open) this.settle(toolUseId, pending);
+  }
+
+  private settle(toolUseId: string, pending: Pending): void {
+    this.pending.delete(toolUseId);
+    try {
+      if (pending.kind === 'permission') {
+        this.client.respond(pending.rpcId, permissionOutcome(pending.options, 'deny'));
+        this.emit({ type: 'permission.resolved', toolUseId, decision: 'deny', by: 'abort' });
+      } else {
+        this.client.respond(pending.rpcId, planOutcome({ approve: false, feedback: 'cancelled' }));
+      }
+    } catch (error) {
+      this.log('warn', `cursor: pending ${pending.kind} failed: ${errorText(error)}`);
+    }
+  }
+
+  /** Догнать сервер до запрошенного режима. `acceptEdits` и `default` оба ждут `agent` и вызов не делают, если он уже agent. */
+  private async syncInitialMode(): Promise<void> {
+    const want = cursorModeId(this.permissionMode);
+    if (this.serverMode === want) return;
+    await this.client.request('session/set_mode', { sessionId: this.sessionId, modeId: want });
+    this.serverMode = want;
+  }
+
   /** Процесс умер посреди хода: `turn.result` (ok false), `error` fatal, `session.closed`. */
   private fatal(error: unknown, reason: 'exit' | 'error' = 'error'): void {
     if (this.closed) return;
+    this.abortPending();
     const message = errorText(error);
     this.log('error', `cursor session failed: ${message}`);
     const turn = this.turn;
@@ -412,6 +596,7 @@ class CursorSession implements AgentSession {
   }
 
   private abandonTurn(): void {
+    this.abortPending();
     const turn = this.turn;
     if (!turn || turn.done.settled) return;
     turn.done.resolve();
