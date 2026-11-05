@@ -178,7 +178,7 @@ export function graphModel(
     })),
     turnNo: g.turnNo,
     total: {
-      tokens: compactTokens(g.tokens),
+      tokens: g.nodes.some((a) => a.tokens === undefined) ? '—' : compactTokens(g.tokens),
       time: formatDuration((g.live ? o.now : (g.endedAt ?? o.now)) - g.startedAt),
     },
     main,

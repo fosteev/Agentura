@@ -219,7 +219,7 @@ export function AgentOpen({
         </>
       )}
       <div class="lbl">{d.callsLabel}</div>
-      {d.rows.length === 0 && <div class="c">{ui.agents.detail.empty}</div>}
+      {d.rows.length === 0 && <div class="c"><span style={{ gridColumn: '1 / -1' }}>{ui.agents.detail.empty}</span></div>}
       {d.rows.map((r) => (
         <CallRow r={r} />
       ))}

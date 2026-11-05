@@ -41,6 +41,7 @@ describe('Codex subagents → graph', () => {
     const { snapshot, model } = graph(events);
     expect(snapshot.agents[0]).toMatchObject({ model: 'gpt-6.1-sol', reasoningEffort: 'high', subagentType: 'Codex' });
     expect(snapshot.agents[0]?.prompt).toBeUndefined();
+    expect(model.total?.tokens).toBe('—');
     expect(model.nodes[0]?.head).toBe('Codex · gpt-6.1-sol');
   });
 

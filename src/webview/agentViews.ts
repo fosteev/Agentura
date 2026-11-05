@@ -684,7 +684,9 @@ export function agentsViewPane(
         return agentActions(card, o.actions);
       }) : [],
     ),
-    tokens: compactTokens(groups.reduce((n, g) => n + g.tokens, 0)),
+    tokens: groups.some((g) => g.nodes.some((a) => a.tokens === undefined))
+      ? '—'
+      : compactTokens(groups.reduce((n, g) => n + g.tokens, 0)),
     statusLine: c
       ? [
           c.run && v.running(c.run),
