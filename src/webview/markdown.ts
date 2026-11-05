@@ -1,6 +1,7 @@
 import DOMPurify from 'dompurify';
 import { Marked } from 'marked';
 import { ui } from './strings';
+import { send } from './vscode';
 
 /** Markdown ответа агента → безопасный HTML. `marked` разбирает, `DOMPurify` чистит (ответ модели — недоверенный ввод). */
 
@@ -62,4 +63,16 @@ export function onCodeCopyClick(e: MouseEvent): void {
     },
     () => {},
   );
+}
+
+/** Локальные пути webview сам открыть не может: передаём исходный href хосту. */
+export function onMarkdownClick(e: MouseEvent): void {
+  const link = e.target instanceof Element ? e.target.closest('a') : null;
+  if (link) {
+    e.preventDefault();
+    const url = link.getAttribute('href');
+    if (url) send({ type: 'link.open', url });
+    return;
+  }
+  onCodeCopyClick(e);
 }

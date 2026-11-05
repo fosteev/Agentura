@@ -1,8 +1,26 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from 'vitest';
-import { renderMarkdown, withCursor } from './markdown';
+import { describe, expect, it, vi } from 'vitest';
+import { onMarkdownClick, renderMarkdown, withCursor } from './markdown';
+import { send } from './vscode';
+
+vi.mock('./vscode', () => ({ send: vi.fn() }));
 
 describe('markdown', () => {
+  it('клик по вложенному тексту ссылки передаёт исходный путь хосту и отменяет навигацию webview', () => {
+    const box = document.createElement('div');
+    box.innerHTML = renderMarkdown('[**результат**](/tmp/agentura-subagents-live-result.json) [код](/project/main.ts:35) [сайт](https://example.com)');
+    box.addEventListener('click', onMarkdownClick);
+    for (const target of [box.querySelector('strong')!, ...Array.from(box.querySelectorAll('a')).slice(1)]) {
+      const event = new MouseEvent('click', { bubbles: true, cancelable: true });
+      target.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(true);
+    }
+    expect(vi.mocked(send).mock.calls.map(([m]) => m)).toEqual([
+      { type: 'link.open', url: '/tmp/agentura-subagents-live-result.json' },
+      { type: 'link.open', url: '/project/main.ts:35' },
+      { type: 'link.open', url: 'https://example.com' },
+    ]);
+  });
   it('абзацы, инлайн-код, выделение', () => {
     const html = renderMarkdown('Причина — `Counter` и **важно**.\n\nВторой абзац');
     expect(html).toContain('<p>Причина — <code>Counter</code> и <strong>важно</strong>.</p>');

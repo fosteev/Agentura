@@ -177,10 +177,22 @@ export class CodexAdapter implements AgentAdapter {
     cwd: string,
     options?: { live?: boolean; tasksAlive?: boolean; maxTurns?: number; stopBefore?: string },
   ): Promise<SessionHistory> {
-    const res = await this.query(cwd, (rpc) => rpc('thread/read', { threadId: sessionId, includeTurns: true }));
-    return buildCodexHistory(res.thread, {
-      ...(options?.live ? { live: true } : {}),
-      ...(options?.maxTurns !== undefined ? { maxTurns: options.maxTurns } : {}),
+    return this.query(cwd, async (rpc) => {
+      const res = await rpc('thread/read', { threadId: sessionId, includeTurns: true });
+      const historyOptions = {
+        ...(options?.live ? { live: true } : {}),
+        ...(options?.maxTurns !== undefined ? { maxTurns: options.maxTurns } : {}),
+      };
+      const history = buildCodexHistory(res.thread, historyOptions);
+      const ids = [...new Set(history.events.filter((e) => e.type === 'agent.start').map((e) => e.agentId))];
+      const children = await Promise.all(ids.map(async (threadId) => {
+        try {
+          return (await rpc('thread/read', { threadId, includeTurns: true })).thread;
+        } catch {
+          return undefined; // удалённый дочерний тред не должен ломать историю основного
+        }
+      }));
+      return buildCodexHistory(res.thread, { ...historyOptions, children: children.filter((t) => t !== undefined) });
     });
   }
 
@@ -317,6 +329,7 @@ class CodexSession implements AgentSession {
   private settingsBarrier: Promise<void> | undefined;
   private settingsRevision = 0;
   private closed = false;
+  private readonly subagentReads = new Map<string, Promise<void>>();
   private procExited = false;
   private threadReady = false;
   private draining = false;
@@ -822,6 +835,23 @@ class CodexSession implements AgentSession {
       // approval пришёл после `turn/completed`), открытый запрос он закрывает сам `serverRequest/resolved`.
       const events = this.mapper.map(method, params);
       this.emitAll(events);
+      for (const event of events) {
+        if (event.type !== 'agent.start' && event.type !== 'agent.end') continue;
+        const key = `${event.agentId}:${event.type}`;
+        if (this.subagentReads.has(key)) continue;
+        const started = this.subagentReads.get(`${event.agentId}:agent.start`);
+        const read = (async () => {
+          if (event.type === 'agent.end') await started;
+          if (this.closed) return;
+          try {
+            const { thread } = await this.rpc('thread/read', { threadId: event.agentId, includeTurns: true });
+            if (!this.closed) this.emitAll(this.mapper.enrichSubagent(thread));
+          } catch (error) {
+            this.log('debug', `subagent metadata ${event.agentId}: ${errorText(error)}`);
+          }
+        })();
+        this.subagentReads.set(key, read);
+      }
       if (method === 'turn/completed' && events.some((e) => e.type === 'turn.result')) {
         const context = this.mapper.contextEvent();
         if (context) this.emit(context);

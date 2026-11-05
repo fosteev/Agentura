@@ -2,7 +2,7 @@ import { Fragment } from 'preact';
 import { useMemo, useState } from 'preact/hooks';
 import type { Seg } from '../fixtures/chat';
 import type { FeedRow } from '../chatState';
-import { onCodeCopyClick, renderMarkdown, withCursor } from '../markdown';
+import { onMarkdownClick, renderMarkdown, withCursor } from '../markdown';
 import { ui, uiLang } from '../strings';
 import type { FileRef, ImageRef } from '../../agent/types';
 import { imageTokens } from '../../shared/images';
@@ -529,7 +529,7 @@ function Text({ r, last }: { r: Row<'text'>; last: boolean }) {
   return (
     <div
       class="txt"
-      onClick={onCodeCopyClick}
+      onClick={onMarkdownClick}
       dangerouslySetInnerHTML={{ __html: r.streaming && last ? withCursor(html) : html }}
     />
   );

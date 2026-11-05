@@ -76,6 +76,31 @@ const finishTurn = (s: FakeAppServer, id: string, status = 'completed', extra: R
   s.notify('turn/completed', { threadId: THREAD, turn: t(id, status, extra) });
 
 describe('CodexAdapter: handshake и ход', () => {
+  it('activity обогащается дочерним thread/read; ответ ребёнка не попадает в текст основного', async () => {
+    const s = server();
+    s.handle('thread/read', () => ({ thread: {
+      id: 'child', parentThreadId: THREAD, model: 'gpt-6.1-sol',
+      turns: [t('child-turn', 'completed', { items: [
+        { type: 'userMessage', id: 'u', content: [{ type: 'text', text: 'Child task' }] },
+        { type: 'agentMessage', id: 'm', text: 'CHILD_OK', phase: 'final_answer' },
+      ] })],
+    } }));
+    const { adapter } = open(s);
+    const session = await adapter.createSession({ cwd: '/work' });
+    const events = collect(session);
+    session.send('test');
+    await until(() => types(events).includes('turn.start'));
+    for (const kind of ['started', 'completed']) s.notify('item/completed', {
+      threadId: THREAD, completedAtMs: kind === 'started' ? 1000 : 2000,
+      item: { type: 'subAgentActivity', id: kind, kind, agentThreadId: 'child', agentPath: '/root/child', model: null },
+    });
+    await until(() => events.some((e) => e.type === 'agent.end' && e.summary === 'CHILD_OK'));
+    expect(events).toContainEqual(expect.objectContaining({ type: 'agent.start', prompt: 'Child task', subagentType: 'gpt-6.1-sol' }));
+    expect(events.some((e) => e.type === 'text.delta')).toBe(false);
+    expect(s.received.filter((m) => m.method === 'thread/read')).toHaveLength(2);
+    session.dispose();
+  });
+
   it('порядок: initialize → initialized → thread/start → turn/start; session.init раньше turn.start', async () => {
     const s = server();
     const { adapter } = open(s, { thread: { approvalPolicy: 'on-request', sandbox: 'read-only' } });

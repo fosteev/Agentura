@@ -4,7 +4,7 @@ import type { FailCard, PermCard, PlanCard, QuestionCard, RefusalCard } from '..
 import { alwaysButton, planView } from '../cardView';
 import { ENGINE_MISSING_CODE } from '../../protocol';
 import { send } from '../vscode';
-import { onCodeCopyClick, renderMarkdown } from '../markdown';
+import { onMarkdownClick, renderMarkdown } from '../markdown';
 import {
   chat,
   chooseOption,
@@ -445,7 +445,7 @@ export function PlanCardView({ c, cwd }: { c: PlanCard; cwd: string }) {
         <Tag text={tag} {...(c.agentId ? { agentId: c.agentId } : {})} />
       </div>
       <div class="bd plan-body">
-        <div class="md" onClick={onCodeCopyClick} dangerouslySetInnerHTML={{ __html: html }} />
+        <div class="md" onClick={onMarkdownClick} dangerouslySetInnerHTML={{ __html: html }} />
         {view.files.length > 0 && (
           <div class="files">
             {view.files.map((f) => (

@@ -163,9 +163,9 @@ export interface ChatDeps {
   openPreview?(path: string): Promise<void>;
   /** SKILL.md скилла по имени (roadmap 21, решение 6; `findSkillFile`): абсолютный путь или `undefined`. */
   findSkill?(name: string): Promise<string | undefined>;
-  /** Открыть файл в редакторе (абсолютный путь): SKILL.md. */
-  openPath?(path: string): Promise<void>;
-  /** Открыть ссылку в браузере (только https://claude.ai/). */
+  /** Открыть файл в редакторе; строка и колонка начинаются с 1. */
+  openPath?(path: string, line?: number, column?: number): Promise<void>;
+  /** Открыть внешнюю ссылку (http/https/mailto). */
   openExternal?(url: string): void;
   /** Возобновить эту сессию сразу (вкладка восстановлена сериализатором или открыта из списка). */
   resumeId?: string;
@@ -797,13 +797,39 @@ export class ChatController {
         }
         await deps.openPreview?.(m.path);
         return;
-      case 'link.open':
-        if (!/^https:\/\/claude\.ai\//.test(m.url)) {
+      case 'link.open': {
+        if (typeof m.url !== 'string' || !m.url || /\p{Cc}/u.test(m.url)) return;
+        if (/^(https?:\/\/|mailto:)/i.test(m.url)) {
+          deps.openExternal?.(m.url);
+          return;
+        }
+        let path: string;
+        try {
+          path = decodeURIComponent(m.url);
+        } catch {
+          return;
+        }
+        if (/\p{Cc}/u.test(path)) return;
+        const location = /(?::(\d+)(?::(\d+))?|#L(\d+)(?:C(\d+))?)$/.exec(path);
+        const line = location ? Number(location[1] ?? location[3]) : undefined;
+        const column = location ? Number(location[2] ?? location[4] ?? 1) : undefined;
+        if (location) path = path.slice(0, location.index);
+        // Не передаём command:/javascript:/vscode: в редактор.
+        if (
+          (/^[a-z][a-z\d+.-]*:/i.test(path) && !/^[a-z]:[\\/]/i.test(path)) ||
+          path.startsWith('//') || path.startsWith('#')
+        ) {
           this.log.warn(`ссылка не открыта: ${m.url}`);
           return;
         }
-        deps.openExternal?.(m.url);
+        if (
+          line !== undefined &&
+          (!Number.isSafeInteger(line) || line < 1 || !Number.isSafeInteger(column) || column! < 1)
+        ) return;
+        if (!path) return;
+        await deps.openPath?.(resolveFrom(deps.cwd, path), line, column);
         return;
+      }
       case 'files.find':
         try {
           deps.post({

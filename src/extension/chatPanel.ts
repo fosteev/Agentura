@@ -884,8 +884,14 @@ export class ChatPanel {
       openPreview: (p) => services.previews.open(p, editorColumn()),
       // SKILL.md (roadmap 21, решение 6): проект, затем домашняя папка; открывается обычной вкладкой редактора
       findSkill: (name) => findSkillFile(name, cwd, homedir()),
-      openPath: async (p) => {
-        await vscode.window.showTextDocument(vscode.Uri.file(p), { viewColumn: editorColumn(), preview: true });
+      openPath: async (p, line, column) => {
+        const selection = line === undefined
+          ? undefined
+          : new vscode.Range(line - 1, (column ?? 1) - 1, line - 1, (column ?? 1) - 1);
+        await vscode.window.showTextDocument(vscode.Uri.file(p), {
+          viewColumn: editorColumn(), preview: true,
+          ...(selection ? { selection } : {}),
+        });
       },
       openExternal: (u) => void vscode.env.openExternal(vscode.Uri.parse(u)),
       ...(open.resumeId ? { resumeId: open.resumeId } : {}),

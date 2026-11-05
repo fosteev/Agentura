@@ -229,6 +229,7 @@ describe('CodexEventMapper: субагенты', () => {
         agentId: 'child',
         taskId: 'child',
         description: 'Find test gaps',
+        prompt: 'Find test gaps',
         taskType: 'subagent',
         subagentType: 'gpt-6-luna',
         background: false,

@@ -15,6 +15,7 @@ import type {
   McpServerConnectionStatus,
   CollabAgentState,
   ThreadItem,
+  Thread,
   ThreadSession,
   TokenUsageBreakdown,
   Turn,
@@ -135,9 +136,9 @@ export class CodexEventMapper {
   private contextWindow: number | null = null;
   private readonly tools: CodexToolMapper;
   /** Метаданные дочерних тредов приходят в `spawnAgent`, а их жизнь — отдельными item. */
-  private readonly subagents = new Map<string, { parentThreadId: string; prompt?: string; model?: string }>();
+  private readonly subagents = new Map<string, { parentThreadId: string; prompt?: string; model?: string; name?: string }>();
   private readonly startedSubagents = new Set<string>();
-  private readonly endedSubagents = new Set<string>();
+  private readonly endedSubagents = new Map<string, AgentEventOf<'agent.end'>>();
   /** MCP-серверы (roadmap 21): последний список; уведомление о запуске правит один сервер в нём. */
   private mcp: McpServerInfo[] = [];
   /** `mcpServerStatus/list` в пути (`mcpListStart`): уведомления, пришедшие до ответа. */
@@ -278,7 +279,7 @@ export class CodexEventMapper {
       }
       case 'item/started': {
         const m = params as CodexNotifications['item/started'];
-        const agents = this.collaborationItem(m.item);
+        const agents = this.collaborationItem(m.item, m.startedAtMs);
         if (agents.length) return agents;
         return this.tools.started(m.item, m.startedAtMs);
       }
@@ -286,7 +287,7 @@ export class CodexEventMapper {
         const m = params as CodexNotifications['item/completed'];
         const own = this.itemCompleted(m.item);
         if (own.length) return own;
-        const agents = this.collaborationItem(m.item);
+        const agents = this.collaborationItem(m.item, m.completedAtMs);
         return agents.length ? agents : this.tools.completed(m.item, m.completedAtMs);
       }
       case 'item/commandExecution/outputDelta': {
@@ -456,17 +457,31 @@ export class CodexEventMapper {
     return [];
   }
 
-  private collaborationItem(item: ThreadItem): AgentEvent[] {
+  /** Общий путь для живых item и восстановления истории. */
+  collaborationItem(item: ThreadItem, at?: number): AgentEvent[] {
+    return this.collaborationEvents(item).map((e) => {
+      if (at === undefined || (e.type !== 'agent.start' && e.type !== 'agent.end')) return e;
+      const timed = { ...e, at };
+      if (timed.type === 'agent.end') this.endedSubagents.set(timed.agentId, timed);
+      return timed;
+    });
+  }
+
+  private collaborationEvents(item: ThreadItem): AgentEvent[] {
     if (item.type === 'collabAgentToolCall') {
       const events: AgentEvent[] = [];
       if (item.tool === 'spawnAgent') {
         for (const agentId of item.receiverThreadIds) {
+          const previous = this.subagents.get(agentId);
           this.subagents.set(agentId, {
+            ...(previous ?? {}),
             parentThreadId: item.senderThreadId,
             ...(item.prompt ? { prompt: item.prompt } : {}),
             ...(item.model ? { model: item.model } : {}),
           });
-          events.push(...this.startSubagent(agentId));
+          const changed = previous && (previous.prompt !== this.subagents.get(agentId)?.prompt ||
+            previous.model !== this.subagents.get(agentId)?.model);
+          events.push(...this.startSubagent(agentId, !!changed));
         }
       }
       // `interruptAgent`/`wait` тоже обновляют состояние уже известного дочернего треда.
@@ -475,6 +490,13 @@ export class CodexEventMapper {
       return events;
     }
     if (item.type !== 'subAgentActivity') return [];
+    const previous = this.subagents.get(item.agentThreadId);
+    this.subagents.set(item.agentThreadId, {
+      parentThreadId: previous?.parentThreadId ?? this.threadId ?? '',
+      ...previous,
+      name: item.agentPath.split('/').filter(Boolean).at(-1),
+      ...(item.model ? { model: item.model } : {}),
+    });
     if (item.kind === 'started') return this.startSubagent(item.agentThreadId);
     if (item.kind === 'interacted')
       return this.endedSubagents.has(item.agentThreadId)
@@ -483,21 +505,58 @@ export class CodexEventMapper {
     return this.endSubagent(item.agentThreadId, item.kind === 'completed' ? 'completed' : 'stopped');
   }
 
-  private startSubagent(agentId: string): AgentEvent[] {
-    if (this.startedSubagents.has(agentId) || this.endedSubagents.has(agentId)) return [];
+  private startSubagent(agentId: string, refresh = false): AgentEvent[] {
+    if (!refresh && (this.startedSubagents.has(agentId) || this.endedSubagents.has(agentId))) return [];
     this.startedSubagents.add(agentId);
     const meta = this.subagents.get(agentId);
     const event: AgentEventOf<'agent.start'> = {
       type: 'agent.start',
       agentId,
       taskId: agentId,
-      description: meta?.prompt ?? 'Codex subagent',
+      description: meta?.prompt ?? meta?.name ?? 'Codex subagent',
       taskType: 'subagent',
       subagentType: meta?.model,
       background: false,
+      ...(meta?.prompt ? { prompt: meta.prompt } : {}),
     };
     if (meta?.parentThreadId && meta.parentThreadId !== this.threadId) event.parentAgentId = meta.parentThreadId;
     return [event];
+  }
+
+  /** Дополняем activity итогом и доступным промптом из дочернего треда. */
+  enrichSubagent(thread: Thread): AgentEvent[] {
+    if (!this.startedSubagents.has(thread.id)) return [];
+    const items = (thread.turns ?? []).flatMap((turn) => turn.items);
+    const user = items.find((item) => item.type === 'userMessage');
+    const prompt = user?.type === 'userMessage'
+      ? user.content.filter((p) => p.type === 'text').map((p) => p.text).join('\n')
+      : undefined;
+    const replies = items.filter((item) => item.type === 'agentMessage');
+    const reply = [...replies].reverse().find((item) => item.phase === 'final_answer') ?? replies.at(-1);
+    const previous = this.subagents.get(thread.id);
+    this.subagents.set(thread.id, {
+      parentThreadId: thread.parentThreadId ?? previous?.parentThreadId ?? this.threadId ?? '',
+      ...previous,
+      ...(thread.parentThreadId ? { parentThreadId: thread.parentThreadId } : {}),
+      ...(prompt ? { prompt } : {}),
+      ...(thread.model ? { model: thread.model } : {}),
+    });
+    const events = this.startSubagent(thread.id, true);
+    const last = thread.turns?.at(-1);
+    // После разрыва соединения activity конца может отсутствовать в основном треде.
+    if (!this.endedSubagents.has(thread.id) && last && last.status !== 'inProgress') {
+      const status = last.status === 'failed' ? 'failed' : last.status === 'interrupted' ? 'stopped' : 'completed';
+      const end = this.endSubagent(thread.id, status)[0] as AgentEventOf<'agent.end'>;
+      if (last.completedAt) end.at = last.completedAt * 1000;
+    }
+    const ended = this.endedSubagents.get(thread.id);
+    if (ended) {
+      const status = last?.status === 'failed' ? 'failed' : last?.status === 'interrupted' ? 'stopped' : ended.status;
+      const end = { ...ended, status, ...(reply?.text ? { summary: reply.text } : {}) };
+      this.endedSubagents.set(thread.id, end);
+      events.push(end);
+    }
+    return events;
   }
 
   private subagentState(agentId: string, state: CollabAgentState): AgentEvent[] {
@@ -515,8 +574,9 @@ export class CodexEventMapper {
     summary?: string | null,
   ): AgentEvent[] {
     if (this.endedSubagents.has(agentId)) return [];
-    this.endedSubagents.add(agentId);
-    return [{ type: 'agent.end', agentId, taskId: agentId, status, ...(summary ? { summary } : {}) }];
+    const event: AgentEventOf<'agent.end'> = { type: 'agent.end', agentId, taskId: agentId, status, ...(summary ? { summary } : {}) };
+    this.endedSubagents.set(agentId, event);
+    return [event];
   }
 
   private turnCompleted(turn: Turn): AgentEvent[] {

@@ -133,7 +133,16 @@ export type ThreadItem =
       reasoningEffort: ReasoningEffort | null;
       agentsStates: Record<string, CollabAgentState | undefined>;
     }
-  | { type: 'subAgentActivity'; id: string; kind: SubAgentActivityKind; agentThreadId: string; agentPath: string }
+  | {
+      type: 'subAgentActivity';
+      id: string;
+      kind: SubAgentActivityKind;
+      agentThreadId: string;
+      agentPath: string;
+      model?: string | null;
+      startedAtMs?: number;
+      completedAtMs?: number | null;
+    }
   | { type: 'contextCompaction'; id: string }
   | {
       type: 'webSearch';

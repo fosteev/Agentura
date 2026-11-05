@@ -1,9 +1,11 @@
 import type { AgentEvent, AgentEventOf, ImageRef, SessionHistory, TokenUsage } from '../types';
 import { DEFAULT_MAX_TURNS } from '../claude/history';
 import { CodexToolMapper } from './tools';
+import { CodexEventMapper } from './mapper';
 import type { Thread, ThreadItem, Turn, UserInput } from './protocol';
 
 export interface CodexHistoryOptions {
+  children?: Thread[];
   /** Сессия идёт сейчас (пересев webview): незавершённый последний ход остаётся открытым. */
   live?: boolean;
   /** Сколько последних ходов отдать; по умолчанию как у Claude. */
@@ -51,6 +53,7 @@ function turnEvents(
   turn: Turn,
   model: string | null,
   tools: CodexToolMapper,
+  agents: CodexEventMapper,
   open: boolean,
   now: () => number,
 ): AgentEvent[] {
@@ -93,6 +96,8 @@ function turnEvents(
       events.push({ type: 'thinking.delta', messageId: item.id, text });
       events.push({ type: 'thinking.stop', messageId: item.id, at: startedAt });
     } else {
+      const at = (item as { startedAtMs?: number }).startedAtMs ?? startedAt;
+      events.push(...agents.collaborationItem(item, at));
       events.push(...tools.completed(item, endedAt));
     }
   }
@@ -137,13 +142,16 @@ export function buildCodexHistory(thread: Thread, options: CodexHistoryOptions =
   const max = options.maxTurns ?? DEFAULT_MAX_TURNS;
   const skipped = Math.max(0, turns.length - max);
   const shown = skipped ? turns.slice(skipped) : turns;
-  // один маппер на всю историю: id элементов уникальны в треде, а состояние маппера между ходами не нужно
+  // Жизнь субагента может пересекать несколько ходов — мапперы общие для всей истории.
   const tools = new CodexToolMapper(now);
+  const agents = new CodexEventMapper(now);
+  agents.threadId = thread.id;
   const events: AgentEvent[] = [];
   shown.forEach((turn, i) => {
     const last = i === shown.length - 1;
-    events.push(...turnEvents(turn, thread.model, tools, !!options.live && last, now));
+    events.push(...turnEvents(turn, thread.model, tools, agents, !!options.live && last, now));
   });
+  for (const child of options.children ?? []) events.push(...agents.enrichSubagent(child));
   const history: SessionHistory = { events, turns: turns.length, skippedTurns: skipped };
   if (thread.model) history.model = thread.model;
   return history;

@@ -37,6 +37,7 @@ export function isSubagent(a: AgentNode): boolean {
     a.taskType === 'local_agent' ||
     a.taskType === 'remote_agent' ||
     a.taskType === 'agent' ||
+    a.taskType === 'subagent' ||
     !!a.subagentType
   );
 }

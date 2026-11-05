@@ -628,7 +628,7 @@ describe('ChatController', () => {
     expect(deps.log.warn).toHaveBeenCalledTimes(2);
   });
 
-  it('link.open: только https://claude.ai/, остальное — warn', async () => {
+  it('link.open: внешние ссылки — в браузере, исполняемые схемы запрещены', async () => {
     const { controller, deps } = setup();
     const urls: string[] = [];
     deps.openExternal = (u) => void urls.push(u);
@@ -638,8 +638,28 @@ describe('ChatController', () => {
     await controller.handle({ type: 'link.open', url: 'https://evil.example/https://claude.ai/' });
     await controller.handle({ type: 'link.open', url: 'http://claude.ai/x' });
     await controller.handle({ type: 'link.open', url: 'file:///etc/passwd' });
-    expect(urls).toEqual(['https://claude.ai/artifact/abc']);
+    await controller.handle({ type: 'link.open', url: 'mailto:a@example.com' });
+    await controller.handle({ type: 'link.open', url: 'command:workbench.action.terminal.new' });
+    await controller.handle({ type: 'link.open', url: 'javascript:alert(1)' });
+    expect(urls).toEqual(['https://claude.ai/artifact/abc', 'https://evil.example/https://claude.ai/', 'http://claude.ai/x', 'mailto:a@example.com']);
     expect(deps.log.warn).toHaveBeenCalledTimes(3);
+  });
+
+  it('link.open: локальный файл, относительный путь, пробелы и строка/колонка', async () => {
+    const { controller, deps } = setup();
+    deps.openPath = vi.fn(async () => {});
+    await controller.handle({ type: 'link.open', url: '/tmp/agentura-subagents-live-result.json' });
+    await controller.handle({ type: 'link.open', url: 'src/main.ts:35:4' });
+    await controller.handle({ type: 'link.open', url: 'main.ts:12' });
+    await controller.handle({ type: 'link.open', url: '/tmp/my%20report.md#L9' });
+    expect(deps.openPath).toHaveBeenNthCalledWith(1, '/tmp/agentura-subagents-live-result.json', undefined, undefined);
+    expect(deps.openPath).toHaveBeenNthCalledWith(2, `${deps.cwd}/src/main.ts`, 35, 4);
+    expect(deps.openPath).toHaveBeenNthCalledWith(3, `${deps.cwd}/main.ts`, 12, 1);
+    expect(deps.openPath).toHaveBeenNthCalledWith(4, '/tmp/my report.md', 9, 1);
+    for (const url of ['#section', '//remote/file', '%63ommand:workbench.action.terminal.new', '/tmp/%00x', '/tmp/%ZZ', '/tmp/x:0']) {
+      await controller.handle({ type: 'link.open', url });
+    }
+    expect(deps.openPath).toHaveBeenCalledTimes(4);
   });
 
   it('interrupt, режим, compact доходят до сессии', async () => {

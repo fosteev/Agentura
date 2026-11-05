@@ -67,6 +67,7 @@ const METHODS = {
 
 /** Файл (в корне или v2/) → поля, которые мы читаем или пишем. */
 const FIELDS = {
+  ThreadItem: ['agentThreadId', 'agentPath', 'model'],
   SkillsListParams: ['cwds', 'forceReload'],
   SkillsListResponse: ['data'],
   SkillMetadata: ['name', 'description', 'path', 'enabled'],
