@@ -1,0 +1,13 @@
+{"dir":"out","scenario":"list","msg":{"jsonrpc":"2.0","id":1,"result":{"sessions":[{"sessionId":"sess-pong","cwd":"cwd-a","updatedAt":"2026-11-05T16:45:04.674Z"},{"sessionId":"sess-other","cwd":"cwd-b","updatedAt":"2026-11-05T18:00:00.000Z"}]}}}
+{"dir":"out","scenario":"load","msg":{"jsonrpc":"2.0","method":"session/update","params":{"update":{"sessionUpdate":"available_commands_update","availableCommands":[{"name":"copy-request-id"}]}}}}
+{"dir":"out","scenario":"load","msg":{"jsonrpc":"2.0","method":"session/update","params":{"update":{"sessionUpdate":"session_info_update","title":"One Word Pong"}}}}
+{"dir":"out","scenario":"load","msg":{"jsonrpc":"2.0","method":"session/update","params":{"update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"Reply with exactly one word: pong."}}}}}
+{"dir":"out","scenario":"load","msg":{"jsonrpc":"2.0","method":"session/update","params":{"update":{"sessionUpdate":"agent_thought_chunk","content":{"type":"text","text":"The user wants pong."}}}}}
+{"dir":"out","scenario":"load","msg":{"jsonrpc":"2.0","method":"session/update","params":{"update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"p"}}}}}
+{"dir":"out","scenario":"load","msg":{"jsonrpc":"2.0","method":"session/update","params":{"update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"ong"}}}}}
+{"dir":"out","scenario":"load","msg":{"jsonrpc":"2.0","method":"session/update","params":{"update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"Run the command."}}}}}
+{"dir":"out","scenario":"load","msg":{"jsonrpc":"2.0","method":"session/update","params":{"update":{"sessionUpdate":"tool_call","toolCallId":"tool_90fc4a4e-6e6d-46b2-83b5-3c3412526a7","title":"execute","kind":"execute","status":"pending","rawInput":{"command":"printf ok"}}}}}
+{"dir":"out","scenario":"load","msg":{"jsonrpc":"2.0","method":"session/update","params":{"update":{"sessionUpdate":"tool_call_update","toolCallId":"tool_90fc4a4e-6e6d-46b2-83b5-3c3412526a7","status":"completed","rawOutput":{"exitCode":0,"stdout":"ok\n","stderr":""}}}}}
+{"dir":"out","scenario":"load","msg":{"jsonrpc":"2.0","method":"session/update","params":{"update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"ok"}}}}}
+{"dir":"out","scenario":"load","msg":{"jsonrpc":"2.0","method":"session/update","params":{"update":{"sessionUpdate":"plan","entries":[{"content":"step","priority":"high","status":"pending"}]}}}}
+{"dir":"out","scenario":"load","msg":{"jsonrpc":"2.0","id":2,"result":{"modes":{"currentModeId":"agent"},"models":{"currentModelId":"gpt-5.4-nano[reasoning=medium]","availableModels":[{"modelId":"default[]","name":"Auto"}]}}}}

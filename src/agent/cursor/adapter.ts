@@ -17,8 +17,10 @@ import type {
   SessionInfo,
   SessionOptions,
 } from '../types';
-import { CursorRpcClient, MAX_LINE_BYTES, type RpcId, type RpcProcess } from './client';
+import { accountFromAbout, emailFromStatus, runCursorCommand } from './account';
+import { CursorRpcClient, CursorRpcError, MAX_LINE_BYTES, type RpcId, type RpcProcess } from './client';
 import { CURSOR_NOT_FOUND } from './executable';
+import { buildCursorHistory, sessionsFrom } from './history';
 import { CursorMapper, permissionRequestFrom, planRequestFrom } from './mapper';
 import {
   AUTH_METHOD,
@@ -59,6 +61,11 @@ export interface CursorAdapterConfig {
   engineVersion?: string;
   clientVersion?: string;
   log?: LogFn;
+  /**
+   * `agent about` / `agent status` для `accountInfo`. Нет — `execFile`, `shell: false`.
+   * Не `acp`: эти команды печатают текст, не JSON-RPC.
+   */
+  run?: (path: string, args: readonly string[], cwd: string) => Promise<string>;
   timeoutMs?: number;
   /** stdin end → пауза → SIGTERM → ещё пауза → SIGKILL. */
   graceMs?: number;
@@ -81,6 +88,8 @@ function defaultSpawn(path: string, args: string[], options: CursorSpawnOptions)
 
 export class CursorAdapter implements AgentAdapter {
   readonly id = 'cursor';
+  /** `-32601` на `session/list` — один warn на адаптер, не на каждый опрос сайдбара. */
+  private listWarned = false;
 
   constructor(private readonly config: CursorAdapterConfig = {}) {}
 
@@ -92,21 +101,85 @@ export class CursorAdapter implements AgentAdapter {
     return new CursorSession(this.config, await this.executable(), options, sessionId);
   }
 
-  /** Список — этап 4 (`session/list`). Пока пусто, без чтения каталога Cursor. */
-  async listSessions(): Promise<SessionInfo[]> {
-    return [];
+  /**
+   * `session/list {cwd}`. Чужой cwd отбрасывается. `-32601` — пустой список и один warn.
+   * Падение процесса — отказ промиса: extra-провайдер его уже ловит и не стирает чужие списки.
+   */
+  async listSessions(dir: string): Promise<SessionInfo[]> {
+    try {
+      const result = await this.withAcp(dir, (client) => client.request('session/list', { cwd: dir }));
+      return sessionsFrom(result, dir);
+    } catch (error) {
+      if (error instanceof CursorRpcError && error.code === -32601) {
+        if (!this.listWarned) {
+          this.listWarned = true;
+          this.config.log?.('warn', `cursor: session/list is not available: ${errorText(error)}`);
+        }
+        return [];
+      }
+      throw error;
+    }
   }
 
-  /** История — этап 4. Пустая история не ошибка вкладки. */
-  async loadHistory(): Promise<SessionHistory> {
-    return { events: [], turns: 0, skippedTurns: 0 };
+  /**
+   * Кадры `session/load` сами, не через живой `resumeSession` (тот глушит `session/update`, пока `loading`).
+   * Нет данных или ошибка load — пустая история. Нет бинарника — отказ, как у `createSession`.
+   */
+  async loadHistory(
+    sessionId: string,
+    cwd: string,
+    options: { live?: boolean; tasksAlive?: boolean; maxTurns?: number; stopBefore?: string } = {},
+  ): Promise<SessionHistory> {
+    const executable = await this.executable();
+    try {
+      const loaded = await this.acp(executable, cwd, async (client, updates) => {
+        const result = await client.request('session/load', { sessionId, cwd, mcpServers: [] });
+        return { updates: [...updates], result };
+      });
+      return buildCursorHistory(loaded.updates, loaded.result, {
+        ...(options.live ? { live: true } : {}),
+        ...(options.maxTurns !== undefined ? { maxTurns: options.maxTurns } : {}),
+      });
+    } catch (error) {
+      this.config.log?.('warn', `cursor: session/load failed: ${errorText(error)}`);
+      return { events: [], turns: 0, skippedTurns: 0 };
+    }
   }
 
-  /** Метода переименования спайк не видел: тишина, без файла и без ошибки. */
-  async renameSession(): Promise<void> {}
+  /** Метода переименования спайк не видел: тишина, без файла, без `globalState` и без ошибки. */
+  async renameSession(sessionId: string, title: string, cwd: string): Promise<void> {
+    void sessionId;
+    void title;
+    void cwd;
+  }
 
-  async accountInfo(): Promise<AccountInfo> {
-    return {};
+  /**
+   * `agent about`: почта и тариф. Нет почты — `agent status`. Нет строк или сбой — `{}`.
+   * Процесс `acp` не поднимается.
+   */
+  async accountInfo(cwd: string): Promise<AccountInfo> {
+    let executable: string;
+    try {
+      executable = await this.executable();
+    } catch {
+      return {};
+    }
+    const run = this.config.run ?? runCursorCommand;
+    let info: AccountInfo = {};
+    try {
+      info = accountFromAbout(await run(executable, ['about'], cwd));
+    } catch (error) {
+      this.config.log?.('warn', `cursor: agent about failed: ${errorText(error)}`);
+    }
+    if (!info.email) {
+      try {
+        const email = emailFromStatus(await run(executable, ['status'], cwd));
+        if (email) info.email = email;
+      } catch (error) {
+        this.config.log?.('warn', `cursor: agent status failed: ${errorText(error)}`);
+      }
+    }
+    return info;
   }
 
   private async executable(): Promise<string> {
@@ -114,6 +187,54 @@ export class CursorAdapter implements AgentAdapter {
     const path = typeof setting === 'function' ? await setting() : setting;
     if (!path) throw new Error(CURSOR_NOT_FOUND);
     return path;
+  }
+
+  /** Короткий `agent acp`: initialize, authenticate, один запрос, затем тот же shutdown, что у сессии. */
+  private withAcp<T>(
+    cwd: string,
+    fn: (client: CursorRpcClient, updates: unknown[]) => Promise<T>,
+  ): Promise<T> {
+    return this.executable().then((executable) => this.acp(executable, cwd, fn));
+  }
+
+  private async acp<T>(
+    executable: string,
+    cwd: string,
+    fn: (client: CursorRpcClient, updates: unknown[]) => Promise<T>,
+  ): Promise<T> {
+    const proc = (this.config.spawn ?? defaultSpawn)(executable, ['acp'], {
+      cwd,
+      env: this.config.env ?? process.env,
+      shell: false,
+    });
+    let exited = false;
+    proc.on('exit', () => (exited = true));
+    const updates: unknown[] = [];
+    const client = new CursorRpcClient(proc, {
+      timeoutMs: this.config.timeoutMs ?? 120_000,
+      maxLineBytes: MAX_LINE_BYTES,
+      onNotification: (method, params) => {
+        if (method !== 'session/update') return;
+        const update = updateOf(params);
+        if (update !== undefined) updates.push(update);
+      },
+      onStderr: (line) => this.config.log?.('debug', `cursor: ${line}`),
+    });
+    try {
+      await client.request('initialize', {
+        protocolVersion: PROTOCOL_VERSION,
+        clientCapabilities: {
+          fs: { readTextFile: false, writeTextFile: false },
+          terminal: false,
+        },
+        clientInfo: { name: 'agentura', version: this.config.clientVersion ?? '0.0.0' },
+      });
+      await client.request('authenticate', { methodId: AUTH_METHOD });
+      return await fn(client, updates);
+    } finally {
+      client.dispose();
+      shutdownCursor(proc, this.config.graceMs ?? DEFAULT_GRACE_MS, () => exited);
+    }
   }
 }
 
@@ -618,26 +739,7 @@ class CursorSession implements AgentSession {
 
   /** stdin end, grace, SIGTERM, ещё grace, SIGKILL. */
   private stopProcess(): void {
-    if (this.procExited) return;
-    try {
-      this.proc.stdin.end();
-    } catch {
-      // процесс уже мёртв
-    }
-    let hard: NodeJS.Timeout | undefined;
-    const timer = setTimeout(() => {
-      if (this.procExited) return;
-      this.proc.kill();
-      hard = setTimeout(() => {
-        if (!this.procExited) this.proc.kill('SIGKILL');
-      }, this.graceMs);
-      hard.unref?.();
-    }, this.graceMs);
-    timer.unref?.();
-    this.proc.on('exit', () => {
-      clearTimeout(timer);
-      clearTimeout(hard);
-    });
+    shutdownCursor(this.proc, this.graceMs, () => this.procExited);
   }
 
   private emit(event: AgentEvent): void {
@@ -651,4 +753,34 @@ class CursorSession implements AgentSession {
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** `session/update.params.update`. Нет объекта — кадра истории нет. */
+function updateOf(params: unknown): unknown {
+  if (typeof params !== 'object' || params === null || Array.isArray(params)) return undefined;
+  return (params as { update?: unknown }).update;
+}
+
+/** stdin end, grace, SIGTERM, ещё grace, SIGKILL. Уже вышедший процесс не трогаем. */
+function shutdownCursor(proc: CursorProcess, graceMs: number, exited: () => boolean): void {
+  if (exited()) return;
+  try {
+    proc.stdin.end();
+  } catch {
+    // процесс уже мёртв
+  }
+  let hard: NodeJS.Timeout | undefined;
+  const timer = setTimeout(() => {
+    if (exited()) return;
+    proc.kill();
+    hard = setTimeout(() => {
+      if (!exited()) proc.kill('SIGKILL');
+    }, graceMs);
+    hard.unref?.();
+  }, graceMs);
+  timer.unref?.();
+  proc.on('exit', () => {
+    clearTimeout(timer);
+    clearTimeout(hard);
+  });
 }
