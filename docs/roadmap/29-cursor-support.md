@@ -1,6 +1,6 @@
 # 29 — Cursor как четвёртый движок
 
-> Статус: этап 4 принят 2026-11-05 · следующий — 5
+> Статус: этап 5 принят 2026-11-05 · roadmap закрыт
 >
 > Исполнитель отмечает чекбоксы по ходу, только после проверки из «Готово, когда». Статусы живут здесь.
 
@@ -156,15 +156,25 @@
 
 **Сессия:** sonnet, high. После этапа 4. Общие файлы трогать здесь, не раньше.
 
-- [ ] `ChatServices.cursorAdapter` / `cursorEngine` рядом с Codex и Antigravity в `src/extension/chatPanel.ts`. `adapterOf` и второе такое же ветвление в этом файле отдают Cursor-адаптер. Прогрев `warm()` на активации не вызывать.
-- [ ] `ProviderFeatures` для `cursor` — флаги из «Принятых решений», поднятые этапом 3, если спайк подтвердил план и вопросы. `providerFeatures` не забывает новую ветку (сейчас не-codex и не-antigravity молча получают флаги Claude).
-- [ ] `sessionsService.ts`: третий extra-провайдер, тихая проба локатора (`available` / `quiet`), ошибка списка не стирает Claude и Codex.
-- [ ] Меню движка, пустой экран, сайдбар, строки en/ru (`engines`, `providerNames`, «не найден», подпись «через agent acp»). Настройки ⚙: путь к бинарнику и пункт провайдера по умолчанию — тем же экраном, что Codex, без новой страницы.
-- [ ] Карточки разрешений, вопросов и плана ходят в `respondPermission` / `answerQuestion` / `decidePlan` этой сессии. Режим `bypassPermissions` без `allowBypassPermissions` контроллер по-прежнему понижает.
-- [ ] README.md и README.ru.md: короткий раздел «Cursor» — установка CLI, `agent login`, что в v1 нет цены, контекста, MCP-тумблера, субагентов и автопринятия правок. CHANGELOG — одна запись.
-- [ ] `TZ=UTC npm run check` зелёный.
+- [x] `ChatServices.cursorAdapter` / `cursorEngine` рядом с Codex и Antigravity в `src/extension/chatPanel.ts`. `adapterOf` и второе такое же ветвление в этом файле отдают Cursor-адаптер. Прогрев `warm()` на активации не вызывать.
+- [x] `ProviderFeatures` для `cursor` — флаги из «Принятых решений», поднятые этапом 3, если спайк подтвердил план и вопросы. `providerFeatures` не забывает новую ветку (сейчас не-codex и не-antigravity молча получают флаги Claude).
+- [x] `sessionsService.ts`: третий extra-провайдер, тихая проба локатора (`available` / `quiet`), ошибка списка не стирает Claude и Codex.
+- [x] Меню движка, пустой экран, сайдбар, строки en/ru (`engines`, `providerNames`, «не найден», подпись «через agent acp»). Настройки ⚙: путь к бинарнику и пункт провайдера по умолчанию — тем же экраном, что Codex, без новой страницы.
+- [x] Карточки разрешений, вопросов и плана ходят в `respondPermission` / `answerQuestion` / `decidePlan` этой сессии. Режим `bypassPermissions` без `allowBypassPermissions` контроллер по-прежнему понижает.
+- [x] README.md и README.ru.md: короткий раздел «Cursor» — установка CLI, `agent login`, что в v1 нет цены, контекста, MCP-тумблера, субагентов и автопринятия правок. CHANGELOG — одна запись.
+- [x] `TZ=UTC npm run check` зелёный.
 
 **Готово, когда:** тесты фабрики и списка сессий покрывают провайдер `cursor`; `rg` по `src` не находит места, где провайдер сравнивается с двумя движками и молча считает остальное Claude, кроме самого `providerFeatures` и явного дефолта. Ручной сценарий владельца: пустая вкладка → Cursor → «pong» → Stop → повторное открытие сессии из сайдбара.
+
+**Решения (2026-11-05, по итогам сессии 5):**
+
+- Раскладка: `cursorAdapter` / `cursorEngine` в `createAdapter` и `ChatServices`. `adapterOf` и `engineOf` — единственные ветки; конструктор вкладки зовёт их. `warm()` только у Claude. `acp` не стартует, пока `EngineLocator.ready()` не ок: у резолвера без штампа есть `path` и `problem` и нет `version`, `usable` это отвергает. Список — третий extra, `available()` тихий; сбой или «не найден» не стирает Claude и Codex. Заголовок строки по-прежнему `sessionId`. `stopBefore` не добавлялся.
+- Флаги не трогались: `plan` true, `questions` false, `context` и `cost` false. Новая сессия с режимами идёт через `providerFeatures().modes` (у Codex флаг false — его ветка та же). Модель и effort Claude в Cursor не передаются. `bypassPermissions` без `allowBypassPermissions` — `resolveDefaultMode` и `mode.set` оставляют `default`, `allowBypassPermissions` сессии false. `acceptEdits` этот флаг не включает. Карточки `permission.respond` / `question.answer` / `plan.decide` идут в сессию адаптера вкладки. Вопросов в v1 нет: `ask_question` по-прежнему `skipped`.
+- Меню пустой вкладки, пункт `defaultProvider` и строка `agentura.cursorExecutable` — страница «Движок», та же, что у Codex. Подпись «через agent acp» / «via agent acp». «Не найден» — `cursorNotFound` en/ru. Всплывашка нового чата задачи и `/new cursor` тоже принимают `cursor`: иначе протокол `task.newChat` молча отбрасывал сообщение. Кнопки входа и лимитов подписки нет.
+- README.md (en) и README.ru.md (ru) — короткий раздел. CHANGELOG — одна запись в `Unreleased`, номер версии не выдуман.
+- Отступления: `refreshLimits` для не-Antigravity по-прежнему читает usage Claude; кольцо и цена у Cursor скрыты флагами, как у Codex. `engine.login` и терминал «войти» — только Codex и Antigravity. `skill.open` не-Codex по-прежнему ищет SKILL.md Claude; у Cursor `skills` false, пункт не показывается. Явный дефолт «нет поля / мусор → claude» (`defaultProvider`, `openSession`, старый `session.resume`, legacy id) оставлен.
+- Не проверено: живой CLI, пустая вкладка в браузере, Stop и повтор из сайдбара, Windows. `TZ=UTC npm run check` — 2310 тестов.
+- Приёмка (2026-11-05): Cursor не получает флаги и адаптер Claude; сбой списка и отсутствие бинарника не стирают Claude и Codex; `warm()` на активации нет; карточки идут в сессию вкладки; `bypass` без настройки не расширяет права. `refreshLimits` и `skill.open` для не-Codex по-прежнему читают данные Claude: кольцо, цена и пункт скилла скрыты флагами, записи в чужие файлы нет. `/new cursor` и режимы новой сессии — в pending. Ручной сценарий не отмечен.
 
 ## Промты сессий
 

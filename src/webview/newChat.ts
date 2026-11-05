@@ -13,7 +13,15 @@ export function parseNewCommand(args: string, fallback: AgentProvider): { provid
   const m = /^(\S+)(?:\s+([\s\S]*))?$/.exec(text);
   const word = m?.[1]?.toLowerCase();
   const engine: AgentProvider | undefined =
-    word === 'claude' ? 'claude' : word === 'codex' ? 'codex' : word === 'agy' || word === 'antigravity' ? 'antigravity' : undefined;
+    word === 'claude'
+      ? 'claude'
+      : word === 'codex'
+        ? 'codex'
+        : word === 'agy' || word === 'antigravity'
+          ? 'antigravity'
+          : word === 'cursor'
+            ? 'cursor'
+            : undefined;
   if (!engine) return { provider: fallback, prompt: text };
   return { provider: engine, prompt: (m?.[2] ?? '').trim() };
 }

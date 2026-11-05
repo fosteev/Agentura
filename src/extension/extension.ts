@@ -57,11 +57,16 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     lang: currentLanguage,
   });
   const usage = new UsageService(limits.fetch);
-  const { adapter, codexAdapter, antigravityAdapter, engine, codexEngine, antigravityEngine } = createAdapter(
-    log,
-    String(context.extension.packageJSON.version),
-    context.globalState,
-  );
+  const {
+    adapter,
+    codexAdapter,
+    antigravityAdapter,
+    cursorAdapter,
+    engine,
+    codexEngine,
+    antigravityEngine,
+    cursorEngine,
+  } = createAdapter(log, String(context.extension.packageJSON.version), context.globalState);
   engine.warm();
   const folder = vscode.workspace.workspaceFolders?.[0];
   const cwd = folder?.uri.fsPath ?? '';
@@ -88,6 +93,8 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     codex: { adapter: codexAdapter, available: () => codexEngine.available() },
     // беседы Antigravity: база и индекс бесед; без `agy` (или без `node:sqlite` — тогда индекс) строк нет, ошибок тоже
     antigravity: { adapter: antigravityAdapter, available: () => antigravityEngine.available() },
+    // сессии Cursor (`session/list`): короткий `agent acp` только если резолвер не нашёл `problem`
+    cursor: { adapter: cursorAdapter, available: () => cursorEngine.available() },
     cwd,
     // беседы Codex/agy своих worktree чатов задач (roadmap 26, Д2): их папки — в ссылках групп
     extraCwds: (p) => taskGroups.cwds(p),
@@ -131,6 +138,7 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     adapter,
     codexAdapter,
     antigravityAdapter,
+    cursorAdapter,
     live,
     transcripts,
     usage,
@@ -148,6 +156,7 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     engine,
     codexEngine,
     antigravityEngine,
+    cursorEngine,
     git: new GitService({
       loadApi: getGitApi,
       ui: vscodeGitUi(),
@@ -179,7 +188,9 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
             ? 'Codex'
             : r.provider === 'antigravity'
               ? 'Antigravity'
-              : `${t.turns(r.turns)}${r.costUsd !== undefined ? ` · $${r.costUsd.toFixed(2)}` : ''}`,
+              : r.provider === 'cursor'
+                ? 'Cursor'
+                : `${t.turns(r.turns)}${r.costUsd !== undefined ? ` · $${r.costUsd.toFixed(2)}` : ''}`,
         detail: new Date(r.updatedAt).toLocaleString(t.locale),
         id: r.id,
         provider: r.provider ?? ('claude' as const),

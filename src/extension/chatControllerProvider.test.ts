@@ -32,13 +32,20 @@ class Session implements AgentSession {
     this.responded.push([toolUseId, decision]);
     return true;
   }
-  answerQuestion() {
+  asked: [string, Record<string, string>][] = [];
+  answerQuestion(toolUseId: string, answers: Record<string, string>) {
+    this.asked.push([toolUseId, answers]);
     return true;
   }
-  decidePlan() {
+  planned: unknown[] = [];
+  decidePlan(toolUseId: string, decision: unknown) {
+    this.planned.push([toolUseId, decision]);
     return true;
   }
-  async setMode() {}
+  modes: string[] = [];
+  async setMode(mode: string) {
+    this.modes.push(mode);
+  }
   async setModel() {}
   async setEffort() {}
   async interrupt() {}
@@ -101,15 +108,30 @@ function setup(over: Partial<ChatDeps> = {}) {
   const claude = fakeAdapter('claude');
   const codex = fakeAdapter('codex');
   const agy = fakeAdapter('agy', (id) => new AgyTestSession(id));
+  const cursor = fakeAdapter('cursor');
   const posted: ToWebview[] = [];
   const remembered: AgentProvider[] = [];
   const codexReady = vi.fn(async () => ({ ok: true as const }));
   const agyReady = vi.fn(async () => ({ ok: true as const }));
+  const cursorReady = vi.fn(async () => ({ ok: true as const }));
   const deps: ChatDeps = {
     adapter: claude.adapter,
-    adapterFor: (p) => (p === 'codex' ? codex.adapter : p === 'antigravity' ? agy.adapter : claude.adapter),
+    adapterFor: (p) =>
+      p === 'codex'
+        ? codex.adapter
+        : p === 'antigravity'
+          ? agy.adapter
+          : p === 'cursor'
+            ? cursor.adapter
+            : claude.adapter,
     engineFor: (p) =>
-      p === 'codex' ? { ready: codexReady } : p === 'antigravity' ? { ready: agyReady } : undefined,
+      p === 'codex'
+        ? { ready: codexReady }
+        : p === 'antigravity'
+          ? { ready: agyReady }
+          : p === 'cursor'
+            ? { ready: cursorReady }
+            : undefined,
     rememberProvider: (p) => remembered.push(p),
     cwd: '/p',
     project: 'p',
@@ -130,7 +152,7 @@ function setup(over: Partial<ChatDeps> = {}) {
     ...over,
   };
   const controller = new ChatController(deps);
-  return { controller, claude, codex, agy, posted, remembered, codexReady, agyReady };
+  return { controller, claude, codex, agy, cursor, posted, remembered, codexReady, agyReady, cursorReady };
 }
 
 const infos = (posted: ToWebview[]) =>
@@ -505,6 +527,7 @@ describe('ChatController: выбор движка engine.set', () => {
 
   it('протокол: engine.set принимает только известные движки', () => {
     expect(isFromWebview({ type: 'engine.set', provider: 'codex' })).toBe(true);
+    expect(isFromWebview({ type: 'engine.set', provider: 'cursor' })).toBe(true);
     expect(isFromWebview({ type: 'engine.set', provider: 'gemini' })).toBe(false);
     expect(isFromWebview({ type: 'engine.set' })).toBe(false);
   });
@@ -711,4 +734,109 @@ describe('native Codex settings host boundary', () => {
     t.controller.dispose();
   });
 
+});
+
+describe('ChatController: Cursor', () => {
+  it('сессию создаёт адаптер Cursor: режим из настроек, без модели Claude и дефолтов Codex', async () => {
+    const { controller, claude, codex, cursor, posted, cursorReady } = setup({ provider: 'cursor' });
+    controller.start();
+    await tick();
+    expect(claude.created).toHaveLength(0);
+    expect(codex.created).toHaveLength(0);
+    expect(cursor.created).toEqual([
+      { cwd: '/p', allowBypassPermissions: true, permissionMode: 'acceptEdits' },
+    ]);
+    expect(cursor.created[0]).not.toHaveProperty('model');
+    expect(cursor.created[0]).not.toHaveProperty('effort');
+    expect(cursor.created[0]).not.toHaveProperty('codexDefaults');
+    expect(cursorReady).toHaveBeenCalled();
+    controller.pushInfo();
+    expect(infos(posted).at(-1)).toMatchObject({
+      provider: 'cursor',
+      features: providerFeatures('cursor'),
+    });
+    expect(infos(posted).at(-1)?.features).toMatchObject({
+      plan: true,
+      questions: false,
+      context: false,
+      cost: false,
+    });
+  });
+
+  it('bypass без allowBypass понижается до default и не уходит в setMode', async () => {
+    const settings = () => ({ allowBypass: false, defaultPermissionMode: 'bypassPermissions' as const });
+    const { controller, cursor } = setup({ provider: 'cursor', settings });
+    controller.start();
+    await tick();
+    expect(cursor.created[0]).toMatchObject({ permissionMode: 'default', allowBypassPermissions: false });
+    await controller.handle({ type: 'mode.set', sessionId: 'cursor-new', mode: 'bypassPermissions' });
+    expect(cursor.sessions[0]!.modes).toEqual([]);
+  });
+
+  it('acceptEdits не включает allowBypass: карточка всё равно зовёт respondPermission этой сессии', async () => {
+    const settings = () => ({ allowBypass: false, defaultPermissionMode: 'acceptEdits' as const });
+    const { controller, cursor, claude } = setup({ provider: 'cursor', settings });
+    controller.start();
+    await tick();
+    expect(cursor.created[0]).toMatchObject({ permissionMode: 'acceptEdits', allowBypassPermissions: false });
+    const session = cursor.sessions[0]!;
+    await controller.handle({
+      type: 'permission.respond',
+      sessionId: session.id,
+      toolUseId: 'tool_1',
+      decision: 'allow',
+    });
+    await controller.handle({
+      type: 'question.answer',
+      sessionId: session.id,
+      toolUseId: 'tool_q',
+      answers: { q: 'a' },
+    });
+    await controller.handle({
+      type: 'plan.decide',
+      sessionId: session.id,
+      toolUseId: 'tool_p',
+      decision: 'run',
+    });
+    expect(session.responded).toEqual([['tool_1', 'allow']]);
+    expect(session.asked).toEqual([['tool_q', { q: 'a' }]]);
+    expect(session.planned[0]).toEqual(['tool_p', { approve: true, mode: 'default' }]);
+    expect(claude.sessions).toHaveLength(0);
+  });
+
+  it('бинарник не найден: карточка engine_missing, сессия не создаётся', async () => {
+    const { controller, cursor, claude, posted } = setup({
+      provider: 'cursor',
+      engineFor: () => ({ ready: async () => ({ ok: false as const, problem: 'Cursor CLI (agent) not found' }) }),
+    });
+    controller.start();
+    await tick();
+    await tick();
+    expect(cursor.created).toHaveLength(0);
+    expect(claude.created).toHaveLength(0);
+    expect(posted.find((m) => m.type === 'agent.event' && m.event.type === 'error')).toMatchObject({
+      event: { message: 'Cursor CLI (agent) not found', code: 'engine_missing', fatal: true },
+    });
+  });
+
+  it('resume идёт в адаптер Cursor, не в Claude', async () => {
+    const { controller, claude, cursor } = setup({ provider: 'cursor', resumeId: 'sess-1' });
+    controller.start();
+    await tick();
+    await tick();
+    expect(claude.loaded).toHaveLength(0);
+    expect(claude.resumed).toHaveLength(0);
+    expect(cursor.loaded).toEqual(['sess-1']);
+    expect(cursor.resumed).toHaveLength(1);
+  });
+
+  it('engine.set cursor в пустой вкладке запоминает движок и поднимает Cursor', async () => {
+    const { controller, cursor, claude, remembered } = setup();
+    await controller.handle({ type: 'engine.set', provider: 'cursor' });
+    await tick();
+    expect(controller.provider).toBe('cursor');
+    expect(remembered).toEqual(['cursor']);
+    expect(cursor.created).toHaveLength(1);
+    expect(claude.created).toHaveLength(0);
+  });
 });

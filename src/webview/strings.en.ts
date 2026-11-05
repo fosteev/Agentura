@@ -873,6 +873,7 @@ export const en: Ui = {
     claudeVia: (version?: string) => `via Claude Agent SDK${version ? ` · claude ${version}` : ''}`,
     codexVia: 'via codex app-server',
     antigravityVia: (version?: string) => `via agy (Antigravity CLI)${version ? ` · ${version}` : ''}`,
+    cursorVia: 'via agent acp',
     agentLocked: 'chosen in a new chat',
     imagesHint: '⌘V — paste an image · drag with ⇧',
     imagesPlus: (k: string) => `+${k} images`,
@@ -1420,7 +1421,7 @@ export const en: Ui = {
     provider: {
       name: 'Default engine',
       desc: 'Engine for new tabs. The “agent” menu in the input box (empty tab) changes it too; a started session keeps its engine.',
-      options: { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity' },
+      options: { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity', cursor: 'Cursor' },
     },
     exe: {
       name: 'Path to claude',
@@ -1436,6 +1437,11 @@ export const en: Ui = {
       name: 'Path to agy (Antigravity)',
       desc: 'Empty: look for the system one (PATH, ~/.local/bin, Homebrew). Only needed for the Antigravity engine; agy must be signed in (run it once).',
       placeholder: 'empty: look for the system one',
+    },
+    exeCursor: {
+      name: 'Path to agent (Cursor)',
+      desc: 'Empty — look for the system one: PATH, ~/.local/bin, Homebrew. Needs the Cursor CLI signed in (agent login). Another agent binary without a Cursor build stamp is rejected.',
+      placeholder: 'empty — look for the system one',
     },
   },
   sidebar: {

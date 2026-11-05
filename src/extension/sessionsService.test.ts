@@ -566,3 +566,68 @@ describe('SessionsService: беседы Codex/agy своих worktree чатов
     await vi.waitFor(async () => expect((await svc.list()).map((r) => r.id)).toEqual(['x1']));
   });
 });
+
+describe('SessionsService: сессии Cursor', () => {
+  const row = (id: string, updatedAt: number): SessionInfo => ({
+    id,
+    title: id,
+    updatedAt,
+    cwd: '/nonexistent/project',
+  });
+
+  function svcOf(opts: { cursor?: SessionInfo[]; available?: boolean; fail?: boolean } = {}) {
+    const claudeAdapter = { listSessions: vi.fn(async () => [row('c1', 1)]) } as unknown as AgentAdapter;
+    const codexAdapter = { listSessions: vi.fn(async () => [row('x1', 5)]) } as unknown as AgentAdapter;
+    const cursorAdapter = {
+      listSessions: vi.fn(async () => {
+        if (opts.fail) throw new Error('cursor list down');
+        return opts.cursor ?? [row('r1', 9)];
+      }),
+      renameSession: vi.fn(async () => undefined),
+    } as unknown as AgentAdapter;
+    const warn = vi.fn();
+    const svc = new SessionsService({
+      adapter: claudeAdapter,
+      codex: { adapter: () => codexAdapter, available: async () => true },
+      cursor: { adapter: () => cursorAdapter, available: async () => opts.available !== false },
+      cwd: '/nonexistent/project',
+      live: new LiveSessions(),
+      cache: new TranscriptCache(),
+      log: { debug: vi.fn(), warn },
+      dir: '/tmp',
+      watch: () => ({ close: () => undefined }),
+    });
+    return { svc, claudeAdapter, codexAdapter, cursorAdapter, warn };
+  }
+
+  it('строка cursor в общем списке, заголовок — id сессии, providerOf не отдаёт её Claude', async () => {
+    const m = svcOf();
+    const rows = await m.svc.summaries();
+    expect(rows.map((r) => [r.id, r.title, r.provider])).toEqual([
+      ['r1', 'r1', 'cursor'],
+      ['x1', 'x1', 'codex'],
+      ['c1', 'c1', undefined],
+    ]);
+    expect(m.svc.providerOf('r1')).toBe('cursor');
+    expect(m.svc.providerOf('x1')).toBe('codex');
+    expect(m.svc.providerOf('c1')).toBe('claude');
+    await m.svc.rename('r1', 'новое');
+    expect(m.cursorAdapter.renameSession).toHaveBeenCalledWith('r1', 'новое', '/nonexistent/project');
+    expect(m.claudeAdapter.renameSession).toBeUndefined();
+  });
+
+  it('бинарника нет — Claude и Codex на месте, listSessions cursor не зовётся', async () => {
+    const m = svcOf({ available: false });
+    expect((await m.svc.summaries()).map((r) => [r.id, r.provider])).toEqual([
+      ['x1', 'codex'],
+      ['c1', undefined],
+    ]);
+    expect(m.cursorAdapter.listSessions).not.toHaveBeenCalled();
+  });
+
+  it('сбой списка cursor не стирает Claude и Codex', async () => {
+    const m = svcOf({ fail: true });
+    expect((await m.svc.summaries()).map((r) => r.id)).toEqual(['x1', 'c1']);
+    expect(m.warn).toHaveBeenCalled();
+  });
+});

@@ -181,6 +181,13 @@ describe('SettingsController', () => {
     expect(posted[0]).toMatchObject({ type: 'settings.engine', engine: 'codex' });
   });
 
+  it('checkEngine: Cursor не подменяется Claude и помечает ответ', async () => {
+    const { c, posted, deps } = setup();
+    await c.handle({ type: 'settings.checkEngine', path: '/x/agent', engine: 'cursor' });
+    expect(deps.checkEngine).toHaveBeenCalledWith('/x/agent', 'cursor');
+    expect(posted[0]).toMatchObject({ type: 'settings.engine', engine: 'cursor' });
+  });
+
   it('checkEngine: для Antigravity проверяет agy и помечает ответ', async () => {
     const { c, posted, deps } = setup();
     await c.handle({ type: 'settings.checkEngine', path: '/x/agy', engine: 'antigravity' });

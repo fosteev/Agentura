@@ -125,7 +125,8 @@ export class SettingsController {
         break;
       case 'settings.checkEngine': {
         // проверки асинхронные (до 5 с): ответ устаревшей не должен перебить ответ последней
-        const engine: AgentProvider = m.engine === 'codex' || m.engine === 'antigravity' ? m.engine : 'claude';
+        const engine: AgentProvider =
+          m.engine === 'codex' || m.engine === 'antigravity' || m.engine === 'cursor' ? m.engine : 'claude';
         const seq = ++this.checkSeq[engine];
         // исключение проверки не должно оставить кнопки «проверить» заблокированными
         const result: EngineCheck = await this.deps
