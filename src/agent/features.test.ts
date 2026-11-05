@@ -60,6 +60,32 @@ describe('providerFeatures', () => {
     });
   });
 
+  it('Cursor: режимы есть; вопросы не подняты, план и приборы Claude не достаются по умолчанию', () => {
+    expect(providerFeatures('cursor')).toEqual({
+      modes: true,
+      nativeSettings: false,
+      compact: false,
+      autoCompact: false,
+      context: false,
+      cost: false,
+      subagents: false,
+      agentStop: false,
+      agentTranscript: false,
+      plan: false,
+      questions: false,
+      images: false,
+      files: false,
+      remote: false,
+      browser: false,
+      mcp: false,
+      mcpReconnect: false,
+      mcpReloadAll: false,
+      mcpToggle: false,
+      skills: false,
+    });
+    expect(providerFeatures('cursor')).not.toEqual(providerFeatures('claude'));
+  });
+
   it('копия: правка результата не портит константы', () => {
     providerFeatures('codex').modes = true;
     expect(CODEX_FEATURES.modes).toBe(false);

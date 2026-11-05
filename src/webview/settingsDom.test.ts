@@ -53,6 +53,7 @@ const values: SettingsValues = {
   claudeExecutable: '',
   codexExecutable: '',
   antigravityExecutable: '',
+  cursorExecutable: '',
   defaultProvider: 'claude',
   'sessionList.view': 'compact',
   'sessionList.context': true,
@@ -436,7 +437,7 @@ describe('вкладка настроек', () => {
     const boxes = [
       ...host.querySelectorAll<HTMLInputElement>('[data-key="agentura.sidebar.limitsHidden"] input[type="checkbox"]'),
     ];
-    expect(boxes.map((b) => b.checked)).toEqual([true, false, true]);
+    expect(boxes.map((b) => b.checked)).toEqual([true, false, true, true]);
     boxes[2]!.click();
     expect(sets().at(-1)).toEqual({
       type: 'settings.set',

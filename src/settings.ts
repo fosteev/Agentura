@@ -164,10 +164,10 @@ export const DEFAULT_HIGHLIGHT_THEME: HighlightTheme = 'github';
 export const MIN_DIFF_FONT_SIZE = 0;
 export const MAX_DIFF_FONT_SIZE = 40;
 
-export const PROVIDERS: readonly AgentProvider[] = ['claude', 'codex', 'antigravity'];
+export const PROVIDERS: readonly AgentProvider[] = ['claude', 'codex', 'antigravity', 'cursor'];
 export const DEFAULT_PROVIDER: AgentProvider = 'claude';
 export function isProvider(v: unknown): v is AgentProvider {
-  return v === 'claude' || v === 'codex' || v === 'antigravity';
+  return v === 'claude' || v === 'codex' || v === 'antigravity' || v === 'cursor';
 }
 
 /** Ключи без префикса `agentura.` — те же, что в `getConfiguration('agentura')`. */
@@ -188,6 +188,7 @@ export type SettingKey =
   | 'claudeExecutable'
   | 'codexExecutable'
   | 'antigravityExecutable'
+  | 'cursorExecutable'
   | 'defaultProvider'
   | 'sessionList.view'
   | 'sessionList.context'
@@ -241,6 +242,7 @@ export const SETTING_KEYS: readonly SettingKey[] = [
   'claudeExecutable',
   'codexExecutable',
   'antigravityExecutable',
+  'cursorExecutable',
   'defaultProvider',
   'sessionList.view',
   'sessionList.context',
@@ -289,6 +291,7 @@ export const MACHINE_KEYS: readonly SettingKey[] = [
   'claudeExecutable',
   'codexExecutable',
   'antigravityExecutable',
+  'cursorExecutable',
   'defaultProvider',
 ];
 
@@ -312,6 +315,7 @@ export interface SettingsValues {
   claudeExecutable: string;
   codexExecutable: string;
   antigravityExecutable: string;
+  cursorExecutable: string;
   defaultProvider: AgentProvider;
   'sessionList.view': SessionListMode;
   'sessionList.context': boolean;
@@ -601,6 +605,7 @@ export function validateSetting(key: SettingKey, value: unknown, lang: ErrLang =
     case 'claudeExecutable':
     case 'codexExecutable':
     case 'antigravityExecutable':
+    case 'cursorExecutable':
       return typeof value === 'string' ? { ok: true, value: value.trim() } : bad(t.string);
     case 'font.interface':
     case 'font.panels':
@@ -738,6 +743,7 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
     claudeExecutable: str('claudeExecutable'),
     codexExecutable: str('codexExecutable'),
     antigravityExecutable: str('antigravityExecutable'),
+    cursorExecutable: str('cursorExecutable'),
     defaultProvider: isProvider(provider) ? provider : DEFAULT_PROVIDER,
     'sessionList.view': isSessionListMode(list) ? list : DEFAULT_SESSION_LIST,
     'sessionList.context': cfg.get<unknown>('sessionList.context') !== false,

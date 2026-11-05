@@ -42,9 +42,13 @@ export function handleSettingsMessage(m: ToWebview): void {
     case 'settings.error':
       errors.value = { ...errors.value, [m.key]: m.message };
       break;
-    case 'settings.engine':
-      checkSignal(m.engine ?? 'claude').value = { pending: false, result: m.result };
+    case 'settings.engine': {
+      const engine = m.engine ?? 'claude';
+      // Строки «проверить» есть у Claude, Codex и Antigravity. Cursor подключит этап 5.
+      if (engine === 'claude' || engine === 'codex' || engine === 'antigravity')
+        checkSignal(engine).value = { pending: false, result: m.result };
       break;
+    }
     default:
       break;
   }

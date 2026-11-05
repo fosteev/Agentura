@@ -2,8 +2,9 @@
  * Виды списка сессий и лимитов боковой панели (этап 6): чистые функции без DOM — день, время,
  * подпись строки, класс строки, строки лимитов. Эталон разметки и текстов — `prototype/screens/sessions.html`.
  */
-import type { LimitWindow } from '../agent/types';
+import type { AgentProvider, LimitWindow } from '../agent/types';
 import type { SessionSummary, TaskGroupSummary } from '../protocol';
+import { isProvider } from '../settings';
 import { clock, resetLabel } from './chatState';
 import { formatCost } from './toolView';
 import { ui } from './strings';
@@ -261,9 +262,12 @@ export function pillClass(category: 'new' | 'indeterminate' | 'done' | undefined
   return category === 'indeterminate' ? 'wip' : category === 'done' ? 'done' : 'open';
 }
 
-/** Движки чатов группы без повторов — метки `C` `X` в карточке секции «Задачи». */
-export function blockEngines(rows: readonly Pick<SessionSummary, 'provider'>[]): ('claude' | 'codex' | 'antigravity')[] {
-  const seen = new Set<'claude' | 'codex' | 'antigravity'>();
-  for (const r of rows) seen.add(r.provider ?? 'claude');
+/** Движки чатов группы без повторов — метки в карточке секции «Задачи». */
+export function blockEngines(rows: readonly Pick<SessionSummary, 'provider'>[]): AgentProvider[] {
+  const seen = new Set<AgentProvider>();
+  for (const r of rows) {
+    const provider = r.provider ?? 'claude';
+    if (isProvider(provider)) seen.add(provider);
+  }
   return [...seen];
 }
