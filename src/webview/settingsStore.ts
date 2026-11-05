@@ -19,9 +19,13 @@ export const engineCheck = signal<{ pending: boolean; result?: EngineCheck }>({ 
 /** То же для пути к Codex и к agy: проверки движков не перебивают друг друга. */
 export const codexCheck = signal<{ pending: boolean; result?: EngineCheck }>({ pending: false });
 export const agyCheck = signal<{ pending: boolean; result?: EngineCheck }>({ pending: false });
+export const cursorCheck = signal<{ pending: boolean; result?: EngineCheck }>({ pending: false });
 
-function checkSignal(engine: 'claude' | 'codex' | 'antigravity') {
-  return engine === 'codex' ? codexCheck : engine === 'antigravity' ? agyCheck : engineCheck;
+function checkSignal(engine: 'claude' | 'codex' | 'antigravity' | 'cursor') {
+  if (engine === 'codex') return codexCheck;
+  if (engine === 'antigravity') return agyCheck;
+  if (engine === 'cursor') return cursorCheck;
+  return engineCheck;
 }
 
 export function handleSettingsMessage(m: ToWebview): void {
@@ -44,8 +48,7 @@ export function handleSettingsMessage(m: ToWebview): void {
       break;
     case 'settings.engine': {
       const engine = m.engine ?? 'claude';
-      // Строки «проверить» есть у Claude, Codex и Antigravity. Cursor подключит этап 5.
-      if (engine === 'claude' || engine === 'codex' || engine === 'antigravity')
+      if (engine === 'claude' || engine === 'codex' || engine === 'antigravity' || engine === 'cursor')
         checkSignal(engine).value = { pending: false, result: m.result };
       break;
     }
@@ -67,7 +70,7 @@ export function commit(key: SettingKey, value: unknown): void {
   send({ type: 'settings.set', key, value });
 }
 
-export function checkEngine(path: string, engine: 'claude' | 'codex' | 'antigravity' = 'claude'): void {
+export function checkEngine(path: string, engine: 'claude' | 'codex' | 'antigravity' | 'cursor' = 'claude'): void {
   checkSignal(engine).value = { pending: true };
   send(engine === 'claude' ? { type: 'settings.checkEngine', path } : { type: 'settings.checkEngine', path, engine });
 }

@@ -4,6 +4,7 @@ import { CodexAdapter } from '../agent/codex/adapter';
 import { AGY_NOT_FOUND, resolveAgyExecutable } from '../agent/antigravity/executable';
 import { resolveExecutable } from '../agent/claude/executable';
 import { CODEX_NOT_FOUND, resolveCodexExecutable } from '../agent/codex/executable';
+import { CURSOR_NOT_FOUND, resolveCursorExecutable } from '../agent/cursor/executable';
 import { postToWebview, type SettingsSection } from '../protocol';
 import { hostStrings } from '../shared/l10n';
 import type { JiraRuntime } from './jira/setup';
@@ -71,7 +72,13 @@ export class SettingsPanel {
               ? await resolveCodexExecutable(path.trim()).then((c) =>
                   c.problem === CODEX_NOT_FOUND ? { ...c, problem: hostStrings(currentLanguage()).codexNotFound } : c,
                 )
-              : await resolveExecutable(path.trim(), { lang: currentLanguage() });
+              : engine === 'cursor'
+                ? await resolveCursorExecutable(path.trim()).then((c) =>
+                    c.problem === CURSOR_NOT_FOUND
+                      ? { ...c, problem: hostStrings(currentLanguage()).cursorNotFound }
+                      : c,
+                  )
+                : await resolveExecutable(path.trim(), { lang: currentLanguage() });
         return {
           ok: r.version !== undefined,
           source: r.source,

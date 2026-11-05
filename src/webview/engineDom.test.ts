@@ -370,6 +370,18 @@ describe('Выбор движка', () => {
     expect(posted).toContainEqual({ type: 'engine.set', provider: 'codex' });
   });
 
+  it('пустая вкладка: пункт Cursor шлёт engine.set и подписан «через agent acp»', async () => {
+    info('claude');
+    const host = mount();
+    await flush();
+    await openAgentMenu(host);
+    const cursor = items(host).find((i) => i.textContent?.startsWith('Cursor'))!;
+    expect(cursor.textContent).toContain('через agent acp');
+    expect(cursor.getAttribute('aria-disabled')).toBeNull();
+    cursor.click();
+    expect(posted).toContainEqual({ type: 'engine.set', provider: 'cursor' });
+  });
+
   it('пустая вкладка: пункт Antigravity шлёт engine.set', async () => {
     info('claude');
     const host = mount();

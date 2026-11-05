@@ -722,7 +722,8 @@ const gitFiles = (m: Record<string, unknown>): boolean => str(m.root) && strings
  */
 const FIELD_CHECKS: Partial<Record<FromWebview['type'], (m: Record<string, unknown>) => boolean>> = {
   'codex.settings': (m) => str(m.sessionId) && isCodexSettingsChange(m.change),
-  'engine.set': (m) => m.provider === 'claude' || m.provider === 'codex' || m.provider === 'antigravity',
+  'engine.set': (m) =>
+    m.provider === 'claude' || m.provider === 'codex' || m.provider === 'antigravity' || m.provider === 'cursor',
   'engine.login': (m) => m.engine === 'codex' || m.engine === 'antigravity',
   'agy.retry': (m) => m.mode === 'acceptEdits' || m.mode === 'bypassPermissions',
   'agents.openGraph': (m) => m.agentId === undefined || typeof m.agentId === 'string',
@@ -752,7 +753,11 @@ const FIELD_CHECKS: Partial<Record<FromWebview['type'], (m: Record<string, unkno
     str(m.taskKey) &&
     m.taskKey.length > 0 &&
     m.taskKey.length <= 400 &&
-    (m.provider === undefined || m.provider === 'claude' || m.provider === 'codex' || m.provider === 'antigravity') &&
+    (m.provider === undefined ||
+      m.provider === 'claude' ||
+      m.provider === 'codex' ||
+      m.provider === 'antigravity' ||
+      m.provider === 'cursor') &&
     (m.prompt === undefined || (str(m.prompt) && m.prompt.length <= NEW_CHAT_PROMPT_LIMIT)) &&
     (m.carry === undefined || isNewChatCarry(m.carry)) &&
     (m.where === undefined || m.where === 'same' || m.where === 'worktree') &&

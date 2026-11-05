@@ -11,6 +11,7 @@ const ENGINES: readonly { id: AgentProvider; name: string }[] = [
   { id: 'claude', name: 'claude' },
   { id: 'codex', name: 'codex' },
   { id: 'antigravity', name: 'antigravity' },
+  { id: 'cursor', name: 'cursor' },
 ];
 
 /**

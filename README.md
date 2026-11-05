@@ -111,6 +111,7 @@ You need:
 - VS Code 1.100 or newer.
 - Claude Code 2.1.285 or newer, installed and logged in (`claude`, then `/login`).
 - Optional, for the Codex engine: Codex CLI, installed and logged in (`codex login`).
+- Optional, for the Cursor engine: Cursor CLI, installed and logged in (`agent login`).
 
 The extension does not ship the engine binary (200+ MB). It finds the system `claude` in `PATH`, `~/.local/bin`,
 `~/.claude/local` or Homebrew (on Windows it looks for `claude.exe`). To point it somewhere else, set `agentura.claudeExecutable`.
@@ -178,6 +179,19 @@ Remaining limits:
 The app-server protocol is experimental. Schema checks and handshake were run with `codex-cli 0.166.0`;
 new feature flows have automated adapter/UI tests, but live model turns were not run for this change.
 See [docs/codex-protocol.md](docs/codex-protocol.md) before updating.
+
+## Cursor
+
+An empty tab can run on the Cursor CLI: pick Cursor in the engine menu, or set `agentura.defaultProvider` to `cursor`.
+Install the CLI and sign in with `agent login`. Agentura starts `agent acp` per tab (stdio, one JSON-RPC message per
+line) and accepts the `agent` binary only when `agent --version` or `agent about` reports a Cursor build. Point
+`agentura.cursorExecutable` at another path on the same settings page as Codex (⚙ → Engine, with a check button).
+
+v1 has no cost gauge, no context ring, no MCP toggle, no subagents, and no auto-accept of edits. `acceptEdits` is the
+same as the default agent mode: permission cards still ask. `bypassPermissions` is downgraded unless
+`agentura.allowBypassPermissions` is on. Stop sends `session/cancel` and leaves the process running. The sidebar lists
+the folder's Cursor sessions by session id; opening one resumes it. If the binary is missing, the tab says it was not
+found and the Claude and Codex lists stay.
 
 ## Antigravity engine (experimental)
 
@@ -309,8 +323,9 @@ user settings only, so a cloned repository can't change them through its `.vscod
 | `agentura.claudeExecutable`       | empty    | Path to `claude`; empty means auto-detect        |
 | `agentura.codexExecutable`        | empty    | Path to `codex`; empty means auto-detect         |
 | `agentura.antigravityExecutable`  | empty    | Path to `agy`; empty means auto-detect           |
-| `agentura.defaultProvider`        | `claude` | Engine for new tabs: `claude`, `codex` or `antigravity`        |
-| `agentura.allowBypassPermissions` | `false`  | Allow `bypassPermissions` (Claude/Antigravity) and explicit Codex full-access sandbox selection |
+| `agentura.cursorExecutable`       | empty    | Path to Cursor `agent`; empty means auto-detect  |
+| `agentura.defaultProvider`        | `claude` | Engine for new tabs: `claude`, `codex`, `antigravity` or `cursor` |
+| `agentura.allowBypassPermissions` | `false`  | Allow `bypassPermissions` (Claude, Antigravity, Cursor) and explicit Codex full-access sandbox selection |
 | `agentura.remoteControl`          | `false`  | Remote Control for every Claude tab              |
 | `agentura.remoteControlNamePrefix`| empty    | Session name prefix on claude.ai; empty means the machine name |
 

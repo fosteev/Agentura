@@ -278,7 +278,7 @@ describe('«＋ чат» и всплывашка', () => {
     const pop = q(host, '.ncp');
     expect(pop.querySelector('h6 .k')!.textContent).toBe('NEWMFC-1482');
     expect(qa(pop, '.seg')[0]!.querySelector('.on')!.textContent).toContain('codex');
-    expect(qa(pop, '.seg')[0]!.querySelectorAll('button')).toHaveLength(3);
+    expect(qa(pop, '.seg')[0]!.querySelectorAll('button')).toHaveLength(4);
     const boxes = qa(pop, '.ck input') as HTMLInputElement[];
     expect(boxes.map((b) => b.checked)).toEqual([true, true, false]);
     expect(boxes.map((b) => b.disabled)).toEqual([false, false, false]);
@@ -422,6 +422,12 @@ describe('Г · /new и /fork в поле ввода', () => {
     key(ed, 'Enter');
     await flush();
     expect(sent).toEqual([{ type: 'task.newChat', taskKey: KEY, provider: 'antigravity', prompt: 'поправь тест', carry: { task: true } }]);
+    sent.length = 0;
+    ed = type(host, '/new cursor pong');
+    await flush();
+    key(ed, 'Enter');
+    await flush();
+    expect(sent).toEqual([{ type: 'task.newChat', taskKey: KEY, provider: 'cursor', prompt: 'pong', carry: { task: true } }]);
     sent.length = 0;
     // первое слово — не движок: весь хвост текст
     ed = type(host, '/new codexfoo bar');

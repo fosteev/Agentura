@@ -1397,7 +1397,7 @@ function AgentItems({ close }: { close: () => void }) {
   const s = chat.value;
   const cur = provider.value;
   const locked = engineLocked();
-  const item = (p: 'claude' | 'codex' | 'antigravity', label: string, small: string) => (
+  const item = (p: 'claude' | 'codex' | 'antigravity' | 'cursor', label: string, small: string) => (
     <ItemButton
       it={{
         label,
@@ -1427,6 +1427,7 @@ function AgentItems({ close }: { close: () => void }) {
         'Antigravity',
         ui.compose.antigravityVia(cur === 'antigravity' ? s.engineVersion : undefined),
       )}
+      {item('cursor', 'Cursor', ui.compose.cursorVia)}
     </>
   );
 }

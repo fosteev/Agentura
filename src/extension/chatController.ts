@@ -1586,9 +1586,8 @@ export class ChatController {
       const resume = this.resumeId;
       const provider = this.engineProvider;
       const claude = provider === 'claude';
-      // режимы разрешений и «всё разрешено» есть у Claude и Antigravity (у agy — флаги процесса); Codex — своя политика
-      const agy = provider === 'antigravity';
-      const hasModes = claude || agy;
+      // Режимы разрешений — у кого `providerFeatures.modes` (Claude, Antigravity, Cursor). Codex — своя политика.
+      const hasModes = providerFeatures(provider).modes;
       // адаптер — на момент старта: `open()` зовётся после поиска движка, а движок вкладки к тому времени мог смениться
       const adapter = this.adapter;
       this.usedDrop = !!resume && !!this.retryDrop;
@@ -1633,15 +1632,15 @@ export class ChatController {
             : (() => {
               // настройки «режим» и «effort по умолчанию» — только новым сессиям (resume берёт своё)
               const mode = resolveDefaultMode(s.defaultPermissionMode, s.allowBypass);
-              // effort и `defaultModel` — про Claude: у agy нет thinking, модель — свой дефолт (`DEFAULT_AGY_MODEL`)
-              const effort = agy ? undefined : resolveDefaultEffort(s.defaultEffort);
+              // модель и effort по умолчанию — только Claude: у agy свой дефолт, у Cursor id модели другие
+              const effort = claude ? resolveDefaultEffort(s.defaultEffort) : undefined;
               // меню под полем ввода — сразу, не дожидаясь `session.init` после первого хода
               this.defaults = { type: 'session.defaults', mode, ...(effort ? { effort } : {}) };
               deps.post(this.defaults);
               return adapter.createSession({
                 ...base,
                 permissionMode: mode,
-                ...(s.defaultModel && !agy ? { model: s.defaultModel } : {}),
+                ...(claude && s.defaultModel ? { model: s.defaultModel } : {}),
                 ...(effort ? { effort } : {}),
               });
             })();

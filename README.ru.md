@@ -113,6 +113,7 @@
 - VS Code 1.100 или новее.
 - Claude Code 2.1.285 или новее, установленный и с выполненным входом (`claude`, затем `/login`).
 - Необязательно, для движка Codex: Codex CLI, установленный и с выполненным входом (`codex login`).
+- Необязательно, для движка Cursor: Cursor CLI, установленный и с выполненным входом (`agent login`).
 
 Бинарник движка (200+ МБ) в расширение не входит. Расширение ищет системный `claude` в `PATH`, `~/.local/bin`,
 `~/.claude/local` и Homebrew (на Windows — `claude.exe`). Другой путь задаётся в `agentura.claudeExecutable`.
@@ -181,6 +182,19 @@ Jira-инструментов. Native-планирование переключ�
 Протокол app-server экспериментальный. Схема и handshake проверены на `codex-cli 0.166.0`;
 новые сценарии покрыты автоматическими adapter/UI-тестами, живые ходы модели для этой правки не запускались.
 Перед обновлением см. [docs/codex-protocol.md](docs/codex-protocol.md).
+
+## Cursor
+
+Пустая вкладка может идти на Cursor CLI: выберите Cursor в меню движка или задайте `agentura.defaultProvider = cursor`.
+Поставьте CLI и войдите командой `agent login`. Agentura запускает `agent acp` на вкладку (stdio, один JSON-RPC на
+строку) и принимает бинарник `agent`, только если `agent --version` или `agent about` узнаёт сборку Cursor. Другой
+путь — `agentura.cursorExecutable` на той же странице настроек, что и Codex (⚙ → «Движок», кнопка «проверить»).
+
+В v1 нет цены, кольца контекста, тумблера MCP, субагентов и автопринятия правок. `acceptEdits` равен обычному режиму
+агента: карточки разрешений по-прежнему спрашивают. `bypassPermissions` понижается, пока не включён
+`agentura.allowBypassPermissions`. Stop шлёт `session/cancel` и не убивает процесс. Боковая панель показывает сессии
+Cursor этой папки по id сессии; открытие продолжает ту же сессию. Нет бинарника — вкладка говорит, что он не найден,
+а списки Claude и Codex остаются.
 
 ## Движок Antigravity (экспериментально)
 
@@ -311,8 +325,9 @@ git log --oneline origin/develop..feature/NEWMFC-1482           # коммиты
 | `agentura.claudeExecutable`       | пусто        | Путь к `claude`; пусто — искать автоматически       |
 | `agentura.codexExecutable`        | пусто        | Путь к `codex`; пусто — искать автоматически        |
 | `agentura.antigravityExecutable`  | пусто        | Путь к `agy`; пусто — искать автоматически          |
-| `agentura.defaultProvider`        | `claude`     | Движок новых вкладок: `claude`, `codex` или `antigravity` |
-| `agentura.allowBypassPermissions` | `false`      | Разрешить `bypassPermissions` (Claude/Antigravity) и явный выбор Codex sandbox с полным доступом |
+| `agentura.cursorExecutable`       | пусто        | Путь к `agent` (Cursor); пусто — искать автоматически |
+| `agentura.defaultProvider`        | `claude`     | Движок новых вкладок: `claude`, `codex`, `antigravity` или `cursor` |
+| `agentura.allowBypassPermissions` | `false`      | Разрешить `bypassPermissions` (Claude, Antigravity, Cursor) и явный выбор Codex sandbox с полным доступом |
 | `agentura.remoteControl`          | `false`      | Remote Control для каждой вкладки Claude            |
 | `agentura.remoteControlNamePrefix`| пусто        | Префикс имени сессии на claude.ai; пусто — имя машины |
 

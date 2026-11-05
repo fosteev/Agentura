@@ -247,6 +247,7 @@ describe('вкладка настроек', () => {
       'agentura.claudeExecutable · только эта машина',
       'agentura.codexExecutable · только эта машина',
       'agentura.antigravityExecutable · только эта машина',
+      'agentura.cursorExecutable · только эта машина',
     ]);
   });
 
@@ -737,6 +738,28 @@ describe('вкладка настроек', () => {
     expect(host.querySelector('.set[data-key$="codexExecutable"] .ok')).toBeNull();
     const sel = host.querySelector<HTMLSelectElement>('select[aria-label="defaultProvider"]')!;
     expect(sel.value).toBe('antigravity');
+  });
+
+  it('Cursor: путь к agent на той же странице, свой «проверить», пункт движка по умолчанию', async () => {
+    const host = mount(Settings);
+    state({ cursorExecutable: '/x/agent', defaultProvider: 'cursor' });
+    await flush();
+    const row = host.querySelector('.set[data-key$="cursorExecutable"]')!;
+    expect(row.textContent).toContain('Путь к agent');
+    row.querySelector<HTMLButtonElement>('.btn')!.click();
+    expect(posted).toContainEqual({ type: 'settings.checkEngine', path: '/x/agent', engine: 'cursor' });
+    handleSettingsMessage({
+      type: 'settings.engine',
+      engine: 'cursor',
+      result: { ok: true, source: 'setting', path: '/x/agent', version: '2026.11.05-86047df' },
+    });
+    await flush();
+    expect(row.querySelector('.ok[role="status"]')!.textContent).toContain('2026.11.05-86047df');
+    expect(host.querySelector('.set[data-key$="claudeExecutable"] .ok')).toBeNull();
+    expect(host.querySelector('.set[data-key$="codexExecutable"] .ok')).toBeNull();
+    const sel = host.querySelector<HTMLSelectElement>('select[aria-label="defaultProvider"]')!;
+    expect(sel.value).toBe('cursor');
+    expect([...sel.options].map((o) => o.value)).toContain('cursor');
   });
 
   it('ссылки «в настройках VS Code» и settings.json', async () => {

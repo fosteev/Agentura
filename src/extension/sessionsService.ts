@@ -22,7 +22,7 @@ export interface ExtraSessionsSource {
 }
 export type CodexSessionsSource = ExtraSessionsSource;
 
-type ExtraProvider = 'codex' | 'antigravity';
+type ExtraProvider = 'codex' | 'antigravity' | 'cursor';
 
 export interface SessionsServiceDeps {
   adapter: AgentAdapter;
@@ -30,6 +30,8 @@ export interface SessionsServiceDeps {
   codex?: ExtraSessionsSource;
   /** Нет — без бесед Antigravity. Без `agy` или без `node:sqlite` список просто короче, без ошибок. */
   antigravity?: ExtraSessionsSource;
+  /** Нет — без сессий Cursor. Бинарника нет или список отказал — строки Claude и Codex остаются. */
+  cursor?: ExtraSessionsSource;
   cwd: string;
   /**
    * Свои рабочие папки чатов задач движка (worktree, roadmap 26, Д2): Codex и Antigravity фильтруют список по папке —
@@ -126,7 +128,11 @@ function newExtra(): ExtraState {
   };
 }
 
-const EXTRA_NAMES: Record<ExtraProvider, string> = { codex: 'Codex', antigravity: 'Antigravity' };
+const EXTRA_NAMES: Record<ExtraProvider, string> = {
+  codex: 'Codex',
+  antigravity: 'Antigravity',
+  cursor: 'Cursor',
+};
 
 function defaultWatch(dir: string, onChange: () => void, onError: () => void): { close(): void } {
   const w: FSWatcher = fsWatch(dir, { persistent: false }, () => onChange());
@@ -171,8 +177,12 @@ export class SessionsService {
    */
   private readonly pinned = new Map<string, { title: string; attempts: number }>();
   private readonly reapplying = new Set<string>();
-  /** Строки дополнительных движков (Codex, Antigravity): кэш, срок, повтор, сбой. */
-  private readonly extras: Record<ExtraProvider, ExtraState> = { codex: newExtra(), antigravity: newExtra() };
+  /** Строки дополнительных движков (Codex, Antigravity, Cursor): кэш, срок, повтор, сбой. */
+  private readonly extras: Record<ExtraProvider, ExtraState> = {
+    codex: newExtra(),
+    antigravity: newExtra(),
+    cursor: newExtra(),
+  };
 
   constructor(private readonly deps: SessionsServiceDeps) {}
 
@@ -240,10 +250,12 @@ export class SessionsService {
       }),
       this.extraRows('codex'),
       this.extraRows('antigravity'),
+      this.extraRows('cursor'),
     ])
-      .then(([claude, codex, agy]) => {
-        // Claude-строки как были; Codex и Antigravity — рядом, общий порядок по времени
-        const rows = codex.length || agy.length ? [...claude, ...codex, ...agy] : claude;
+      .then(([claude, codex, agy, cursor]) => {
+        // Claude-строки как были; остальные движки — рядом, общий порядок по времени
+        const rows =
+          codex.length || agy.length || cursor.length ? [...claude, ...codex, ...agy, ...cursor] : claude;
         this.applyPins(claude);
         rows.sort((a, b) => b.updatedAt - a.updatedAt);
         this.rows = rows;
@@ -266,7 +278,9 @@ export class SessionsService {
   }
 
   private source(p: ExtraProvider): ExtraSessionsSource | undefined {
-    return p === 'codex' ? this.deps.codex : this.deps.antigravity;
+    if (p === 'codex') return this.deps.codex;
+    if (p === 'antigravity') return this.deps.antigravity;
+    return this.deps.cursor;
   }
 
   /**
@@ -467,7 +481,7 @@ export class SessionsService {
 
   providerOf(sessionId: string): 'claude' | ExtraProvider {
     const row = this.rows.find((r) => r.id === sessionId);
-    for (const p of ['codex', 'antigravity'] as const) {
+    for (const p of ['codex', 'antigravity', 'cursor'] as const) {
       if (!this.source(p)) continue;
       // строки уже нет (список сбросили между кликом и переименованием) — id, однажды пришедший от движка,
       // всё равно не уходит Claude-адаптеру

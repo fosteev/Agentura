@@ -253,6 +253,7 @@ describe('protocol', () => {
     expect(isFromWebview({ ...base, prompt: 'x'.repeat(2000) })).toBe(true);
     expect(isFromWebview({ ...base, prompt: 'x'.repeat(2001) })).toBe(false);
     expect(isFromWebview({ ...base, prompt: 5 })).toBe(false);
+    expect(isFromWebview({ ...base, provider: 'cursor' })).toBe(true);
     expect(isFromWebview({ ...base, provider: 'gemini' })).toBe(false);
     expect(isFromWebview({ ...base, carry: { task: 'yes' } })).toBe(false);
     expect(isFromWebview({ ...base, carry: { evil: true } })).toBe(false);

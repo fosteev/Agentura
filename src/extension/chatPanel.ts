@@ -11,6 +11,8 @@ import { CodexAdapter } from '../agent/codex/adapter';
 import { CODEX_NOT_FOUND, resolveCodexExecutable } from '../agent/codex/executable';
 import { AntigravityAdapter } from '../agent/antigravity/adapter';
 import { AGY_NOT_FOUND, resolveAgyExecutable } from '../agent/antigravity/executable';
+import { CursorAdapter } from '../agent/cursor/adapter';
+import { CURSOR_NOT_FOUND, resolveCursorExecutable } from '../agent/cursor/executable';
 import type { AgyStateStore } from '../agent/antigravity/sessionIndex';
 import type { AgentAdapter, AgentProvider, SessionRef } from '../agent/types';
 import { readOAuthToken, type LimitsSource } from '../data/limits';
@@ -103,6 +105,8 @@ export interface ChatServices {
   codexAdapter: () => AgentAdapter;
   /** Адаптер Antigravity (лениво). */
   antigravityAdapter: () => AgentAdapter;
+  /** Адаптер Cursor (лениво). */
+  cursorAdapter: () => AgentAdapter;
   live: LiveSessions;
   transcripts: TranscriptCache;
   usage: UsageService;
@@ -131,6 +135,8 @@ export interface ChatServices {
   codexEngine: EngineLocator;
   /** Поиск `agy` (без прогрева, как Codex: `ready()` перед стартом сессии даёт и версию для `session.init`). */
   antigravityEngine: EngineLocator;
+  /** Поиск `agent` (без прогрева: `acp` стартует только после `ready()`, когда у резолвера нет `problem`). */
+  cursorEngine: EngineLocator;
   /** Вкладка «git» (roadmap 12): репозитории рабочей папки над API встроенного git. */
   git: GitService;
 }
@@ -145,9 +151,12 @@ export function createAdapter(
   codexAdapter: () => AgentAdapter;
   /** Antigravity-адаптер — тоже лениво. */
   antigravityAdapter: () => AgentAdapter;
+  /** Cursor-адаптер — тоже лениво. Пока его не выбрали, процесса `agent acp` нет. */
+  cursorAdapter: () => AgentAdapter;
   engine: EngineLocator;
   codexEngine: EngineLocator;
   antigravityEngine: EngineLocator;
+  cursorEngine: EngineLocator;
 } {
   const cfg = () => vscode.workspace.getConfiguration('agentura');
   // `.vsix` без бинарника движка: настройка → системный `claude` (с проверкой версии). Поиск асинхронный
@@ -186,6 +195,18 @@ export function createAdapter(
     warn: (m) => log.warn(m),
     lang: currentLanguage,
   });
+  // без `warm()`: поиск только когда вкладка или список сессий сами спросят. `path()` пустой, пока есть `problem`
+  const cursorEngine = new EngineLocator({
+    setting: () => cfg().get<string>('cursorExecutable') ?? '',
+    resolve: async (s) => {
+      const r = await resolveCursorExecutable(s);
+      return r.problem === CURSOR_NOT_FOUND ? { ...r, problem: hostStrings(currentLanguage()).cursorNotFound } : r;
+    },
+    name: 'cursor',
+    info: (m) => log.info(m),
+    warn: (m) => log.warn(m),
+    lang: currentLanguage,
+  });
   const adapter = new ClaudeAdapter({
     executablePath: () => engine.path(),
     clientApp: 'agentura',
@@ -213,7 +234,23 @@ export function createAdapter(
       log: (level, message) => log[level](message),
       ...(state ? { state } : {}),
     }));
-  return { adapter, codexAdapter, antigravityAdapter, engine, codexEngine, antigravityEngine };
+  let cursor: AgentAdapter | undefined;
+  const cursorAdapter = (): AgentAdapter =>
+    (cursor ??= new CursorAdapter({
+      executablePath: () => cursorEngine.path(),
+      log: (level, message) => log[level](message),
+      ...(clientVersion ? { clientVersion } : {}),
+    }));
+  return {
+    adapter,
+    codexAdapter,
+    antigravityAdapter,
+    cursorAdapter,
+    engine,
+    codexEngine,
+    antigravityEngine,
+    cursorEngine,
+  };
 }
 
 /** `agentura.defaultProvider` (application-scope: из настроек рабочей папки не читается); кривое значение — `claude`. */
@@ -726,10 +763,8 @@ export class ChatPanel {
       taskTools: jiraTools,
       // возобновляемая сессия — своего движка; новая вкладка — `agentura.defaultProvider`
       provider: open.provider ?? defaultProvider(),
-      adapterFor: (p) =>
-        p === 'codex' ? services.codexAdapter() : p === 'antigravity' ? services.antigravityAdapter() : services.adapter,
-      engineFor: (p) =>
-        p === 'codex' ? services.codexEngine : p === 'antigravity' ? services.antigravityEngine : undefined,
+      adapterFor: (p) => adapterOf(services, p),
+      engineFor: (p) => engineOf(services, p),
       // только User (`Global`): настройка application-scope; отказ (политика, битый settings.json) — в журнал.
       // `claude` — значение по умолчанию: ключ убираем, а не пишем его явно
       rememberProvider: (p) => {
@@ -1210,9 +1245,20 @@ export class ChatPanel {
   }
 }
 
-/** Адаптер движка `p` (Codex и Antigravity — лениво). */
+/** Адаптер движка `p` (Codex, Antigravity и Cursor — лениво). Неизвестный и пустой — Claude. */
 export function adapterOf(services: ChatServices, p: AgentProvider | undefined): AgentAdapter {
-  return p === 'codex' ? services.codexAdapter() : p === 'antigravity' ? services.antigravityAdapter() : services.adapter;
+  if (p === 'codex') return services.codexAdapter();
+  if (p === 'antigravity') return services.antigravityAdapter();
+  if (p === 'cursor') return services.cursorAdapter();
+  return services.adapter;
+}
+
+/** Локатор движка `p`. У Claude свой (`services.engine`), его сюда не кладём: контроллер берёт его отдельно. */
+export function engineOf(services: ChatServices, p: AgentProvider | undefined): EngineLocator | undefined {
+  if (p === 'codex') return services.codexEngine;
+  if (p === 'antigravity') return services.antigravityEngine;
+  if (p === 'cursor') return services.cursorEngine;
+  return undefined;
 }
 
 /**

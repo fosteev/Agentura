@@ -883,6 +883,7 @@ const ru = {
       `через Claude Agent SDK${version ? ` · claude ${version}` : ''}`,
     codexVia: 'через codex app-server',
     antigravityVia: (version?: string) => `через agy (Antigravity CLI)${version ? ` · ${version}` : ''}`,
+    cursorVia: 'через agent acp',
     agentLocked: 'выбирается в новом чате',
     imagesHint: '⌘V — вставить картинку · перетащить с ⇧',
     imagesPlus: (k: string) => `+${k} картинки`,
@@ -1439,7 +1440,7 @@ const ru = {
     provider: {
       name: 'Движок по умолчанию',
       desc: 'Движок новых вкладок. Меняется и меню «агент» в поле ввода (пустая вкладка); начатая сессия остаётся на своём движке.',
-      options: { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity' },
+      options: { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity', cursor: 'Cursor' },
     },
     exe: {
       name: 'Путь к claude',
@@ -1454,6 +1455,11 @@ const ru = {
     exeAgy: {
       name: 'Путь к agy (Antigravity)',
       desc: 'Пусто — искать системный: PATH, ~/.local/bin, Homebrew. Нужен только для движка Antigravity; agy должен быть залогинен (запустите его один раз).',
+      placeholder: 'пусто — искать системный',
+    },
+    exeCursor: {
+      name: 'Путь к agent (Cursor)',
+      desc: 'Пусто — искать системный: PATH, ~/.local/bin, Homebrew. Нужен Cursor CLI, вошедший в аккаунт (agent login). Чужой agent без штампа Cursor не принимается.',
       placeholder: 'пусто — искать системный',
     },
   },
