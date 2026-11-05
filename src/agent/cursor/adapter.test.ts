@@ -65,6 +65,49 @@ async function until(cond: () => boolean, what = 'condition'): Promise<void> {
 
 const types = (events: AgentEvent[]) => events.map((e) => e.type);
 
+const STANDARD = [
+  { optionId: 'allow-once', name: 'Allow once', kind: 'allow_once' },
+  { optionId: 'allow-always', name: 'Allow always', kind: 'allow_always' },
+  { optionId: 'reject-once', name: 'Reject', kind: 'reject_once' },
+];
+
+function permissionParams(
+  options: { optionId: string; kind: string; name?: string }[] = STANDARD,
+  toolCallId = 'tool_90fc4a4e-6e6d-46b2-83b5-3c3412526a7',
+) {
+  return {
+    sessionId: SESSION,
+    toolCall: {
+      toolCallId,
+      title: '`curl`',
+      kind: 'execute',
+      status: 'pending',
+      rawInput: { command: 'curl' },
+      content: [{ type: 'content', content: { type: 'text', text: 'Not in allowlist: curl' } }],
+    },
+    options,
+  };
+}
+
+/** Ход не заканчивается, пока клиент не ответит на server request с этим id. */
+function waitForReply(s: FakeAcp, id: number, fire: () => void): void {
+  s.handle('session/prompt', () => {
+    fire();
+    return replyWhen(s, id);
+  });
+}
+
+function replyWhen(s: FakeAcp, id: number): Promise<{ stopReason: string }> {
+  return new Promise((resolve) => {
+    const timer = setInterval(() => {
+      if (s.replies().some((r) => r.id === id && r.result !== undefined)) {
+        clearInterval(timer);
+        resolve({ stopReason: 'end_turn' });
+      }
+    }, 5);
+  });
+}
+
 describe('CursorAdapter', () => {
   it('pong: initialize, authenticate, session/new, текст без мыслей, turn.result', async () => {
     const s = server();
@@ -304,27 +347,393 @@ describe('CursorAdapter', () => {
     session.dispose();
   });
 
-  it('разрешение id 0 до этапа 3 — отказ reject-once, ход не зависает', async () => {
+  it('разрешение во время session/load — отказ без карточки', async () => {
+    const s = server();
+    s.handle('session/load', (p) => {
+      s.request(0, 'session/request_permission', permissionParams());
+      return { sessionId: p.sessionId, models: { currentModelId: 'default[]', availableModels: [] } };
+    });
+    const session = await open(s).adapter.resumeSession('sess-9', { cwd: '/work' });
+    const events = collect(session);
+    await until(() => types(events).includes('session.init'));
+    expect(events.some((e) => e.type === 'permission.request')).toBe(false);
+    expect(s.replies()[0]).toMatchObject({
+      id: 0,
+      result: { outcome: { outcome: 'selected', optionId: 'reject-once' } },
+    });
+    session.dispose();
+  });
+
+  it('tool во время хода: kind сервера, ход доходит до turn.result', async () => {
     const s = server();
     s.handle('session/prompt', () => {
-      s.request(0, 'session/request_permission', {
+      s.notify('session/update', {
         sessionId: SESSION,
-        options: [{ optionId: 'reject-once', kind: 'reject_once' }],
+        update: {
+          sessionUpdate: 'tool_call',
+          toolCallId: 'tool_read_1',
+          title: 'Read note',
+          kind: 'read',
+          status: 'pending',
+          rawInput: { path: 'note.txt' },
+        },
+      });
+      s.notify('session/update', {
+        sessionId: SESSION,
+        update: {
+          sessionUpdate: 'tool_call_update',
+          toolCallId: 'tool_read_1',
+          status: 'completed',
+          rawOutput: { content: 'marker-alpha\n' },
+        },
+      });
+      s.notify('session/update', {
+        sessionId: SESSION,
+        update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'done' } },
       });
       return { stopReason: 'end_turn' };
     });
     const session = await open(s).adapter.createSession({ cwd: '/work' });
     const events = collect(session);
     await until(() => types(events).includes('session.init'));
+    session.send('read');
+    await until(() => types(events).includes('turn.result'));
+    expect(events.find((e) => e.type === 'tool.start')).toMatchObject({
+      toolUseId: 'tool_read_1',
+      name: 'read',
+      input: { path: 'note.txt' },
+    });
+    expect(events.find((e) => e.type === 'tool.result')).toMatchObject({
+      toolUseId: 'tool_read_1',
+      isError: false,
+      content: 'marker-alpha\n',
+    });
+    expect(events.at(-1)).toMatchObject({ type: 'turn.result', ok: true });
+    session.dispose();
+  });
+
+  it('разрешение id 0: карточка, allow отвечает optionId кадра один раз', async () => {
+    const s = server();
+    waitForReply(s, 0, () => s.request(0, 'session/request_permission', permissionParams()));
+    const session = await open(s).adapter.createSession({ cwd: '/work' });
+    const events = collect(session);
+    await until(() => types(events).includes('session.init'));
+    session.send('curl');
+    await until(() => types(events).includes('permission.request'));
+    expect(s.replies()).toEqual([]);
+    const req = events.find((e) => e.type === 'permission.request');
+    expect(req).toMatchObject({
+      toolUseId: 'tool_90fc4a4e-6e6d-46b2-83b5-3c3412526a7',
+      toolName: 'execute',
+      input: { command: 'curl' },
+      canAlwaysAllow: true,
+      reason: 'Not in allowlist: curl',
+    });
+    expect(session.respondPermission('tool_90fc4a4e-6e6d-46b2-83b5-3c3412526a7', 'allow')).toBe(true);
+    await until(() => types(events).includes('turn.result'));
+    expect(s.replies()).toEqual([
+      { jsonrpc: '2.0', id: 0, result: { outcome: { outcome: 'selected', optionId: 'allow-once' } } },
+    ]);
+    expect(events.find((e) => e.type === 'permission.resolved')).toMatchObject({
+      toolUseId: 'tool_90fc4a4e-6e6d-46b2-83b5-3c3412526a7',
+      decision: 'allow',
+      by: 'user',
+    });
+    session.dispose();
+  });
+
+  it('deny и allow-always берут optionId кадра; без «всегда» уходит один раз', async () => {
+    const s = server();
+    waitForReply(s, 4, () => s.request(4, 'session/request_permission', permissionParams()));
+    const session = await open(s).adapter.createSession({ cwd: '/work' });
+    const events = collect(session);
+    await until(() => types(events).includes('session.init'));
+    session.send('curl');
+    await until(() => types(events).includes('permission.request'));
+    expect(session.respondPermission('tool_90fc4a4e-6e6d-46b2-83b5-3c3412526a7', 'deny')).toBe(true);
+    await until(() => types(events).includes('turn.result'));
+    expect(s.replies()[0]).toEqual({
+      jsonrpc: '2.0',
+      id: 4,
+      result: { outcome: { outcome: 'selected', optionId: 'reject-once' } },
+    });
+
+    const once = server();
+    const onlyOnce = STANDARD.filter((o) => o.optionId !== 'allow-always');
+    waitForReply(once, 8, () => once.request(8, 'session/request_permission', permissionParams(onlyOnce, 'tool_once')));
+    const second = await open(once).adapter.createSession({ cwd: '/work' });
+    const ev2 = collect(second);
+    await until(() => types(ev2).includes('session.init'));
+    second.send('curl');
+    await until(() => types(ev2).includes('permission.request'));
+    expect(ev2.find((e) => e.type === 'permission.request')).toMatchObject({ canAlwaysAllow: false, toolUseId: 'tool_once' });
+    expect(second.respondPermission('tool_once', 'allow-always')).toBe(true);
+    await until(() => types(ev2).includes('turn.result'));
+    expect(once.replies()[0]).toMatchObject({ id: 8, result: { outcome: { optionId: 'allow-once' } } });
+
+    const always = server();
+    waitForReply(always, 9, () => always.request(9, 'session/request_permission', permissionParams(STANDARD, 'tool_always')));
+    const third = await open(always).adapter.createSession({ cwd: '/work' });
+    const ev3 = collect(third);
+    await until(() => types(ev3).includes('session.init'));
+    third.send('curl');
+    await until(() => types(ev3).includes('permission.request'));
+    expect(third.respondPermission('tool_always', 'allow-always')).toBe(true);
+    expect(third.respondPermission('tool_always', 'allow-edits')).toBe(false);
+    await until(() => types(ev3).includes('turn.result'));
+    expect(always.replies()[0]).toMatchObject({ id: 9, result: { outcome: { optionId: 'allow-always' } } });
+    second.dispose();
+    third.dispose();
+    session.dispose();
+  });
+
+  it('allow-edits для Cursor равен allow-once и не включает автопринятие', async () => {
+    const s = server();
+    waitForReply(s, 2, () => s.request(2, 'session/request_permission', permissionParams(STANDARD, 'tool_edits')));
+    const session = await open(s).adapter.createSession({ cwd: '/work', permissionMode: 'acceptEdits' });
+    const events = collect(session);
+    await until(() => types(events).includes('session.init'));
+    expect(events[0]).toMatchObject({ permissionMode: 'acceptEdits' });
+    expect(s.methods()).not.toContain('session/set_mode');
+    session.send('edit');
+    await until(() => types(events).includes('permission.request'));
+    expect(session.respondPermission('tool_edits', 'allow-edits')).toBe(true);
+    await until(() => types(events).includes('turn.result'));
+    expect(s.replies()[0]).toMatchObject({ id: 2, result: { outcome: { optionId: 'allow-once' } } });
+    session.dispose();
+  });
+
+  it('нет toolCallId — отказ формой спайка и warn, карточки нет', async () => {
+    const s = server();
+    waitForReply(s, 0, () =>
+      s.request(0, 'session/request_permission', { sessionId: SESSION, options: STANDARD }),
+    );
+    const { adapter, logs } = open(s);
+    const session = await adapter.createSession({ cwd: '/work' });
+    const events = collect(session);
+    await until(() => types(events).includes('session.init'));
     session.send('curl');
     await until(() => types(events).includes('turn.result'));
-    expect(s.replies()).toContainEqual({
+    expect(events.some((e) => e.type === 'permission.request')).toBe(false);
+    expect(s.replies()[0]).toEqual({
       jsonrpc: '2.0',
       id: 0,
       result: { outcome: { outcome: 'selected', optionId: 'reject-once' } },
     });
-    expect(events.some((e) => e.type === 'permission.request')).toBe(false);
+    expect(logs.some((l) => l.startsWith('warn:') && l.includes('permission'))).toBe(true);
     session.dispose();
+  });
+
+  it('bypass с флагом отвечает один раз без карточки; без флага — как default', async () => {
+    const auto = server();
+    waitForReply(auto, 0, () => auto.request(0, 'session/request_permission', permissionParams()));
+    const skipped = await open(auto).adapter.createSession({
+      cwd: '/work',
+      permissionMode: 'bypassPermissions',
+      allowBypassPermissions: true,
+    });
+    const ev = collect(skipped);
+    await until(() => types(ev).includes('session.init'));
+    skipped.send('curl');
+    await until(() => types(ev).includes('turn.result'));
+    expect(ev.some((e) => e.type === 'permission.request')).toBe(false);
+    expect(auto.replies()[0]).toMatchObject({ id: 0, result: { outcome: { optionId: 'allow-once' } } });
+
+    const ask = server();
+    waitForReply(ask, 1, () => ask.request(1, 'session/request_permission', permissionParams(STANDARD, 'tool_ask')));
+    const plain = await open(ask).adapter.createSession({ cwd: '/work', permissionMode: 'bypassPermissions' });
+    const ev2 = collect(plain);
+    await until(() => types(ev2).includes('session.init'));
+    expect(ev2[0]).toMatchObject({ permissionMode: 'default' });
+    plain.send('curl');
+    await until(() => types(ev2).includes('permission.request'));
+    expect(plain.respondPermission('tool_ask', 'deny')).toBe(true);
+    await until(() => types(ev2).includes('turn.result'));
+    skipped.dispose();
+    plain.dispose();
+  });
+
+  it('interrupt при висящем разрешении отвечает отказом и снимает запрос', async () => {
+    const s = server();
+    s.handle('session/prompt', () => {
+      s.request(0, 'session/request_permission', permissionParams());
+      return new Promise((resolve) => {
+        const timer = setInterval(() => {
+          if (s.methods().includes('session/cancel')) {
+            clearInterval(timer);
+            resolve({ stopReason: 'cancelled' });
+          }
+        }, 5);
+      });
+    });
+    const session = await open(s).adapter.createSession({ cwd: '/work' });
+    const events = collect(session);
+    await until(() => types(events).includes('session.init'));
+    session.send('curl');
+    await until(() => types(events).includes('permission.request'));
+    await session.interrupt();
+    expect(s.replies()).toEqual([
+      { jsonrpc: '2.0', id: 0, result: { outcome: { outcome: 'selected', optionId: 'reject-once' } } },
+    ]);
+    expect(session.respondPermission('tool_90fc4a4e-6e6d-46b2-83b5-3c3412526a7', 'allow')).toBe(false);
+    expect(events.find((e) => e.type === 'permission.resolved')).toMatchObject({ decision: 'deny', by: 'abort' });
+    expect(events.find((e) => e.type === 'turn.result')).toMatchObject({ interrupted: true });
+    expect(s.killed).toBe(false);
+    session.dispose();
+  });
+
+  it('разрешение и план, пришедшие после Stop, получают отказ без карточки', async () => {
+    const s = server();
+    let n = 0;
+    s.handle('session/prompt', () => {
+      n += 1;
+      if (n === 1) {
+        return new Promise((resolve) => {
+          const timer = setInterval(() => {
+            if (!s.methods().includes('session/cancel')) return;
+            clearInterval(timer);
+            s.request(0, 'session/request_permission', permissionParams());
+            s.request(6, 'cursor/create_plan', { toolCallId: 'tool_plan_late', plan: '# late' });
+            const wait = setInterval(() => {
+              const ids = s.replies().map((reply) => reply.id);
+              if (ids.includes(0) && ids.includes(6)) {
+                clearInterval(wait);
+                resolve({ stopReason: 'cancelled' });
+              }
+            }, 5);
+          }, 5);
+        });
+      }
+      s.request(4, 'session/request_permission', permissionParams(STANDARD, 'tool_next'));
+      return replyWhen(s, 4);
+    });
+    const session = await open(s).adapter.createSession({ cwd: '/work' });
+    const events = collect(session);
+    await until(() => types(events).includes('session.init'));
+    session.send('curl');
+    await until(() => types(events).includes('turn.start'));
+    await session.interrupt();
+    expect(events.some((e) => e.type === 'permission.request' || e.type === 'plan.request')).toBe(false);
+    expect(s.replies()).toEqual([
+      { jsonrpc: '2.0', id: 0, result: { outcome: { outcome: 'selected', optionId: 'reject-once' } } },
+      {
+        jsonrpc: '2.0',
+        id: 6,
+        result: { outcome: { outcome: 'rejected', reason: 'rejected' } },
+      },
+    ]);
+    expect(session.respondPermission('tool_90fc4a4e-6e6d-46b2-83b5-3c3412526a7', 'allow')).toBe(false);
+    expect(session.decidePlan('tool_plan_late', { approve: true })).toBe(false);
+    expect(events.find((e) => e.type === 'turn.result')).toMatchObject({ interrupted: true });
+    session.send('next');
+    await until(() => events.filter((e) => e.type === 'permission.request').length === 1);
+    expect(session.respondPermission('tool_next', 'allow')).toBe(true);
+    await until(() => events.filter((e) => e.type === 'turn.result').length === 2);
+    expect(s.replies()[2]).toMatchObject({ id: 4, result: { outcome: { optionId: 'allow-once' } } });
+    expect(s.killed).toBe(false);
+    session.dispose();
+  });
+
+  it('план: accept и reject по id кадра; ask_question — skipped без карточки', async () => {
+    const s = server();
+    let n = 0;
+    s.handle('session/prompt', () => {
+      n += 1;
+      if (n === 1) {
+        s.request(0, 'cursor/create_plan', {
+          toolCallId: 'tool_plan_1',
+          name: 'Rename',
+          plan: '# step',
+          todos: [],
+        });
+        return replyWhen(s, 0);
+      }
+      s.request(7, 'cursor/create_plan', { toolCallId: 'tool_plan_2', plan: '# next' });
+      return replyWhen(s, 7);
+    });
+    const session = await open(s).adapter.createSession({ cwd: '/work' });
+    const events = collect(session);
+    await until(() => types(events).includes('session.init'));
+    session.send('plan');
+    await until(() => types(events).includes('plan.request'));
+    expect(events.find((e) => e.type === 'plan.request')).toMatchObject({ toolUseId: 'tool_plan_1', plan: '# step' });
+    expect(events.some((e) => e.type === 'question.request')).toBe(false);
+    expect(session.decidePlan('tool_plan_1', { approve: true })).toBe(true);
+    await until(() => types(events).includes('turn.result'));
+    expect(s.replies()[0]).toEqual({ jsonrpc: '2.0', id: 0, result: { outcome: { outcome: 'accepted' } } });
+
+    session.send('plan 2');
+    await until(() => events.filter((e) => e.type === 'plan.request').length === 2);
+    expect(session.decidePlan('tool_plan_2', { approve: false, feedback: 'spike' })).toBe(true);
+    await until(() => events.filter((e) => e.type === 'turn.result').length === 2);
+    expect(s.replies()[1]).toEqual({
+      jsonrpc: '2.0',
+      id: 7,
+      result: { outcome: { outcome: 'rejected', reason: 'spike' } },
+    });
+
+    s.request(3, 'cursor/ask_question', {
+      toolCallId: 'tool_q',
+      questions: [{ id: 'q1', prompt: 'ping?', options: [{ id: 'a', label: 'pong' }] }],
+    });
+    await until(() => s.replies().some((r) => r.id === 3));
+    expect(s.replies().find((r) => r.id === 3)).toEqual({
+      jsonrpc: '2.0',
+      id: 3,
+      result: { outcome: { outcome: 'skipped' } },
+    });
+    expect(events.some((e) => e.type === 'question.request')).toBe(false);
+    expect(session.answerQuestion('tool_q', { 'ping?': 'pong' })).toBe(false);
+    session.dispose();
+  });
+
+  it('cursor/task в журнал debug и не в ленту', async () => {
+    const s = server();
+    const { adapter, logs } = open(s);
+    const session = await adapter.createSession({ cwd: '/work' });
+    const events = collect(session);
+    await until(() => types(events).includes('session.init'));
+    s.notify('cursor/task', { toolCallId: 'tool_t', description: 'explore' });
+    s.notify('cursor/update_todos', { toolCallId: 'tool_t', todos: [], merge: false });
+    s.notify('cursor/generate_image', { toolCallId: 'tool_t', description: 'icon' });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(logs.filter((l) => l.startsWith('debug:') && l.includes('cursor/task'))).toHaveLength(1);
+    expect(logs.some((l) => l.includes('cursor/update_todos'))).toBe(true);
+    expect(logs.some((l) => l.includes('cursor/generate_image'))).toBe(true);
+    expect(types(events)).toEqual(['session.init']);
+    session.dispose();
+  });
+
+  it('setMode: plan и agent; отказ сервера — нефатальная ошибка, сессия жива', async () => {
+    const s = server();
+    s.handle('session/set_mode', () => ({}));
+    const session = await open(s).adapter.createSession({ cwd: '/work', permissionMode: 'plan' });
+    const events = collect(session);
+    await until(() => types(events).includes('session.init'));
+    expect(s.paramsOf('session/set_mode')).toEqual({ sessionId: SESSION, modeId: 'plan' });
+    expect(events[0]).toMatchObject({ type: 'session.init', permissionMode: 'plan' });
+    await session.setMode('acceptEdits');
+    expect(s.paramsOf('session/set_mode', 1)).toEqual({ sessionId: SESSION, modeId: 'agent' });
+    expect(events.find((e) => e.type === 'mode.changed')).toMatchObject({ mode: 'acceptEdits' });
+    await session.setMode('default');
+    expect(s.paramsOf('session/set_mode', 2)).toEqual({ sessionId: SESSION, modeId: 'agent' });
+
+    const bad = server();
+    bad.handle('session/set_mode', () => {
+      throw new Error('rejected');
+    });
+    const broken = await open(bad).adapter.createSession({ cwd: '/work' });
+    const ev = collect(broken);
+    await until(() => types(ev).includes('session.init'));
+    await broken.setMode('plan');
+    expect(ev.find((e) => e.type === 'error')).toMatchObject({ fatal: false });
+    expect(ev.some((e) => e.type === 'mode.changed')).toBe(false);
+    expect(ev.some((e) => e.type === 'session.closed')).toBe(false);
+    bad.handle('session/prompt', () => ({ stopReason: 'end_turn' }));
+    broken.send('still alive');
+    await until(() => types(ev).includes('turn.result'));
+    session.dispose();
+    broken.dispose();
   });
 
   it('картинки и файлы — warn и дроп, уходит только текст', async () => {

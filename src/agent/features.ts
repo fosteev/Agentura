@@ -131,9 +131,10 @@ export const ANTIGRAVITY_FEATURES: Readonly<ProviderFeatures> = {
 };
 
 /**
- * Cursor (`agent acp`): режимы есть (`session/set_mode`, этап 3). `questions` не поднимаем —
- * `cursor/ask_question` спайк не видел. `plan` остаётся false, пока этап 3 не проведёт `cursor/create_plan`
- * карточкой (`sessionUpdate: plan` с entries в ленту не идёт). Цены, контекста и картинок в кадрах не было.
+ * Cursor (`agent acp`): режимы есть (`session/set_mode`). `questions` false —
+ * `cursor/ask_question` спайк не видел, метод отвечает `skipped`. `plan` true: карточка
+ * `cursor/create_plan` есть. `sessionUpdate: plan` с entries в ленту не идёт.
+ * Цены, контекста и картинок в кадрах не было.
  */
 export const CURSOR_FEATURES: Readonly<ProviderFeatures> = {
   nativeSettings: false,
@@ -145,7 +146,7 @@ export const CURSOR_FEATURES: Readonly<ProviderFeatures> = {
   subagents: false,
   agentStop: false,
   agentTranscript: false,
-  plan: false,
+  plan: true,
   questions: false,
   images: false,
   files: false,

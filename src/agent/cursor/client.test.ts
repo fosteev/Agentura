@@ -68,6 +68,28 @@ describe('CursorRpcClient', () => {
     client.dispose();
   });
 
+  it('true из onServerRequest — клиент не шлёт второй кадр', async () => {
+    const box: { client?: CursorRpcClient } = {};
+    const opened = open({
+      onServerRequest(id) {
+        box.client?.respond(id, { outcome: { outcome: 'selected', optionId: 'allow-once' } });
+        return true;
+      },
+    });
+    box.client = opened.client;
+    opened.process.stdout.write(
+      `${JSON.stringify({ jsonrpc: '2.0', id: 0, method: 'session/request_permission', params: {} })}\n`,
+    );
+    await new Promise((r) => setTimeout(r, 0));
+    expect(opened.sent).toEqual([
+      {
+        jsonrpc: '2.0',
+        id: 0,
+        result: { outcome: { outcome: 'selected', optionId: 'allow-once' } },
+      },
+    ]);
+  });
+
   it('неизвестный метод, даже с id 0, — ошибка JSON-RPC, запрос не зависает', async () => {
     const { process, sent } = open();
     process.stdout.write(

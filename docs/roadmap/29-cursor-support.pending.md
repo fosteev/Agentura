@@ -6,7 +6,8 @@
 - [скоуп] этап 1: флаг questions не поднимать — кадра `cursor/ask_question` не было, карточек вопросов в v1 не будет — откат: поменять промт 5, когда кадр появится.
 - [скоуп] этап 1: `sessionUpdate` `plan` с `entries` в ленту не выводить — кадр был один, карточка плана остаётся на `cursor/create_plan` — откат: замапить entries на этапе 3.
 - [архитектура] этап 2: штамп CLI — регекс `YYYY.MM.DD-<hex>`, не пин `2026.11.05-86047df` — следующая сборка иначе стала бы «не найден» — откат: сравнивать с `CURSOR_FIXTURE_CLI` в `parseCursorVersion`.
-- [скоуп] этап 2: `providerFeatures('cursor').plan` оставлен false до карточки `cursor/create_plan` этапа 3, хотя в «Принятых решениях» plan да — без карточки флаг включит пустой план — откат: `plan: true` в `CURSOR_FEATURES`. Список фич на приёмке не менялся.
+- [скоуп] этап 3: `providerFeatures('cursor').plan` поднят в true (`cursor/create_plan` есть карточка). `questions` остаётся false. Откат: `plan: false` в `CURSOR_FEATURES`.
+- [скоуп] этап 3: пока идёт `session/load`, permission и plan отвечаются отказом без события — resume не виснет и не рисует историю как живой ход — откат: убрать проверку `loading` в `onPermission` и `onPlan`.
 - [скоуп] этап 2: флажок «Cursor» в «Чьи лимиты» уже виден, список идёт из `PROVIDERS` — меню композера и строка пути не добавлены — откат: не рисовать `cursor` в `Settings.tsx` до этапа 5.
 - [скоуп] этап 2: `defaultProvider: cursor` в настройках VS Code открывает вкладку с меткой cursor, адаптером Claude и флагами Cursor — enum требовал этап 2, `adapterOf` ещё без ветки — откат: пока нет адаптера считать это значение как `claude`.
 
