@@ -1,5 +1,5 @@
 import { watch as fsWatch, existsSync, realpathSync, type FSWatcher } from 'node:fs';
-import type { AgentAdapter, AgentProvider } from '../agent/types';
+import type { AgentAdapter } from '../agent/types';
 import type { SessionSummary } from '../protocol';
 import {
   listSessionRows,
@@ -465,7 +465,7 @@ export class SessionsService {
     }
   }
 
-  providerOf(sessionId: string): AgentProvider {
+  providerOf(sessionId: string): 'claude' | ExtraProvider {
     const row = this.rows.find((r) => r.id === sessionId);
     for (const p of ['codex', 'antigravity'] as const) {
       if (!this.source(p)) continue;

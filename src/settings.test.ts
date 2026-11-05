@@ -73,6 +73,9 @@ describe('validateSetting', () => {
     expect(validateSetting('codexExecutable', 1).ok).toBe(false);
     expect(validateSetting('defaultProvider', 'codex')).toEqual({ ok: true, value: 'codex' });
     expect(validateSetting('defaultProvider', 'antigravity')).toEqual({ ok: true, value: 'antigravity' });
+    expect(validateSetting('defaultProvider', 'cursor')).toEqual({ ok: true, value: 'cursor' });
+    expect(validateSetting('cursorExecutable', ' /bin/agent ')).toEqual({ ok: true, value: '/bin/agent' });
+    expect(validateSetting('cursorExecutable', 1).ok).toBe(false);
     expect(validateSetting('antigravityExecutable', ' /bin/agy ')).toEqual({ ok: true, value: '/bin/agy' });
     expect(validateSetting('antigravityExecutable', 1).ok).toBe(false);
     expect(validateSetting('defaultProvider', 'gpt').ok).toBe(false);

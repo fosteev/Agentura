@@ -366,18 +366,26 @@
           "default": "",
           "description": "%config.antigravityExecutable.description%"
         },
+        "agentura.cursorExecutable": {
+          "type": "string",
+          "scope": "machine",
+          "default": "",
+          "description": "%config.cursorExecutable.description%"
+        },
         "agentura.defaultProvider": {
           "type": "string",
           "scope": "application",
           "enum": [
             "claude",
             "codex",
-            "antigravity"
+            "antigravity",
+            "cursor"
           ],
           "enumDescriptions": [
             "Claude Code",
             "Codex",
-            "Antigravity"
+            "Antigravity",
+            "Cursor"
           ],
           "default": "claude",
           "description": "%config.defaultProvider.description%"

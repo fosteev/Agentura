@@ -1329,7 +1329,7 @@ const ru = {
     limitsHidden: {
       name: 'Чьи лимиты показывать',
       desc: 'Снятый флажок прячет лимиты движка из боковой панели и выключает их опрос. Снять все — секции лимитов не будет. Лимиты в шапке чата не меняются.',
-      engines: { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity' },
+      engines: { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity', cursor: 'Cursor' },
     },
     feedStyle: {
       name: 'Вид ленты чата',
@@ -1507,7 +1507,7 @@ const ru = {
     fold: (name: string, folded: boolean) => `${folded ? 'Развернуть' : 'Свернуть'}: ${name}`,
     accountLabels: { account: 'Аккаунт', plan: 'План', login: 'Вход', agent: 'Агент' },
     agentName: 'Claude',
-    providerNames: { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity' },
+    providerNames: { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity', cursor: 'Cursor' },
     unknown: '—',
     loadError: 'не удалось получить',
     limitFive: 'Окно 5 часов',

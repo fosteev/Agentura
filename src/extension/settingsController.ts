@@ -47,7 +47,7 @@ export class SettingsController {
   private modelsSeq = 0;
   private modelsPath: string | undefined;
   /** Номер последней «проверить» — ответ приходит только на неё. */
-  private checkSeq: Record<AgentProvider, number> = { claude: 0, codex: 0, antigravity: 0 };
+  private checkSeq: Record<AgentProvider, number> = { claude: 0, codex: 0, antigravity: 0, cursor: 0 };
 
   /** Webview прислал `ready` и получил первое состояние: раздел можно слать сразу. */
   private ready = false;

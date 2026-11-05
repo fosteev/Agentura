@@ -130,8 +130,42 @@ export const ANTIGRAVITY_FEATURES: Readonly<ProviderFeatures> = {
   skills: false,
 };
 
+/**
+ * Cursor (`agent acp`): режимы есть (`session/set_mode`, этап 3). `questions` не поднимаем —
+ * `cursor/ask_question` спайк не видел. `plan` остаётся false, пока этап 3 не проведёт `cursor/create_plan`
+ * карточкой (`sessionUpdate: plan` с entries в ленту не идёт). Цены, контекста и картинок в кадрах не было.
+ */
+export const CURSOR_FEATURES: Readonly<ProviderFeatures> = {
+  nativeSettings: false,
+  modes: true,
+  compact: false,
+  autoCompact: false,
+  context: false,
+  cost: false,
+  subagents: false,
+  agentStop: false,
+  agentTranscript: false,
+  plan: false,
+  questions: false,
+  images: false,
+  files: false,
+  remote: false,
+  browser: false,
+  mcp: false,
+  mcpReconnect: false,
+  mcpReloadAll: false,
+  mcpToggle: false,
+  skills: false,
+};
+
 export function providerFeatures(provider: AgentProvider): ProviderFeatures {
   return {
-    ...(provider === 'codex' ? CODEX_FEATURES : provider === 'antigravity' ? ANTIGRAVITY_FEATURES : CLAUDE_FEATURES),
+    ...(provider === 'codex'
+      ? CODEX_FEATURES
+      : provider === 'antigravity'
+        ? ANTIGRAVITY_FEATURES
+        : provider === 'cursor'
+          ? CURSOR_FEATURES
+          : CLAUDE_FEATURES),
   };
 }

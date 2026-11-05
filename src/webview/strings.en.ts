@@ -1310,7 +1310,7 @@ export const en: Ui = {
     limitsHidden: {
       name: 'Show limits for',
       desc: 'Unchecking an engine hides its limits from the sidebar and stops polling them. Uncheck all to drop the limits section. Limits in the chat header are unaffected.',
-      engines: { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity' },
+      engines: { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity', cursor: 'Cursor' },
     },
     feedStyle: {
       name: 'Chat feed style',
@@ -1488,7 +1488,7 @@ export const en: Ui = {
     fold: (name: string, folded: boolean) => `${folded ? 'Expand' : 'Collapse'}: ${name}`,
     accountLabels: { account: 'Account', plan: 'Plan', login: 'Login', agent: 'Agent' },
     agentName: 'Claude',
-    providerNames: { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity' },
+    providerNames: { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity', cursor: 'Cursor' },
     unknown: '—',
     loadError: 'could not load',
     limitFive: '5-hour window',

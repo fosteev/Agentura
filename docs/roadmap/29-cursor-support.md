@@ -1,6 +1,6 @@
 # 29 — Cursor как четвёртый движок
 
-> Статус: этап 1 принят 2026-11-05 · следующий — 2
+> Статус: этап 2 принят 2026-11-05 · следующий — 3
 >
 > Исполнитель отмечает чекбоксы по ходу, только после проверки из «Готово, когда». Статусы живут здесь.
 
@@ -79,17 +79,25 @@
 
 **Сессия:** sonnet, high. После этапа 1, только если в отчёте `go`. Контракт — таблица отчёта, не страница доков.
 
-- [ ] `AgentProvider` += `'cursor'`. Сравнения `'claude' | 'codex' | 'antigravity'` в маршруте сессии заменить на `isProvider`, не размазывая новый литерал. Поведение трёх старых движков то же.
-- [ ] `agentura.cursorExecutable` (machine) и значение `cursor` у `agentura.defaultProvider`: `package.json`, `package.nls.json`, `package.nls.ru.json`, `src/settings.ts` (`MACHINE_KEYS`, `PROVIDERS`).
-- [ ] `src/agent/cursor/executable.ts` по образцу `src/agent/codex/executable.ts`. Имя бинарника `agent` принимать только если `--version` или `about` опознаёт Cursor той строкой, которую записал спайк. Чужой `agent` в `PATH` — это «не найден», не запуск. На Windows не принимать `.cmd`/`.bat`.
-- [ ] `src/agent/cursor/protocol.ts` — подмножество кадров из отчёта спайка, версия CLI в шапке. Не копировать всю схему ACP.
-- [ ] `src/agent/cursor/client.ts` — NDJSON JSON-RPC, лимит строки 64 МБ, server request отдельно от notification и от ответа. Поле `jsonrpc` — как в живой фикстуре. Неотвеченный server request не оставлять висеть: неизвестный метод — ошибка JSON-RPC, известное разрешение до этапа 3 — отказ по форме из отчёта.
-- [ ] `src/agent/cursor/adapter.ts` + `mapper.ts`: процесс на сессию (`shell: false`, cwd сессии, env целиком), `createSession` / `resumeSession` (`session/load`), `send` только текстом, очередь, `interrupt` = `session/cancel`, `dispose` = stdin end → grace → kill. События: `session.init`, `turn.start`, `text.delta`, `turn.result`, `error`, `session.closed`. Картинки и файлы — `warn` и дроп.
-- [ ] `capabilities()`: модели тем способом, который назвал спайк; нет способа — пустой список, без падения. `setModel` — только если спайк записал метод, иначе запоминается и в журнал `warn`.
-- [ ] Фейковый ACP-сервер в тестах: pong, падение процесса, cancel, resume. Плюс тест маппера на `test/fixtures/cursor/acp-pong.ndjson`.
-- [ ] `npm run check` зелёный. UI движок не показывает.
+- [x] `AgentProvider` += `'cursor'`. Сравнения `'claude' | 'codex' | 'antigravity'` в маршруте сессии заменить на `isProvider`, не размазывая новый литерал. Поведение трёх старых движков то же.
+- [x] `agentura.cursorExecutable` (machine) и значение `cursor` у `agentura.defaultProvider`: `package.json`, `package.nls.json`, `package.nls.ru.json`, `src/settings.ts` (`MACHINE_KEYS`, `PROVIDERS`).
+- [x] `src/agent/cursor/executable.ts` по образцу `src/agent/codex/executable.ts`. Имя бинарника `agent` принимать только если `--version` или `about` опознаёт Cursor той строкой, которую записал спайк. Чужой `agent` в `PATH` — это «не найден», не запуск. На Windows не принимать `.cmd`/`.bat`.
+- [x] `src/agent/cursor/protocol.ts` — подмножество кадров из отчёта спайка, версия CLI в шапке. Не копировать всю схему ACP.
+- [x] `src/agent/cursor/client.ts` — NDJSON JSON-RPC, лимит строки 64 МБ, server request отдельно от notification и от ответа. Поле `jsonrpc` — как в живой фикстуре. Неотвеченный server request не оставлять висеть: неизвестный метод — ошибка JSON-RPC, известное разрешение до этапа 3 — отказ по форме из отчёта.
+- [x] `src/agent/cursor/adapter.ts` + `mapper.ts`: процесс на сессию (`shell: false`, cwd сессии, env целиком), `createSession` / `resumeSession` (`session/load`), `send` только текстом, очередь, `interrupt` = `session/cancel`, `dispose` = stdin end → grace → kill. События: `session.init`, `turn.start`, `text.delta`, `turn.result`, `error`, `session.closed`. Картинки и файлы — `warn` и дроп.
+- [x] `capabilities()`: модели тем способом, который назвал спайк; нет способа — пустой список, без падения. `setModel` — только если спайк записал метод, иначе запоминается и в журнал `warn`.
+- [x] Фейковый ACP-сервер в тестах: pong, падение процесса, cancel, resume. Плюс тест маппера на `test/fixtures/cursor/acp-pong.ndjson`.
+- [x] `npm run check` зелёный. UI движок не показывает.
 
 **Готово, когда:** `TZ=UTC npm run check` зелёный; в выводе тестов есть файлы `src/agent/cursor/`; открытая вкладка по-прежнему Claude, пока провайдер не передан. Живой smoke — `scripts/cursor-smoke.mjs` (opt-in, временная папка, один pong), не часть `npm run check`.
+
+**Решения (2026-11-05, по итогам сессии 2):**
+
+- Раскладка: `src/agent/cursor/` — `protocol.ts`, `executable.ts`, `client.ts`, `mapper.ts`, `adapter.ts`, `fakeServer.ts` и тесты рядом. Дым — `scripts/cursor-smoke.mjs`. В меню, фабрику чата и сайдбар-список Cursor не вшит.
+- Контракт: `jsonrpc` обязателен и равен `2.0` (пропуск поля рвёт поток; у Codex его можно не слать, здесь нельзя). `text.delta` только из `agent_message_chunk`; `agent_thought_chunk`, `user_message_chunk`, tool, `available_commands_update` и `sessionUpdate: plan` с entries дают пусто. `messageId` дельт — `c1`, `c2`, не `tool_`. Модели — `models.availableModels[]` с непустым `modelId`; сентинел без `modelId` не модель. `commands` всегда `[]`. `setModel` — `session/set_config_option` `{configId:"model", value}`. `session/cancel` — уведомление без id. Отказ на `session/request_permission` — `{outcome:{outcome:"selected", optionId:"reject-once"}}`, id из кадра (0 проходит). Другой server request, включая `cursor/create_plan`, — JSON-RPC `-32601`, пока обработчик не вернёт `true`. Запуск — `agent acp`, `shell: false`, env целиком, без `--model` / `--force` / `--yolo`. `dispose`: stdin end → grace → SIGTERM → grace → SIGKILL. Повтор `session/load` до result в ленту не пишется.
+- Отступления: штамп бинарника — форма `YYYY.MM.DD-<hex>` (`CURSOR_VERSION_RE`), не ровно `2026.11.05-86047df`: иначе следующая сборка CLI стала бы «не найден». `setMode` и `setEffort` пустые (режим — этап 3, метода effort спайк не видел). `listSessions` / `loadHistory` пустые, `renameSession` тихий no-op, `accountInfo` `{}` — этап 4. `providerFeatures('cursor')` заведён сейчас, чтобы курсор не получил флаги Claude: `questions` false, `plan` false до карточки этапа 3, `modes` true. `providerOf` по-прежнему только claude|codex|antigravity. `settings.engine` с `engine: cursor` страница настроек игнорирует. Метка движка `R` и подписи `Cursor` в `providerNames` / «чьи лимиты» нужны типам, раз провайдер в union; пункт меню и строка пути на своей странице настроек — этап 5.
+- Не проверено: Windows живьём, стена оплаты, формат картинки, доллары хода, вкладка в браузере. Smoke оставил сессию `6a4f9cf5-a9d3-4620-89b9-eb4fb20762b0` в аккаунте: `session/delete` нет, `~/.cursor` не трогали. Временная папка прогона удалена.
+- Приёмка (2026-11-05): модель из `createSession` / `resumeSession` уходит в `session/set_config_option` до `session.init`, событие несёт уже её. Очередь Stop не сбрасывается (как у Codex): синтетический `interrupted` только у промпта, уже снятого с очереди и ещё не отправленного. `dispose` ждёт grace до SIGTERM и второй grace до SIGKILL.
 
 ### 3. Инструменты, разрешения, план и вопросы
 
@@ -219,6 +227,8 @@ DoD: TZ=UTC npm run check зелёный, тесты src/agent/cursor/ есть,
 
 По реальному коду (приёмка 2026-11-05): sessionUpdate plan с entries приходил один раз. В ленту не эмитить, нового AgentEvent нет. Карточка плана — только cursor/create_plan. Живые toolCallId с префиксом tool_; replay-* в load — заглушка фикстуры, форму id оттуда не брать.
 
+По реальному коду (сессия 2, 2026-11-05): клиент сам отвечает на server request, если `onServerRequest` не вернул `true`. `session/request_permission` → `{outcome:{outcome:"selected", optionId:"reject-once"}}`, id из кадра, включая 0. Любой другой метод, включая `cursor/create_plan`, пока `-32601`. Обработчик этапа 3 возвращает `true` и сам шлёт result, иначе клиент ответит вторым кадром. `setMode` пустой — заполнить `session/set_mode`. `providerFeatures('cursor').plan` и `.questions` сейчас false; `plan` поднять здесь, когда карточка `cursor/create_plan` есть. `questions` не поднимать. `sessionUpdate: plan` с entries маппер уже глотает.
+
 Порядок:
 1. Маппер tool-кадров.
 2. permission.request и ответ по option id, включая bypass.
@@ -250,6 +260,8 @@ DoD: TZ=UTC npm run check зелёный; фейк покрывает tool, allo
 
 По реальному коду (приёмка 2026-11-05): список есть — session/list {cwd} → {sessions:[{sessionId,cwd,updatedAt}]}, без title. agent ls JSON не отдаёт. session/load до result шлёт session/update. История load в фикстуре сокращена, toolCallId там replay-*; форму id и сырой tool-кадр брать из read/write/cancel/permission. Метода переименования нет.
 
+По реальному коду (сессия 2, 2026-11-05): `listSessions` и `loadHistory` — пустые заглушки, не «метода нет». Реализовать `session/list`. `renameSession` уже тихий no-op, `accountInfo` уже `{}`. Живой `resumeSession` глушит `session/update` до result `session/load` — это не лента истории; `loadHistory` читает кадры сам. `providerOf` в `sessionsService` всё ещё только claude|codex|antigravity.
+
 Порядок:
 1. Выбрать источник строго по отчёту. Источника нет — заглушки и тест «пустой список не бросает».
 2. loadHistory в AgentEvent, live оставляет последний ход открытым.
@@ -277,6 +289,8 @@ DoD: TZ=UTC npm run check зелёный; тест истории даёт turn.
 Точки входа: src/extension/chatPanel.ts, src/extension/sessionsService.ts, src/settings.ts, src/webview/strings.ts, src/webview/strings.en.ts, package.json. Эталон подключения: как в этих файлах уже сидят codex и antigravity. Открывать только ветки, куда добавляется cursor.
 
 Уже решено, не переспрашивать: warm() на активации нет. Флаги v1 не расширять сверх отчёта спайка и этапа 3: чисел usage не было — context и cost false; cursor/ask_question не было — questions false; cursor/create_plan был — plan можно true. acceptEdits не авторазрешает правки, в README это написано прямо. Третий extra-провайдер не роняет список, если Cursor не установлен. Новую страницу настроек не делать.
+
+По реальному коду (сессия 2, приёмка 2026-11-05): `PROVIDERS`, `isProvider`, `package.json` (`cursorExecutable`, enum `cursor`), `package.nls.json` / `package.nls.ru.json` и `providerFeatures('cursor')` уже есть. `questions` false, `plan` false — не откатывать на флаги Claude; `plan` true только если этап 3 его поднял. Меню, `EngineRow`, пункт провайдера на своей странице настроек, `adapterOf` и extra-провайдер — ещё нет. `providerNames.cursor`, `limitsHidden.engines.cursor` и метка `ENGINE_MARK` `cursor` = `R` уже есть. `settings.engine` с `engine: cursor` страница настроек игнорирует, пока нет строки «проверить». `providerOf` не возвращает `cursor`. `resolveCursorExecutable` на явный путь без штампа возвращает `path` и `problem` вместе — `acp` стартовать только когда `problem` нет. `createSession({model})` шлёт `session/set_config_option` до `session.init`. Пока `adapterOf` без ветки cursor, `defaultProvider: cursor` из настроек VS Code открывает Claude-адаптер с флагами Cursor.
 
 Порядок:
 1. Фабрика, adapterOf и второе ветвление адаптера в chatPanel.ts.
