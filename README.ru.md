@@ -15,7 +15,10 @@
 Личный проект, в Marketplace его нет. Ставится из `.vsix` (см. [Установка](#установка)). Скриншоты — с английским
 интерфейсом, русский включается в `agentura.language`.
 
-> **Новое в 0.20 — native planning и настройки сессии Codex.** Планирование, approval policy и sandbox переключаются
+> **Новое в 0.21 — движок Cursor.** Cursor CLI (`agent acp`) во вкладке чата: потоковые ответы,
+> разрешения инструментов, одобрение плана, Stop и возобновление сессий. Ограничения — в разделе [Cursor](#cursor).
+>
+> **0.20 — native planning и настройки сессии Codex.** Планирование, approval policy и sandbox переключаются
 > независимо в текущей сессии. Также доступны ручной `/compact`, native-скиллы с выбором по пути и Jira-инструменты
 > в новых чатах. Возможности и оставшиеся ограничения — в разделе [Codex](#codex).
 >
@@ -33,7 +36,7 @@
 
 - **Чат во вкладках редактора.** Одна вкладка — одна сессия. `Cmd/Ctrl+Alt+A` открывает чат, `Cmd/Ctrl+Shift+N`
   начинает новую сессию.
-- **Два движка.** Claude (по умолчанию) или Codex — выбор на вкладку, в меню «агент» под полем ввода.
+- **Движки.** Claude (по умолчанию), Codex, Antigravity или Cursor — выбор на вкладку, в меню «агент» под полем ввода.
 - **Remote Control.** Сессию Claude можно продолжать с claude.ai/code и из мобильного приложения Claude: «rc» под
   полем ввода или `/rc`. См. [Remote Control](#remote-control).
 - **Приборы у поля ввода.** Контекст с жёлтым и оранжевым порогом, стоимость и токены хода, TTL кэша и доля
@@ -119,7 +122,7 @@
 `~/.claude/local` и Homebrew (на Windows — `claude.exe`). Другой путь задаётся в `agentura.claudeExecutable`.
 
 ```
-code --install-extension agentura-0.20.0.vsix
+code --install-extension agentura-0.21.0.vsix
 ```
 
 Сборка из исходников:
@@ -127,7 +130,7 @@ code --install-extension agentura-0.20.0.vsix
 ```
 npm ci
 npm run check      # типы, линтер, юнит-тесты, сборка
-npm run package    # agentura-0.20.0.vsix
+npm run package    # agentura-0.21.0.vsix
 ```
 
 ## Codex

@@ -69,7 +69,7 @@ export interface CursorAdapterConfig {
   timeoutMs?: number;
   /** stdin end → пауза → SIGTERM → ещё пауза → SIGKILL. */
   graceMs?: number;
-  /** Сколько Stop ждёт `stopReason`, прежде чем закрыть ход самим. */
+  /** Сколько Stop ждёт `stopReason`, прежде чем закрыть зависший транспорт. */
   interruptWaitMs?: number;
 }
 
@@ -426,7 +426,7 @@ class CursorSession implements AgentSession {
   async setEffort(): Promise<void> {}
 
   /**
-   * Stop: `session/cancel` без id, процесс не убиваем.
+   * Stop: `session/cancel` без id; при отсутствии ответа закрываем зависший процесс.
    * До старта хода очередь снимается синтетическим `turn.start` + `turn.result interrupted`.
    */
   async interrupt(): Promise<void> {
@@ -448,6 +448,7 @@ class CursorSession implements AgentSession {
     if (!turn.done.settled && !this.closed) {
       this.log('warn', 'cursor stopReason did not arrive after session/cancel');
       this.abandonTurn();
+      this.fatal(new Error('Cursor did not confirm cancellation; the connection was closed. Resume the session to continue.'));
     }
   }
 
@@ -495,7 +496,7 @@ class CursorSession implements AgentSession {
         })
       : await this.client.request('session/new', { cwd: this.cwd, mcpServers: [] });
     if (this.closed) return;
-    const sessionId = sessionIdOf(result);
+    const sessionId = this.resumeId ?? sessionIdOf(result);
     if (!sessionId) throw new Error('Cursor ACP session/new returned no sessionId.');
     this.sessionId = sessionId;
     this.models = modelsFrom(result);
@@ -567,10 +568,11 @@ class CursorSession implements AgentSession {
         this.turnGeneration = generation;
         this.emitAll(this.mapper.startTurn(prompt, startedAt));
         try {
+          // Ответ приходит после всего хода, включая ожидание разрешений пользователя.
           const result = await this.client.request('session/prompt', {
             sessionId: this.sessionId,
             prompt: [{ type: 'text', text: prompt }],
-          });
+          }, null);
           if (this.closed) break;
           if (generation !== this.generation) this.abortPending();
           if (this.turn === undefined || this.turn.done.settled) continue;

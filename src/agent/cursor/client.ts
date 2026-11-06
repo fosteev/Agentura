@@ -62,7 +62,7 @@ export class CursorRpcClient {
   private closed: CursorRpcError | undefined;
   private readonly pending = new Map<
     number,
-    { resolve(value: unknown): void; reject(reason: Error): void; timer: NodeJS.Timeout }
+    { resolve(value: unknown): void; reject(reason: Error): void; timer: NodeJS.Timeout | undefined }
   >();
   private readonly timeoutMs: number;
   private readonly maxLineBytes: number;
@@ -88,7 +88,8 @@ export class CursorRpcClient {
     process.on('close', () => this.fail(this.exitMessage ?? 'Cursor ACP closed.'));
   }
 
-  request<T = unknown>(method: string, params?: unknown, timeoutMs = this.timeoutMs): Promise<T> {
+  /** `timeoutMs: null` — ждать до ответа или закрытия транспорта (долгий session/prompt). */
+  request<T = unknown>(method: string, params?: unknown, timeoutMs: number | null = this.timeoutMs): Promise<T> {
     if (this.closed) return Promise.reject(this.closed);
     const id = this.nextId++;
     const message = JSON.stringify({
@@ -98,7 +99,7 @@ export class CursorRpcClient {
       ...(params === undefined ? {} : { params }),
     });
     return new Promise<T>((resolve, reject) => {
-      const timer = setTimeout(() => {
+      const timer = timeoutMs === null ? undefined : setTimeout(() => {
         this.pending.delete(id);
         reject(new CursorRpcError(`Cursor RPC ${method} timed out after ${timeoutMs} ms.`));
       }, timeoutMs);

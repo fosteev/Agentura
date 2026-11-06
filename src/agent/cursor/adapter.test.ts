@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgentEvent, AgentSession, PromptFile, PromptImage } from '../types';
 import { CursorAdapter, type CursorAdapterConfig, type CursorSpawnOptions } from './adapter';
 import { CURSOR_NOT_FOUND } from './executable';
@@ -25,8 +25,7 @@ function server(): FakeAcp {
       ],
     },
   }));
-  s.handle('session/load', (p) => ({
-    sessionId: p.sessionId,
+  s.handle('session/load', () => ({
     models: { currentModelId: 'default[]', availableModels: [{ modelId: 'default[]', name: 'Auto' }] },
   }));
   s.handle('session/set_config_option', () => ({}));
@@ -328,6 +327,91 @@ describe('CursorAdapter', () => {
     expect(tail[2]).toMatchObject({ type: 'session.closed' });
   });
 
+  it('ход и ожидание разрешения не ограничены RPC-таймаутом в две минуты', async () => {
+    const s = server();
+    let release!: (value: unknown) => void;
+    s.handle('session/prompt', () => new Promise((resolve) => {
+      release = resolve;
+      s.request(0, 'session/request_permission', permissionParams());
+    }));
+    const session = await open(s).adapter.createSession({ cwd: '/work' });
+    const events = collect(session);
+    await session.capabilities();
+    vi.useFakeTimers();
+    try {
+      session.send('long work');
+      await vi.advanceTimersByTimeAsync(180_000);
+      expect(types(events)).toContain('permission.request');
+      expect(types(events)).not.toContain('session.closed');
+      expect(types(events)).not.toContain('turn.result');
+      const card = events.find((e) => e.type === 'permission.request');
+      expect(session.respondPermission(card!.toolUseId, 'allow')).toBe(true);
+      release({ stopReason: 'end_turn' });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(events.filter((e) => e.type === 'turn.result')).toMatchObject([{ ok: true }]);
+    } finally {
+      session.dispose();
+      await vi.advanceTimersByTimeAsync(50);
+      vi.useRealTimers();
+    }
+  });
+
+  it('Stop без ответа закрывает транспорт и не запускает очередь поверх старого хода', async () => {
+    const s = server();
+    s.ignoreStdinEnd = true;
+    s.ignoreTerm = true;
+    let release!: (value: unknown) => void;
+    s.handle('session/prompt', () => new Promise((resolve) => (release = resolve)));
+    const session = await open(s).adapter.createSession({ cwd: '/work' });
+    const events = collect(session);
+    await session.capabilities();
+    vi.useFakeTimers();
+    try {
+      session.send('first');
+      await vi.advanceTimersByTimeAsync(0);
+      session.send('queued');
+      const stopped = session.interrupt();
+      await vi.advanceTimersByTimeAsync(30);
+      await stopped;
+      expect(events.filter((e) => e.type === 'turn.result')).toMatchObject([{ interrupted: true }]);
+      expect(events.find((e) => e.type === 'error')).toMatchObject({ fatal: true });
+      expect(types(events)).toContain('session.closed');
+      expect(session.send('next')).toBe(false);
+      const count = events.length;
+      s.notify('session/update', {
+        sessionId: SESSION,
+        update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'late' } },
+      });
+      release({ stopReason: 'cancelled' });
+      await vi.advanceTimersByTimeAsync(50);
+      expect(events).toHaveLength(count);
+      expect(s.methods().filter((m) => m === 'session/prompt')).toHaveLength(1);
+      expect(s.signals).toEqual(['SIGTERM', 'SIGKILL']);
+    } finally {
+      session.dispose();
+      await vi.advanceTimersByTimeAsync(50);
+      vi.useRealTimers();
+    }
+  });
+
+  it('resume принимает session/load из записанного протокола без sessionId и продолжает чат', async () => {
+    const s = server();
+    replayLoad(s);
+    s.handle('session/prompt', () => ({ stopReason: 'end_turn' }));
+    const session = await open(s).adapter.resumeSession('sess-pong', { cwd: '/work' });
+    const events = collect(session);
+    try {
+      await session.capabilities();
+      expect(events.find((e) => e.type === 'session.init')).toMatchObject({ sessionId: 'sess-pong' });
+      expect(types(events)).not.toContain('text.delta');
+      expect(session.send('continue')).toBe(true);
+      await until(() => types(events).includes('turn.result'));
+      expect(s.paramsOf('session/prompt').sessionId).toBe('sess-pong');
+    } finally {
+      session.dispose();
+    }
+  });
+
   it('resume зовёт session/load и не рисует повтор истории как живой текст', async () => {
     const s = server();
     s.handle('session/load', (p) => {
@@ -339,7 +423,7 @@ describe('CursorAdapter', () => {
         sessionId: p.sessionId,
         update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'pong' } },
       });
-      return { sessionId: p.sessionId, models: { currentModelId: 'default[]', availableModels: [] } };
+      return { models: { currentModelId: 'default[]', availableModels: [] } };
     });
     const session = await open(s).adapter.resumeSession('sess-9', { cwd: '/work' });
     const events = collect(session);
@@ -353,9 +437,9 @@ describe('CursorAdapter', () => {
 
   it('разрешение во время session/load — отказ без карточки', async () => {
     const s = server();
-    s.handle('session/load', (p) => {
+    s.handle('session/load', () => {
       s.request(0, 'session/request_permission', permissionParams());
-      return { sessionId: p.sessionId, models: { currentModelId: 'default[]', availableModels: [] } };
+      return { models: { currentModelId: 'default[]', availableModels: [] } };
     });
     const session = await open(s).adapter.resumeSession('sess-9', { cwd: '/work' });
     const events = collect(session);
