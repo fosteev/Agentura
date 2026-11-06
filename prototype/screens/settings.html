@@ -41,24 +41,26 @@
     <div class="st-body">
       <section class="st-page" id="session">
       <h2>Новая сессия</h2>
+      <p>Применяется к новым чатам. Восстановленные сессии сохраняют свои настройки.</p>
+      <div class="set on">
+        <span class="nm">Разрешить режим «без разрешений»</span>
+        <span class="ds">Разрешает bypassPermissions для Claude/Antigravity и полный доступ Codex. Сам режим не включается — выбери его в настройках нового чата или в текущей сессии.</span>
+        <span class="key">agentura.allowBypassPermissions · только эта машина</span>
+        <span class="ctl"><span class="tg on danger" role="switch" aria-checked="true"></span></span>
+        <div class="warn"><b>Без разрешений</b> агент правит файлы и запускает любые команды, не спрашивая, — включая удаление и сеть. Включай для изолированной папки или контейнера; на рабочем проекте лучше режим «принимать правки».</div>
+      </div>
+      <h3 class="st-sub">Claude</h3>
       <div class="set">
         <span class="nm">Режим новых сессий<span class="new">новая</span></span>
         <span class="ds">С каким режимом открывается новая сессия. В открытой сессии режим меняется меню «режим» под полем ввода или ⇧⇥.</span>
         <span class="key">agentura.defaultPermissionMode</span>
         <span class="ctl"><span class="dd">manual</span></span>
       </div>
-      <div class="set on">
-        <span class="nm">Разрешить режим «без разрешений»</span>
-        <span class="ds">Добавляет пункт «без разрешений» (bypassPermissions) в меню режима. Сам режим не включается — его выбирают в сессии.</span>
-        <span class="key">agentura.allowBypassPermissions · только эта машина</span>
-        <span class="ctl"><span class="tg on danger" role="switch" aria-checked="true"></span></span>
-        <div class="warn"><b>Без разрешений</b> агент правит файлы и запускает любые команды, не спрашивая, — включая удаление и сеть. Включай для изолированной папки или контейнера; на рабочем проекте лучше режим «принимать правки».</div>
-      </div>
       <div class="set">
         <span class="nm">Модель по умолчанию</span>
-        <span class="ds">Для новых сессий. «Выбор движка» — та, что стоит в Claude Code.</span>
+        <span class="ds">Для новых сессий. Пусто — та, что стоит в Claude Code (выбор движка).</span>
         <span class="key">agentura.defaultModel</span>
-        <span class="ctl"><span class="dd">выбор движка · opus-5.5</span></span>
+        <span class="ctl"><input class="num" aria-label="Модель по умолчанию Claude" placeholder="выбор движка"></span>
       </div>
       <div class="set">
         <span class="nm">Effort по умолчанию<span class="new">новая</span></span>
@@ -76,7 +78,32 @@
         <span class="nm">Префикс имени в Remote Control</span>
         <span class="ds">Как сессия называется в списке на claude.ai: «префикс · заголовок сессии». Пусто — имя машины.</span>
         <span class="key">agentura.remoteControlNamePrefix</span>
-        <span class="ctl"><span class="num wide">пусто — fost-mbp</span></span>
+        <span class="ctl"><input class="num wide" aria-label="Префикс имени в Remote Control" placeholder="пусто — имя машины"></span>
+      </div>
+      <h3 class="st-sub">Codex</h3>
+      <div class="set">
+        <span class="nm">Модель по умолчанию</span>
+        <span class="ds">Модели из установленного Codex. Пусто — модель из конфигурации Codex.</span>
+        <span class="key">agentura.codex.defaultModel</span>
+        <span class="ctl"><span class="dd">из конфигурации Codex</span><button class="btn" type="button">Обновить модели</button></span>
+      </div>
+      <div class="set">
+        <span class="nm">Effort по умолчанию</span>
+        <span class="ds">Выбери модель, затем effort из поддерживаемых ею уровней. Пусто — выбор Codex.</span>
+        <span class="key">agentura.codex.defaultEffort</span>
+        <span class="ctl"><span class="dd" aria-disabled="true">из конфигурации Codex</span></span>
+      </div>
+      <div class="set">
+        <span class="nm">Подтверждения Codex</span>
+        <span class="ds">Когда Codex запрашивает разрешение на действие.</span>
+        <span class="key">agentura.codex.defaultApproval</span>
+        <span class="ctl"><span class="dd">из конфигурации Codex</span></span>
+      </div>
+      <div class="set">
+        <span class="nm">Доступ Codex к файлам и командам</span>
+        <span class="ds">Чтение или запись в рабочую папку — без сети. Полный доступ требует разрешить этот режим выше.</span>
+        <span class="key">agentura.codex.defaultSandbox</span>
+        <span class="ctl"><span class="dd">из конфигурации Codex</span></span>
       </div>
       </section>
 

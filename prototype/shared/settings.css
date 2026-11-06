@@ -129,3 +129,12 @@ html[data-width="380"] .st-nav .src { display: none; }
   color: var(--fg-mute);
   font-size: 11px;
 }
+
+/* Группы настроек новой сессии — как в media/settings.css. */
+.st-body h3.st-sub { margin: 22px 0 2px; font-size: 13px; font-weight: 600; }
+#session input.num { font: inherit; text-align: left; width: 160px; }
+#session input.num.wide { width: 300px; }
+#session input.num::placeholder { color: var(--fg-faint); }
+#session .dd[aria-disabled="true"] { opacity: .5; }
+html[data-width="380"] #session .ctl { grid-column: 1; grid-row: auto; flex-wrap: wrap; margin-top: 6px; }
+html[data-width="380"] #session input.num.wide { min-width: 0; width: 100%; }
