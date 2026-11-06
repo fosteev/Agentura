@@ -331,6 +331,11 @@
           "default": "",
           "description": "%config.codex.defaultModel.description%"
         },
+        "agentura.cursor.defaultModel": {
+          "type": "string",
+          "default": "",
+          "description": "%config.cursor.defaultModel.description%"
+        },
         "agentura.codex.defaultApproval": {
           "type": "string",
           "enum": ["", "untrusted", "on-request", "never"],

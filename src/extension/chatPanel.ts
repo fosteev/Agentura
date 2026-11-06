@@ -797,6 +797,7 @@ export class ChatPanel {
             sandbox: values['codex.defaultSandbox'] || undefined,
           },
           defaultModel: cfg.get<string>('defaultModel') || undefined,
+          cursorDefaultModel: values['cursor.defaultModel'] || undefined,
           allowBypass: cfg.get<boolean>('allowBypassPermissions', false),
           // кривые пороги из settings.json (вкладка настроек такие не пишет) — по умолчанию
           contextThresholds: ((th) => (thresholdsError(th) ? [...DEFAULT_THRESHOLDS] : th))(

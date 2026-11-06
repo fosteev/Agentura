@@ -54,6 +54,21 @@ describe('validateSetting', () => {
     expect(invalid['codex.defaultApproval']).toBe('');
     expect(invalid['codex.defaultSandbox']).toBe('');
   });
+  it('cursor.defaultModel читается отдельно от Claude и обрезается', () => {
+    const values = readSettings(cfgOf({
+      defaultModel: 'opus',
+      'cursor.defaultModel': 'composer-2.5[fast=true]',
+    }));
+    expect(values.defaultModel).toBe('opus');
+    expect(values['cursor.defaultModel']).toBe('composer-2.5[fast=true]');
+    expect(readSettings(cfgOf({}))['cursor.defaultModel']).toBe('');
+    expect(readSettings(cfgOf({ 'cursor.defaultModel': 1 }))['cursor.defaultModel']).toBe('');
+    expect(validateSetting('cursor.defaultModel', ' composer-2.5[fast=true] ')).toEqual({
+      ok: true,
+      value: 'composer-2.5[fast=true]',
+    });
+    expect(validateSetting('cursor.defaultModel', 1).ok).toBe(false);
+  });
   it('режим и effort — только из списка', () => {
     expect(validateSetting('defaultPermissionMode', 'plan')).toEqual({ ok: true, value: 'plan' });
     expect(validateSetting('defaultPermissionMode', 'default').ok).toBe(false);

@@ -1117,6 +1117,9 @@ const ru = {
       name: 'Модель по умолчанию',
       desc: 'Для новых сессий. Пусто — та, что стоит в Claude Code (выбор движка).',
       placeholder: 'выбор движка',
+      cursorDesc:
+        'ACP modelId из меню модели открытой сессии, например composer-2.5[fast=true] или default[]. Пусто — выбор движка.',
+      cursorPlaceholder: 'composer-2.5[fast=true]',
     },
     newChat: {
       note: 'Применяется к новым чатам. Восстановленные сессии сохраняют свои настройки.',

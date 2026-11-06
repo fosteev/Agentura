@@ -961,6 +961,14 @@ export function Settings() {
                     ? [['dangerFullAccess', T.newChat.dangerFullAccess] as [string, string]] : []),
                 ]} />
               </Row>
+              <h3 class="st-sub">Cursor</h3>
+              <Row name={T.model.name} desc={T.model.cursorDesc} k="cursor.defaultModel">
+                <TextField
+                  k="cursor.defaultModel"
+                  value={v['cursor.defaultModel']}
+                  placeholder={T.model.cursorPlaceholder}
+                />
+              </Row>
             </>,
           )}
 

@@ -41,6 +41,7 @@ const values: SettingsValues = {
   allowBypassPermissions: false,
   defaultModel: '',
   'codex.defaultModel': '',
+  'cursor.defaultModel': '',
   'codex.defaultEffort': '',
   'codex.defaultApproval': '',
   'codex.defaultSandbox': '',
@@ -168,7 +169,7 @@ describe('вкладка настроек', () => {
     const host = mount(Settings);
     state({ defaultModel: 'opus', 'codex.defaultModel': 'gpt-test' });
     await flush();
-    expect([...host.querySelectorAll('#session h3')].map((e) => e.textContent)).toEqual(['Claude', 'Codex']);
+    expect([...host.querySelectorAll('#session h3')].map((e) => e.textContent)).toEqual(['Claude', 'Codex', 'Cursor']);
     expect(host.querySelector<HTMLInputElement>('[aria-label="defaultModel"]')!.value).toBe('opus');
     expect(host.querySelector<HTMLInputElement>('[aria-label="codex.defaultModel"]')!.value).toBe('gpt-test');
     change(host.querySelector('[aria-label="codex.defaultApproval"]')!, 'never');
@@ -178,6 +179,20 @@ describe('вкладка настроек', () => {
       { type: 'settings.set', key: 'codex.defaultSandbox', value: 'workspaceWrite' },
     ]);
     expect(host.querySelector('[aria-label="codex.defaultSandbox"] option[value="dangerFullAccess"]')).toBeNull();
+  });
+  it('блок Cursor: модель из state, правка пишет cursor.defaultModel', async () => {
+    const host = mount(Settings);
+    state({ 'cursor.defaultModel': 'composer-2.5[fast=true]' });
+    await flush();
+    const row = host.querySelector('.set[data-key="agentura.cursor.defaultModel"]')!;
+    expect(row.querySelector('.ds')?.textContent).toBe(
+      'ACP modelId из меню модели открытой сессии, например composer-2.5[fast=true] или default[]. Пусто — выбор движка.',
+    );
+    const field = host.querySelector<HTMLInputElement>('[aria-label="cursor.defaultModel"]')!;
+    expect(field.value).toBe('composer-2.5[fast=true]');
+    expect(field.placeholder).toBe('composer-2.5[fast=true]');
+    change(field, 'default[]');
+    expect(sets()).toEqual([{ type: 'settings.set', key: 'cursor.defaultModel', value: 'default[]' }]);
   });
   it('пока значений нет — пустая оболочка; пришли — все разделы и поля', async () => {
     const host = mount(Settings);
@@ -204,6 +219,7 @@ describe('вкладка настроек', () => {
       'agentura.codex.defaultEffort',
       'agentura.codex.defaultApproval',
       'agentura.codex.defaultSandbox',
+      'agentura.cursor.defaultModel',
       'agentura.contextThresholds',
       'agentura.usagePollMinutes · не меньше 5',
       'agentura.limits.readKeychain',

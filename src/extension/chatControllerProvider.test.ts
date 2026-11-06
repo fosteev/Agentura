@@ -763,6 +763,61 @@ describe('ChatController: Cursor', () => {
     });
   });
 
+  it('непустой cursor.defaultModel уходит в createSession; пустой — свойства model нет', async () => {
+    const settings = (model: string) => () => ({
+      allowBypass: true,
+      defaultModel: 'sonnet',
+      defaultPermissionMode: 'acceptEdits' as const,
+      cursorDefaultModel: model,
+    });
+    const withModel = setup({ provider: 'cursor', settings: settings('composer-2.5[fast=true]') });
+    withModel.controller.start();
+    await tick();
+    expect(withModel.cursor.created[0]).toMatchObject({
+      cwd: '/p',
+      allowBypassPermissions: true,
+      permissionMode: 'acceptEdits',
+      model: 'composer-2.5[fast=true]',
+    });
+    expect(withModel.cursor.created[0]).not.toHaveProperty('effort');
+    expect(withModel.cursor.created[0]).not.toHaveProperty('codexDefaults');
+    expect(withModel.posted).toContainEqual({ type: 'session.defaults', mode: 'acceptEdits' });
+    expect(withModel.claude.created).toHaveLength(0);
+
+    const empty = setup({ provider: 'cursor', settings: settings('') });
+    empty.controller.start();
+    await tick();
+    expect(empty.cursor.created[0]).not.toHaveProperty('model');
+    expect(empty.cursor.created[0]).not.toHaveProperty('effort');
+  });
+
+  it('resume Cursor берёт модель из истории и не подставляет дефолт настроек', async () => {
+    const settings = () => ({
+      allowBypass: true,
+      defaultModel: 'sonnet',
+      defaultPermissionMode: 'acceptEdits' as const,
+      cursorDefaultModel: 'composer-2.5[fast=true]',
+    });
+    const withHistory = setup({ provider: 'cursor', resumeId: 'sess-1', settings });
+    withHistory.cursor.adapter.loadHistory = async (): Promise<SessionHistory> => ({
+      events: [],
+      turns: 0,
+      skippedTurns: 0,
+      model: 'default[]',
+    });
+    withHistory.controller.start();
+    await tick();
+    await tick();
+    expect(withHistory.cursor.resumed[0]![1]).toMatchObject({ model: 'default[]' });
+    expect(withHistory.cursor.created).toHaveLength(0);
+
+    const noHistoryModel = setup({ provider: 'cursor', resumeId: 'sess-2', settings });
+    noHistoryModel.controller.start();
+    await tick();
+    await tick();
+    expect(noHistoryModel.cursor.resumed[0]![1]).not.toHaveProperty('model');
+  });
+
   it('bypass без allowBypass понижается до default и не уходит в setMode', async () => {
     const settings = () => ({ allowBypass: false, defaultPermissionMode: 'bypassPermissions' as const });
     const { controller, cursor } = setup({ provider: 'cursor', settings });

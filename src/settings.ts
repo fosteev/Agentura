@@ -176,6 +176,7 @@ export type SettingKey =
   | 'allowBypassPermissions'
   | 'defaultModel'
   | 'codex.defaultModel'
+  | 'cursor.defaultModel'
   | 'codex.defaultEffort'
   | 'codex.defaultApproval'
   | 'codex.defaultSandbox'
@@ -230,6 +231,7 @@ export const SETTING_KEYS: readonly SettingKey[] = [
   'allowBypassPermissions',
   'defaultModel',
   'codex.defaultModel',
+  'cursor.defaultModel',
   'codex.defaultEffort',
   'codex.defaultApproval',
   'codex.defaultSandbox',
@@ -300,6 +302,8 @@ export interface SettingsValues {
   allowBypassPermissions: boolean;
   defaultModel: string;
   'codex.defaultModel': string;
+  /** ACP modelId новых чатов Cursor; пусто — выбор движка. */
+  'cursor.defaultModel': string;
   'codex.defaultEffort': '' | EffortLevel;
   'codex.defaultApproval': (typeof CODEX_DEFAULT_APPROVALS)[number];
   'codex.defaultSandbox': (typeof CODEX_DEFAULT_SANDBOXES)[number];
@@ -601,6 +605,7 @@ export function validateSetting(key: SettingKey, value: unknown, lang: ErrLang =
       return typeof value === 'boolean' ? { ok: true, value } : bad(t.yesNo);
     case 'defaultModel':
     case 'codex.defaultModel':
+    case 'cursor.defaultModel':
     case 'remoteControlNamePrefix':
     case 'claudeExecutable':
     case 'codexExecutable':
@@ -727,6 +732,7 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
     allowBypassPermissions: cfg.get<unknown>('allowBypassPermissions') === true,
     defaultModel: str('defaultModel'),
     'codex.defaultModel': str('codex.defaultModel'),
+    'cursor.defaultModel': str('cursor.defaultModel'),
     'codex.defaultEffort': isEffort(codexEffort) ? codexEffort : '',
     'codex.defaultApproval': CODEX_DEFAULT_APPROVALS.find((v) => v === cfg.get<unknown>('codex.defaultApproval')) ?? '',
     'codex.defaultSandbox': CODEX_DEFAULT_SANDBOXES.find((v) => v === cfg.get<unknown>('codex.defaultSandbox')) ?? '',

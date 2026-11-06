@@ -144,7 +144,7 @@ It updates only `enabled` in that folder's `.codex/config.toml` and reloads MCP 
 Other chats pick up the change after MCP reload; tools change from the next turn. Codex must trust the project
 for project configuration to apply. Plugin-managed servers have no switch.
 
-In **Settings → New session**, Claude and Codex have separate model and permission defaults.
+In **Settings → New session**, Claude and Codex have separate model and permission defaults. Cursor has one model field (`agentura.cursor.defaultModel`): an ACP model id from a live session’s model menu, for example `composer-2.5[fast=true]`; empty leaves the engine’s choice.
 Claude uses the existing model, mode and effort fields. Codex has a model list from the installed CLI,
 an effort list for the selected model, approval policy and sandbox. Changing the model clears an incompatible effort.
 Empty Codex fields inherit the CLI configuration. These defaults apply to new chats; resumed sessions keep their settings.

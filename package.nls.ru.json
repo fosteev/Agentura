@@ -34,6 +34,7 @@
   "config.remoteControlNamePrefix.description": "Префикс имени сессии на claude.ai («префикс · заголовок»); пусто — имя машины.",
   "config.defaultModel.description": "Модель новых сессий Claude (пусто — выбор движка).",
   "config.codex.defaultModel.description": "ID модели новых чатов Codex. Пусто — из конфигурации Codex. Восстановленные сессии сохраняют модель.",
+  "config.cursor.defaultModel.description": "ACP modelId новых чатов Cursor из меню модели открытой сессии (например composer-2.5[fast=true] или default[]). Пусто — выбор движка. Восстановленные сессии сохраняют модель.",
   "config.codex.defaultEffort.description": "Effort новых чатов Codex: выбери уровень, поддерживаемый моделью. Пусто — выбор Codex; восстановленные чаты сохраняют настройки.",
   "config.codex.defaultApproval.description": "Политика подтверждений новых чатов Codex. Пусто — из конфигурации Codex.",
   "config.codex.defaultSandbox.description": "Sandbox новых чатов Codex. Пусто — из конфигурации Codex. Чтение и запись в рабочую папку — без сети. Полный доступ требует agentura.allowBypassPermissions.",

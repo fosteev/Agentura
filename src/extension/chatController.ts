@@ -93,6 +93,8 @@ export interface ChatDeps {
   settings(): {
     codexDefaults?: import('../agent/types').CodexNewChatDefaults;
     defaultModel?: string;
+    /** `agentura.cursor.defaultModel`: ACP modelId новых чатов Cursor; пусто — выбор движка. */
+    cursorDefaultModel?: string;
     allowBypass: boolean;
     contextThresholds?: number[];
     /** `agentura.feed.style`: вид ленты, уходит в `chat.info`. */
@@ -1611,7 +1613,7 @@ export class ChatController {
                 !hasModes || (h?.mode === 'bypassPermissions' && !s.allowBypass)
                   ? 'default'
                   : (h?.mode ?? 'default');
-              // `agentura.defaultModel` — модель Claude: Codex она не подходит
+              // `agentura.defaultModel` — модель Claude. Cursor при resume берёт модель из истории, не из настройки.
               const model = claude ? (h?.model ?? s.defaultModel) : h?.model;
               // база = то, с чего движок сам продолжит `total_cost_usd`: он восстанавливает итог из записи
               // `cost-state` транскрипта (нет записи — с нуля). Любая другая база (память расширения)
@@ -1632,15 +1634,17 @@ export class ChatController {
             : (() => {
               // настройки «режим» и «effort по умолчанию» — только новым сессиям (resume берёт своё)
               const mode = resolveDefaultMode(s.defaultPermissionMode, s.allowBypass);
-              // модель и effort по умолчанию — только Claude: у agy свой дефолт, у Cursor id модели другие
+              // effort по умолчанию — только Claude: у agy и Cursor свой дефолт, session.defaults его не шлёт
               const effort = claude ? resolveDefaultEffort(s.defaultEffort) : undefined;
               // меню под полем ввода — сразу, не дожидаясь `session.init` после первого хода
               this.defaults = { type: 'session.defaults', mode, ...(effort ? { effort } : {}) };
               deps.post(this.defaults);
+              // модель: Claude — `defaultModel`; Cursor — свой ACP modelId. Пусто — выбор движка, свойства нет.
+              const model = claude ? s.defaultModel : provider === 'cursor' ? s.cursorDefaultModel : undefined;
               return adapter.createSession({
                 ...base,
                 permissionMode: mode,
-                ...(claude && s.defaultModel ? { model: s.defaultModel } : {}),
+                ...(model ? { model } : {}),
                 ...(effort ? { effort } : {}),
               });
             })();

@@ -1098,6 +1098,9 @@ export const en: Ui = {
       name: 'Default model',
       desc: 'For new sessions. Empty — the one set in Claude Code (engine’s choice).',
       placeholder: 'engine’s choice',
+      cursorDesc:
+        'ACP modelId from the model menu of a live session, for example composer-2.5[fast=true] or default[]. Empty — the engine’s choice.',
+      cursorPlaceholder: 'composer-2.5[fast=true]',
     },
     newChat: {
       note: 'Applies to new chats. Resumed sessions keep their settings.',

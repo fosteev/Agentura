@@ -7,6 +7,7 @@
 - **Cursor engine.** An empty tab can run on the Cursor CLI (`agent acp`): streaming replies, Stop, tool and
   permission cards, plan approval, and resume from the sidebar by session id. v1 has no cost or context gauges,
   no MCP toggle, no subagents, and `acceptEdits` does not auto-approve edits. Install the CLI and run `agent login`.
+- **Cursor default model.** Settings → New session has `agentura.cursor.defaultModel` (ACP model id from a live session’s model menu). Empty leaves the engine’s choice; resumed sessions keep the model from history.
 
 ### Fixed
 
