@@ -8,11 +8,12 @@
 <link rel="stylesheet" href="../shared/preview.css">
 <link rel="stylesheet" href="../shared/hud.css">
 <link rel="stylesheet" href="../shared/settings.css">
+<link rel="stylesheet" href="../shared/session-settings.css">
 <link rel="stylesheet" href="../shared/tooltip.css">
 </head>
 <body>
 <div class="preview-bar">
-  <b>Настройки</b>
+  <b>Настройки · новый вариант</b>
   <span class="grp"><button data-set-theme="dark">Тёмная</button><button data-set-theme="light">Светлая</button></span>
   <span class="grp"><button data-set-width="vscode">боковая панель + вкладка</button><button data-set-width="900">900 · вкладка</button><button data-set-width="380">380 · сплит</button><button data-set-width="full">во всю ширину</button></span>
   <a href="../index.html">← оглавление</a>
@@ -40,71 +41,24 @@
 
     <div class="st-body">
       <section class="st-page" id="session">
-      <h2>Новая сессия</h2>
-      <p>Применяется к новым чатам. Восстановленные сессии сохраняют свои настройки.</p>
-      <div class="set on">
-        <span class="nm">Разрешить режим «без разрешений»</span>
-        <span class="ds">Разрешает bypassPermissions для Claude/Antigravity и полный доступ Codex. Сам режим не включается — выбери его в настройках нового чата или в текущей сессии.</span>
-        <span class="key">agentura.allowBypassPermissions · только эта машина</span>
-        <span class="ctl"><span class="tg on danger" role="switch" aria-checked="true"></span></span>
-        <div class="warn"><b>Без разрешений</b> агент правит файлы и запускает любые команды, не спрашивая, — включая удаление и сеть. Включай для изолированной папки или контейнера; на рабочем проекте лучше режим «принимать правки».</div>
+      <div class="ns-heading"><span class="ns-eyebrow">НАСТРОЙКИ ПО УМОЛЧАНИЮ</span><h2>С чего начинается новый чат</h2>
+      <p>Выбери движок и настрой его под себя. Уже начатые чаты сохранят свои параметры.</p></div>
+      <div class="ns-providers" role="tablist" aria-label="Настройки движка">
+        <button type="button" role="tab" id="ns-tab-claude" aria-controls="ns-panel" aria-selected="true" data-provider="claude"><img src="../shared/brands/claude.svg" class="ns-claude" alt=""><strong>Claude</strong><small>Anthropic</small><span class="ns-default">по умолчанию</span></button>
+        <button type="button" role="tab" id="ns-tab-codex" aria-controls="ns-panel" aria-selected="false" tabindex="-1" data-provider="codex"><img src="../shared/brands/openai.svg" class="ns-mono" alt=""><strong>Codex</strong><small>OpenAI</small><span class="ns-default" hidden>по умолчанию</span></button>
+        <button type="button" role="tab" id="ns-tab-cursor" aria-controls="ns-panel" aria-selected="false" tabindex="-1" data-provider="cursor"><img src="../shared/brands/cursor.svg" alt=""><strong>Cursor</strong><small>Cursor</small><span class="ns-default" hidden>по умолчанию</span></button>
+        <button type="button" role="tab" id="ns-tab-antigravity" aria-controls="ns-panel" aria-selected="false" tabindex="-1" data-provider="antigravity"><img src="../shared/brands/antigravity.svg" alt=""><strong>Antigravity</strong><small>Google</small><span class="ns-default" hidden>по умолчанию</span></button>
       </div>
-      <h3 class="st-sub">Claude</h3>
-      <div class="set">
-        <span class="nm">Режим новых сессий<span class="new">новая</span></span>
-        <span class="ds">С каким режимом открывается новая сессия. В открытой сессии режим меняется меню «режим» под полем ввода или ⇧⇥.</span>
-        <span class="key">agentura.defaultPermissionMode</span>
-        <span class="ctl"><span class="dd">manual</span></span>
+      <div id="ns-panel" role="tabpanel" aria-labelledby="ns-tab-claude">
+        <div class="ns-panel-head"><div><h3 id="ns-provider-name">Claude</h3><p id="ns-provider-note">Открывает новые чаты по умолчанию</p></div><button type="button" class="ns-button" id="ns-make-default" hidden>Использовать по умолчанию</button></div>
+        <div id="ns-fields"></div>
       </div>
-      <div class="set">
-        <span class="nm">Модель по умолчанию</span>
-        <span class="ds">Для новых сессий. Пусто — та, что стоит в Claude Code (выбор движка).</span>
-        <span class="key">agentura.defaultModel</span>
-        <span class="ctl"><input class="num" aria-label="Модель по умолчанию Claude" placeholder="выбор движка"></span>
-      </div>
-      <div class="set">
-        <span class="nm">Effort по умолчанию<span class="new">новая</span></span>
-        <span class="ds">Сколько думать перед ответом. Меняется в строке под полем ввода.</span>
-        <span class="key">agentura.defaultEffort</span>
-        <span class="ctl"><span class="dd">high</span></span>
-      </div>
-      <div class="set">
-        <span class="nm">Remote Control для новых сессий<span class="new">новая</span></span>
-        <span class="ds">Каждая новая сессия Claude сразу видна на claude.ai/code и в приложении Claude: оттуда можно писать, отвечать на запросы разрешений и остановить ход. Ходы идут на этой машине. В открытой сессии — кнопка «rc» под полем ввода или /rc.</span>
-        <span class="key">agentura.remoteControl · только движок Claude</span>
-        <span class="ctl"><span class="tg" role="switch" aria-checked="false"></span></span>
-      </div>
-      <div class="set">
-        <span class="nm">Префикс имени в Remote Control</span>
-        <span class="ds">Как сессия называется в списке на claude.ai: «префикс · заголовок сессии». Пусто — имя машины.</span>
-        <span class="key">agentura.remoteControlNamePrefix</span>
-        <span class="ctl"><input class="num wide" aria-label="Префикс имени в Remote Control" placeholder="пусто — имя машины"></span>
-      </div>
-      <h3 class="st-sub">Codex</h3>
-      <div class="set">
-        <span class="nm">Модель по умолчанию</span>
-        <span class="ds">Модели из установленного Codex. Пусто — модель из конфигурации Codex.</span>
-        <span class="key">agentura.codex.defaultModel</span>
-        <span class="ctl"><span class="dd">из конфигурации Codex</span><button class="btn" type="button">Обновить модели</button></span>
-      </div>
-      <div class="set">
-        <span class="nm">Effort по умолчанию</span>
-        <span class="ds">Выбери модель, затем effort из поддерживаемых ею уровней. Пусто — выбор Codex.</span>
-        <span class="key">agentura.codex.defaultEffort</span>
-        <span class="ctl"><span class="dd" aria-disabled="true">из конфигурации Codex</span></span>
-      </div>
-      <div class="set">
-        <span class="nm">Подтверждения Codex</span>
-        <span class="ds">Когда Codex запрашивает разрешение на действие.</span>
-        <span class="key">agentura.codex.defaultApproval</span>
-        <span class="ctl"><span class="dd">из конфигурации Codex</span></span>
-      </div>
-      <div class="set">
-        <span class="nm">Доступ Codex к файлам и командам</span>
-        <span class="ds">Чтение или запись в рабочую папку — без сети. Полный доступ требует разрешить этот режим выше.</span>
-        <span class="key">agentura.codex.defaultSandbox</span>
-        <span class="ctl"><span class="dd">из конфигурации Codex</span></span>
-      </div>
+      <details class="ns-advanced"><summary>Расширенные настройки <span>Полный доступ и ключи конфигурации</span></summary>
+        <label class="ns-toggle-row"><span><strong>Разрешить полный доступ</strong><small>Добавляет режим без подтверждений Claude / Antigravity и полный доступ Codex.</small></span><input id="ns-unlock" type="checkbox" role="switch"></label>
+        <p class="ns-caution">В полном доступе агент может изменять и удалять файлы, запускать команды и обращаться к сети. Включение здесь только добавляет этот вариант в списки выше.</p>
+        <div id="ns-keys"></div>
+      </details>
+      <p class="ns-footer" id="ns-status" role="status">Изменения в этом макете действуют только до перезагрузки страницы.</p>
       </section>
 
       <section class="st-page" id="limits" hidden>
@@ -404,6 +358,7 @@
 <script src="../shared/sidebar.js"></script>
 <script src="../shared/limits.js"></script>
 <script src="../shared/tooltip.js"></script>
+<script src="../shared/session-settings.js"></script>
 <script>
   // разделы — страницы: клик по вкладке или #раздел в адресе (кадры галереи: settings#look)
   function showSection(id) {
