@@ -262,6 +262,18 @@ const ru = {
   },
   // MCP и скиллы в ленте (roadmap 21)
   mcp: {
+    searchServers: 'Найти сервер…',
+    allServers: 'Все',
+    attention: 'Требуют внимания',
+    connectedGroup: 'Подключены',
+    pendingGroup: 'Подключаются',
+    disabledGroup: 'Выключены',
+    noMatches: 'Серверы не найдены',
+    allHealthy: 'Все подключения в порядке',
+    noCalls: 'В этой сессии вызовов ещё нет',
+    projectScope: 'Переключатели действуют в текущем проекте.',
+    serverDetails: (name: string) => `Сведения о сервере ${name}`,
+    connectedSummary: (n: number, total: number) => `${n} из ${total} подключены`,
     chipTip: (server: string) => `MCP-сервер ${server}`,
     // кнопка у поля, всплывашка и вкладка (этап 3)
     button: 'mcp',

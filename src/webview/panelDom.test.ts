@@ -541,9 +541,9 @@ describe('вкладка «mcp» (roadmap 21, этап 3)', () => {
     expect(q(host, '#pane-mcp').hidden).toBe(false);
     expect(q(host, '#pane-mcp').getAttribute('aria-labelledby')).toBe('ptab-mcp');
     expect((stored as { panel: { tab: string } }).panel.tab).toBe('mcp');
-    const rows = [...host.querySelectorAll<HTMLElement>('#pane-mcp .srv[data-name]')];
-    expect(rows.map((r) => r.dataset.name)).toEqual(['serena', 'webstorm', 'sentry']);
-    expect(rows[0]!.textContent).toContain('3'); // вызовов serena
+    const rows = [...host.querySelectorAll<HTMLElement>('#pane-mcp .mcp-server[data-name]')];
+    expect(rows.map((r) => r.dataset.name)).toEqual(['webstorm', 'sentry', 'serena']);
+    expect(rows[2]!.textContent).toContain('3'); // вызовов serena
     // рейл (панель скрыта): иконка mcp с бейджем
     q(host, '.phide').click();
     await flush();
@@ -556,13 +556,13 @@ describe('вкладка «mcp» (roadmap 21, этап 3)', () => {
     const host = mount();
     seed();
     await flush();
-    const sw = q(host, '#pane-mcp .srv[data-name="serena"] button.tg');
+    const sw = q(host, '#pane-mcp .mcp-server[data-name="serena"] button.mcp-switch');
     expect(sw.getAttribute('aria-checked')).toBe('true');
     sw.click();
     expect(vi.mocked(vscode.send)).toHaveBeenCalledWith({ type: 'mcp.toggle', name: 'serena', enabled: false });
     features.value = providerFeatures('codex');
     await flush();
-    const codexSwitch = q(host, '#pane-mcp .srv[data-name="serena"] button.tg');
+    const codexSwitch = q(host, '#pane-mcp .mcp-server[data-name="serena"] button.mcp-switch');
     codexSwitch.click();
     expect(vi.mocked(vscode.send)).toHaveBeenLastCalledWith({ type: 'mcp.toggle', name: 'serena', enabled: false });
   });
@@ -572,12 +572,12 @@ describe('вкладка «mcp» (roadmap 21, этап 3)', () => {
     const host = mount();
     seed();
     await flush();
-    expect(host.querySelector('#pane-mcp .exp')).toBeNull();
-    q(host, '#pane-mcp .srv[data-name="serena"] .nmb').click();
+    expect(host.querySelector('#pane-mcp .mcp-details')).toBeNull();
+    q(host, '#pane-mcp .mcp-server[data-name="serena"] .mcp-server-open').click();
     await flush();
-    expect(q(host, '#pane-mcp .exp').textContent).toBe('find_symbol ×2 · get_symbols_overview ×1');
-    // у сервера без вызовов раскрытия нет
-    expect(host.querySelector('#pane-mcp .srv[data-name="webstorm"] .nmb')).toBeNull();
+    expect(q(host, '#pane-mcp .mcp-details').textContent).toContain('find_symbol ×2get_symbols_overview ×1');
+    // ошибки тоже раскрываются, даже без вызовов
+    expect(host.querySelector('#pane-mcp .mcp-server[data-name="webstorm"] .mcp-server-open')).not.toBeNull();
   });
 
   it('вкладки нет до статуса, при выключенной настройке и у движка без features.mcp; сохранённое «mcp» уступает «изменениям»', async () => {

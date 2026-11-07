@@ -258,6 +258,18 @@ export const en: Ui = {
   },
   // MCP and skills in the feed (roadmap 21)
   mcp: {
+    searchServers: 'Find a server…',
+    allServers: 'All',
+    attention: 'Needs attention',
+    connectedGroup: 'Connected',
+    pendingGroup: 'Connecting',
+    disabledGroup: 'Disabled',
+    noMatches: 'No matching servers',
+    allHealthy: 'All connections are healthy',
+    noCalls: 'No calls in this session yet',
+    projectScope: 'Switches apply to the current project.',
+    serverDetails: (name: string) => `Details for ${name}`,
+    connectedSummary: (n: number, total: number) => `${n} of ${total} connected`,
     chipTip: (server: string) => `MCP server ${server}`,
     // composer button, popover and panel tab (stage 3)
     button: 'mcp',

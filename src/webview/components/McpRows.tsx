@@ -5,7 +5,7 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import type { McpServerInfo } from '../../agent/types';
 import { addSys } from '../chatState';
-import { canOpenSkill, sessionSkills, type McpUsage, type SessionSkill } from '../mcpFeed';
+import { canOpenSkill, isBadServer, sessionSkills, type McpUsage, type SessionSkill } from '../mcpFeed';
 import { loginCommand, mcpCounts, sourceLabel, usageByServer } from '../mcpView';
 import { capabilities, chat, features, provider, skillFiles } from '../store';
 import { ui } from '../strings';
@@ -72,7 +72,9 @@ export function McpServerRow({
   onSwitch,
   expanded,
   onToggle,
+  pane = false,
 }: {
+  pane?: boolean;
   server: McpServerInfo;
   usage?: McpUsage | undefined;
   engine: string | undefined;
@@ -100,6 +102,39 @@ export function McpServerRow({
   const src = s.builtin ? undefined : sourceLabel(s.scope);
   const switchable = !!canSwitch && !s.builtin && !(engine === 'codex' && s.scope === 'plugin');
   const expandable = !!onToggle && calls > 0;
+  if (pane) {
+    const switchTip = engine === 'codex'
+      ? ui.mcp.toggleCodexTip(s.name, disabled)
+      : disabled ? ui.mcp.toggleOnTip(s.name) : ui.mcp.toggleOffTip(s.name);
+    return (
+      <section class="mcp-server" data-name={s.name} data-status={s.status}>
+        <div class="mcp-server-top">
+          <button type="button" class="mcp-server-open" aria-expanded={!!expanded}
+            aria-label={ui.mcp.serverDetails(s.name)} onClick={onToggle}>
+            <span class={`mcp-dot ${dotClass(s)}`} aria-hidden="true" />
+            <span><b>{s.name}</b><small>
+              {s.status === 'connected' ? (tools || ui.mcp.status.connected) : ui.mcp.status[s.status]}
+              {s.status === 'connected' && ` · ${calls} ${ui.mcp.calls(calls)}`}
+              {(s.builtin || src) && ` · ${s.builtin ? ui.mcp.builtin : src}`}
+            </small></span>
+            <span class="mcp-chevron" aria-hidden="true">›</span>
+          </button>
+          {switchable && <button type="button" class="mcp-switch" role="switch"
+            aria-checked={!disabled} aria-label={switchTip} data-tip={switchTip}
+            onClick={() => onSwitch?.(s.name, disabled)} />}
+        </div>
+        {expanded && <div class="mcp-details">
+          {s.version && <p>{ui.mcp.version(s.version)}</p>}
+          {err && <p class="err">{err}</p>}
+          {s.status === 'failed' && canReconnect && <button type="button" class="mcp-action"
+            onClick={() => onReconnect(s.name)}>{ui.mcp.reconnect}</button>}
+          {s.status === 'needs-auth' && <LoginHint name={s.name} engine={engine} />}
+          {usage?.total ? [...usage.tools].map(([tool, n]) => <p key={tool}><code>{tool}</code> ×{n}</p>)
+            : <p>{ui.mcp.noCalls}</p>}
+        </div>}
+      </section>
+    );
+  }
   const nm = (
     <>
       {s.name}
@@ -262,14 +297,84 @@ export function McpSections({ variant, idle }: { variant: 'pop' | 'pane'; idle?:
     [idle, f.skills, rows, s.skills],
   );
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
+  const [query, setQuery] = useState('');
+  const [attentionOnly, setAttentionOnly] = useState(false);
   if (!servers) return null;
   const c = mcpCounts(servers);
   const pane = variant === 'pane';
   const toggle = (name: string) => {
-    const next = new Set(open);
-    if (!next.delete(name)) next.add(name);
-    setOpen(next);
+    setOpen((current) => {
+      const next = new Set(current);
+      if (!next.delete(name)) next.add(name);
+      return next;
+    });
   };
+  const skillsContent = (f.skills && (
+        <>
+          {!pane && <hr />}
+          <h5 class={pane ? 'sk-head' : undefined}>
+            {pane ? ui.mcp.skillsPaneHead : ui.mcp.skillsHead}
+            <em>{pane ? ui.mcp.usedOf(used.length, availableCount) : ui.mcp.available(availableCount)}</em>
+          </h5>
+          {used.length === 0 && <div class="srv dim">{ui.mcp.noSkillsUsed}</div>}
+          {used.map((k) => (
+            <McpSkillRow
+              key={k.name}
+              skill={k}
+              canOpen={canOpenSkill(k.name, skillFiles.value)}
+              onOpen={openSkill}
+            />
+          ))}
+          {nativeSkills.map((skill) => <div class="srv" key={skill.skillPath}>
+            <span title={skill.skillPath}>{skill.name}</span>
+            <button type="button" class="act" title={skill.skillPath} onClick={() => send({ type: 'skill.open', name: skill.name, path: skill.skillPath })}>SKILL.md</button>
+          </div>)}
+          <McpAllSkills names={s.skills} label={pane ? ui.mcp.allSkillsPane : ui.mcp.allSkills} />
+        </>
+      ));
+  if (pane) {
+    const visible = servers.filter((sv) => sv.name.toLowerCase().includes(query.trim().toLowerCase())
+      && (!attentionOnly || isBadServer(sv)));
+    const groups = [
+      { label: ui.mcp.attention, items: visible.filter(isBadServer) },
+      { label: ui.mcp.connectedGroup, items: visible.filter((sv) => sv.status === 'connected') },
+      { label: ui.mcp.pendingGroup, items: visible.filter((sv) => sv.status === 'pending') },
+      { label: ui.mcp.disabledGroup, items: visible.filter((sv) => sv.status === 'disabled') },
+    ];
+    const toolsKnown = servers.filter((sv) => sv.status === 'connected').every((sv) => sv.tools !== undefined);
+    const toolCount = servers.reduce((n, sv) => n + (sv.status === 'connected' ? sv.tools ?? 0 : 0), 0);
+    return <div class="mcp-workspace">
+      <header class="mcp-head">
+        <span class="eyebrow">{s.project}{s.project && ' / '}{engine}</span>
+        <div class="mcp-title"><h2>{ui.mcp.menuTitle}</h2>
+          <button type="button" class="mcp-action" aria-label={ui.mcp.refresh} data-tip={ui.mcp.refresh}
+            onClick={() => send({ type: 'mcp.refresh' })}>↻</button>
+        </div>
+        <p><strong>{ui.mcp.connectedSummary(c.n, servers.length)}</strong>{toolsKnown && ` · ${ui.mcp.tools(toolCount)}`}</p>
+        {f.mcpReloadAll && <button type="button" class="mcp-action" data-tip={ui.mcp.reloadAllTip}
+          onClick={() => send({ type: 'mcp.reloadAll' })}>{ui.mcp.reloadAll}</button>}
+      </header>
+      <label class="mcp-search"><input type="search" value={query} placeholder={ui.mcp.searchServers}
+        aria-label={ui.mcp.searchServers} onInput={(e) => setQuery(e.currentTarget.value)} /></label>
+      <div class="mcp-filters">
+        <button type="button" aria-pressed={!attentionOnly} onClick={() => setAttentionOnly(false)}>{ui.mcp.allServers} {servers.length}</button>
+        <button type="button" aria-pressed={attentionOnly} onClick={() => setAttentionOnly(true)}>{ui.mcp.attention} {c.bad}</button>
+      </div>
+      <div class="mcp-results">
+        {groups.filter((g) => g.items.length).map((g) => <section key={g.label}>
+          <div class="mcp-group-title">{g.label} · {g.items.length}</div>
+          {g.items.map((sv) => <McpServerRow key={sv.name} pane server={sv} usage={usage.get(sv.name)} engine={engine}
+            canReconnect={f.mcpReconnect} onReconnect={reconnect} canSwitch={f.mcpToggle} onSwitch={switchServer}
+            expanded={open.has(sv.name)} onToggle={() => toggle(sv.name)} />)}
+        </section>)}
+        {!visible.length && <p class="mcp-empty" role="status">{!servers.length ? ui.mcp.noServers : query.trim() ? ui.mcp.noMatches : ui.mcp.allHealthy}</p>}
+      </div>
+      {(f.skills || f.mcpToggle) && <footer class="mcp-footer">
+        {f.skills && <details><summary>{ui.mcp.skillsPaneHead} · {used.length}</summary>{skillsContent}</details>}
+        {f.mcpToggle && <p>{ui.mcp.projectScope}</p>}
+      </footer>}
+    </div>;
+  }
   return (
     <>
       <h5>
@@ -311,29 +416,7 @@ export function McpSections({ variant, idle }: { variant: 'pop' | 'pane'; idle?:
           {...(pane ? { expanded: open.has(sv.name), onToggle: () => toggle(sv.name) } : {})}
         />
       ))}
-      {f.skills && (
-        <>
-          {!pane && <hr />}
-          <h5 class={pane ? 'sk-head' : undefined}>
-            {pane ? ui.mcp.skillsPaneHead : ui.mcp.skillsHead}
-            <em>{pane ? ui.mcp.usedOf(used.length, availableCount) : ui.mcp.available(availableCount)}</em>
-          </h5>
-          {used.length === 0 && <div class="srv dim">{ui.mcp.noSkillsUsed}</div>}
-          {used.map((k) => (
-            <McpSkillRow
-              key={k.name}
-              skill={k}
-              canOpen={canOpenSkill(k.name, skillFiles.value)}
-              onOpen={openSkill}
-            />
-          ))}
-          {nativeSkills.map((skill) => <div class="srv" key={skill.skillPath}>
-            <span title={skill.skillPath}>{skill.name}</span>
-            <button type="button" class="act" title={skill.skillPath} onClick={() => send({ type: 'skill.open', name: skill.name, path: skill.skillPath })}>SKILL.md</button>
-          </div>)}
-          <McpAllSkills names={s.skills} label={pane ? ui.mcp.allSkillsPane : ui.mcp.allSkills} />
-        </>
-      )}
+      {skillsContent}
     </>
   );
 }
