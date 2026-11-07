@@ -336,6 +336,11 @@
           "default": "",
           "description": "%config.cursor.defaultModel.description%"
         },
+        "agentura.antigravity.defaultModel": {
+          "type": "string",
+          "default": "",
+          "description": "%config.antigravity.defaultModel.description%"
+        },
         "agentura.codex.defaultApproval": {
           "type": "string",
           "enum": ["", "untrusted", "on-request", "never"],
@@ -347,6 +352,12 @@
           "enum": ["", "low", "medium", "high", "xhigh", "max"],
           "default": "",
           "description": "%config.codex.defaultEffort.description%"
+        },
+        "agentura.antigravity.defaultEffort": {
+          "type": "string",
+          "enum": ["", "low", "medium", "high"],
+          "default": "",
+          "description": "%config.antigravity.defaultEffort.description%"
         },
         "agentura.codex.defaultSandbox": {
           "type": "string",

@@ -1,11 +1,15 @@
+import { spawn } from 'node:child_process';
+import { realpathSync } from 'node:fs';
+import { AcpRpcClient, AcpRpcError, MAX_LINE_BYTES, PERMISSION_METHOD, type RpcId, type RpcProcess } from '../acp/client';
+import { EventHub } from '../stream';
 import type {
   AccountInfo,
-  AgentAdapter,
   AgentEvent,
   AgentEventOf,
+  AgentAdapter,
   AgentSession,
+  DiffPreview,
   EffortLevel,
-  ModelOption,
   PermissionMode,
   PromptFile,
   PromptImage,
@@ -15,25 +19,47 @@ import type {
   SessionInfo,
   SessionOptions,
 } from '../types';
-import { realpath } from 'node:fs/promises';
-import { EventHub } from '../stream';
-import type { LogFn } from '../claude/adapter';
-import { editResultOf } from './edits';
-import { AGY_NOT_FOUND } from './executable';
-import { AgyEventMapper, type NotedPrompt } from './mapper';
-import { DEFAULT_AGY_MODEL, listAgyModels } from './models';
+import { AgyAcpMapper, toolInput, toolName } from './acpMapper';
 import {
-  AgyProcess,
-  defaultAgySpawn,
-  type AgyChild,
-  type AgyExit,
-  type AgyProcessOptions,
-  type AgySpawn,
-} from './process';
-import { userInputLine, type AgyEvent } from './protocol';
-import { buildAgyHistory, userRequestText } from './history';
-import { AgySessionIndex, type AgyStateStore } from './sessionIndex';
-import { defaultAgyRoot, readConversationSummaries, readTranscriptHistory } from './storage';
+  AGY_CLIENT_CAPABILITIES,
+  AGY_PROTOCOL_VERSION,
+  ELICITATION_METHOD,
+  agentVersionOf,
+  agyModeId,
+  currentModeId,
+  elicitationDecline,
+  formatElicitationAnswer,
+  isEffort,
+  mergeConfig,
+  modelOptionsFrom,
+  normalizeModel,
+  parseConfig,
+  parseElicitation,
+  permissionModeOf,
+  permissionRefusal,
+  promptBlocks,
+  record,
+  sessionIdOf,
+  tierNameOf,
+  type AgyConfig,
+  type ParsedElicitation,
+} from './acpProtocol';
+import { AGY_NOT_FOUND } from './executable';
+import { buildAgyHistory } from './history';
+import { AgySessionIndex, type AgySessionSettings, type AgyStateStore } from './sessionIndex';
+import { mapAgyTool } from './tools';
+
+export interface AgyAcpProcess extends RpcProcess {
+  kill(signal?: NodeJS.Signals): boolean;
+}
+
+export interface AgySpawnOptions {
+  cwd: string;
+  env: NodeJS.ProcessEnv;
+  shell: false;
+}
+
+export type LogFn = (level: 'debug' | 'info' | 'warn' | 'error', message: string) => void;
 
 export interface AntigravityAdapterConfig {
   /** Путь к `agy` (`antigravityEngine.path()`); нет пути — `createSession` бросает «не найден». */
@@ -41,146 +67,188 @@ export interface AntigravityAdapterConfig {
   log?: LogFn;
   /** База окружения процесса; по умолчанию `process.env` целиком (вход agy живёт в `~/.gemini`). */
   env?: NodeJS.ProcessEnv;
-  /** Версия `agy` для `session.init.engineVersion` (из локатора). */
+  /** Версия `agy` для `session.init.engineVersion` (из локатора); нет — `agentInfo.version` из `initialize`. */
   engineVersion?: string | (() => string | undefined);
-  /** Сколько ждать выхода процесса после SIGINT/закрытия stdin, прежде чем убить, мс. */
-  graceMs?: number;
-  /** Лимит строки stdout, символов. */
-  maxLineBytes?: number;
-  /** Подмена запуска процесса в тестах. */
-  spawn?: AgySpawn;
-  /** Подмена `ps` и kill потомков в тестах. */
-  listProcesses?: AgyProcessOptions['listProcesses'];
-  killPid?: AgyProcessOptions['killPid'];
-  /** Подмена `agy models` в тестах. */
-  listModels?: (path: string) => Promise<ModelOption[]>;
-  /** Корень хранилища agy (диффы правок из `transcript_full.jsonl`); по умолчанию `~/.gemini/antigravity-cli`. Только чтение. */
-  agyRoot?: string;
-  /** Повторы чтения транскрипта правки (agy может дописать его позже DONE шага) и пауза между ними, мс. */
-  transcriptRetries?: number;
-  transcriptDelayMs?: number;
-  /** Общий предел подгрузки диффа одной правки, мс (по умолчанию 2000): не успели — карточка без диффа, лента не стоит. */
-  editTimeoutMs?: number;
-  /** Хранилище Agentura (`globalState`) для своих имён бесед и индекса бесед; нет — только в памяти процесса. */
+  clientVersion?: string;
+  /** Хранилище Agentura (`globalState`): пользовательские имена сессий (`renameSession`). */
   state?: AgyStateStore;
-  /** Сырые события agy (smoke, запись фикстур). */
-  trace?: (event: AgyEvent) => void;
+  /** Подмена запуска процесса в тестах. */
+  spawn?: (path: string, args: string[], options: AgySpawnOptions) => AgyAcpProcess;
+  timeoutMs?: number;
+  /** `stdin.end()` → пауза (беседа сохраняется при штатном закрытии) → SIGTERM → ещё пауза → SIGKILL. */
+  graceMs?: number;
+  /** Сколько Stop ждёт `stopReason`, прежде чем закрыть зависший транспорт. */
+  interruptWaitMs?: number;
 }
 
-/** Режимы Agentura → флаги agy. `bypassPermissions` — только по явному разрешению (настройка), иначе как `default`. */
-export function modeArgs(mode: PermissionMode): string[] {
-  switch (mode) {
-    case 'acceptEdits':
-      return ['--mode', 'accept-edits'];
-    case 'plan':
-      return ['--mode', 'plan'];
-    case 'bypassPermissions':
-      return ['--dangerously-skip-permissions'];
-    default:
-      return [];
+const DEFAULT_GRACE_MS = 2000;
+const INTERRUPT_WAIT_MS = 10_000;
+/** Тариф аккаунта меняется редко; `session/new` ради него — отдельный процесс `agy acp`. */
+const ACCOUNT_TTL_MS = 10 * 60_000;
+
+function defaultSpawn(path: string, args: string[], options: AgySpawnOptions): AgyAcpProcess {
+  return spawn(path, args, {
+    cwd: options.cwd,
+    env: options.env,
+    stdio: ['pipe', 'pipe', 'pipe'],
+    shell: false,
+    windowsHide: true,
+  }) as unknown as AgyAcpProcess;
+}
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function matchesCwd(itemCwd: string, targetDir: string): boolean {
+  if (itemCwd === targetDir) return true;
+  try {
+    const realTarget = realpathSync(targetDir);
+    if (itemCwd === realTarget) return true;
+    try {
+      const realItem = realpathSync(itemCwd);
+      if (realItem === realTarget || realItem === targetDir) return true;
+    } catch {
+      // item path doesn't exist
+    }
+  } catch {
+    // targetDir doesn't exist
   }
-}
-
-/** Служебный текст повтора после отказа: уходит агенту без пузыря пользователя в ленте. */
-export const AGY_RETRY_PROMPT =
-  'The permission you were missing is now granted. Retry the action(s) that were just denied, then continue the task.';
-
-/** Режимы, в которых можно повторить отказ: правки или всё (`bypassPermissions` — только если разрешён настройкой). */
-export type AgyRetryMode = Extract<PermissionMode, 'acceptEdits' | 'bypassPermissions'>;
-
-/**
- * Что сверх `AgentSession` умеет сессия agy (карточка отказа, этап 4): повторить с другим режимом. Не часть
- * общего интерфейса — проверять `isAgySession`.
- */
-export interface AgyRetrySession extends AgentSession {
-  /** `setMode(mode)` (процесс пересоздастся с `--conversation`) и служебное сообщение-повтор; `false` — режим не разрешён или сессия закрыта. */
-  retryWithMode(mode: AgyRetryMode): Promise<boolean>;
-}
-
-export function isAgySession(session: AgentSession): session is AgyRetrySession {
-  return typeof (session as Partial<AgyRetrySession>).retryWithMode === 'function';
-}
-
-/** Заголовок в одну строку: переводы строк и повторные пробелы схлопываем, длинное обрезаем. */
-function tidy(text: string): string {
-  const flat = text.replace(/\s+/g, ' ').trim();
-  return flat.length > 200 ? `${flat.slice(0, 199)}…` : flat;
-}
-
-/** Совпадение пути воркспейса беседы с папкой чата: точное (без слеша на конце; на Windows — без регистра), в т.ч. по realpath. */
-async function workspaceMatcher(dir: string): Promise<(path: string) => boolean> {
-  const norm = (p: string): string => {
-    const trimmed = p.length > 1 ? p.replace(/[\\/]+$/, '') : p;
-    return process.platform === 'win32' ? trimmed.toLowerCase() : trimmed;
-  };
-  const wanted = new Set([norm(dir)]);
-  const real = await realpath(dir).catch(() => undefined);
-  if (real) wanted.add(norm(real));
-  return (path) => wanted.has(norm(path));
+  return false;
 }
 
 export class AntigravityAdapter implements AgentAdapter {
   readonly id = 'antigravity';
-  private modelsCache: Promise<ModelOption[]> | undefined;
+  private readonly index: AgySessionIndex;
+  private tier: { name: string | undefined; at: number } | undefined;
+  private accountLoad: Promise<AccountInfo> | undefined;
 
   constructor(private readonly config: AntigravityAdapterConfig = {}) {
     this.index = new AgySessionIndex(config.state);
   }
 
   async createSession(options: SessionOptions): Promise<AgentSession> {
-    return new AgySession(this.config, await this.executable(), options, () => this.models(), undefined, this.index);
+    return new AgySession(this.config, await this.executable(), options, (name) => this.noteTier(name), this.index);
   }
 
   async resumeSession(sessionId: string, options: ResumeOptions): Promise<AgentSession> {
-    return new AgySession(this.config, await this.executable(), options, () => this.models(), sessionId, this.index);
+    return new AgySession(this.config, await this.executable(), { ...options, ...this.index.settingsOf(sessionId) }, (name) => this.noteTier(name), this.index, sessionId);
   }
 
-  private readonly index: AgySessionIndex;
-
-  /** Список бесед папки: `conversation_summaries.db` (если есть `node:sqlite`) плюс начатые из Agentura (индекс). */
+  /**
+   * Список сессий проекта: `session/list` через кратковременный `agy acp` с фильтрацией по `cwd` (с учётом realpath)
+   * и наложением пользовательских имён из `sessionIndex`.
+   */
   async listSessions(dir: string): Promise<SessionInfo[]> {
-    const root = this.config.agyRoot ?? defaultAgyRoot();
-    const match = await workspaceMatcher(dir);
-    const byId = new Map<string, SessionInfo>();
-    for (const row of (await readConversationSummaries(root, this.config.log)) ?? []) {
-      if (!row.workspaces.some(match)) continue;
-      const preview = tidy(userRequestText(row.preview));
-      const info: SessionInfo = { id: row.id, title: tidy(row.title) || preview || row.id, cwd: dir, updatedAt: row.lastModified };
-      if (preview) info.firstPrompt = preview;
-      byId.set(row.id, info);
+    let executable: string;
+    try {
+      executable = await this.executable();
+    } catch {
+      return [];
     }
-    for (const entry of this.index.entries()) {
-      if (!match(entry.cwd)) continue;
-      const known = byId.get(entry.id);
-      if (known) {
-        known.createdAt = entry.createdAt;
-        continue;
+    try {
+      const result = await this.acp(executable, dir, async (client) => {
+        await client.request('initialize', initializeParams(this.config));
+        return client.request('session/list', { cwd: dir });
+      });
+      const list = record(result)?.sessions;
+      if (!Array.isArray(list)) return [];
+      const out: SessionInfo[] = [];
+      for (const item of list) {
+        const row = record(item);
+        const id = typeof row?.sessionId === 'string' ? row.sessionId : undefined;
+        const cwd = typeof row?.cwd === 'string' ? row.cwd : undefined;
+        if (!id || !cwd || !matchesCwd(cwd, dir)) continue;
+        const title = this.index.nameOf(id) ?? (typeof row?.title === 'string' && row.title.trim() ? row.title.trim() : id);
+        const updatedAt = typeof row?.updatedAt === 'string' ? Date.parse(row.updatedAt) : 0;
+        out.push({
+          id,
+          title,
+          cwd: dir,
+          updatedAt: Number.isFinite(updatedAt) ? updatedAt : 0,
+          provider: 'antigravity',
+        });
       }
-      const info: SessionInfo = { id: entry.id, title: entry.firstPrompt || entry.id, cwd: dir, createdAt: entry.createdAt, updatedAt: entry.updatedAt };
-      if (entry.firstPrompt) info.firstPrompt = entry.firstPrompt;
-      byId.set(entry.id, info);
+      out.sort((a, b) => b.updatedAt - a.updatedAt);
+      return out;
+    } catch (error) {
+      this.config.log?.('warn', `agy: listSessions failed: ${errorText(error)}`);
+      return [];
     }
-    for (const info of byId.values()) info.title = this.index.nameOf(info.id) ?? info.title;
-    return [...byId.values()].sort((a, b) => b.updatedAt - a.updatedAt);
   }
 
-  async loadHistory(sessionId: string, _cwd: string, options: { live?: boolean; maxTurns?: number } = {}): Promise<SessionHistory> {
-    const { steps, skippedTurns } = await readTranscriptHistory(this.config.agyRoot ?? defaultAgyRoot(), sessionId, this.config.log);
-    return buildAgyHistory(steps, {
-      silentPrompts: [AGY_RETRY_PROMPT],
-      skippedBefore: skippedTurns,
-      ...(options.live !== undefined ? { live: options.live } : {}),
-      ...(options.maxTurns !== undefined ? { maxTurns: options.maxTurns } : {}),
-    });
+  /** Реконструкция истории: вызов `session/load` в кратковременном `agy acp` и сборка событий `AgentEvent[]`. */
+  async loadHistory(
+    sessionId: string,
+    cwd: string,
+    options: { live?: boolean; tasksAlive?: boolean; maxTurns?: number; stopBefore?: string } = {},
+  ): Promise<SessionHistory> {
+    const executable = await this.executable();
+    try {
+      const loaded = await this.acp(executable, cwd, async (client, updates) => {
+        await client.request('initialize', initializeParams(this.config));
+        const result = await client.request('session/load', { sessionId, cwd, mcpServers: [] });
+        return { updates: [...updates], result };
+      });
+      const history = buildAgyHistory(loaded.updates, loaded.result, {
+        ...(options.live ? { live: true } : {}),
+        ...(options.maxTurns !== undefined ? { maxTurns: options.maxTurns } : {}),
+      });
+      const saved = this.index.settingsOf(sessionId);
+      if (saved?.model) history.model = saved.model;
+      if (saved) history.mode = saved.permissionMode;
+      return history;
+    } catch (error) {
+      this.config.log?.('warn', `agy: session/load failed: ${errorText(error)}`);
+      return { events: [], turns: 0, skippedTurns: 0 };
+    }
   }
 
-  /** У agy API переименования нет: имя хранит Agentura (`~/.gemini` только читаем). */
-  async renameSession(sessionId: string, title: string): Promise<void> {
+  /** Сохранение пользовательского имени сессии в `sessionIndex`. */
+  async renameSession(sessionId: string, title: string, cwd?: string): Promise<void> {
+    void cwd;
     await this.index.rename(sessionId, title);
   }
 
-  async accountInfo(): Promise<AccountInfo> {
-    return {};
+  /**
+   * Тариф из `_meta.antigravity.tier.name` (`session/new`): сессия, уже прошедшая handshake, отдаёт его бесплатно,
+   * иначе — короткий `agy acp`, закрываемый штатно по `stdin.end()`. Пустая сессия в историю agy не попадает.
+   * Нет бинарника или сбой — `{}`.
+   */
+  async accountInfo(cwd: string): Promise<AccountInfo> {
+    const cached = this.tier;
+    if (cached && Date.now() - cached.at < ACCOUNT_TTL_MS) return accountOf(cached.name);
+    if (this.accountLoad) return this.accountLoad;
+    const load = this.loadAccount(cwd).finally(() => {
+      if (this.accountLoad === load) this.accountLoad = undefined;
+    });
+    this.accountLoad = load;
+    return load;
+  }
+
+  private noteTier(name: string | undefined): void {
+    if (name) this.tier = { name, at: Date.now() };
+  }
+
+  private async loadAccount(cwd: string): Promise<AccountInfo> {
+    let executable: string;
+    try {
+      executable = await this.executable();
+    } catch {
+      return {};
+    }
+    try {
+      const result = await this.acp(executable, cwd, async (client) => {
+        await client.request('initialize', initializeParams(this.config));
+        return client.request('session/new', { cwd, mcpServers: [] });
+      });
+      const name = tierNameOf(result);
+      this.noteTier(name);
+      return accountOf(name);
+    } catch (error) {
+      this.config.log?.('warn', `agy: account info failed: ${errorText(error)}`);
+      return {};
+    }
   }
 
   private async executable(): Promise<string> {
@@ -190,25 +258,65 @@ export class AntigravityAdapter implements AgentAdapter {
     return path;
   }
 
-  /** Модели из `agy models`: один запрос на процесс расширения; сбой или пустой ответ не кэшируем. */
-  private models(): Promise<ModelOption[]> {
-    if (!this.modelsCache) {
-      const run = async (): Promise<ModelOption[]> => {
-        try {
-          const path = await this.executable();
-          const models = await (this.config.listModels ?? listAgyModels)(path);
-          if (models.length === 0) this.modelsCache = undefined;
-          return models;
-        } catch (error) {
-          this.config.log?.('warn', `agy models failed: ${error instanceof Error ? error.message : String(error)}`);
-          this.modelsCache = undefined;
-          return [];
-        }
-      };
-      this.modelsCache = run();
+  /** Короткий `agy acp`: один сценарий, затем тот же штатный shutdown, что у сессии. */
+  private async acp<T>(
+    executable: string,
+    cwd: string,
+    fn: (client: AcpRpcClient, updates: unknown[]) => Promise<T>,
+  ): Promise<T> {
+    const proc = (this.config.spawn ?? defaultSpawn)(executable, ['acp'], {
+      cwd,
+      env: this.config.env ?? process.env,
+      shell: false,
+    });
+    let exited = false;
+    proc.on('exit', () => (exited = true));
+    const updates: unknown[] = [];
+    const client: AcpRpcClient = new AcpRpcClient(proc, {
+      engine: 'Antigravity',
+      timeoutMs: this.config.timeoutMs ?? 120_000,
+      maxLineBytes: MAX_LINE_BYTES,
+      onNotification: (method, params) => {
+        if (method !== 'session/update') return;
+        const update = record(params)?.update;
+        if (update !== undefined) updates.push(update);
+      },
+      onServerRequest: (id: RpcId, method: string, params: unknown): boolean =>
+        answerServerRequest(client, id, method, params),
+      onStderr: (line) => this.config.log?.('debug', `agy: ${line}`),
+    });
+    try {
+      return await fn(client, updates);
+    } finally {
+      client.dispose();
+      shutdownAgy(proc, this.config.graceMs ?? DEFAULT_GRACE_MS, () => exited);
     }
-    return this.modelsCache;
   }
+}
+
+function accountOf(name: string | undefined): AccountInfo {
+  return name ? { subscriptionType: name } : {};
+}
+
+function initializeParams(config: AntigravityAdapterConfig): Record<string, unknown> {
+  return {
+    protocolVersion: AGY_PROTOCOL_VERSION,
+    clientCapabilities: AGY_CLIENT_CAPABILITIES,
+    clientInfo: { name: 'agentura', version: config.clientVersion ?? '0.0.0' },
+  };
+}
+
+/** Серверные запросы в кратковременных процессах (`loadAccount`, `listSessions`): безопасный отказ. */
+function answerServerRequest(client: AcpRpcClient, id: RpcId, method: string, params: unknown): boolean {
+  if (method === PERMISSION_METHOD) {
+    client.respond(id, permissionRefusal(params));
+    return true;
+  }
+  if (method === ELICITATION_METHOD) {
+    client.respond(id, elicitationDecline());
+    return true;
+  }
+  return false;
 }
 
 interface Deferred {
@@ -216,6 +324,7 @@ interface Deferred {
   resolve(): void;
   readonly settled: boolean;
 }
+
 function deferred(): Deferred {
   let resolve!: () => void;
   let settled = false;
@@ -223,6 +332,7 @@ function deferred(): Deferred {
   return {
     promise,
     resolve: () => {
+      if (settled) return;
       settled = true;
       resolve();
     },
@@ -232,122 +342,125 @@ function deferred(): Deferred {
   };
 }
 
-function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 /**
- * Сессия = долгоживущий `agy` на диалог: ходы — строки в stdin, по одной за раз (следующая уходит после
- * `result` предыдущей, очередь на нашей стороне). Stop, смена модели или режима — пересоздание процесса с
- * `--conversation <id>` лениво, к следующему `send`: у agy нет управляющих сообщений, прервать ход можно
- * только SIGINT, и он завершает процесс.
+ * Сессия = один живой `agy acp` на вкладку: ходы — `session/prompt` по одному (очередь на нашей стороне), Stop —
+ * уведомление `session/cancel` без убийства процесса, закрытие — `stdin.end()` (беседа сохраняется) и жёсткий выход
+ * по таймауту. Разрешения — `session/request_permission` → `permission.request`; вопросы — `elicitation/create` → `question.request`.
  */
-class AgySession implements AgyRetrySession {
+class AgySession implements AgentSession {
   readonly events: EventHub<AgentEvent>;
-  private readonly mapper = new AgyEventMapper();
+  private readonly mapper = new AgyAcpMapper();
   private readonly log: LogFn;
+  private readonly proc: AgyAcpProcess;
+  private readonly client: AcpRpcClient;
+  private readonly ready: Promise<void>;
+  private readonly queue: { text: string; images: readonly PromptImage[] }[] = [];
   private readonly cwd: string;
-  private readonly resumedId: string | undefined;
+  private permissionMode: PermissionMode;
   private readonly allowBypass: boolean;
-  private readonly queue: { prompt: NotedPrompt }[] = [];
-  /** События agy, ждущие асинхронной подгрузки диффа: порядок ленты не нарушаем (`inflight` > 0 — всё идёт через `tail`). */
-  private inflight = 0;
-  private tail: Promise<void> = Promise.resolve();
-  /** Закрытие сессии обрывает повторы чтения транскрипта. */
-  private readonly aborter = new AbortController();
-  private model: string;
-  private mode: PermissionMode;
+  private readonly graceMs: number;
+  private readonly interruptWaitMs: number;
+  /** Режим, который сейчас принял сервер (`current_mode_update` отстаёт от запросов — ему не верим). */
+  private serverMode = 'default';
+  private config: AgyConfig = { combinedIds: [] };
+  /** Желаемый уровень: шлём, только когда он есть среди актуальных `thought_level`; после смены модели — досылаем. */
   private effort: EffortLevel | undefined;
-  private proc: AgyProcess | undefined;
-  /** Процесс, который мы сами останавливаем (Stop, смена модели/режима, dispose): его выход не авария. */
-  private stopping = new WeakSet<AgyProcess>();
-  /** Модель или режим сменились: процесс пересоздаётся перед следующим ходом. */
-  private stale = false;
+  private sessionId = '';
+  private agentVersion: string | undefined;
   private closed = false;
-  private initEmitted = false;
-  /** Первое сообщение новой беседы — для индекса Agentura (запасной список без `node:sqlite`). */
-  private firstPrompt: string | undefined;
+  /** Пока handshake не кончился, `session/update` не живой ход. */
+  private loading = true;
   private draining = false;
-  /** Растёт на каждый `interrupt()`: сообщения, взятые из очереди до него, процессу не уходят. */
+  private procExited = false;
+  /** Растёт на каждый `interrupt()`: сообщение, взятое до него, в `session/prompt` не уходит. */
   private generation = 0;
-  private turn: { done: Deferred } | undefined;
-  /** Идёт остановка процесса по Stop: следующий ход ждёт её, а не пишет в умирающий agy. */
-  private halting: Promise<void> | undefined;
+  private turn: { done: Deferred; startedAt: number } | undefined;
+  /** `session/set_*` идут строго по очереди: ответ на смену модели нужен для решения про `thought_level`. */
+  private settings: Promise<unknown> = Promise.resolve();
+
+  private readonly pendingPermissions = new Map<string, { id: RpcId; toolUseId: string }>();
+  private readonly pendingQuestions = new Map<string, { id: RpcId; toolUseId: string; parsed: ParsedElicitation }>();
 
   constructor(
-    private readonly config: AntigravityAdapterConfig,
-    private readonly executable: string,
-    options: SessionOptions | ResumeOptions,
-    private readonly loadModels: () => Promise<ModelOption[]>,
-    resume: string | undefined,
+    private readonly config0: AntigravityAdapterConfig,
+    executable: string,
+    options: SessionOptions,
+    private readonly onTier: (name: string | undefined) => void,
     private readonly index: AgySessionIndex,
+    private readonly resumeId?: string,
   ) {
-    this.log = config.log ?? (() => {});
+    this.log = config0.log ?? (() => {});
     this.cwd = options.cwd;
-    this.resumedId = resume;
     this.allowBypass = options.allowBypassPermissions === true;
-    this.model = options.model || DEFAULT_AGY_MODEL;
-    this.mode = this.effective(options.permissionMode ?? 'default');
+    const requested = options.permissionMode ?? 'default';
+    this.permissionMode = requested === 'bypassPermissions' && !this.allowBypass ? 'default' : requested;
     this.effort = options.effort;
-    this.events = new EventHub<AgentEvent>((e) => this.log('error', `event subscriber failed: ${String(e)}`));
-    this.mapper.setModel(this.model);
-    // сразу поднимаем процесс: `init` приходит сам (~2 с) — id диалога и модель известны до первого сообщения
-    try {
-      this.proc = this.spawnProc();
-    } catch (error) {
-      this.fatal(error);
-    }
+    this.graceMs = config0.graceMs ?? DEFAULT_GRACE_MS;
+    this.interruptWaitMs = config0.interruptWaitMs ?? INTERRUPT_WAIT_MS;
+    this.events = new EventHub<AgentEvent>((error) => this.log('error', `event subscriber failed: ${String(error)}`));
+    this.proc = (config0.spawn ?? defaultSpawn)(executable, ['acp'], {
+      cwd: options.cwd,
+      env: config0.env ?? process.env,
+      shell: false,
+    });
+    this.proc.on('exit', () => (this.procExited = true));
+    this.client = new AcpRpcClient(this.proc, {
+      engine: 'Antigravity',
+      timeoutMs: config0.timeoutMs ?? 120_000,
+      maxLineBytes: MAX_LINE_BYTES,
+      onNotification: (method, params) => this.onNotification(method, params),
+      onServerRequest: (id, method, params) => this.onServerRequest(id, method, params),
+      onStderr: (line) => this.log('debug', `agy: ${line}`),
+      onClose: (error) => this.onClientClose(error.message),
+    });
+    this.ready = this.handshake(options.model);
+    this.ready.catch((error) => this.fatal(error));
   }
 
   get id(): string {
-    return this.mapper.conversationId ?? this.resumedId ?? '';
+    return this.sessionId || this.resumeId || '';
   }
 
   send(text: string, images?: readonly PromptImage[], files?: readonly PromptFile[]): boolean {
     if (this.closed) return false;
-    // image-блоки у agy в бинарнике есть, но не проверены; document-блоков нет: не отправляем и не показываем
-    if (images?.length) this.log('warn', `agy: ${images.length} image(s) are not supported yet and were dropped`);
-    if (files?.length) this.log('warn', `agy: ${files.length} file attachment(s) are not supported and were dropped`);
-    if (this.firstPrompt === undefined && !this.resumedId) {
-      this.firstPrompt = text;
-      if (this.id) this.noteIndex();
-    }
-    return this.enqueue({ text });
-  }
-
-  async retryWithMode(mode: AgyRetryMode): Promise<boolean> {
-    if (this.closed) return false;
-    // режим приходит из webview: только два «повышающих», и не ниже/не равен текущему (повтор без новых прав бессмыслен)
-    if (mode !== 'acceptEdits' && mode !== 'bypassPermissions') return false;
-    if (this.mode === mode || this.mode === 'bypassPermissions') return false;
-    // `bypassPermissions` без разрешения в настройках молча понижается до default — это не «разрешили», повтор бессмыслен
-    if (this.effective(mode) !== mode) return false;
-    await this.setMode(mode);
-    return this.enqueue({ text: AGY_RETRY_PROMPT, silent: true });
-  }
-
-  private noteIndex(): void {
-    const id = this.id;
-    if (!id) return;
-    this.index
-      .note({ id, cwd: this.cwd, at: Date.now(), ...(this.firstPrompt ? { firstPrompt: this.firstPrompt } : {}) })
-      .catch((error) => this.log('warn', `agy session index: ${String(error)}`));
-  }
-
-  private enqueue(prompt: NotedPrompt): boolean {
-    if (this.closed) return false;
-    this.queue.push({ prompt });
+    if (files?.length)
+      this.log('warn', `agy: ${files.length} file attachment(s) are not supported and were dropped`);
+    if (!text && !images?.length) return true;
+    this.queue.push({ text, images: images ?? [] });
     this.drain().catch((error) => this.log('error', `agy queue failed: ${String(error)}`));
     return true;
   }
 
-  // Подтверждений у agy нет (авто-отказ, этап 2), вопросов, плана, компакции и задач — тоже.
-  respondPermission(): boolean {
-    return false;
+  respondPermission(toolUseId: string, decision: 'allow' | 'allow-always' | 'allow-edits' | 'deny'): boolean {
+    const p = this.pendingPermissions.get(toolUseId);
+    if (!p) return false;
+    this.pendingPermissions.delete(toolUseId);
+    if (decision === 'allow-edits') {
+      void this.setMode('acceptEdits');
+      this.client.respond(p.id, { outcome: { outcome: 'selected', optionId: 'allow' } });
+    } else if (decision === 'deny') {
+      this.client.respond(p.id, { outcome: { outcome: 'selected', optionId: 'deny' } });
+    } else {
+      this.client.respond(p.id, { outcome: { outcome: 'selected', optionId: 'allow' } });
+    }
+    this.emit({
+      type: 'permission.resolved',
+      toolUseId,
+      decision: decision === 'deny' ? 'deny' : 'allow',
+      by: 'user',
+    });
+    return true;
   }
-  answerQuestion(): boolean {
-    return false;
+
+  answerQuestion(toolUseId: string, answers: Record<string, string>): boolean {
+    const p = this.pendingQuestions.get(toolUseId);
+    if (!p) return false;
+    this.pendingQuestions.delete(toolUseId);
+    const res = formatElicitationAnswer(p.parsed.properties, p.parsed.questions, answers);
+    this.client.respond(p.id, res);
+    return true;
   }
+
   decidePlan(): boolean {
     return false;
   }
@@ -356,52 +469,105 @@ class AgySession implements AgyRetrySession {
   }
   async stopTask(): Promise<void> {}
 
+  /**
+   * `session/set_mode`: `default`→`default`, `acceptEdits`→`accept-edits`, `plan`→`plan`; `bypassPermissions`
+   * при разрешении в настройках — `accept-edits`, иначе `default`. Отказ сервера — нефатальный `error`.
+   */
   async setMode(mode: PermissionMode): Promise<void> {
-    const next = this.effective(mode);
-    if (next === this.mode) return;
-    this.mode = next;
-    this.stale = true;
-    this.emit({ type: 'mode.changed', mode: next });
+    const next = mode === 'bypassPermissions' && !this.allowBypass ? 'default' : mode;
+    try {
+      await this.ready;
+    } catch {
+      return;
+    }
+    await this.serial(async () => {
+      if (this.closed || !this.sessionId) return;
+      const modeId = agyModeId(next, this.allowBypass);
+      if (modeId !== this.serverMode) {
+        try {
+          await this.client.request('session/set_mode', { sessionId: this.sessionId, modeId });
+        } catch (error) {
+          if (!this.closed)
+            this.emit({ type: 'error', fatal: false, message: `session/set_mode failed: ${errorText(error)}` });
+          return;
+        }
+        this.serverMode = modeId;
+      }
+      this.permissionMode = next;
+      await this.saveSettings();
+      this.emit({ type: 'mode.changed', mode: next });
+    });
   }
 
+  /** `session/set_config_option` `model`; затем, если у новой модели есть `thought_level`, — досылка желаемого уровня. */
   async setModel(model: string): Promise<void> {
-    if (!model || model === this.model) return;
-    this.model = model;
-    this.mapper.setModel(model);
-    this.stale = true;
-  }
-
-  /** Уровень — часть id модели (`-low`), а `--effort` с такими id конфликтует: только запоминаем. */
-  async setEffort(effort: EffortLevel): Promise<void> {
-    this.effort = effort;
+    if (!model) return;
+    try {
+      await this.ready;
+    } catch {
+      return;
+    }
+    await this.serial(async () => {
+      if (this.closed || !this.sessionId) return;
+      const normalized = normalizeModel(model, this.config);
+      if (normalized.effort) this.effort = normalized.effort;
+      await this.applyModel(normalized.model);
+      await this.syncEffort();
+      await this.saveSettings();
+    });
   }
 
   /**
-   * Stop: SIGINT agy (он отвечает `result` с `interrupted` и выходит), через grace — SIGKILL agy и его потомков
-   * (`run_command` переживает agy). Очередь сбрасывается; процесс поднимется заново со следующим `send`.
+   * Желаемый уровень запоминается всегда; `session/set_config_option` `thought_level` уходит, только если уровень
+   * есть в актуальных `configOptions` (у `gpt-oss-120b-medium` селекта нет, сервер ответил бы `-32602`).
+   */
+  async setEffort(effort: EffortLevel): Promise<void> {
+    this.effort = effort;
+    try {
+      await this.ready;
+    } catch {
+      return;
+    }
+    await this.serial(async () => {
+      if (this.closed || !this.sessionId) return;
+      await this.syncEffort();
+      await this.saveSettings();
+    });
+  }
+
+  /**
+   * Stop: сброс висящих запросов, `session/cancel` без id; процесс жив и принимает следующий ход.
+   * Не дождались `stopReason` — закрываем зависший транспорт. До старта хода очередь снимается
+   * синтетическим `turn.start` + `turn.result interrupted`.
    */
   async interrupt(): Promise<void> {
     this.generation++;
-    this.queue.length = 0;
+    this.abortPending();
     const turn = this.turn;
-    const proc = this.proc;
-    if (!turn || turn.done.settled || !proc || this.closed) return;
-    this.stopping.add(proc);
-    const halting = proc.interrupt().catch((error) => this.log('warn', `agy interrupt failed: ${errorText(error)}`));
-    this.halting = halting;
-    await halting;
-    if (this.halting === halting) this.halting = undefined;
-    await this.tail; // `result`, ждущий подгрузки диффа, закроет ход сам
-    if (this.proc === proc) this.proc = undefined;
-    // `result` не пришёл (убили по таймауту) — закрываем ход сами, иначе очередь и лента зависнут
-    if (!turn.done.settled) {
-      this.emitAll(this.mapper.abandonTurn({ interrupted: true }));
-      turn.done.resolve();
+    if (!turn || turn.done.settled || this.closed) return;
+    try {
+      this.client.notify('session/cancel', { sessionId: this.sessionId });
+    } catch (error) {
+      this.log('warn', `session/cancel failed: ${errorText(error)}`);
+    }
+    let timer: NodeJS.Timeout | undefined;
+    await Promise.race([
+      turn.done.promise,
+      new Promise<void>((resolve) => (timer = setTimeout(resolve, this.interruptWaitMs))),
+    ]);
+    clearTimeout(timer);
+    if (!turn.done.settled && !this.closed) {
+      this.log('warn', 'agy stopReason did not arrive after session/cancel');
+      this.abandonTurn();
+      this.fatal(new Error('Antigravity did not confirm cancellation; the connection was closed. Resume the session to continue.'));
     }
   }
 
   capabilities(): Promise<SessionCapabilities> {
-    return this.loadModels().then((models) => ({ models, commands: [] }));
+    return this.ready.then(
+      () => ({ models: modelOptionsFrom(this.config), commands: [] }),
+      () => ({ models: [], commands: [] }),
+    );
   }
 
   async contextUsage(): Promise<AgentEventOf<'context.usage'> | undefined> {
@@ -410,90 +576,136 @@ class AgySession implements AgyRetrySession {
 
   dispose(): void {
     if (this.closed) return;
-    const proc = this.proc;
-    const inFlight = this.turn && !this.turn.done.settled;
+    this.abortPending();
+    this.abandonTurn();
     this.close('disposed');
-    this.proc = undefined;
-    if (!proc) return;
-    this.stopping.add(proc);
-    (inFlight ? proc.interrupt() : proc.stop()).catch((error) =>
-      this.log('warn', `agy stop failed: ${errorText(error)}`),
-    );
+    this.client.dispose();
+    this.stopProcess();
   }
 
   // ---- внутреннее ------------------------------------------------------------------------------
 
-  private effective(mode: PermissionMode): PermissionMode {
-    if (mode === 'bypassPermissions' && !this.allowBypass) {
-      this.log('warn', 'agy: bypassPermissions is not allowed by settings; using default mode');
-      return 'default';
-    }
-    return mode;
+  private serial<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.settings.then(fn, fn);
+    this.settings = run.catch(() => undefined);
+    return run;
   }
 
-  private spawnProc(): AgyProcess {
-    const conversation = this.id;
-    const args = [
-      '-p=',
-      '--input-format',
-      'stream-json',
-      '--output-format',
-      'stream-json',
-      '--model',
-      this.model,
-      ...(conversation ? ['--conversation', conversation] : []),
-      ...modeArgs(this.mode),
-    ];
-    this.log('debug', `agy: spawn ${args.join(' ')}`);
-    const child: AgyChild = (this.config.spawn ?? defaultAgySpawn)(this.executable, args, {
+  private async handshake(requestedModel: string | undefined): Promise<void> {
+    const init = await this.client.request('initialize', initializeParams(this.config0));
+    this.agentVersion = agentVersionOf(init);
+    const result = this.resumeId
+      ? await this.client.request('session/resume', { sessionId: this.resumeId, cwd: this.cwd, mcpServers: [] })
+      : await this.client.request('session/new', { cwd: this.cwd, mcpServers: [] });
+    if (this.closed) return;
+    const sessionId = this.resumeId ?? sessionIdOf(result);
+    if (!sessionId) throw new Error('Antigravity ACP session/new returned no sessionId.');
+    this.sessionId = sessionId;
+    this.config = parseConfig(result);
+    this.serverMode = currentModeId(result) ?? 'default';
+    this.onTier(tierNameOf(result));
+    // `load` и `resume` не восстанавливают model / thought_level / mode: применяем явно то, что просили
+    if (requestedModel) {
+      const normalized = normalizeModel(requestedModel, this.config);
+      if (normalized.effort && !this.effort) this.effort = normalized.effort;
+      await this.applyModel(normalized.model);
+    }
+    if (this.closed) return;
+    await this.syncEffort();
+    if (this.closed) return;
+    try {
+      await this.syncInitialMode();
+    } catch (error) {
+      if (this.closed) return;
+      this.emit({ type: 'error', fatal: false, message: `session/set_mode failed: ${errorText(error)}` });
+      this.permissionMode = permissionModeOf(this.serverMode);
+    }
+    if (this.closed) return;
+    await this.saveSettings();
+    if (this.closed) return;
+    this.loading = false;
+    const effort = this.config.thoughtLevel?.current;
+    this.emit({
+      type: 'session.init',
+      sessionId,
+      model: this.config.model?.current ?? requestedModel ?? '',
       cwd: this.cwd,
-      env: this.config.env ?? process.env,
+      permissionMode: this.permissionMode,
+      tools: [],
+      slashCommands: [],
+      skills: [],
+      agents: [],
+      apiKeySource: 'none',
+      engineVersion: this.engineVersion(),
+      ...(effort && isEffort(effort) ? { effort } : {}),
     });
-    const proc: AgyProcess = new AgyProcess(
-      child,
-      {
-        onEvent: (event) => this.onEvent(proc, event),
-        onStderr: (line) => this.log('debug', `agy: ${line}`),
-        // через гейт: ошибка не обгоняет `tool.result`, ждущий диффа, а авария — `turn.result` из очереди
-        onAgyError: (error) =>
-          this.gated(() => {
-            if (proc === this.proc && !this.closed)
-              this.emit({ type: 'error', message: error.message, fatal: false, ...(error.code ? { code: error.code } : {}) });
-          }),
-        onOverflow: () =>
-          this.gated(() => {
-            if (proc === this.proc) this.fatal(new Error('agy: stdout line is too long'));
-          }),
-        onExit: (exit) => this.onExit(proc, exit),
-      },
-      {
-        ...(this.config.maxLineBytes ? { maxLineBytes: this.config.maxLineBytes } : {}),
-        ...(this.config.graceMs !== undefined ? { graceMs: this.config.graceMs } : {}),
-        ...(this.config.log ? { log: this.config.log } : {}),
-        ...(this.config.listProcesses ? { listProcesses: this.config.listProcesses } : {}),
-        ...(this.config.killPid ? { killPid: this.config.killPid } : {}),
-      },
-    );
-    return proc;
   }
 
-  /** Процесс для следующего хода: устаревший (смена модели/режима) пересоздаётся, мёртвый — поднимается заново. */
-  private async ensureProc(): Promise<AgyProcess> {
-    // Stop ещё добивает agy (`result` уже пришёл, `close` — нет): новый ход — только в новый процесс
-    while (this.halting) await this.halting;
-    if (this.proc && this.stopping.has(this.proc)) this.proc = undefined;
-    if (this.proc && this.stale) {
-      const old = this.proc;
-      this.stopping.add(old);
-      await old.stop();
-      if (this.proc === old) this.proc = undefined;
+  private async saveSettings(): Promise<void> {
+    const model = this.config.model?.current;
+    const effort = this.config.thoughtLevel?.current;
+    const settings: AgySessionSettings = {
+      permissionMode: this.permissionMode,
+      ...(model ? { model } : {}),
+      ...(effort && isEffort(effort) ? { effort } : {}),
+    };
+    try {
+      await this.index.saveSettings(this.sessionId, settings);
+    } catch (error) {
+      this.log('warn', `agy: could not save session settings: ${errorText(error)}`);
     }
-    // dispose/авария, пока ждали остановки: новый процесс закрытой сессии остался бы сиротой
-    if (this.closed) throw new Error('agy session is closed');
-    if (this.proc && !this.proc.alive) this.proc = undefined;
-    this.stale = false;
-    this.proc ??= this.spawnProc();
-    return this.proc;
+  }
+
+  private engineVersion(): string {
+    const setting = this.config0.engineVersion;
+    const configured = typeof setting === 'function' ? setting() : setting;
+    return configured ?? this.agentVersion ?? '';
+  }
+
+  /** Ответ `set_config_option` — полный `configOptions`: актуальные селекты и текущие значения. */
+  private absorb(result: unknown): void {
+    if (!Array.isArray(record(result)?.configOptions)) return;
+    this.config = mergeConfig(this.config, parseConfig(result));
+  }
+
+  private async applyModel(model: string): Promise<void> {
+    if (this.config.model?.current === model) return;
+    try {
+      this.absorb(
+        await this.client.request('session/set_config_option', {
+          sessionId: this.sessionId,
+          configId: 'model',
+          value: model,
+        }),
+      );
+    } catch (error) {
+      if (!this.closed) this.log('warn', `session/set_config_option model failed: ${errorText(error)}`);
+    }
+  }
+
+  private async syncEffort(): Promise<void> {
+    const want = this.effort;
+    const select = this.config.thoughtLevel;
+    if (!want || !select || !select.values.some((v) => v.value === want) || select.current === want) return;
+    try {
+      this.absorb(
+        await this.client.request('session/set_config_option', {
+          sessionId: this.sessionId,
+          configId: 'thought_level',
+          value: want,
+        }),
+      );
+    } catch (error) {
+      if (!this.closed) this.log('warn', `session/set_config_option thought_level failed: ${errorText(error)}`);
+    }
+  }
+
+  /** Догнать сервер до запрошенного режима при старте (resume начинает с `default`). */
+  private async syncInitialMode(): Promise<void> {
+    const want = agyModeId(this.permissionMode, this.allowBypass);
+    if (this.serverMode === want) return;
+    await this.client.request('session/set_mode', { sessionId: this.sessionId, modeId: want });
+    this.serverMode = want;
   }
 
   private async drain(): Promise<void> {
@@ -502,198 +714,207 @@ class AgySession implements AgyRetrySession {
     try {
       while (!this.closed) {
         const item = this.queue.shift();
-        if (!item) break;
+        if (item === undefined) break;
         const generation = this.generation;
-        let proc: AgyProcess;
         try {
-          proc = await this.ensureProc();
-        } catch (error) {
-          if (this.closed) break;
-          this.emitAll(this.mapper.syntheticTurn(item.prompt, { message: errorText(error) }));
-          continue;
+          await this.ready;
+        } catch {
+          // handshake уже закрыл сессию через fatal
+          break;
         }
         if (this.closed) break;
         if (generation !== this.generation) {
-          this.emitAll(this.mapper.syntheticTurn(item.prompt, { interrupted: true }));
+          this.emitAll(this.mapper.interruptBeforeStart(item.text));
           continue;
         }
-        const turn = { done: deferred() };
-        this.turn = turn;
-        this.mapper.notePrompt(item.prompt);
-        if (!proc.write(userInputLine(item.prompt.text))) {
-          this.mapper.dropPrompt(item.prompt);
-          this.turn = undefined;
-          this.proc = undefined;
-          this.emitAll(this.mapper.syntheticTurn(item.prompt, { message: 'agy is not running' }));
-          continue;
+        const startedAt = Date.now();
+        const done = deferred();
+        this.turn = { done, startedAt };
+        this.emitAll(this.mapper.startTurn(item.text, startedAt, item.images));
+        try {
+          // Ответ приходит после всего хода, включая ожидание разрешений на стороне сервера.
+          const result = await this.client.request(
+            'session/prompt',
+            { sessionId: this.sessionId, prompt: promptBlocks(item.text, item.images) },
+            null,
+          );
+          if (this.closed) break;
+          if (this.turn === undefined || this.turn.done.settled) continue;
+          this.emitAll(this.mapper.finish(result, startedAt));
+          done.resolve();
+        } catch (error) {
+          if (this.closed || done.settled) break;
+          // сервер ответил ошибкой на ход (квота, модель отказала): ход закрыт, процесс и очередь живы
+          if (error instanceof AcpRpcError && typeof error.code === 'number') {
+            const message = errorText(error);
+            this.emit({ type: 'error', fatal: false, message, code: String(error.code) });
+            this.emitAll(this.mapper.failOpen(startedAt, Date.now(), message));
+            done.resolve();
+            continue;
+          }
+          this.fatal(error);
+          break;
+        } finally {
+          if (this.turn?.done === done) this.turn = undefined;
         }
-        await turn.done.promise;
-        if (this.turn === turn) this.turn = undefined;
       }
     } finally {
       this.draining = false;
+      if (!this.closed && this.queue.length) void this.drain();
     }
   }
 
-  private onEvent(proc: AgyProcess, event: AgyEvent): void {
-    this.gated(() => this.handleEvent(proc, event));
-  }
-
-  /**
-   * Пока подгружается дифф правки (чтение транскрипта), следующие события agy и выход процесса ждут в хвосте:
-   * порядок ленты сохраняется. Без правок — всё синхронно, как раньше.
-   */
-  private gated(work: () => void | Promise<void>): void {
-    const run = (): void | Promise<void> => {
-      try {
-        return work();
-      } catch (error) {
-        this.log('error', `agy event failed: ${String(error)}`);
-      }
-    };
-    const track = (p: Promise<void>): void => {
-      this.inflight++;
-      this.tail = p
-        .catch((error) => this.log('error', `agy event failed: ${String(error)}`))
-        .finally(() => {
-          this.inflight--;
-        });
-    };
-    if (this.inflight > 0) {
-      track(this.tail.then(run));
-      return;
-    }
-    const r = run();
-    if (r) track(r);
-  }
-
-  private handleEvent(proc: AgyProcess, event: AgyEvent): void | Promise<void> {
-    if (proc !== this.proc || this.closed) return;
-    this.config.trace?.(event);
-    if (event.event === 'init') {
-      const wasInit = this.initEmitted;
-      const init = this.mapper.init(event, {
-        permissionMode: this.mode,
-        engineVersion: (typeof this.config.engineVersion === 'function' ? this.config.engineVersion() : this.config.engineVersion) ?? '',
-        cwd: this.cwd,
-        ...(this.effort ? { effort: this.effort } : {}),
-      });
-      // повторные `init` (процесс пересоздан) ленте не нужны: id и модель те же, что мы сами передали
-      if (!wasInit) {
-        this.initEmitted = true;
-        // новая беседа попадает в индекс с первым сообщением (`send`), а не на `init`: пустая открытая вкладка —
-        // не беседа (база agy такие тоже отбрасывает, `step_count = 0`)
-        if (this.resumedId || this.firstPrompt !== undefined) this.noteIndex();
-        this.emit(init);
-      }
-      return;
-    }
-    const events = this.mapper.map(event);
-    const pending = this.editResults(events);
-    const finish = (): void => {
-      if (this.closed) return;
-      this.emitAll(events);
-      if (event.event === 'result') {
-        // после ERROR agy часто выходит (неизвестная модель, ошибка разбора ввода): следующий ход — в новом процессе,
-        // а не в stdin умирающего (его выход мы бы приняли за аварию посреди хода)
-        if (event.result.status !== 'SUCCESS') this.stale = true;
-        if (events.some((e) => e.type === 'turn.result')) this.turn?.done.resolve();
-      }
-    };
-    if (pending.length === 0) return finish();
-    return Promise.all(pending).then(finish);
-  }
-
-  /** Правки без ошибки: дифф и аргументы из `transcript_full.jsonl` в `tool.result.result` (нет данных — карточка без диффа). */
-  private editResults(events: AgentEvent[]): Promise<void>[] {
-    const conversationId = this.mapper.conversationId;
-    const pending: Promise<void>[] = [];
-    if (!conversationId) return pending;
-    const timeoutMs = this.config.editTimeoutMs ?? 2000;
-    for (const e of events) {
-      if (e.type !== 'tool.result' || e.isError) continue;
-      const lookup = this.mapper.editLookup(e.toolUseId);
-      if (!lookup) continue;
-      const load = editResultOf(
-        { root: this.config.agyRoot ?? defaultAgyRoot(), conversationId, ...lookup },
-        {
-          ...(this.config.transcriptRetries !== undefined ? { retries: this.config.transcriptRetries } : {}),
-          ...(this.config.transcriptDelayMs !== undefined ? { delayMs: this.config.transcriptDelayMs } : {}),
-          log: (level, message) => this.log(level, message),
-          signal: this.aborter.signal,
-        },
-      );
-      // чтение может зависнуть (сетевой home, FUSE): гейт и Stop не должны ждать его вечно
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      const timeout = new Promise<undefined>((resolve) => {
-        timer = setTimeout(() => {
-          this.log('warn', `agy edit diff timed out after ${timeoutMs} ms`);
-          resolve(undefined);
-        }, timeoutMs);
-      });
-      pending.push(
-        Promise.race([load, timeout])
-          .then(
-            (result) => {
-              if (result) e.result = result;
-            },
-            (error) => this.log('warn', `agy edit diff failed: ${errorText(error)}`),
-          )
-          .finally(() => clearTimeout(timer)),
-      );
-    }
-    return pending;
-  }
-
-  private onExit(proc: AgyProcess, exit: AgyExit): void {
-    // выход после `result` с дожидающимся диффом разбираем после него, а не поперёк
-    this.gated(() => this.handleExit(proc, exit));
-  }
-
-  private handleExit(proc: AgyProcess, exit: AgyExit): void {
-    if (proc !== this.proc) return;
-    this.proc = undefined;
-    if (this.closed || this.stopping.has(proc)) return;
+  private onNotification(method: string, params: unknown): void {
+    if (this.closed || this.loading || method !== 'session/update') return;
     const turn = this.turn;
-    if (exit.error) {
-      this.fatal(new Error(`Failed to start agy: ${exit.error.message}`));
-      return;
-    }
-    if (turn && !turn.done.settled) {
-      const detail = exit.stderrTail ? `: ${exit.stderrTail}` : '';
-      const message = `agy exited unexpectedly (${exit.signal ?? `code ${exit.code}`})${detail}`;
-      this.emitAll(this.mapper.abandonTurn({ message }));
-      turn.done.resolve();
-      this.fatal(new Error(message), 'exit');
-      return;
-    }
-    // простаивающий agy вышел (например, после ERROR-результата с кодом 1): ошибка уже в ленте, поднимем к следующему ходу
-    this.log('warn', `agy exited while idle (${exit.signal ?? `code ${exit.code}`}); will restart on the next message`);
+    if (!turn || turn.done.settled) return;
+    const update = record(params)?.update;
+    this.emitAll(this.mapper.applyUpdate(update));
   }
 
-  /** Процесс или протокол сломан: ошибка, `session.closed`, остановка процесса. */
+  private onClientClose(message: string): void {
+    if (this.closed) return;
+    if (message === this.client.disposedMessage) return;
+    const exited = this.procExited || /stdout closed|ACP exited|ACP closed/.test(message);
+    this.fatal(new Error(message), exited ? 'exit' : 'error');
+  }
+
+  private onServerRequest(id: RpcId, method: string, params: unknown): boolean {
+    try {
+      if (method === PERMISSION_METHOD) {
+        return this.handlePermissionRequest(id, params);
+      }
+      if (method === ELICITATION_METHOD) {
+        return this.handleElicitationRequest(id, params);
+      }
+      return false;
+    } catch (error) {
+      this.log('warn', `agy: ${method} failed: ${errorText(error)}`);
+      return false;
+    }
+  }
+
+  private handlePermissionRequest(id: RpcId, params: unknown): boolean {
+    if (this.permissionMode === 'bypassPermissions' && this.allowBypass) {
+      this.client.respond(id, { outcome: { outcome: 'selected', optionId: 'allow' } });
+      return true;
+    }
+    const call = record(record(params)?.toolCall);
+    const toolUseId = typeof call?.toolCallId === 'string' ? call.toolCallId : String(id);
+    const rawName = toolName(call ?? {});
+    const rawInput = toolInput(call ?? {});
+    const mapped = mapAgyTool(rawName, rawInput);
+    const title = typeof call?.title === 'string' ? call.title : undefined;
+
+    let diff: DiffPreview | undefined;
+    if (mapped.name === 'Edit') {
+      const filePath = typeof mapped.input['file_path'] === 'string' ? mapped.input['file_path'] : '';
+      const oldText = typeof mapped.input['old_string'] === 'string' ? mapped.input['old_string'] : '';
+      const newText = typeof mapped.input['new_string'] === 'string' ? mapped.input['new_string'] : '';
+      if (filePath) {
+        diff = { kind: 'edit', filePath, oldText, newText, replaceAll: mapped.input['replaceAll'] === true };
+      }
+    } else if (mapped.name === 'Write') {
+      const filePath = typeof mapped.input['file_path'] === 'string' ? mapped.input['file_path'] : '';
+      const content = typeof mapped.input['content'] === 'string' ? mapped.input['content'] : '';
+      if (filePath) {
+        diff = { kind: 'write', filePath, content };
+      }
+    }
+
+    this.pendingPermissions.set(toolUseId, { id, toolUseId });
+    this.emit({
+      type: 'permission.request',
+      toolUseId,
+      toolName: mapped.name,
+      input: mapped.input,
+      canAlwaysAllow: false,
+      ...(title ? { title, description: title } : { description: mapped.name }),
+      ...(diff ? { diff } : {}),
+    });
+    return true;
+  }
+
+  private handleElicitationRequest(id: RpcId, params: unknown): boolean {
+    const row = record(params);
+    const toolUseId = typeof row?.toolCallId === 'string' ? row.toolCallId : String(id);
+    const parsed = parseElicitation(params);
+    if (!parsed || parsed.questions.length === 0) {
+      this.client.respond(id, elicitationDecline());
+      return true;
+    }
+    this.pendingQuestions.set(toolUseId, { id, toolUseId, parsed });
+    this.emit({
+      type: 'question.request',
+      toolUseId,
+      questions: parsed.questions,
+    });
+    return true;
+  }
+
+  private abortPending(): void {
+    for (const [toolUseId, p] of this.pendingPermissions) {
+      try {
+        this.client.respond(p.id, { outcome: { outcome: 'selected', optionId: 'deny' } });
+      } catch {
+        // client may be closed
+      }
+      this.emit({
+        type: 'permission.resolved',
+        toolUseId,
+        decision: 'deny',
+        by: 'abort',
+      });
+    }
+    this.pendingPermissions.clear();
+
+    for (const [, q] of this.pendingQuestions) {
+      try {
+        this.client.respond(q.id, { action: 'cancel' });
+      } catch {
+        // client may be closed
+      }
+    }
+    this.pendingQuestions.clear();
+  }
+
+  /** Процесс умер посреди хода: `turn.result` (ok false), `error` fatal, `session.closed`. */
   private fatal(error: unknown, reason: 'exit' | 'error' = 'error'): void {
     if (this.closed) return;
     const message = errorText(error);
     this.log('error', `agy session failed: ${message}`);
+    this.abortPending();
+    const turn = this.turn;
+    if (turn && !turn.done.settled) {
+      this.emitAll(this.mapper.failOpen(turn.startedAt));
+      turn.done.resolve();
+      this.turn = undefined;
+    }
     this.emit({ type: 'error', fatal: true, message });
     this.close(reason, message);
-    const proc = this.proc;
-    this.proc = undefined;
-    if (proc) {
-      this.stopping.add(proc);
-      proc.kill().catch(() => undefined);
-    }
+    this.client.dispose();
+    this.stopProcess();
+  }
+
+  private abandonTurn(): void {
+    const turn = this.turn;
+    if (!turn || turn.done.settled) return;
+    turn.done.resolve();
+    this.emitAll(this.mapper.abandon(turn.startedAt));
   }
 
   private close(reason: 'exit' | 'error' | 'disposed', message?: string): void {
     if (this.closed) return;
     this.closed = true;
-    this.aborter.abort();
     this.queue.length = 0;
     this.turn?.done.resolve();
     this.events.emit({ type: 'session.closed', reason, ...(message ? { message } : {}) });
     this.events.close();
+  }
+
+  /** `stdin.end()`, grace, SIGTERM, ещё grace, SIGKILL. */
+  private stopProcess(): void {
+    shutdownAgy(this.proc, this.graceMs, () => this.procExited);
   }
 
   private emit(event: AgentEvent): void {
@@ -703,4 +924,28 @@ class AgySession implements AgyRetrySession {
   private emitAll(events: AgentEvent[]): void {
     for (const event of events) this.emit(event);
   }
+}
+
+/** `stdin.end()` (1.5.3 сохраняет беседу при штатном закрытии), grace, SIGTERM, ещё grace, SIGKILL. Вышедший процесс не трогаем. */
+function shutdownAgy(proc: AgyAcpProcess, graceMs: number, exited: () => boolean): void {
+  if (exited()) return;
+  try {
+    proc.stdin.end();
+  } catch {
+    // процесс уже мёртв
+  }
+  let hard: NodeJS.Timeout | undefined;
+  const timer = setTimeout(() => {
+    if (exited()) return;
+    proc.kill();
+    hard = setTimeout(() => {
+      if (!exited()) proc.kill('SIGKILL');
+    }, graceMs);
+    hard.unref?.();
+  }, graceMs);
+  timer.unref?.();
+  proc.on('exit', () => {
+    clearTimeout(timer);
+    clearTimeout(hard);
+  });
 }

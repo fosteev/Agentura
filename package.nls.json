@@ -35,6 +35,8 @@
   "config.defaultModel.description": "Default model for new Claude sessions (empty means the engine default).",
   "config.codex.defaultModel.description": "Model ID for new Codex chats. Empty uses the Codex configuration. Resumed sessions keep their model.",
   "config.cursor.defaultModel.description": "ACP model id for new Cursor chats, as shown in the model menu of a live session (for example composer-2.5[fast=true] or default[]). Empty means the engine default. Resumed sessions keep their model.",
+  "config.antigravity.defaultModel.description": "Model ID for new Antigravity chats (empty means the engine default). Resumed sessions keep their model.",
+  "config.antigravity.defaultEffort.description": "Reasoning effort (thought_level) for new Antigravity chats. Choose a level supported by the model (low, medium, high). Empty uses the CLI default. Resumed sessions keep their settings.",
   "config.codex.defaultEffort.description": "Reasoning effort for new Codex chats. Choose a level supported by the selected model. Empty uses the Codex default; resumed chats keep their settings.",
   "config.codex.defaultApproval.description": "Approval policy for new Codex chats. Empty uses the Codex configuration.",
   "config.codex.defaultSandbox.description": "Sandbox for new Codex chats. Empty uses the Codex configuration. Read-only and workspace write disable network. Full access requires agentura.allowBypassPermissions.",

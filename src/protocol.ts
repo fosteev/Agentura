@@ -192,6 +192,7 @@ export type ToWebview =
   /** Вкладка настроек (этап 3 roadmap 0.2): значения `agentura.*` и ключи, перекрытые настройками рабочей папки. */
   | { type: 'settings.state'; values: SettingsValues; overridden: SettingKey[] }
   | { type: 'settings.codexModels'; models: ModelOption[]; loading: boolean; error?: string }
+  | { type: 'settings.antigravityModels'; models: ModelOption[]; loading: boolean; error?: string }
   /** Открыть вкладку настроек сразу на разделе (`settings.open` с `section`). */
   | { type: 'settings.section'; section: SettingsSection }
   /** Страница «Интеграции» (roadmap 19, этап 6): Jiraffe и свои подключения Jira. */
@@ -274,8 +275,6 @@ export type ToWebview =
    * первого сообщения показывало бы «спрашивать», а движок уже шёл бы в `acceptEdits`/`bypassPermissions`.
    */
   | { type: 'session.defaults'; mode: PermissionMode; effort?: EffortLevel }
-  /** Хост не принял `agy.retry` (режим уже такой, «всё разрешено» недоступно этой сессии): карточка отказа снова с кнопками. */
-  | { type: 'agy.retryRejected' }
   /** Этап 5: превью правки к `permission.request` с `diff` — приходит вдогонку, по `toolUseId`. */
   | { type: 'diff.preview'; sessionId: string; toolUseId: string; preview: EditPreview }
   /**
@@ -491,8 +490,6 @@ export type FromWebview =
    * `turn: false` («Возобновить сессию») — только возобновление.
    */
   | { type: 'turn.retry'; sessionId: string; turn: boolean }
-  /** Карточка отказа Antigravity: повторить в более свободном режиме (`AntigravityAdapter.retryWithMode`). */
-  | { type: 'agy.retry'; sessionId: string; mode: 'acceptEdits' | 'bypassPermissions' }
   /** Этап 7: «Открыть журнал расширения» — канал Output → Agentura. */
   | { type: 'log.show' }
   /** Этап 3 roadmap 0.2: ⚙ в боковой панели открывает вкладку настроек. */
@@ -502,6 +499,7 @@ export type FromWebview =
   /** «проверить»: найти claude по этому пути (пусто — системный) и показать версию и источник. */
   | { type: 'settings.checkEngine'; path: string; /** Чей путь проверять; нет — claude. */ engine?: AgentProvider }
   | { type: 'settings.codexModels' }
+  | { type: 'settings.antigravityModels' }
   /** Страница «Интеграции»: команды этапа 2 (`agentura.jira.connect|test|disconnect`) и «поставить» Jiraffe. */
   | { type: 'integrations.connect' }
   | { type: 'integrations.test'; instanceId: string }
@@ -609,11 +607,12 @@ export interface TaskGroupSummary {
   sessionIds: string[];
 }
 
-/** Строка квоты Antigravity: осталось % (0…100) и сброс в мс; `label` — `Gemini`, `Claude/GPT`. */
+/** Строка квоты Antigravity: осталось % (0…100) и сброс в мс; `label` — `Gemini 5ч`, `Gemini 7д`, `Claude/GPT 5ч`, `Claude/GPT 7д`, `Gemini 4 Argon 7д`. */
 export interface QuotaRow {
   label: string;
   remaining: number;
   resetsAt?: number;
+  window?: 'fiveHour' | 'weekly';
 }
 
 /** Окно лимита: `kind`, проценты 0…100, сброс в мс. */
@@ -661,12 +660,12 @@ const FROM_WEBVIEW_TYPES: Record<FromWebview['type'], true> = {
   'session.resume': true,
   'session.rename': true,
   'turn.retry': true,
-  'agy.retry': true,
   'log.show': true,
   'settings.open': true,
   'settings.set': true,
   'settings.checkEngine': true,
   'settings.codexModels': true,
+  'settings.antigravityModels': true,
   'settings.reveal': true,
   'integrations.connect': true,
   'integrations.test': true,
@@ -725,7 +724,6 @@ const FIELD_CHECKS: Partial<Record<FromWebview['type'], (m: Record<string, unkno
   'engine.set': (m) =>
     m.provider === 'claude' || m.provider === 'codex' || m.provider === 'antigravity' || m.provider === 'cursor',
   'engine.login': (m) => m.engine === 'codex' || m.engine === 'antigravity',
-  'agy.retry': (m) => m.mode === 'acceptEdits' || m.mode === 'bypassPermissions',
   'agents.openGraph': (m) => m.agentId === undefined || typeof m.agentId === 'string',
   'agents.snapshot': (m) => typeof m.sessionId === 'string' && isAgentGraphView(m.graph),
   'remote.set': (m) => bool(m.on) && (m.sessionId === undefined || str(m.sessionId)),

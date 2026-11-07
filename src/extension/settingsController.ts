@@ -22,6 +22,7 @@ export interface SettingsDeps {
   /** Тот же поиск, что при старте движка (`resolveExecutable`). */
   checkEngine(path: string, engine: AgentProvider): Promise<EngineCheck>;
   listCodexModels?(): Promise<ModelOption[]>;
+  listAntigravityModels?(): Promise<ModelOption[]>;
   reveal(target: 'ui' | 'json'): void;
   warn(message: string): void;
   /** Скачать шрифт из Google Fonts (`kind` — назначение карточки) / удалить скачанный. */
@@ -46,6 +47,9 @@ export class SettingsController {
   private models: ModelOption[] = [];
   private modelsSeq = 0;
   private modelsPath: string | undefined;
+  private agyModels: ModelOption[] = [];
+  private agyModelsSeq = 0;
+  private agyModelsPath: string | undefined;
   /** Номер последней «проверить» — ответ приходит только на неё. */
   private checkSeq: Record<AgentProvider, number> = { claude: 0, codex: 0, antigravity: 0, cursor: 0 };
 
@@ -73,6 +77,8 @@ export class SettingsController {
     this.pushIntegrations();
     const path = cfg.get<string>('codexExecutable') ?? '';
     if (this.deps.listCodexModels && this.modelsPath !== path) void this.loadCodexModels();
+    const agyPath = cfg.get<string>('antigravityExecutable') ?? '';
+    if (this.deps.listAntigravityModels && this.agyModelsPath !== agyPath) void this.loadAntigravityModels();
   }
 
   private async loadCodexModels(): Promise<void> {
@@ -89,6 +95,23 @@ export class SettingsController {
       if (seq !== this.modelsSeq) return;
       this.models = [];
       this.deps.post({ type: 'settings.codexModels', models: [], loading: false, error: String(e) });
+    }
+  }
+
+  private async loadAntigravityModels(): Promise<void> {
+    if (!this.deps.listAntigravityModels) return;
+    this.agyModelsPath = this.deps.config().get<string>('antigravityExecutable') ?? '';
+    const seq = ++this.agyModelsSeq;
+    this.deps.post({ type: 'settings.antigravityModels', models: this.agyModels, loading: true });
+    try {
+      const models = await this.deps.listAntigravityModels();
+      if (seq !== this.agyModelsSeq) return;
+      this.agyModels = models;
+      this.deps.post({ type: 'settings.antigravityModels', models, loading: false });
+    } catch (e) {
+      if (seq !== this.agyModelsSeq) return;
+      this.agyModels = [];
+      this.deps.post({ type: 'settings.antigravityModels', models: [], loading: false, error: String(e) });
     }
   }
 
@@ -111,6 +134,9 @@ export class SettingsController {
     switch (m.type) {
       case 'settings.codexModels':
         await this.loadCodexModels();
+        break;
+      case 'settings.antigravityModels':
+        await this.loadAntigravityModels();
         break;
       case 'ready':
         this.pushState();
@@ -192,6 +218,11 @@ export class SettingsController {
         const levels = this.models.find((m) => m.value === checked.value)?.effortLevels ?? [];
         if (effort && !levels.includes(effort))
           await writeSetting(this.deps.config(), 'codex.defaultEffort', '', this.deps.globalTarget);
+      } else if (key === 'antigravity.defaultModel') {
+        const effort = readSettings(this.deps.config())['antigravity.defaultEffort'];
+        const levels = this.agyModels.find((m) => m.value === checked.value)?.effortLevels ?? [];
+        if (effort && !levels.includes(effort))
+          await writeSetting(this.deps.config(), 'antigravity.defaultEffort', '', this.deps.globalTarget);
       }
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);

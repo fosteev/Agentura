@@ -35,7 +35,7 @@ describe('providerFeatures', () => {
     });
   });
 
-  it('Antigravity: режимы есть; compact, приборов, субагентов, плана, вопросов, картинок и файлов нет', () => {
+  it('Antigravity: режимы, вопросы и картинки есть; compact, приборов, субагентов, плана и файлов нет', () => {
     expect(providerFeatures('antigravity')).toEqual({
       modes: true,
       nativeSettings: false,
@@ -47,8 +47,8 @@ describe('providerFeatures', () => {
       agentStop: false,
       agentTranscript: false,
       plan: false,
-      questions: false,
-      images: false,
+      questions: true,
+      images: true,
       files: false,
       remote: false,
       browser: false,

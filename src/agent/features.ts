@@ -103,9 +103,8 @@ export const CODEX_FEATURES: Readonly<ProviderFeatures> = {
 };
 
 /**
- * Antigravity (`agy`): режимы есть (4, `default` = авто-отказ без подтверждений по действию), compact, субагентов,
- * плана и вопросов нет; приборов нет (стоимость неизвестна, окна контекста и лимитов подписки Claude нет);
- * картинки и файлы адаптер отбрасывает (не проверены).
+ * Antigravity (`agy acp`): режимы есть (`default`, `accept-edits`, `plan`), вопросы (`ask_question` через
+ * `elicitation/create`), картинки; compact, субагентов и плана нет; приборов нет (окна контекста и стоимости нет).
  */
 export const ANTIGRAVITY_FEATURES: Readonly<ProviderFeatures> = {
   nativeSettings: false,
@@ -118,8 +117,8 @@ export const ANTIGRAVITY_FEATURES: Readonly<ProviderFeatures> = {
   agentStop: false,
   agentTranscript: false,
   plan: false,
-  questions: false,
-  images: false,
+  questions: true,
+  images: true,
   files: false,
   remote: false,
   browser: false,

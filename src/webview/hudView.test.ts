@@ -300,6 +300,30 @@ describe('quotaView (квота Antigravity)', () => {
     expect(q?.label).toBe('Gemini');
     expect(q?.meter.percent).toBe(74);
     expect(q?.title).toContain('26%');
+    expect(q?.title).toContain('недельный лимит');
+  });
+
+  it('5 окон agy 1.5.3 сворачиваются в 3 семейства с точным окном в тултипе', () => {
+    const rows = [
+      { label: 'Gemini 7д', remaining: 99, resetsAt: 10_000, window: 'weekly' as const },
+      { label: 'Gemini 5ч', remaining: 97, resetsAt: 5_000, window: 'fiveHour' as const },
+      { label: 'Claude/GPT 7д', remaining: 100, resetsAt: 10_000, window: 'weekly' as const },
+      { label: 'Claude/GPT 5ч', remaining: 100, resetsAt: 5_000, window: 'fiveHour' as const },
+      { label: 'Gemini 4 Argon 7д', remaining: 66, resetsAt: 10_000, window: 'weekly' as const },
+    ];
+    const items = quotaView(rows, 0);
+    expect(items.map((i) => i.label)).toEqual(['Gemini', 'Claude/GPT', 'Argon']);
+    // Gemini: выбрано более узкое/лимитирующее окно 5ч (97% осталось)
+    expect(items[0]!.title).toContain('5-часовое окно');
+    expect(items[0]!.title).toContain('97%');
+    expect(items[0]!.meter.percent).toBe(3);
+    // Claude/GPT: 100% в обоих — предпочтение отдаётся 5ч
+    expect(items[1]!.title).toContain('5-часовое окно');
+    expect(items[1]!.meter.percent).toBe(0);
+    // Argon: недельное окно
+    expect(items[2]!.title).toContain('недельный лимит');
+    expect(items[2]!.title).toContain('66%');
+    expect(items[2]!.meter.percent).toBe(34);
   });
 
   it('без сброса — подсказка без времени; пусто — пусто', () => {

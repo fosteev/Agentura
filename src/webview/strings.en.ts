@@ -498,17 +498,6 @@ export const en: Ui = {
     placeholder: 'limit reached — you can type a message, it is sent after the reset',
   },
   cards: {
-    // Antigravity refusal card: agy has no per-action approvals and refuses what the mode forbids; retry runs in a looser mode
-    refusal: {
-      title: (actions: string) => `agy refused: ${actions}`,
-      action: (edit: boolean): string => (edit ? 'file edit' : 'command'),
-      hint: 'agy does not ask for permission: it refuses whatever the current mode forbids. Retrying restarts agy in a looser mode.',
-      rejected: 'Retry not accepted: the mode is already set, or “allow everything” is unavailable for this session (the setting was enabled after it started — open a new chat).',
-      edits: 'Allow edits and retry',
-      all: 'Allow everything and retry',
-      allOff: 'The “allow everything” mode is off: enable agentura.allowBypassPermissions',
-      sent: 'retrying…',
-    },
     permTitle: (tool: string) =>
       JIRA_PERM_EN[tool] ??
       (tool === 'Bash'
@@ -859,8 +848,10 @@ export const en: Ui = {
     week: 'week',
     weekShort: 'wk',
     limitsUnknown: 'Subscription limits not received yet',
-    quotaTitle: (label: string, left: number, reset: string | undefined) =>
-      `${label}: weekly limit, ${left}% left${reset ? ` · resets ${reset}` : ''}`,
+    quotaTitle: (label: string, left: number, reset: string | undefined, window?: 'fiveHour' | 'weekly') => {
+      const win = window === 'fiveHour' ? '5-hour window' : 'weekly limit';
+      return `${label}: ${win}, ${left}% left${reset ? ` · resets ${reset}` : ''}`;
+    },
     send: 'enter ↵',
     sendTitle: 'Send',
     queue: '↵ to queue',
@@ -1152,6 +1143,7 @@ export const en: Ui = {
       openClaude: 'Configure Claude mode',
       agyNote:
         'Choose the Antigravity model in the chat. There is no separate default model setting here yet.',
+      agyDefaultEffort: 'CLI default',
       savedAccess:
         'Full access is already saved in settings. Its use is gated by the shared switch above.',
       efforts: {

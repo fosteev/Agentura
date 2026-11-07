@@ -3,7 +3,10 @@ import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { delimiter, isAbsolute, join } from 'node:path';
 
-/** Результат поиска локального Antigravity CLI (`agy`). Минимальную версию не фиксируем: протокол снят на 1.2.17. */
+/** Минимальная версия `agy`: `agy acp` (ACP-сервер) появился в 1.5.0, контракт снят на 1.5.3. */
+export const AGY_MIN_VERSION = '1.5.0';
+
+/** Результат поиска локального Antigravity CLI (`agy`). Версия ниже `AGY_MIN_VERSION` — `problem` без `version`: движок не запускается. */
 export interface ResolvedAgyExecutable {
   path?: string;
   version?: string;
@@ -23,6 +26,21 @@ export interface ResolveAgyDeps {
 /** `1.2.17` или `agy 1.2.17` → `1.2.17`. */
 export function parseAgyVersion(output: string): string | undefined {
   return /(\d+\.\d+\.\d+)/.exec(output)?.[1];
+}
+
+/** `1.5.3` против `1.5.0`: отрицательное — `a` старше `b`. Сравнение по числам, не по строкам (`1.10.0` > `1.9.0`). */
+export function compareAgyVersions(a: string, b: string): number {
+  const left = a.split('.').map(Number);
+  const right = b.split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    const diff = (left[i] ?? 0) - (right[i] ?? 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
+export function agyTooOldMessage(found: string): string {
+  return `agy ${found} is too old: Agentura needs agy >= ${AGY_MIN_VERSION} (agy acp). Update the Antigravity CLI.`;
 }
 
 /** Где искать `agy`: PATH, затем `~/.local/bin` (туда ставит установщик), Homebrew. */
@@ -66,7 +84,10 @@ export async function resolveAgyExecutable(
   const check = async (path: string, source: 'setting' | 'system'): Promise<ResolvedAgyExecutable | undefined> => {
     try {
       const version = parseAgyVersion(await run(path));
-      return version ? { path, version, source } : undefined;
+      if (!version) return undefined;
+      // старый agy не запускаем: без `version` локатор не считает его годным, а `problem` называет найденную и минимальную версии
+      if (compareAgyVersions(version, AGY_MIN_VERSION) < 0) return { path, source, problem: agyTooOldMessage(version) };
+      return { path, version, source };
     } catch {
       return undefined;
     }
@@ -80,8 +101,9 @@ export async function resolveAgyExecutable(
       }
     );
   }
-  const found = (await Promise.all(agyCandidatePaths(deps).filter(exists).map((path) => check(path, 'system')))).find(Boolean);
-  return found ?? { source: 'none', problem: AGY_NOT_FOUND };
+  const found = await Promise.all(agyCandidatePaths(deps).filter(exists).map((path) => check(path, 'system')));
+  // подходящий agy важнее первого найденного старого
+  return found.find((r) => r?.version) ?? found.find(Boolean) ?? { source: 'none', problem: AGY_NOT_FOUND };
 }
 
 export const AGY_NOT_FOUND = 'Antigravity CLI (agy) was not found.';

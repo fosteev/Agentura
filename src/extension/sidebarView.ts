@@ -206,12 +206,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
   /**
    * «войти» у движка без входа: терминал, в котором сразу запущен найденный исполняемый файл (путь из настройки
-   * тоже), без shell и кавычек — `codex login` / `agy`. Не нашли — команда по имени из PATH.
+   * тоже), без shell и кавычек — `codex login` / `agy acp --login`. Не нашли — команда по имени из PATH.
    */
   private async openLogin(engine: 'codex' | 'antigravity'): Promise<void> {
     const loc = engine === 'codex' ? this.engines.codexEngine : this.engines.antigravityEngine;
     const exe = (await loc.locate(true).catch(() => undefined))?.path ?? (engine === 'codex' ? 'codex' : 'agy');
-    const args = engine === 'codex' ? ['login'] : [];
+    const args = engine === 'codex' ? ['login'] : ['acp', '--login'];
     vscode.window.createTerminal({ name: [engine === 'codex' ? 'codex' : 'agy', ...args].join(' '), shellPath: exe, shellArgs: args }).show();
   }
 

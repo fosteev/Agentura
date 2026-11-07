@@ -14,7 +14,6 @@ import {
   codexSettingsPending,
   chat,
   composerLayout,
-  dispatchEvent,
   draftFiles,
   features,
   handleHostMessage,
@@ -31,10 +30,12 @@ import * as vscode from './vscode';
 import type { ComposerLayout } from '../settings';
 
 const posted: unknown[] = [];
+const mounted: HTMLElement[] = [];
 
 function mount(component: typeof Composer | typeof Chat = Composer) {
   const host = document.createElement('div');
   document.body.append(host);
+  mounted.push(host);
   render(h(component, {}), host);
   return host;
 }
@@ -74,6 +75,7 @@ const key = (el: HTMLElement, k: string, init: KeyboardEventInit = {}) =>
   );
 
 beforeEach(() => {
+  for (const host of mounted.splice(0)) render(null, host);
   document.body.innerHTML = '';
   posted.length = 0;
   codexSettingsPending.value = false;
@@ -442,116 +444,7 @@ describe('Chat: вкладка «агенты»', () => {
   });
 });
 
-describe('Antigravity: карточка отказа', () => {
-  const result = (denials: { toolName: string; toolUseId: string }[]) =>
-    ({
-      type: 'turn.result',
-      ok: true,
-      subtype: 'success',
-      interrupted: false,
-      durationMs: 10,
-      apiDurationMs: 5,
-      numTurns: 1,
-      totalCostUsd: 0,
-      usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 },
-      permissionDenials: denials,
-    }) as never;
-  const buttons = (host: HTMLElement) => [...host.querySelectorAll<HTMLButtonElement>('.ask .acts button')];
 
-  async function ask(denials: { toolName: string; toolUseId: string }[], over: Record<string, unknown> = {}) {
-    chat.value = {
-      ...chat.value,
-      sessionId: 'c1',
-      rows: [{ id: 1, kind: 'user', text: 'создай файл', at: '10:00' } as never],
-      nextId: 2,
-    };
-    info('antigravity', { mode: 'default', ...over });
-    dispatchEvent(result(denials));
-    const host = mount(Chat);
-    await flush();
-    return host;
-  }
-
-  it('Write отклонён: «правки» и «всё»; нажатие шлёт agy.retry и гасит карточку', async () => {
-    const host = await ask([{ toolName: 'Write', toolUseId: 'u1' }], { allowBypass: true });
-    expect(host.querySelector('.ask .h')?.textContent).toContain('agy');
-    const [edits, all] = buttons(host);
-    expect(edits!.textContent).toMatch(/правки|edits/i);
-    expect(all!.disabled).toBe(false);
-    edits!.click();
-    expect(posted).toContainEqual({ type: 'agy.retry', sessionId: 'c1', mode: 'acceptEdits' });
-    await flush();
-    expect(buttons(host)).toHaveLength(0);
-  });
-
-  it('Bash отклонён: только «всё»; без allowBypass кнопка выключена', async () => {
-    const host = await ask([{ toolName: 'Bash', toolUseId: 'u1' }]);
-    const bs = buttons(host);
-    expect(bs).toHaveLength(1);
-    expect(bs[0]!.disabled).toBe(true);
-    expect(host.querySelector('.ask .bd')?.textContent).toContain('allowBypassPermissions');
-  });
-
-  it('Claude и Codex карточку не получают; в режиме «всё разрешено» — тоже', async () => {
-    for (const p of ['claude', 'codex'] as const) {
-      chat.value = { ...chat.value, rows: [], nextId: 1 };
-      info(p);
-      dispatchEvent(result([{ toolName: 'Write', toolUseId: 'u' }]));
-      expect(chat.value.rows.some((r) => r.kind === 'refusal')).toBe(false);
-    }
-    chat.value = { ...chat.value, rows: [], nextId: 1 };
-    info('antigravity');
-    chat.value = { ...chat.value, mode: 'bypassPermissions' };
-    dispatchEvent(result([{ toolName: 'Write', toolUseId: 'u' }]));
-    expect(chat.value.rows.some((r) => r.kind === 'refusal')).toBe(false);
-  });
-
-  it('следующий ход (в т.ч. доставленное из очереди сообщение со старым id) закрывает карточку', async () => {
-    const host = await ask([{ toolName: 'Write', toolUseId: 'u1' }], { allowBypass: true });
-    expect(buttons(host).length).toBeGreaterThan(0);
-    dispatchEvent({ type: 'turn.start', at: 1 } as never);
-    await flush();
-    expect(buttons(host)).toHaveLength(0);
-    expect(host.querySelector('.ask .acts')?.textContent).toBe('');
-  });
-
-  it('хост повтор не принял: «повторяю…» снимается, кнопки возвращаются, в ленте причина', async () => {
-    const host = await ask([{ toolName: 'Write', toolUseId: 'u1' }], { allowBypass: true });
-    buttons(host)[0]!.click();
-    await flush();
-    expect(buttons(host)).toHaveLength(0);
-    handleHostMessage({ type: 'agy.retryRejected' });
-    await flush();
-    expect(buttons(host).length).toBeGreaterThan(0);
-    expect(chat.value.rows.at(-1)).toMatchObject({ kind: 'sys', tone: 'bad' });
-  });
-
-  it('неопознанное имя инструмента agy — как команда: только «всё»', async () => {
-    const host = await ask([{ toolName: 'run_command', toolUseId: 'u1' }], { allowBypass: true });
-    const bs = buttons(host);
-    expect(bs).toHaveLength(1);
-    expect(bs[0]!.disabled).toBe(false);
-    expect(host.querySelector('.ask .h')?.textContent).toMatch(/команда|command/);
-  });
-
-  it('прерванный ход (Stop) карточку не даёт', () => {
-    chat.value = { ...chat.value, rows: [], nextId: 1 };
-    info('antigravity');
-    dispatchEvent({ ...(result([{ toolName: 'Write', toolUseId: 'u' }]) as object), interrupted: true } as never);
-    expect(chat.value.rows.some((r) => r.kind === 'refusal')).toBe(false);
-  });
-
-  it('новое сообщение пользователя после отказа — кнопки старой карточки пропадают', async () => {
-    const host = await ask([{ toolName: 'Write', toolUseId: 'u1' }], { allowBypass: true });
-    expect(buttons(host).length).toBeGreaterThan(0);
-    chat.value = {
-      ...chat.value,
-      rows: [...chat.value.rows, { id: 99, kind: 'user', text: 'ещё', at: '10:01' } as never],
-    };
-    await flush();
-    expect(buttons(host)).toHaveLength(0);
-  });
-});
 
 it('Codex explicit native skill wins over /plan command and carries exact path', async () => {
   info('codex');

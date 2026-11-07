@@ -10,6 +10,7 @@ import { Settings } from './components/Settings';
 import { Sidebar } from './components/Sidebar';
 import {
   agyCheck,
+  antigravityModels,
   codexCheck,
   codexModels,
   engineCheck,
@@ -42,7 +43,9 @@ const values: SettingsValues = {
   defaultModel: '',
   'codex.defaultModel': '',
   'cursor.defaultModel': '',
+  'antigravity.defaultModel': '',
   'codex.defaultEffort': '',
+  'antigravity.defaultEffort': '',
   'codex.defaultApproval': '',
   'codex.defaultSandbox': '',
   defaultEffort: '',
@@ -119,6 +122,7 @@ beforeEach(() => {
   engineCheck.value = { pending: false };
   codexCheck.value = { pending: false };
   codexModels.value = { models: [], loading: true };
+  antigravityModels.value = { models: [], loading: true };
   agyCheck.value = { pending: false };
   userFonts.value = { ui: [], code: [] };
 });
@@ -164,6 +168,38 @@ describe('вкладка настроек', () => {
     expect(host.querySelector('[role="alert"]')?.textContent).toContain('CLI unavailable');
     [...host.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent === 'Обновить модели')!.click();
     expect(posted).toContainEqual({ type: 'settings.codexModels' });
+  });
+
+  it('список моделей Antigravity позволяет выбрать модель и effort; ручной ввод при отсутствии каталога', async () => {
+    const host = mount(Settings);
+    state({ defaultProvider: 'antigravity', 'antigravity.defaultModel': 'gemini-3.8-flash', 'antigravity.defaultEffort': 'medium' });
+    handleSettingsMessage({
+      type: 'settings.antigravityModels',
+      loading: false,
+      models: [
+        { value: 'gemini-4-argon', displayName: 'Gemini 4 Argon', effortLevels: ['low', 'medium', 'high'] },
+        { value: 'gemini-3.8-flash', displayName: 'Gemini 3.8 Flash', effortLevels: ['low', 'medium', 'high'] },
+        { value: 'gpt-oss-120b-medium', displayName: 'GPT-OSS 120B (Medium)', supportsEffort: false },
+      ],
+    });
+    await flush();
+    const options = (k: string) => [...host.querySelectorAll<HTMLOptionElement>(`select[aria-label="${k}"] option`)].map((o) => o.value);
+    expect(options('antigravity.defaultModel')).toEqual(['', 'gemini-4-argon', 'gemini-3.8-flash', 'gpt-oss-120b-medium']);
+    expect(options('antigravity.defaultEffort')).toEqual(['', 'low', 'medium', 'high']);
+    change(host.querySelector('[aria-label="antigravity.defaultModel"]')!, 'gemini-4-argon');
+    change(host.querySelector('[aria-label="antigravity.defaultEffort"]')!, 'high');
+    expect(sets()).toEqual([
+      { type: 'settings.set', key: 'antigravity.defaultModel', value: 'gemini-4-argon' },
+      { type: 'settings.set', key: 'antigravity.defaultEffort', value: 'high' },
+    ]);
+
+    // при ошибке/отсутствии каталога появляется текстовое поле и кнопка перезагрузки
+    handleSettingsMessage({ type: 'settings.antigravityModels', loading: false, models: [], error: 'agy not found' });
+    await flush();
+    expect(host.querySelector<HTMLInputElement>('input[aria-label="antigravity.defaultModel"]')).not.toBeNull();
+    const reload = [...host.querySelectorAll<HTMLButtonElement>('#ns-panel-antigravity button')].find((b) => b.textContent === 'Обновить модели');
+    reload?.click();
+    expect(posted).toContainEqual({ type: 'settings.antigravityModels' });
   });
   it('Claude и Codex имеют отдельные поля; Codex пишет свои разрешения', async () => {
     const host = mount(Settings);
@@ -310,6 +346,8 @@ describe('вкладка настроек', () => {
       'agentura.codex.defaultEffort',
       'agentura.codex.defaultApproval',
       'agentura.codex.defaultSandbox',
+      'agentura.antigravity.defaultModel',
+      'agentura.antigravity.defaultEffort',
       'agentura.cursor.defaultModel',
       'agentura.contextThresholds',
       'agentura.usagePollMinutes · не меньше 5',

@@ -260,11 +260,18 @@ export function formatCost(usd: number): string {
   return `$${usd < 0.01 && usd > 0 ? usd.toFixed(3) : usd.toFixed(2)}`;
 }
 
-/** `claude-opus-5-5` → `opus-5.5`; неизвестное — как есть. */
+/** `claude-opus-5-5` → `opus-5.5`, `gemini-4-argon` → `argon-4`, `gemini-3.8-flash` → `flash-3.8`, `gpt-oss-120b-medium` → `gpt-oss-120b`; неизвестное — как есть. */
 export function shortModel(id: string): string {
-  const m = /^claude-([a-z]+)-(\d+)(?:-(\d+))?(?:-\d{8})?(?:\[.*\])?$/.exec(id);
-  if (!m) return id;
-  return `${m[1]}-${m[2]}${m[3] && m[3].length < 4 ? `.${m[3]}` : ''}`;
+  const c = /^claude-([a-z]+)-(\d+)(?:-(\d+))?(?:-\d{8})?(?:\[.*\])?$/.exec(id);
+  if (c) return `${c[1]}-${c[2]}${c[3] && c[3].length < 4 ? `.${c[3]}` : ''}`;
+
+  const g = /^gemini-(\d+(?:\.\d+)?)-([a-z0-9]+)(?:-(?:low|medium|high))?$/.exec(id);
+  if (g) return `${g[2]}-${g[1]}`;
+
+  const o = /^gpt-oss-(\d+b)(?:-medium)?$/.exec(id);
+  if (o) return `gpt-oss-${o[1]}`;
+
+  return id;
 }
 
 const HTML_RE = /\.html?$/i;

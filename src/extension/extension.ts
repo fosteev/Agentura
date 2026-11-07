@@ -91,7 +91,7 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     adapter,
     // треды Codex проекта (`thread/list`): процесс запускается, только если `codex` найден
     codex: { adapter: codexAdapter, available: () => codexEngine.available() },
-    // беседы Antigravity: база и индекс бесед; без `agy` (или без `node:sqlite` — тогда индекс) строк нет, ошибок тоже
+    // беседы Antigravity: сессии через agy acp (session/list); без agy строк нет, ошибок тоже
     antigravity: { adapter: antigravityAdapter, available: () => antigravityEngine.available() },
     // сессии Cursor (`session/list`): короткий `agent acp` только если резолвер не нашёл `problem`
     cursor: { adapter: cursorAdapter, available: () => cursorEngine.available() },

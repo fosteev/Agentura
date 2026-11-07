@@ -1,23 +1,33 @@
-import { describe, expect, it, vi } from 'vitest';
-import type { AgentEvent, AgentEventOf, AgentSession, SessionOptions } from '../types';
-import { AntigravityAdapter, modeArgs, type AntigravityAdapterConfig } from './adapter';
-import { FAKE_CONVERSATION, fakeSpawn, type FakeAgy } from './fakeAgy';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { parseElicitation, formatElicitationAnswer } from './acpProtocol';
+import { describe, expect, it } from 'vitest';
+import type { AgentEvent, AgentEventOf, AgentSession, PromptImage } from '../types';
+import {
+  AntigravityAdapter,
+  type AntigravityAdapterConfig,
+  type AgySpawnOptions,
+} from './adapter';
+import { AGY_NOT_FOUND } from './executable';
+import { createFakeAgyServer, FakeAgyAcp, DEFAULT_SESSION_ID, FAKE_MODELS, FAKE_MODES, makeConfigOptions } from './fakeServer';
+import { memoryStore } from './sessionIndex';
 
-const OPTIONS: SessionOptions = { cwd: '/tmp/agentura-agy' };
-
-function setup(config: Partial<AntigravityAdapterConfig> = {}, script?: Parameters<typeof fakeSpawn>[0]) {
-  const { spawn, spawns } = fakeSpawn(script);
+function setup(s: FakeAgyAcp = createFakeAgyServer(), config: Partial<AntigravityAdapterConfig> = {}) {
   const logs: string[] = [];
+  const spawned: { path: string; args: string[]; options: AgySpawnOptions }[] = [];
   const adapter = new AntigravityAdapter({
     executablePath: '/bin/agy',
-    spawn,
-    graceMs: 30,
+    engineVersion: '1.5.3',
+    spawn: (path, args, options) => {
+      spawned.push({ path, args, options });
+      return s;
+    },
+    graceMs: 20,
+    interruptWaitMs: 50,
     log: (level, message) => logs.push(`${level}: ${message}`),
-    listProcesses: async () => [],
-    killPid: () => undefined,
     ...config,
   });
-  return { adapter, spawns, logs };
+  return { adapter, logs, spawned, server: s };
 }
 
 function collect(session: AgentSession): AgentEvent[] {
@@ -25,439 +35,681 @@ function collect(session: AgentSession): AgentEvent[] {
   session.events.on((e) => events.push(e));
   return events;
 }
-const types = (events: AgentEvent[]) => events.map((e) => e.type);
-const of = <T extends AgentEvent['type']>(events: AgentEvent[], type: T) =>
-  events.filter((e): e is AgentEventOf<T> => e.type === type);
-const results = (events: AgentEvent[]) => of(events, 'turn.result');
-const arg = (agy: FakeAgy, name: string) => agy.args[agy.args.indexOf(name) + 1];
 
-describe('AntigravityAdapter: ход', () => {
-  it('обычный ход: init → turn.start → text → turn.result; запуск с нужными флагами', async () => {
-    const { adapter, spawns } = setup();
-    const session = await adapter.createSession(OPTIONS);
-    const events = collect(session);
-    await vi.waitFor(() => expect(types(events)).toContain('session.init'));
-    expect(session.id).toBe(FAKE_CONVERSATION);
+async function until(cond: () => boolean, what = 'condition', max = 400): Promise<void> {
+  for (let i = 0; i < max; i++) {
+    if (cond()) return;
+    await new Promise((r) => setTimeout(r, 5));
+  }
+  throw new Error(`timeout: ${what}`);
+}
 
-    expect(session.send('hello')).toBe(true);
-    await vi.waitFor(() => expect(results(events)).toHaveLength(1));
-    expect(types(events)).toEqual(['session.init', 'turn.start', 'text.delta', 'usage.message', 'turn.result']);
-    expect(of(events, 'turn.start')[0]?.prompt).toBe('hello');
-    expect(of(events, 'text.delta')[0]?.text).toBe('echo: hello');
-    expect(results(events)[0]).toMatchObject({ ok: true, text: 'echo: hello', usage: { input: 100, output: 10, thinking: 4 } });
-
-    const agy = spawns[0] as FakeAgy;
-    expect(agy.args.slice(0, 5)).toEqual(['-p=', '--input-format', 'stream-json', '--output-format', 'stream-json']);
-    expect(arg(agy, '--model')).toBe('gemini-3.8-flash-medium');
-    expect(agy.args).not.toContain('--conversation');
-    expect(agy.args).not.toContain('--mode');
-    expect(agy.received).toEqual([{ event: 'user', message: { role: 'user', content: 'hello' } }]);
-    session.dispose();
+describe('AntigravityAdapter (ACP)', () => {
+  it('uses real elicitation titles and round-trips selected answers', () => {
+    const frames = readFileSync(join(__dirname, '../../../test/fixtures/antigravity/acp-pong.ndjson'), 'utf8')
+      .trim().split('\n').map((line) => JSON.parse(line));
+    const params = frames.find((frame) => frame.msg.method === 'elicitation/create').msg.params;
+    const parsed = parseElicitation(params)!;
+    expect(parsed.questions.map((q) => q.question)).toEqual(['Env?', 'Checks?']);
+    expect(formatElicitationAnswer(parsed.properties, parsed.questions, {
+      'Env?': 'prod', 'Checks?': 'test, typecheck',
+    })).toEqual({ action: 'accept', content: { q1: '2', q2: ['2', '3'] } });
   });
 
-  it('модель из опций передаётся agy и попадает в session.init', async () => {
-    const { adapter, spawns } = setup();
-    const session = await adapter.createSession({ ...OPTIONS, model: 'gemini-3.1-pro-low' });
-    expect(arg(spawns[0] as FakeAgy, '--model')).toBe('gemini-3.1-pro-low');
+  it('restores accepted settings across adapters instead of ACP process defaults', async () => {
+    const state = memoryStore();
+    const first = setup(createFakeAgyServer(), { state });
+    const session = await first.adapter.createSession({ cwd: '/work', model: 'gemini-3.8-flash', effort: 'low' });
+    await session.capabilities();
+    await session.setModel('claude-sonnet-5-5');
+    await session.setEffort('high');
+    await session.setMode('plan');
+    const id = session.id;
     session.dispose();
-  });
 
-  it('очередь: второе сообщение уходит в stdin только после result первого, процесс один', async () => {
-    let first: (() => void) | undefined;
-    const { adapter, spawns } = setup({}, (agy) => {
-      agy.onUser = (text, n) => {
-        if (n === 0) first = () => agy.answer(`a:${text}`);
-        else agy.answer(`a:${text}`);
-      };
-      setTimeout(() => agy.init(), 0);
+    const loader = createFakeAgyServer();
+    loader.handle('session/load', () => ({ configOptions: makeConfigOptions('gemini-4-argon', 'medium', 'default') }));
+    const history = await setup(loader, { state }).adapter.loadHistory(id, '/work');
+    expect(history).toMatchObject({ model: 'claude-sonnet-5-5', mode: 'plan' });
+
+    const next = setup(createFakeAgyServer(), { state });
+    const resumed = await next.adapter.resumeSession(id, { cwd: '/work', model: history.model, permissionMode: history.mode });
+    const events = collect(resumed);
+    await resumed.capabilities();
+    expect(events.find((e) => e.type === 'session.init')).toMatchObject({
+      model: 'claude-sonnet-5-5', effort: 'high', permissionMode: 'plan',
     });
-    const session = await adapter.createSession(OPTIONS);
-    const events = collect(session);
-    session.send('one');
-    session.send('two');
-    await vi.waitFor(() => expect(first).toBeDefined());
-    await new Promise((r) => setTimeout(r, 20));
-    expect((spawns[0] as FakeAgy).received).toHaveLength(1);
-    first?.();
-    await vi.waitFor(() => expect(results(events)).toHaveLength(2));
-    expect(spawns).toHaveLength(1);
-    expect(of(events, 'turn.start').map((s) => s.prompt)).toEqual(['one', 'two']);
-    session.dispose();
+    resumed.dispose();
   });
 
-  it('ход с инструментом и отказом: tool.start/result, permissionDenials', async () => {
-    const { adapter } = setup({}, (agy) => {
-      agy.onUser = () => {
-        agy.step({ state: 'DONE', step_type: 'user_input' });
-        agy.step({ step_index: 2, state: 'ACTIVE', step_type: 'tool', tool_name: 'write_to_file', tool_info: { name: 'write_to_file', parameters: { TargetFile: '/tmp/x' } } });
-        agy.step({ step_index: 2, state: 'ERROR', step_type: 'tool', tool_name: 'write_to_file', tool_info: { name: 'write_to_file', error: { message: 'permission check failed' } } });
-        agy.result({ status: 'SUCCESS', response: '', denied_actions: [{ action: 'write_file', display_name: 'WriteToFile' }] });
+  it('does not persist a rejected model and gates saved bypass permissions on resume', async () => {
+    const state = memoryStore();
+    const s = createFakeAgyServer();
+    const first = setup(s, { state });
+    const session = await first.adapter.createSession({ cwd: '/work', model: 'gemini-3.8-flash',
+      permissionMode: 'bypassPermissions', allowBypassPermissions: true });
+    await session.capabilities();
+    s.handle('session/set_config_option', () => { throw new Error('model rejected'); });
+    await session.setModel('invalid');
+    const id = session.id;
+    session.dispose();
+    const resumed = await setup(createFakeAgyServer(), { state }).adapter.resumeSession(id, { cwd: '/work' });
+    const events = collect(resumed);
+    await resumed.capabilities();
+    expect(events.find((e) => e.type === 'session.init')).toMatchObject({ model: 'gemini-3.8-flash', permissionMode: 'default' });
+    resumed.dispose();
+  });
+
+  it('pong: initialize -> session/new -> prompt -> text chunk -> turn.result', async () => {
+    const s = createFakeAgyServer();
+    s.handle('session/prompt', (params) => {
+      s.notify('session/update', {
+        sessionId: params.sessionId,
+        update: { sessionUpdate: 'session_info_update', title: 'Pong Chat' },
+      });
+      s.notify('session/update', {
+        sessionId: params.sessionId,
+        update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'pong' } },
+      });
+      return {
+        stopReason: 'end_turn',
+        usage: { inputTokens: 10, outputTokens: 5, cachedReadTokens: 0, cachedWriteTokens: 0, thoughtTokens: 0, totalTokens: 15 },
       };
-      setTimeout(() => agy.init(), 0);
     });
-    const session = await adapter.createSession(OPTIONS);
+
+    const { adapter, spawned } = setup(s);
+    const session = await adapter.createSession({ cwd: '/work' });
     const events = collect(session);
-    session.send('write');
-    await vi.waitFor(() => expect(results(events)).toHaveLength(1));
-    expect(of(events, 'tool.result')[0]).toMatchObject({ toolUseId: 'agy-2', isError: true });
-    expect(results(events)[0]?.permissionDenials).toEqual([{ toolName: 'Write', toolUseId: 'agy-2' }]);
+
+    await until(() => events.some((e) => e.type === 'session.init'), 'session.init');
+    const init = events.find((e) => e.type === 'session.init');
+    expect(init).toMatchObject({
+      type: 'session.init',
+      sessionId: DEFAULT_SESSION_ID,
+      cwd: '/work',
+      permissionMode: 'default',
+    });
+
+    session.send('ping');
+    await until(() => events.some((e) => e.type === 'turn.result'), 'turn.result');
+
+    const result = events.find((e) => e.type === 'turn.result');
+    expect(result).toMatchObject({
+      type: 'turn.result',
+      ok: true,
+      subtype: 'end_turn',
+      text: 'pong',
+      usageKnown: true,
+      usage: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0 },
+    });
+
+    expect(spawned[0]?.args).toEqual(['acp']);
     session.dispose();
   });
 
-  it('картинки и файлы не отправляются, в журнале предупреждение', async () => {
-    const { adapter, spawns, logs } = setup();
-    const session = await adapter.createSession(OPTIONS);
+  it('thinking chunks: agent_thought_chunk produces thinking.start and thinking.delta, closed by text', async () => {
+    const s = createFakeAgyServer();
+    s.handle('session/prompt', (params) => {
+      s.notify('session/update', {
+        sessionId: params.sessionId,
+        update: { sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: 'pondering' } },
+      });
+      s.notify('session/update', {
+        sessionId: params.sessionId,
+        update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: '42' } },
+      });
+      return {
+        stopReason: 'end_turn',
+        usage: { inputTokens: 5, outputTokens: 5, cachedReadTokens: 0, cachedWriteTokens: 0, thoughtTokens: 2, totalTokens: 10 },
+      };
+    });
+
+    const { adapter } = setup(s);
+    const session = await adapter.createSession({ cwd: '/work' });
     const events = collect(session);
-    session.send('look', [{ mediaType: 'image/png', data: 'AAAA' }], [{ kind: 'text', path: 'a.txt', data: 'x', size: 1 }]);
-    await vi.waitFor(() => expect(results(events)).toHaveLength(1));
-    expect(of(events, 'turn.start')[0]?.images).toBeUndefined();
-    expect((spawns[0] as FakeAgy).received[0]).toEqual({ event: 'user', message: { role: 'user', content: 'look' } });
-    expect(logs.filter((l) => l.startsWith('warn') && /not supported/.test(l))).toHaveLength(2);
+
+    await until(() => events.some((e) => e.type === 'session.init'), 'session.init');
+    session.send('what is the answer?');
+    await until(() => events.some((e) => e.type === 'turn.result'), 'turn.result');
+
+    const types = events.map((e) => e.type);
+    expect(types).toContain('thinking.start');
+    expect(types).toContain('thinking.delta');
+    expect(types).toContain('thinking.stop');
+    expect(types).toContain('text.delta');
+    expect(types).toContain('turn.result');
+
     session.dispose();
   });
-});
 
-describe('AntigravityAdapter: Stop и пересоздание процесса', () => {
-  const hanging = (agy: FakeAgy) => {
-    agy.onUser = () => {
-      agy.step({ state: 'DONE', step_type: 'user_input' });
-      agy.step({ state: 'ACTIVE', step_type: 'tool', tool_name: 'run_command', tool_info: { name: 'run_command', parameters: { CommandLine: 'sleep 90' } } });
-    };
-    setTimeout(() => agy.init(), 0);
-  };
+  it('images: sending PromptImage formats ACP image blocks', async () => {
+    const s = createFakeAgyServer();
+    let receivedPrompt: unknown;
+    s.handle('session/prompt', (params) => {
+      receivedPrompt = params.prompt;
+      return { stopReason: 'end_turn' };
+    });
 
-  it('interrupt: SIGINT, потомки убиты, ход interrupted, сессия жива; следующий send — новый процесс с --conversation', async () => {
-    const killed: [number, string][] = [];
-    const { adapter, spawns } = setup(
-      {
-        listProcesses: async () => [
-          { pid: 4242, ppid: 1 },
-          { pid: 9001, ppid: 4242 },
-          { pid: 9002, ppid: 9001 },
-          { pid: 777, ppid: 1 },
-        ],
-        killPid: (pid, signal) => killed.push([pid, signal]),
-      },
-      (agy, index) => {
-        if (index === 0) hanging(agy);
-        else {
-          agy.onUser = (text) => agy.answer(`again:${text}`);
-          setTimeout(() => agy.init(), 0);
-        }
-      },
-    );
-    const session = await adapter.createSession(OPTIONS);
+    const { adapter } = setup(s);
+    const session = await adapter.createSession({ cwd: '/work' });
     const events = collect(session);
-    await vi.waitFor(() => expect(types(events)).toContain('session.init'));
-    session.send('sleep');
-    await vi.waitFor(() => expect(types(events)).toContain('tool.start'));
 
-    await session.interrupt();
-    const first = spawns[0] as FakeAgy;
-    expect(first.signals[0]).toBe('SIGINT');
-    expect(killed).toEqual([
-      [9001, 'SIGKILL'],
-      [9002, 'SIGKILL'],
+    await until(() => events.some((e) => e.type === 'session.init'), 'session.init');
+
+    const img: PromptImage = { data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ', mediaType: 'image/png' };
+    session.send('inspect image', [img]);
+
+    await until(() => events.some((e) => e.type === 'turn.result'), 'turn.result');
+    expect(receivedPrompt).toEqual([
+      { type: 'image', data: img.data, mimeType: 'image/png' },
+      { type: 'text', text: 'inspect image' },
     ]);
-    expect(results(events)).toHaveLength(1);
-    expect(results(events)[0]).toMatchObject({ ok: false, interrupted: true, subtype: 'interrupted' });
-    expect(of(events, 'tool.result')[0]).toMatchObject({ isError: true, content: 'interrupted' });
-    expect(types(events)).not.toContain('session.closed');
-    expect(spawns).toHaveLength(1); // лениво: процесс поднимается со следующим send
 
-    session.send('next');
-    await vi.waitFor(() => expect(results(events)).toHaveLength(2));
-    expect(spawns).toHaveLength(2);
-    expect(arg(spawns[1] as FakeAgy, '--conversation')).toBe(FAKE_CONVERSATION);
-    expect(results(events)[1]?.text).toBe('again:next');
-    // повторный init не дублирует session.init
-    expect(of(events, 'session.init')).toHaveLength(1);
     session.dispose();
   });
 
-  it('agy не реагирует на SIGINT: через grace SIGKILL, ход закрывается сессией', async () => {
-    const { adapter, spawns } = setup({}, (agy) => {
-      hanging(agy);
-      agy.ignoreSigint = true;
+  it('model and effort switching, and graceful gpt-oss handling', async () => {
+    const s = createFakeAgyServer();
+    const { adapter } = setup(s);
+    const session = await adapter.createSession({ cwd: '/work', model: 'gemini-3.8-flash', effort: 'low' });
+    const events = collect(session);
+
+    await until(() => events.some((e) => e.type === 'session.init'), 'session.init');
+
+    // Switch model to gpt-oss-120b-medium
+    await session.setModel('gpt-oss-120b-medium');
+    expect(s.paramsOf('session/set_config_option', 2)).toMatchObject({
+      configId: 'model',
+      value: 'gpt-oss-120b-medium',
     });
-    const session = await adapter.createSession(OPTIONS);
-    const events = collect(session);
-    session.send('sleep');
-    await vi.waitFor(() => expect(types(events)).toContain('tool.start'));
-    await session.interrupt();
-    expect((spawns[0] as FakeAgy).signals).toEqual(['SIGINT', 'SIGKILL']);
-    expect(results(events)[0]).toMatchObject({ interrupted: true, ok: false });
-    expect(of(events, 'tool.result')[0]?.isError).toBe(true);
-    session.dispose();
-  });
 
-  it('send сразу после interrupted-result, пока agy ещё не вышел: ход ждёт остановки и идёт в новый процесс', async () => {
-    const { adapter, spawns } = setup({ graceMs: 1000 }, (agy, index) => {
-      if (index === 0) {
-        hanging(agy);
-        // как живой agy: `result` сразу, выход — чуть позже
-        agy.kill = (signal: NodeJS.Signals = 'SIGTERM') => {
-          agy.signals.push(signal);
-          if (agy.exited) return false;
-          if (signal === 'SIGKILL') agy.exit(null, 'SIGKILL');
-          else if (signal === 'SIGINT') {
-            agy.result({ status: 'ERROR', error: 'interrupted', response: '' });
-            setTimeout(() => agy.exit(1), 150);
-          }
-          return true;
-        };
-      } else {
-        agy.onUser = (text) => agy.answer(`again:${text}`);
-        setTimeout(() => agy.init(), 0);
-      }
+    // Setting effort while on gpt-oss should not crash (no thought_level in configOptions)
+    await session.setEffort('high');
+
+    // Switching back to gemini-4-argon should re-sync the effort
+    await session.setModel('gemini-4-argon');
+    const setConfigs = s.received.filter((m) => m.method === 'session/set_config_option');
+    const lastThoughtConfig = setConfigs.filter((m) => (m.params as { configId?: string })?.configId === 'thought_level').pop();
+    expect(lastThoughtConfig?.params).toMatchObject({
+      configId: 'thought_level',
+      value: 'high',
     });
-    const session = await adapter.createSession(OPTIONS);
+
+    session.dispose();
+  });
+
+  it('mode switching and allowBypassPermissions', async () => {
+    const s = createFakeAgyServer();
+    const { adapter } = setup(s);
+
+    // Initial session with acceptEdits
+    const session1 = await adapter.createSession({ cwd: '/work', permissionMode: 'acceptEdits' });
+    await until(() => s.methods().includes('session/set_mode'), 'session/set_mode');
+    expect(s.paramsOf('session/set_mode')).toMatchObject({ modeId: 'accept-edits' });
+    session1.dispose();
+
+    // Bypass permissions with allowBypassPermissions: true -> accept-edits
+    const s2 = createFakeAgyServer();
+    const { adapter: adapter2 } = setup(s2);
+    const session2 = await adapter2.createSession({
+      cwd: '/work',
+      permissionMode: 'bypassPermissions',
+      allowBypassPermissions: true,
+    });
+    await until(() => s2.methods().includes('session/set_mode'), 'session/set_mode');
+    expect(s2.paramsOf('session/set_mode')).toMatchObject({ modeId: 'accept-edits' });
+    session2.dispose();
+
+    // Bypass permissions with allowBypassPermissions: false -> default (no set_mode needed)
+    const s3 = createFakeAgyServer();
+    const { adapter: adapter3 } = setup(s3);
+    const session3 = await adapter3.createSession({
+      cwd: '/work',
+      permissionMode: 'bypassPermissions',
+      allowBypassPermissions: false,
+    });
+    const events3 = collect(session3);
+    await until(() => events3.some((e) => e.type === 'session.init'), 'session.init');
+    expect(s3.methods().filter((m) => m === 'session/set_mode')).toHaveLength(0);
+    session3.dispose();
+  });
+
+  it('live permission request: emits permission.request, supports allow, allow-edits, deny', async () => {
+    const s = createFakeAgyServer();
+    let promptResolve!: (val: unknown) => void;
+    s.handle('session/prompt', (params) => {
+      s.request('req_perm_1', 'session/request_permission', {
+        sessionId: params.sessionId,
+        toolCall: {
+          toolCallId: 'call_edit_1',
+          name: 'edit_file',
+          args: { Path: '/work/file.txt', Target: 'old text', Replacement: 'new text' },
+          title: 'Editing file.txt',
+        },
+        options: [
+          { optionId: 'allow', kind: 'allow_once' },
+          { optionId: 'deny', kind: 'reject_once' },
+        ],
+      });
+      return new Promise((resolve) => {
+        promptResolve = resolve;
+      });
+    });
+
+    const { adapter } = setup(s);
+    const session = await adapter.createSession({ cwd: '/work' });
     const events = collect(session);
-    await vi.waitFor(() => expect(types(events)).toContain('session.init'));
-    session.send('sleep');
-    await vi.waitFor(() => expect(types(events)).toContain('tool.start'));
-    const stopping = session.interrupt();
-    await vi.waitFor(() => expect(results(events)).toHaveLength(1), { interval: 2 });
-    expect((spawns[0] as FakeAgy).exited).toBe(false);
-    session.send('next');
-    await stopping;
-    await vi.waitFor(() => expect(results(events)).toHaveLength(2));
-    expect((spawns[0] as FakeAgy).received).toHaveLength(1);
-    expect(spawns).toHaveLength(2);
-    expect(arg(spawns[1] as FakeAgy, '--conversation')).toBe(FAKE_CONVERSATION);
-    expect(results(events)[1]).toMatchObject({ ok: true, text: 'again:next' });
+
+    await until(() => events.some((e) => e.type === 'session.init'), 'session.init');
+    session.send('edit something');
+
+    await until(() => events.some((e) => e.type === 'permission.request'), 'permission.request');
+    const permReq = events.find((e) => e.type === 'permission.request') as AgentEventOf<'permission.request'>;
+    expect(permReq).toMatchObject({
+      type: 'permission.request',
+      toolUseId: 'call_edit_1',
+      toolName: 'Edit',
+      description: 'Editing file.txt',
+      diff: {
+        kind: 'edit',
+        filePath: '/work/file.txt',
+        oldText: 'old text',
+        newText: 'new text',
+      },
+    });
+
+    // Test allow
+    const responded = session.respondPermission('call_edit_1', 'allow');
+    expect(responded).toBe(true);
+
+    await until(() => s.replies().some((r) => r.id === 'req_perm_1'), 'reply req_perm_1');
+    const reply1 = s.replies().find((r) => r.id === 'req_perm_1');
+    expect(reply1?.result).toEqual({ outcome: { outcome: 'selected', optionId: 'allow' } });
+
+    const resolved = events.find((e) => e.type === 'permission.resolved');
+    expect(resolved).toMatchObject({
+      type: 'permission.resolved',
+      toolUseId: 'call_edit_1',
+      decision: 'allow',
+      by: 'user',
+    });
+
+    promptResolve({ stopReason: 'end_turn' });
+    await until(() => events.some((e) => e.type === 'turn.result'), 'turn.result');
     session.dispose();
   });
 
-  it('interrupt сбрасывает очередь: второе сообщение не уходит', async () => {
-    const { adapter, spawns } = setup({}, hanging);
-    const session = await adapter.createSession(OPTIONS);
+  it('respondPermission allow-edits switches session mode and responds allow', async () => {
+    const s = createFakeAgyServer();
+    s.handle('session/prompt', (params) => {
+      s.request('req_perm_edits', 'session/request_permission', {
+        sessionId: params.sessionId,
+        toolCall: {
+          toolCallId: 'call_edits',
+          name: 'write_file',
+          args: { Path: '/work/new.txt', Content: 'hello' },
+        },
+      });
+      return { stopReason: 'end_turn' };
+    });
+
+    const { adapter } = setup(s);
+    const session = await adapter.createSession({ cwd: '/work' });
     const events = collect(session);
-    session.send('one');
-    session.send('two');
-    await vi.waitFor(() => expect(types(events)).toContain('tool.start'));
-    await session.interrupt();
-    expect(spawns).toHaveLength(1);
-    expect((spawns[0] as FakeAgy).received).toHaveLength(1);
-    expect(of(events, 'turn.start')).toHaveLength(1);
+
+    await until(() => events.some((e) => e.type === 'session.init'), 'session.init');
+    session.send('write something');
+
+    await until(() => events.some((e) => e.type === 'permission.request'), 'permission.request');
+    session.respondPermission('call_edits', 'allow-edits');
+
+    await until(() => s.methods().includes('session/set_mode'), 'session/set_mode');
+    expect(s.paramsOf('session/set_mode')).toMatchObject({ modeId: 'accept-edits' });
+
+    await until(() => s.replies().some((r) => r.id === 'req_perm_edits'), 'reply req_perm_edits');
+    const reply = s.replies().find((r) => r.id === 'req_perm_edits');
+    expect(reply?.result).toEqual({ outcome: { outcome: 'selected', optionId: 'allow' } });
+
+    const modeChanged = events.find((e) => e.type === 'mode.changed');
+    expect(modeChanged).toMatchObject({ type: 'mode.changed', mode: 'acceptEdits' });
+
     session.dispose();
   });
 
-  it('interrupt без хода — ничего не делает', async () => {
-    const { adapter, spawns } = setup();
-    const session = await adapter.createSession(OPTIONS);
-    await session.interrupt();
-    expect((spawns[0] as FakeAgy).signals).toEqual([]);
-    session.dispose();
-  });
+  it('bypassPermissions auto-responds allow without emitting permission.request', async () => {
+    const s = createFakeAgyServer();
+    s.handle('session/prompt', (params) => {
+      s.request('req_bypass_1', 'session/request_permission', {
+        sessionId: params.sessionId,
+        toolCall: { toolCallId: 'call_cmd', name: 'run_command', args: { CommandLine: 'echo 1' } },
+      });
+      return { stopReason: 'end_turn' };
+    });
 
-  it('setModel и setMode: следующий ход идёт в новом процессе с новыми флагами, старый остановлен', async () => {
-    const { adapter, spawns } = setup();
-    const session = await adapter.createSession(OPTIONS);
+    const { adapter } = setup(s);
+    const session = await adapter.createSession({
+      cwd: '/work',
+      permissionMode: 'bypassPermissions',
+      allowBypassPermissions: true,
+    });
     const events = collect(session);
-    await vi.waitFor(() => expect(types(events)).toContain('session.init'));
-    await session.setModel('gemini-3.1-pro-high');
-    await session.setMode('acceptEdits');
-    expect(of(events, 'mode.changed')).toEqual([{ type: 'mode.changed', mode: 'acceptEdits' }]);
-    expect(spawns).toHaveLength(1);
-    session.send('go');
-    await vi.waitFor(() => expect(results(events)).toHaveLength(1));
-    expect(spawns).toHaveLength(2);
-    expect((spawns[0] as FakeAgy).stdinEnded).toBe(true);
-    const second = spawns[1] as FakeAgy;
-    expect(arg(second, '--model')).toBe('gemini-3.1-pro-high');
-    expect(arg(second, '--mode')).toBe('accept-edits');
-    expect(arg(second, '--conversation')).toBe(FAKE_CONVERSATION);
+
+    await until(() => events.some((e) => e.type === 'session.init'), 'session.init');
+    session.send('run echo');
+
+    await until(() => s.replies().some((r) => r.id === 'req_bypass_1'), 'reply req_bypass_1');
+    const reply = s.replies().find((r) => r.id === 'req_bypass_1');
+    expect(reply?.result).toEqual({ outcome: { outcome: 'selected', optionId: 'allow' } });
+    expect(events.filter((e) => e.type === 'permission.request')).toHaveLength(0);
+
     session.dispose();
   });
 
-  it('bypassPermissions без разрешения настроек — как default; с разрешением — флаг agy', async () => {
-    const denied = setup();
-    const a = await denied.adapter.createSession({ ...OPTIONS, permissionMode: 'bypassPermissions' });
-    expect(denied.spawns[0]?.args).not.toContain('--dangerously-skip-permissions');
-    a.dispose();
-    const allowed = setup();
-    const b = await allowed.adapter.createSession({ ...OPTIONS, permissionMode: 'bypassPermissions', allowBypassPermissions: true });
-    expect(allowed.spawns[0]?.args).toContain('--dangerously-skip-permissions');
-    b.dispose();
-    expect(modeArgs('default')).toEqual([]);
-    expect(modeArgs('plan')).toEqual(['--mode', 'plan']);
-  });
-});
+  it('interactive questions: elicitation/create emits question.request and answers with 1-based index', async () => {
+    const s = createFakeAgyServer();
+    s.handle('session/prompt', (params) => {
+      s.request('req_elicit_1', 'elicitation/create', {
+        sessionId: params.sessionId,
+        toolCallId: 'call_q_1',
+        mode: 'form',
+        requestedSchema: {
+          type: 'object',
+          properties: {
+            q1: {
+              type: 'string',
+              description: 'Select frontend library',
+              oneOf: [
+                { const: '1', title: 'React' },
+                { const: '2', title: 'Vue' },
+                { const: '3', title: 'Svelte' },
+              ],
+            },
+            q1_other: { type: 'string' },
+          },
+          required: ['q1'],
+        },
+      });
+      return { stopReason: 'end_turn' };
+    });
 
-describe('AntigravityAdapter: resume, сбои, закрытие', () => {
-  it('resumeSession запускает agy с --conversation и отдаёт id сразу', async () => {
-    const { adapter, spawns } = setup();
-    const session = await adapter.resumeSession('abc-123', OPTIONS);
-    expect(session.id).toBe('abc-123');
-    expect(arg(spawns[0] as FakeAgy, '--conversation')).toBe('abc-123');
+    const { adapter } = setup(s);
+    const session = await adapter.createSession({ cwd: '/work' });
+    const events = collect(session);
+
+    await until(() => events.some((e) => e.type === 'session.init'), 'session.init');
+    session.send('ask me a question');
+
+    await until(() => events.some((e) => e.type === 'question.request'), 'question.request');
+    const qReq = events.find((e) => e.type === 'question.request') as AgentEventOf<'question.request'>;
+    expect(qReq).toMatchObject({
+      type: 'question.request',
+      toolUseId: 'call_q_1',
+      questions: [
+        {
+          question: 'Select frontend library',
+          options: [{ label: 'React' }, { label: 'Vue' }, { label: 'Svelte' }],
+          multiSelect: false,
+        },
+      ],
+    });
+
+    const answered = session.answerQuestion('call_q_1', { 'Select frontend library': 'Vue' });
+    expect(answered).toBe(true);
+
+    await until(() => s.replies().some((r) => r.id === 'req_elicit_1'), 'reply req_elicit_1');
+    const reply = s.replies().find((r) => r.id === 'req_elicit_1');
+    expect(reply?.result).toEqual({ action: 'accept', content: { q1: '2' } });
+
     session.dispose();
   });
 
-  it('смерть процесса посреди хода: turn.result, error fatal, session.closed; send больше не принимается', async () => {
-    const { adapter, spawns } = setup({}, (agy) => {
-      agy.onUser = () => {
-        agy.step({ state: 'DONE', step_type: 'user_input' });
-        agy.err('error: something broke');
-        agy.exit(3);
+  it('interrupt and dispose abort pending permissions and cancel pending questions', async () => {
+    const s = createFakeAgyServer();
+    s.handle('session/prompt', (params) => {
+      s.request('req_perm_abort', 'session/request_permission', {
+        sessionId: params.sessionId,
+        toolCall: { toolCallId: 'call_abort_perm' },
+      });
+      s.request('req_elicit_abort', 'elicitation/create', {
+        sessionId: params.sessionId,
+        toolCallId: 'call_abort_elicit',
+        mode: 'form',
+        requestedSchema: {
+          type: 'object',
+          properties: {
+            q: { type: 'string', oneOf: [{ const: '1', title: 'Opt' }] },
+          },
+        },
+      });
+      return new Promise(() => {}); // hold prompt
+    });
+
+    const { adapter } = setup(s);
+    const session = await adapter.createSession({ cwd: '/work' });
+    const events = collect(session);
+
+    await until(() => events.some((e) => e.type === 'session.init'), 'session.init');
+    session.send('trigger prompt');
+
+    await until(() => events.some((e) => e.type === 'permission.request'), 'permission.request');
+    await until(() => events.some((e) => e.type === 'question.request'), 'question.request');
+
+    const interruptPromise = session.interrupt();
+
+    await until(() => s.replies().some((r) => r.id === 'req_perm_abort'), 'reply perm abort');
+    await until(() => s.replies().some((r) => r.id === 'req_elicit_abort'), 'reply elicit abort');
+
+    const permReply = s.replies().find((r) => r.id === 'req_perm_abort');
+    expect(permReply?.result).toEqual({ outcome: { outcome: 'selected', optionId: 'deny' } });
+
+    const elicitReply = s.replies().find((r) => r.id === 'req_elicit_abort');
+    expect(elicitReply?.result).toEqual({ action: 'cancel' });
+
+    const resolved = events.find((e) => e.type === 'permission.resolved');
+    expect(resolved).toMatchObject({
+      type: 'permission.resolved',
+      toolUseId: 'call_abort_perm',
+      decision: 'deny',
+      by: 'abort',
+    });
+
+    session.dispose();
+    await interruptPromise.catch(() => {});
+  });
+
+  it('interrupt sends session/cancel notification and marks turn cancelled', async () => {
+    const s = createFakeAgyServer();
+    let promptResolve!: (val: unknown) => void;
+    s.handle('session/prompt', () => {
+      return new Promise((resolve) => {
+        promptResolve = resolve;
+      });
+    });
+
+    const { adapter } = setup(s);
+    const session = await adapter.createSession({ cwd: '/work' });
+    const events = collect(session);
+
+    await until(() => events.some((e) => e.type === 'session.init'), 'session.init');
+    session.send('long running task');
+
+    await until(() => s.methods().includes('session/prompt'), 'session/prompt');
+    const interruptPromise = session.interrupt();
+
+    await until(() => s.methods().includes('session/cancel'), 'session/cancel');
+    expect(s.paramsOf('session/cancel')).toMatchObject({ sessionId: DEFAULT_SESSION_ID });
+
+    promptResolve({ stopReason: 'cancelled' });
+    await interruptPromise;
+
+    const result = events.find((e) => e.type === 'turn.result');
+    expect(result).toMatchObject({
+      type: 'turn.result',
+      ok: false,
+      interrupted: true,
+      subtype: 'cancelled',
+    });
+
+    session.dispose();
+  });
+
+  it('process crash during turn marks turn as error', async () => {
+    const s = createFakeAgyServer();
+    s.handle('session/prompt', () => {
+      setTimeout(() => s.exit(1), 10);
+      return new Promise(() => {}); // never resolves
+    });
+
+    const { adapter } = setup(s);
+    const session = await adapter.createSession({ cwd: '/work' });
+    const events = collect(session);
+
+    await until(() => events.some((e) => e.type === 'session.init'), 'session.init');
+    session.send('crash now');
+
+    await until(() => events.some((e) => e.type === 'turn.result'), 'turn.result error');
+    const result = events.find((e) => e.type === 'turn.result');
+    expect(result).toMatchObject({
+      type: 'turn.result',
+      ok: false,
+      subtype: 'error',
+    });
+
+    session.dispose();
+  });
+
+  it('resumeSession calls session/resume with sessionId', async () => {
+    const s = createFakeAgyServer();
+    const { adapter } = setup(s);
+    const session = await adapter.resumeSession('existing-session-123', { cwd: '/work' });
+    const events = collect(session);
+
+    await until(() => events.some((e) => e.type === 'session.init'), 'session.init');
+    expect(s.methods()).toContain('session/resume');
+    expect(s.paramsOf('session/resume')).toMatchObject({
+      sessionId: 'existing-session-123',
+      cwd: '/work',
+    });
+
+    session.dispose();
+  });
+
+  it('capabilities returns base models and effort levels', async () => {
+    const s = createFakeAgyServer();
+    const { adapter } = setup(s);
+    const session = await adapter.createSession({ cwd: '/work' });
+
+    const caps = await session.capabilities();
+    expect(caps.models).toHaveLength(5);
+    expect(caps.models.map((m) => m.value)).toEqual([
+      'gemini-4-argon',
+      'gemini-3.8-flash',
+      'claude-opus-5-5',
+      'claude-sonnet-5-5',
+      'gpt-oss-120b-medium',
+    ]);
+    const argon = caps.models.find((m) => m.value === 'gemini-4-argon');
+    expect(argon).toMatchObject({
+      supportsEffort: true,
+      effortLevels: ['low', 'medium', 'high'],
+    });
+
+    const gptOss = caps.models.find((m) => m.value === 'gpt-oss-120b-medium');
+    expect(gptOss).toMatchObject({
+      supportsEffort: false,
+    });
+
+    session.dispose();
+  });
+
+  it('accountInfo reads tier name and caches it', async () => {
+    const s = createFakeAgyServer();
+    const { adapter } = setup(s);
+
+    const info = await adapter.accountInfo('/work');
+    expect(info).toEqual({ subscriptionType: 'Google AI Pro' });
+
+    // Repeated call uses cache
+    const info2 = await adapter.accountInfo('/work');
+    expect(info2).toEqual({ subscriptionType: 'Google AI Pro' });
+  });
+
+  it('missing executablePath throws AGY_NOT_FOUND', async () => {
+    const adapter = new AntigravityAdapter({ executablePath: undefined });
+    await expect(adapter.createSession({ cwd: '/work' })).rejects.toThrow(AGY_NOT_FOUND);
+  });
+
+  it('listSessions filters by cwd and overlays user names from sessionIndex', async () => {
+    const s = createFakeAgyServer();
+    s.handle('session/list', () => ({
+      sessions: [
+        { sessionId: 'sess_1', cwd: '/work', title: 'Default Title 1', updatedAt: '2026-03-30T10:00:00Z' },
+        { sessionId: 'sess_2', cwd: '/other', title: 'Other Title', updatedAt: '2026-03-30T11:00:00Z' },
+        { sessionId: 'sess_3', cwd: '/work', title: 'Default Title 3', updatedAt: '2026-03-30T12:00:00Z' },
+      ],
+    }));
+
+    const state = memoryStore();
+    state.update('agentura.antigravity.names', { sess_1: 'Custom Name 1' });
+    const { adapter } = setup(s, { state });
+
+    const sessions = await adapter.listSessions('/work');
+    expect(sessions).toHaveLength(2);
+    // Ordered descending by updatedAt
+    expect(sessions[0]).toMatchObject({
+      id: 'sess_3',
+      title: 'Default Title 3',
+      cwd: '/work',
+      provider: 'antigravity',
+    });
+    expect(sessions[1]).toMatchObject({
+      id: 'sess_1',
+      title: 'Custom Name 1',
+      cwd: '/work',
+      provider: 'antigravity',
+    });
+  });
+
+  it('loadHistory calls session/load and rebuilds history', async () => {
+    const s = createFakeAgyServer();
+    s.handle('session/load', (params) => {
+      s.notify('session/update', {
+        sessionId: params.sessionId,
+        update: {
+          sessionUpdate: 'user_message_chunk',
+          content: { type: 'text', text: 'hello' },
+        },
+      });
+      s.notify('session/update', {
+        sessionId: params.sessionId,
+        update: {
+          sessionUpdate: 'agent_message_chunk',
+          content: { type: 'text', text: 'world' },
+        },
+      });
+      return {
+        sessionId: params.sessionId,
+        models: FAKE_MODELS,
+        modes: FAKE_MODES,
+        configOptions: makeConfigOptions(),
       };
-      setTimeout(() => agy.init(), 0);
     });
-    const session = await adapter.createSession(OPTIONS);
-    const events = collect(session);
-    session.send('x');
-    await vi.waitFor(() => expect(types(events)).toContain('session.closed'));
-    expect(types(events).slice(-3)).toEqual(['turn.result', 'error', 'session.closed']);
-    expect(results(events)[0]?.ok).toBe(false);
-    expect(of(events, 'error')[0]).toMatchObject({ fatal: true });
-    expect(of(events, 'error')[0]?.message).toMatch(/code 3.*something broke/s);
-    expect(of(events, 'session.closed')[0]?.reason).toBe('exit');
-    expect(session.send('y')).toBe(false);
-    expect(spawns).toHaveLength(1);
+
+    const { adapter } = setup(s);
+    const history = await adapter.loadHistory('sess_1', '/work');
+    expect(history.turns).toBe(1);
+    expect(history.events.map((e) => e.type)).toContain('turn.result');
+    const textDelta = history.events.find((e) => e.type === 'text.delta');
+    expect(textDelta).toMatchObject({ type: 'text.delta', text: 'world' });
   });
 
-  it('agy не запустился (ENOENT): error fatal и session.closed', async () => {
-    const { adapter } = setup({}, (agy) => agy.failToStart());
-    const session = await adapter.createSession(OPTIONS);
-    const events = collect(session);
-    await vi.waitFor(() => expect(types(events)).toContain('session.closed'));
-    expect(of(events, 'error')[0]?.message).toMatch(/Failed to start agy.*ENOENT/);
-  });
+  it('renameSession updates name in sessionIndex', async () => {
+    const state = memoryStore();
+    const { adapter } = setup(createFakeAgyServer(), { state });
 
-  it('result ERROR и выход 1 в простое (неизвестная модель) — не авария: ошибка в ленте, следующий ход поднимает процесс', async () => {
-    const { adapter, spawns } = setup({}, (agy, index) => {
-      if (index === 0) {
-        agy.onUser = () => {
-          agy.err('error: invalid model selection');
-          agy.result({ status: 'ERROR', error: 'invalid model selection (--model "x")', response: '' });
-          agy.exit(1);
-        };
-      } else {
-        agy.onUser = (t) => agy.answer(t);
-        setTimeout(() => agy.init(), 0);
-      }
+    await adapter.renameSession('sess_123', 'My Renamed Session');
+    expect(state.get('agentura.antigravity.names', {})).toEqual({
+      sess_123: 'My Renamed Session',
     });
-    const session = await adapter.createSession({ ...OPTIONS, model: 'x' });
-    const events = collect(session);
-    session.send('hi');
-    await vi.waitFor(() => expect(results(events)).toHaveLength(1));
-    expect(results(events)[0]?.errors?.[0]).toMatch(/invalid model/);
-    await new Promise((r) => setTimeout(r, 20));
-    expect(types(events)).not.toContain('session.closed');
-    await session.setModel('gemini-3.8-flash-low');
-    session.send('again');
-    await vi.waitFor(() => expect(results(events)).toHaveLength(2));
-    expect(results(events)[1]?.ok).toBe(true);
-    expect(spawns).toHaveLength(2);
-    session.dispose();
-  });
-
-  it('ERROR-result, а второе сообщение уже в очереди: agy выходит — второй ход в новом процессе, не авария', async () => {
-    const { adapter, spawns } = setup({}, (agy, index) => {
-      if (index === 0) {
-        agy.onUser = () => {
-          agy.result({ status: 'ERROR', error: 'input decode failed', response: '' });
-          setTimeout(() => agy.exit(1), 50);
-        };
-      } else agy.onUser = (t) => agy.answer(t);
-      setTimeout(() => agy.init(), 0);
-    });
-    const session = await adapter.createSession(OPTIONS);
-    const events = collect(session);
-    session.send('one');
-    session.send('two');
-    await vi.waitFor(() => expect(results(events)).toHaveLength(2));
-    expect(results(events)[0]?.ok).toBe(false);
-    expect(results(events)[1]).toMatchObject({ ok: true, text: 'two' });
-    expect((spawns[0] as FakeAgy).received).toHaveLength(1);
-    expect(spawns).toHaveLength(2);
-    expect(types(events)).not.toContain('session.closed');
-    session.dispose();
-  });
-
-  it('dispose, пока старый процесс останавливается под смену модели: новый не запускается', async () => {
-    const { adapter, spawns } = setup({ graceMs: 100 }, (agy) => {
-      agy.holdOnEnd = true;
-      agy.onUser = (t) => agy.answer(t);
-      setTimeout(() => agy.init(), 0);
-    });
-    const session = await adapter.createSession(OPTIONS);
-    const events = collect(session);
-    await vi.waitFor(() => expect(types(events)).toContain('session.init'));
-    await session.setModel('gemini-3.8-flash-low');
-    session.send('hi');
-    await vi.waitFor(() => expect((spawns[0] as FakeAgy).stdinEnded).toBe(true), { interval: 2 });
-    session.dispose();
-    await new Promise((r) => setTimeout(r, 250));
-    expect((spawns[0] as FakeAgy).signals).toContain('SIGKILL');
-    expect(spawns).toHaveLength(1);
-  });
-
-  it('AGY_ERROR в stderr — нефатальный error с кодом', async () => {
-    const { adapter } = setup({}, (agy) => {
-      agy.onUser = () => agy.err('AGY_ERROR: {"code":429,"message":"quota exhausted"}');
-      setTimeout(() => agy.init(), 0);
-    });
-    const session = await adapter.createSession(OPTIONS);
-    const events = collect(session);
-    session.send('x');
-    await vi.waitFor(() => expect(of(events, 'error')).toHaveLength(1));
-    expect(of(events, 'error')[0]).toMatchObject({ message: 'quota exhausted', code: '429', fatal: false });
-    session.dispose();
-  });
-
-  it('dispose: stdin закрыт, session.closed disposed, процесс добит, после — тишина', async () => {
-    const { adapter, spawns } = setup();
-    const session = await adapter.createSession(OPTIONS);
-    const events = collect(session);
-    session.dispose();
-    expect(of(events, 'session.closed')).toEqual([{ type: 'session.closed', reason: 'disposed' }]);
-    await vi.waitFor(() => expect((spawns[0] as FakeAgy).exited).toBe(true));
-    expect((spawns[0] as FakeAgy).stdinEnded).toBe(true);
-    expect(session.send('x')).toBe(false);
-  });
-
-  it('dispose посреди хода: SIGINT', async () => {
-    const { adapter, spawns } = setup({}, (agy) => {
-      agy.onUser = () => agy.step({ state: 'DONE', step_type: 'user_input' });
-      setTimeout(() => agy.init(), 0);
-    });
-    const session = await adapter.createSession(OPTIONS);
-    session.send('x');
-    await vi.waitFor(() => expect((spawns[0] as FakeAgy).received).toHaveLength(1));
-    session.dispose();
-    await vi.waitFor(() => expect((spawns[0] as FakeAgy).exited).toBe(true));
-    expect((spawns[0] as FakeAgy).signals).toContain('SIGINT');
-  });
-
-  it('нет пути к agy — «не найден»', async () => {
-    const adapter = new AntigravityAdapter({ executablePath: () => undefined });
-    await expect(adapter.createSession(OPTIONS)).rejects.toThrow('Antigravity CLI (agy) was not found.');
-  });
-
-  it('capabilities: модели из agy models, один запрос на адаптер; сбой не кэшируется', async () => {
-    const list = vi
-      .fn()
-      .mockRejectedValueOnce(new Error('boom'))
-      .mockResolvedValue([{ value: 'gemini-3.8-flash-low', displayName: 'Gemini 3.8 Flash (Low)', supportsEffort: false }]);
-    const { adapter } = setup({ listModels: list });
-    const s1 = await adapter.createSession(OPTIONS);
-    const s2 = await adapter.createSession(OPTIONS);
-    expect((await s1.capabilities()).models).toEqual([]);
-    expect((await s2.capabilities()).models.map((m) => m.value)).toEqual(['gemini-3.8-flash-low']);
-    expect((await s1.capabilities()).models).toHaveLength(1);
-    expect(list).toHaveBeenCalledTimes(2);
-    expect((await s1.capabilities()).commands).toEqual([]);
-    s1.dispose();
-    s2.dispose();
-  });
-
-  it('Claude-специфика — no-op (список и история — sessions.test.ts)', async () => {
-    const { adapter } = setup();
-    const session = await adapter.createSession(OPTIONS);
-    expect(session.respondPermission('t', 'allow')).toBe(false);
-    expect(session.compact()).toBe(false);
-    expect(await session.contextUsage()).toBeUndefined();
-    session.dispose();
   });
 });

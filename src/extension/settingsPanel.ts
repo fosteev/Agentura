@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { homedir } from 'node:os';
 import { CodexAdapter } from '../agent/codex/adapter';
 import { AGY_NOT_FOUND, resolveAgyExecutable } from '../agent/antigravity/executable';
+import { loadAntigravityCatalog } from '../agent/antigravity/models';
 import { resolveExecutable } from '../agent/claude/executable';
 import { CODEX_NOT_FOUND, resolveCodexExecutable } from '../agent/codex/executable';
 import { CURSOR_NOT_FOUND, resolveCursorExecutable } from '../agent/cursor/executable';
@@ -60,6 +61,12 @@ export class SettingsPanel {
         return new CodexAdapter({ executablePath: executable.path,
           clientVersion: String(context.extension.packageJSON.version), log: (level, message) => log[level](message),
         }).listModels(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? homedir());
+      },
+      listAntigravityModels: async () => {
+        const path = vscode.workspace.getConfiguration('agentura').get<string>('antigravityExecutable') ?? '';
+        const executable = await resolveAgyExecutable(path);
+        if (!executable.path) throw new Error(executable.problem ?? hostStrings(currentLanguage()).antigravityNotFound);
+        return loadAntigravityCatalog(executable.path);
       },
       checkEngine: async (path, engine) => {
         // «не найден» — на языке интерфейса, как в карточке чата; прочие проблемы резолвера английские

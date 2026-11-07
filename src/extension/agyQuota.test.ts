@@ -13,7 +13,7 @@ describe('AgyQuotaService', () => {
   it('запускает agy и кэширует: повтор в пределах интервала процесс не поднимает', async () => {
     const { svc, run, advance } = make();
     const a = await svc.refresh();
-    expect(a.rows).toMatchObject([{ label: 'Gemini', remaining: 26 }]);
+    expect(a.rows).toMatchObject([{ label: 'Gemini 7д', remaining: 26 }]);
     advance(60_000);
     await svc.refresh();
     expect(run).toHaveBeenCalledTimes(1);

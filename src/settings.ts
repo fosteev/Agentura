@@ -7,6 +7,7 @@ import type { AgentProvider, EffortLevel, PermissionMode } from './agent/types';
 import { isAgentToolsSetting, readAgentTools, type AgentToolsSetting } from './shared/jiraTools';
 
 export const EFFORT_LEVELS: readonly EffortLevel[] = ['low', 'medium', 'high', 'xhigh', 'max'];
+export const ANTIGRAVITY_DEFAULT_EFFORTS = ['', 'low', 'medium', 'high'] as const;
 export const CODEX_DEFAULT_APPROVALS = ['', 'untrusted', 'on-request', 'never'] as const;
 export const CODEX_DEFAULT_SANDBOXES = ['', 'readOnly', 'workspaceWrite', 'dangerFullAccess'] as const;
 /** Режимы по умолчанию как в настройке: `manual` — обычный режим с подтверждениями. */
@@ -177,7 +178,9 @@ export type SettingKey =
   | 'defaultModel'
   | 'codex.defaultModel'
   | 'cursor.defaultModel'
+  | 'antigravity.defaultModel'
   | 'codex.defaultEffort'
+  | 'antigravity.defaultEffort'
   | 'codex.defaultApproval'
   | 'codex.defaultSandbox'
   | 'defaultEffort'
@@ -232,7 +235,9 @@ export const SETTING_KEYS: readonly SettingKey[] = [
   'defaultModel',
   'codex.defaultModel',
   'cursor.defaultModel',
+  'antigravity.defaultModel',
   'codex.defaultEffort',
+  'antigravity.defaultEffort',
   'codex.defaultApproval',
   'codex.defaultSandbox',
   'defaultEffort',
@@ -304,7 +309,10 @@ export interface SettingsValues {
   'codex.defaultModel': string;
   /** ACP modelId новых чатов Cursor; пусто — выбор движка. */
   'cursor.defaultModel': string;
+  /** ID модели новых чатов Antigravity; пусто — выбор движка. */
+  'antigravity.defaultModel': string;
   'codex.defaultEffort': '' | EffortLevel;
+  'antigravity.defaultEffort': '' | 'low' | 'medium' | 'high';
   'codex.defaultApproval': (typeof CODEX_DEFAULT_APPROVALS)[number];
   'codex.defaultSandbox': (typeof CODEX_DEFAULT_SANDBOXES)[number];
   /** Пусто — выбор движка. */
@@ -588,6 +596,10 @@ export function validateSetting(key: SettingKey, value: unknown, lang: ErrLang =
       return value === '' || isEffort(value)
         ? { ok: true, value }
         : bad(t.allowedOrEmpty(EFFORT_LEVELS.join(', ')));
+    case 'antigravity.defaultEffort':
+      return ANTIGRAVITY_DEFAULT_EFFORTS.includes(value as never)
+        ? { ok: true, value }
+        : bad(t.allowedOrEmpty(ANTIGRAVITY_DEFAULT_EFFORTS.slice(1).join(', ')));
     case 'allowBypassPermissions':
     case 'remoteControl':
     case 'limits.readKeychain':
@@ -606,6 +618,7 @@ export function validateSetting(key: SettingKey, value: unknown, lang: ErrLang =
     case 'defaultModel':
     case 'codex.defaultModel':
     case 'cursor.defaultModel':
+    case 'antigravity.defaultModel':
     case 'remoteControlNamePrefix':
     case 'claudeExecutable':
     case 'codexExecutable':
@@ -702,6 +715,7 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
   const mode = cfg.get<unknown>('defaultPermissionMode');
   const effort = cfg.get<unknown>('defaultEffort');
   const codexEffort = cfg.get<unknown>('codex.defaultEffort');
+  const agyEffort = cfg.get<unknown>('antigravity.defaultEffort');
   const th = cfg.get<unknown>('contextThresholds');
   const poll = cfg.get<unknown>('usagePollMinutes');
   const list = cfg.get<unknown>('sessionList.view');
@@ -733,7 +747,10 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
     defaultModel: str('defaultModel'),
     'codex.defaultModel': str('codex.defaultModel'),
     'cursor.defaultModel': str('cursor.defaultModel'),
+    'antigravity.defaultModel': str('antigravity.defaultModel'),
     'codex.defaultEffort': isEffort(codexEffort) ? codexEffort : '',
+    'antigravity.defaultEffort':
+      agyEffort === 'low' || agyEffort === 'medium' || agyEffort === 'high' ? agyEffort : '',
     'codex.defaultApproval': CODEX_DEFAULT_APPROVALS.find((v) => v === cfg.get<unknown>('codex.defaultApproval')) ?? '',
     'codex.defaultSandbox': CODEX_DEFAULT_SANDBOXES.find((v) => v === cfg.get<unknown>('codex.defaultSandbox')) ?? '',
     defaultEffort: isEffort(effort) ? effort : '',

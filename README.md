@@ -204,22 +204,41 @@ found and the Claude and Codex lists stay.
 A chat tab can also run on Google's Antigravity CLI (`agy`): pick it in the engine menu of an empty tab, or set
 `agentura.defaultProvider` to `antigravity`. Models inside `agy` include Gemini, Claude and GPT.
 
-You need `agy` installed and signed in (run `agy` once in a terminal). Agentura finds it in `PATH`, `~/.local/bin` or
-Homebrew; `agentura.antigravityExecutable` points elsewhere (⚙ → "Engine" has a check button). The weekly quota
-(`agy -p "/usage"`, at most once per 10 minutes) shows by the input box instead of the Claude limits and in the sidebar;
-if the output can't be parsed, nothing is shown.
+Agentura requires `agy >= 1.5.0` (standard: `1.5.3`) and connects via the official ACP protocol (`agy acp`, JSON-RPC 2.0
+over stdio). Agentura finds the binary in `PATH`, `~/.local/bin` or Homebrew; `agentura.antigravityExecutable` points
+elsewhere (⚙ → "Engine" has a check button). When signed out, the sidebar offers interactive sign-in via
+`agy acp --login`.
 
-What differs from Claude:
+In **Settings → New session**, Antigravity has default model and reasoning effort settings
+(`agentura.antigravity.defaultModel`, `agentura.antigravity.defaultEffort`), populated live from `agy models`.
+Changing the model adjusts supported effort levels (`low`, `medium`, `high`); models without effort levels (such as
+`gpt-oss-120b-medium`) disable the selector. These defaults apply to new chats; resumed sessions keep their settings.
 
-- `agy` cannot ask for approval per action. In the default mode it denies what needs permission and the feed shows an
-  "agy declined: …" card with "Allow edits and retry" / "Allow everything and retry". Stronger modes restart the
-  process; `bypassPermissions` only through an explicit choice and `agentura.allowBypassPermissions`.
-- Stop kills the `agy` process; the next message restarts it with the same conversation.
-- No plan review, agent questions, `/compact`, subagents, context window, cache or cost gauges; images and files are
-  not sent.
-- Conversation history is read from `agy`'s local storage (`~/.gemini/antigravity-cli`), an internal format that may
-  change; if it does, history degrades to what was seen live. Conversations of the open folder appear in the sidebar
-  and on the empty screen with an engine label (resume and rename work; without `agy` they are simply absent).
+Supported features:
+
+- **Streaming replies and Stop**: text and reasoning blocks stream in real time; Stop sends `session/cancel` and leaves
+  the process alive and ready for subsequent turns.
+- **Live permissions**: file edits and bash commands prompt for approval in the feed (`Allow`, `Deny`, or `Allow edits`)
+  without restarting the process.
+- **Native modes**: switch between `default` (ask per action), `accept-edits` (auto-approve workspace file edits), and
+  `plan` (text planning). `bypassPermissions` requires `agentura.allowBypassPermissions` and switches to `accept-edits`
+  with auto-approval.
+- **Images**: image attachments in messages are sent as ACP image blocks.
+- **Interactive questions**: `ask_question` renders interactive single- and multi-choice cards (`elicitation/create`)
+  with answers returned to the agent in the same turn.
+- **Diffs and tools**: tool calls render cards (`Bash`, `Read`, `Edit`, `Write`, `WebSearch`), and file diffs are
+  extracted directly from ACP updates without reading `~/.gemini`.
+- **Session history**: the sidebar lists project conversations via `session/list` (filtered by workspace folder),
+  resuming uses `session/resume`, and opening past threads replays history via `session/load`. Session renaming works
+  via Agentura's index.
+- **Account quota**: 5-window usage from `agy -p "/usage"` (Gemini 5h/7d, Claude/GPT 5h/7d, Gemini 4 Argon 7d;
+  polled at most once per 10 minutes) shows in the compact HUD by the input box and in the limits panel.
+
+Remaining limits:
+
+- No token context window gauge or USD cost estimation (ACP reports turn token usage, but not window capacity or prices).
+- No native plan acceptance callback (plans stream as text).
+- No `/compact`, subagents, or document/PDF attachment blocks.
 
 ## Jira tasks
 

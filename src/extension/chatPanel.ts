@@ -796,6 +796,10 @@ export class ChatPanel {
             approval: values['codex.defaultApproval'] || undefined,
             sandbox: values['codex.defaultSandbox'] || undefined,
           },
+          antigravityDefaults: {
+            model: values['antigravity.defaultModel'] || undefined,
+            effort: values['antigravity.defaultEffort'] || undefined,
+          },
           defaultModel: cfg.get<string>('defaultModel') || undefined,
           cursorDefaultModel: values['cursor.defaultModel'] || undefined,
           allowBypass: cfg.get<boolean>('allowBypassPermissions', false),

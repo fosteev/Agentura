@@ -65,15 +65,7 @@ class Session implements AgentSession {
 }
 
 /** Адаптер, помнящий, что у него просили (`created`/`resumed`) и какие сессии отдал. */
-class AgyTestSession extends Session {
-  retried: string[] = [];
-  /** Что ответит адаптер (`false` — режим уже такой / bypass не разрешён сессии). */
-  accept = true;
-  async retryWithMode(mode: string) {
-    this.retried.push(mode);
-    return this.accept;
-  }
-}
+class AgyTestSession extends Session {}
 
 function fakeAdapter(name: string, make: (id: string) => Session = (id) => new Session(id)) {
   const created: Record<string, unknown>[] = [];
@@ -365,51 +357,6 @@ describe('ChatController: Antigravity', () => {
     expect(agyQuota.refresh).toHaveBeenCalledTimes(1);
   });
 
-  it('agy.retry: повтор уходит сессии agy; bypass без разрешения в настройках — нет', async () => {
-    const { controller, agy } = setup({ provider: 'antigravity' });
-    controller.start();
-    await tick();
-    await controller.handle({ type: 'agy.retry', sessionId: 'agy-new', mode: 'acceptEdits' });
-    await controller.handle({ type: 'agy.retry', sessionId: 'agy-new', mode: 'bypassPermissions' });
-    expect((agy.sessions[0] as AgyTestSession).retried).toEqual(['acceptEdits', 'bypassPermissions']);
-    const off = setup({
-      provider: 'antigravity',
-      settings: () => ({ allowBypass: false }),
-    });
-    off.controller.start();
-    await tick();
-    await off.controller.handle({ type: 'agy.retry', sessionId: 'agy-new', mode: 'bypassPermissions' });
-    expect((off.agy.sessions[0] as AgyTestSession).retried).toEqual([]);
-  });
-
-  it('agy.retry: хост или адаптер повтор не принял — webview получает agy.retryRejected', async () => {
-    const off = setup({ provider: 'antigravity', settings: () => ({ allowBypass: false }) });
-    off.controller.start();
-    await tick();
-    await off.controller.handle({ type: 'agy.retry', sessionId: 'agy-new', mode: 'bypassPermissions' });
-    expect(off.posted).toContainEqual({ type: 'agy.retryRejected' });
-    const { controller, agy, posted } = setup({ provider: 'antigravity' });
-    controller.start();
-    await tick();
-    (agy.sessions[0] as AgyTestSession).accept = false;
-    await controller.handle({ type: 'agy.retry', sessionId: 'agy-new', mode: 'acceptEdits' });
-    expect((agy.sessions[0] as AgyTestSession).retried).toEqual(['acceptEdits']);
-    expect(posted).toContainEqual({ type: 'agy.retryRejected' });
-  });
-
-  it('agy.retry в Claude-вкладке игнорируется: ни режима, ни сообщения, ни ответа webview', async () => {
-    const { controller, claude, posted } = setup();
-    controller.start();
-    await tick();
-    const s = claude.sessions[0]!;
-    const setMode = vi.spyOn(s, 'setMode');
-    const before = posted.length;
-    await controller.handle({ type: 'agy.retry', sessionId: 'x', mode: 'acceptEdits' });
-    expect(setMode).not.toHaveBeenCalled();
-    expect(s.sent).toEqual([]);
-    expect(posted.slice(before)).toEqual([]);
-  });
-
   it('defaultPermissionMode=bypassPermissions без allowBypassPermissions: agy стартует в default без bypass', async () => {
     const { controller, agy } = setup({
       provider: 'antigravity',
@@ -429,10 +376,7 @@ describe('ChatController: Antigravity', () => {
     expect(titleOf).toHaveBeenCalledWith('conv-1', 'antigravity');
   });
 
-  it('протокол: agy.retry принимает только два режима; engine.set — antigravity', () => {
-    expect(isFromWebview({ type: 'agy.retry', sessionId: 's', mode: 'acceptEdits' })).toBe(true);
-    expect(isFromWebview({ type: 'agy.retry', sessionId: 's', mode: 'bypassPermissions' })).toBe(true);
-    expect(isFromWebview({ type: 'agy.retry', sessionId: 's', mode: 'plan' })).toBe(false);
+  it('протокол: engine.set — antigravity', () => {
     expect(isFromWebview({ type: 'engine.set', provider: 'antigravity' })).toBe(true);
   });
 });

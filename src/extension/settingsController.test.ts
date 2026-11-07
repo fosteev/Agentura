@@ -50,6 +50,25 @@ describe('SettingsController', () => {
     expect(t.deps.config().get('defaultEffort')).toBe('max');
   });
 
+  it('каталог Antigravity приходит с effort; смена модели сбрасывает несовместимый уровень', async () => {
+    const models = [
+      { value: 'gemini-3.8-flash', displayName: 'Gemini 3.8 Flash', effortLevels: ['low' as const, 'medium' as const] },
+      { value: 'gpt-oss-120b-medium', displayName: 'GPT-OSS 120B (Medium)', effortLevels: [] },
+    ];
+    const t = setup(
+      { 'antigravity.defaultModel': 'gemini-3.8-flash', 'antigravity.defaultEffort': 'high' },
+      { listAntigravityModels: async () => models },
+    );
+    await t.c.handle({ type: 'settings.antigravityModels' });
+    expect(t.posted.at(-1)).toEqual({ type: 'settings.antigravityModels', models, loading: false });
+    // смена на gpt-oss сбрасывает effort
+    await t.c.handle({ type: 'settings.set', key: 'antigravity.defaultModel', value: 'gpt-oss-120b-medium' });
+    expect(t.updates).toEqual([
+      { key: 'antigravity.defaultModel', value: 'gpt-oss-120b-medium', target: GLOBAL },
+      { key: 'antigravity.defaultEffort', value: '', target: GLOBAL },
+    ]);
+  });
+
   it('ошибка загрузки моделей не оставляет pending, повторный запрос восстанавливает каталог', async () => {
     const load = vi.fn().mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce([]);
     const t = setup({}, { listCodexModels: load });

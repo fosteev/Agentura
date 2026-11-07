@@ -1,12 +1,11 @@
 /** Карточки `.ask` (этап 5): разрешение (команда, правка), вопрос агента, план. Экраны permission, diff, plan. */
 import { useMemo } from 'preact/hooks';
-import type { FailCard, PermCard, PlanCard, QuestionCard, RefusalCard } from '../chatState';
+import type { FailCard, PermCard, PlanCard, QuestionCard } from '../chatState';
 import { alwaysButton, planView } from '../cardView';
 import { ENGINE_MISSING_CODE } from '../../protocol';
 import { send } from '../vscode';
 import { onMarkdownClick, renderMarkdown } from '../markdown';
 import {
-  chat,
   chooseOption,
   decidePlan,
   declineQuestion,
@@ -14,7 +13,6 @@ import {
   replyTarget,
   replyToQuestion,
   respondPermission,
-  retryRefusal,
   retryTurn,
   showLog,
   submitQuestion,
@@ -225,62 +223,6 @@ export function FailCardView({ c }: { c: FailCard }) {
             </button>
             <span class="hint">{ui.fail.logHint}</span>
           </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-const isEditTool = (tool: string): boolean =>
-  tool === 'Write' || tool === 'Edit' || tool === 'MultiEdit' || tool === 'NotebookEdit';
-
-/**
- * Карточка отказа Antigravity: кнопки живут только у последней карточки без новых сообщений после неё и пока режим
- * ниже нужного («правки» не помогают против команд, «всё» — только если разрешено настройкой).
- */
-export function RefusalCardView({ c }: { c: RefusalCard }) {
-  const s = chat.value;
-  // по позиции в ленте, а не по id: строка из очереди при доставке переезжает в конец со старым id
-  const at = s.rows.findIndex((r) => r.id === c.id);
-  const after = s.rows.slice(at + 1);
-  const live =
-    !c.sent &&
-    !c.closed &&
-    s.mode !== 'bypassPermissions' &&
-    !after.some((r) => r.kind === 'refusal' || (r.kind === 'user' && !r.queued));
-  // «правки» помогают только против правок файлов; всё прочее (команды, неопознанные имена agy) — только «всё»
-  const edits = c.tools.every(isEditTool);
-  const canEdits = edits && s.mode !== 'acceptEdits';
-  const actions = [...new Set(c.tools.map((t) => ui.cards.refusal.action(isEditTool(t))))].join(', ');
-  return (
-    <div class="ask warn" role="alert">
-      <div class="h">{ui.cards.refusal.title(actions)}</div>
-      <div class="bd">
-        <p class="dim">{ui.cards.refusal.hint}</p>
-        {live && !s.allowBypass && <p class="dim">{ui.cards.refusal.allOff}</p>}
-      </div>
-      <div class="acts">
-        {c.closed ? null : c.sent ? (
-          <span class="hint" style={{ marginLeft: 0 }}>
-            {ui.cards.refusal.sent}
-          </span>
-        ) : (
-          live && (
-            <>
-              {canEdits && (
-                <button class="btn pri" onClick={() => retryRefusal('acceptEdits')}>
-                  {ui.cards.refusal.edits}
-                </button>
-              )}
-              <button
-                class={canEdits ? 'btn ghost' : 'btn pri'}
-                disabled={!s.allowBypass}
-                onClick={() => retryRefusal('bypassPermissions')}
-              >
-                {ui.cards.refusal.all}
-              </button>
-            </>
-          )
         )}
       </div>
     </div>

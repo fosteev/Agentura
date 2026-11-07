@@ -503,17 +503,6 @@ const ru = {
     placeholder: 'лимит исчерпан — сообщение можно набрать, отправка после сброса',
   },
   cards: {
-    // карточка отказа Antigravity: agy без подтверждений по действию отклоняет запрещённое; повтор — в другом режиме
-    refusal: {
-      title: (actions: string) => `agy отклонил: ${actions}`,
-      action: (edit: boolean): string => (edit ? 'правка файла' : 'команда'),
-      hint: 'agy не спрашивает разрешений: что запрещает текущий режим, он отклоняет сам. Повтор перезапустит agy в более свободном режиме.',
-      rejected: 'Повтор не принят: режим уже такой, или «всё разрешено» недоступно этой сессии (настройку включили после её начала — откройте новый чат).',
-      edits: 'Разрешить правки и повторить',
-      all: 'Разрешить всё и повторить',
-      allOff: 'Режим «всё разрешено» выключен: включите agentura.allowBypassPermissions',
-      sent: 'повторяю…',
-    },
     permTitle: (tool: string) =>
       JIRA_PERM_RU[tool] ??
       (tool === 'Bash'
@@ -867,9 +856,11 @@ const ru = {
     week: 'неделя',
     weekShort: 'нед',
     limitsUnknown: 'Лимиты подписки пока не получены',
-    /** Подсказка квоты Antigravity: недельный лимит семейства моделей. */
-    quotaTitle: (label: string, left: number, reset: string | undefined) =>
-      `${label}: недельный лимит, осталось ${left}%${reset ? ` · сброс ${reset}` : ''}`,
+    /** Подсказка квоты Antigravity: лимит семейства моделей с точным типом окна. */
+    quotaTitle: (label: string, left: number, reset: string | undefined, window?: 'fiveHour' | 'weekly') => {
+      const win = window === 'fiveHour' ? '5-часовое окно' : 'недельный лимит';
+      return `${label}: ${win}, осталось ${left}%${reset ? ` · сброс ${reset}` : ''}`;
+    },
     send: 'enter ↵',
     sendTitle: 'Отправить',
     queue: '↵ в очередь',
@@ -1172,6 +1163,7 @@ const ru = {
       openClaude: 'Настроить режим Claude',
       agyNote:
         'Модель Antigravity выбирается в чате. Отдельной настройки модели по умолчанию здесь пока нет.',
+      agyDefaultEffort: 'По умолчанию CLI',
       savedAccess:
         'Полный доступ уже сохранён в настройках. Его использование ограничено общим переключателем выше.',
       efforts: {

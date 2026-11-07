@@ -28,7 +28,6 @@ import type {
   ToWebview,
 } from '../protocol';
 import { ENGINE_MISSING_CODE, isCodexSettingsChange, isSettingsSection, type SettingsSection } from '../protocol';
-import { isAgySession } from '../agent/antigravity/adapter';
 import { providerFeatures } from '../agent/features';
 import type {
   FileKind,
@@ -92,6 +91,7 @@ export interface ChatDeps {
   };
   settings(): {
     codexDefaults?: import('../agent/types').CodexNewChatDefaults;
+    antigravityDefaults?: { model?: string; effort?: import('../agent/types').EffortLevel };
     defaultModel?: string;
     /** `agentura.cursor.defaultModel`: ACP modelId новых чатов Cursor; пусто — выбор движка. */
     cursorDefaultModel?: string;
@@ -1010,23 +1010,6 @@ export class ChatController {
           await session.setMode(m.mode as PermissionMode);
           if (this.defaults) this.defaults = { ...this.defaults, mode: m.mode as PermissionMode };
           return;
-        case 'agy.retry': {
-          // карточка отказа Antigravity: процесс agy пересоздаётся в нужном режиме, агенту уходит служебный повтор
-          if (!isAgySession(session)) return;
-          if (m.mode === 'bypassPermissions' && !deps.settings().allowBypass) {
-            this.log.warn('agy.retry bypassPermissions: выключено настройкой agentura.allowBypassPermissions');
-            deps.post({ type: 'agy.retryRejected' });
-            return;
-          }
-          // режим в меню webview обновит `mode.changed` от адаптера
-          const ok = await session.retryWithMode(m.mode);
-          if (!ok) {
-            this.log.warn(`agy.retry ${m.mode}: адаптер повтор не принял`);
-            deps.post({ type: 'agy.retryRejected' });
-          }
-          if (ok && this.defaults) this.defaults = { ...this.defaults, mode: m.mode };
-          return;
-        }
         case 'model.set':
           await session.setModel(m.model);
           return;
@@ -1634,13 +1617,23 @@ export class ChatController {
             : (() => {
               // настройки «режим» и «effort по умолчанию» — только новым сессиям (resume берёт своё)
               const mode = resolveDefaultMode(s.defaultPermissionMode, s.allowBypass);
-              // effort по умолчанию — только Claude: у agy и Cursor свой дефолт, session.defaults его не шлёт
-              const effort = claude ? resolveDefaultEffort(s.defaultEffort) : undefined;
+              // effort по умолчанию — Claude и Antigravity (у Cursor дефолт внутри движка)
+              const effort = claude
+                ? resolveDefaultEffort(s.defaultEffort)
+                : provider === 'antigravity'
+                  ? s.antigravityDefaults?.effort
+                  : undefined;
               // меню под полем ввода — сразу, не дожидаясь `session.init` после первого хода
               this.defaults = { type: 'session.defaults', mode, ...(effort ? { effort } : {}) };
               deps.post(this.defaults);
-              // модель: Claude — `defaultModel`; Cursor — свой ACP modelId. Пусто — выбор движка, свойства нет.
-              const model = claude ? s.defaultModel : provider === 'cursor' ? s.cursorDefaultModel : undefined;
+              // модель: Claude — `defaultModel`; Cursor — свой ACP modelId; Antigravity — antigravityDefaults.model. Пусто — выбор движка, свойства нет.
+              const model = claude
+                ? s.defaultModel
+                : provider === 'cursor'
+                  ? s.cursorDefaultModel
+                  : provider === 'antigravity'
+                    ? s.antigravityDefaults?.model
+                    : undefined;
               return adapter.createSession({
                 ...base,
                 permissionMode: mode,

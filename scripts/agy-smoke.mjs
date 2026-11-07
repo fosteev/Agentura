@@ -18,7 +18,8 @@ const value = (name) => {
   return i >= 0 && args[i + 1] ? args[i + 1] : undefined;
 };
 const record = value('--record');
-const MODEL = 'gemini-3.8-flash-low';
+const MODEL = 'gemini-3.8-flash';
+const EFFORT = 'low';
 
 const { AntigravityAdapter } = await loadTs('src/agent/antigravity/adapter.ts');
 const { resolveAgyExecutable } = await loadTs('src/agent/antigravity/executable.ts');
@@ -60,7 +61,7 @@ function nextResult(session, events) {
 let exitCode = 0;
 let session;
 try {
-  session = await adapter.createSession({ cwd, model: MODEL });
+  session = await adapter.createSession({ cwd, model: MODEL, effort: EFFORT });
   const events = [];
   session.events.on((e) => {
     events.push(e);
@@ -68,7 +69,13 @@ try {
   });
   const caps = await session.capabilities();
   console.log(`${t()} agy models: ${caps.models.map((m) => m.value).join(', ')}`);
-  if (!caps.models.some((m) => m.value === MODEL)) exitCode = 1;
+  const flash = caps.models.find((m) => m.value === MODEL);
+  if (!flash || !flash.effortLevels?.includes(EFFORT)) exitCode = 1;
+
+  const account = await adapter.accountInfo(cwd);
+  if (account.subscriptionType) {
+    console.log(`${t()} tariff: ${account.subscriptionType}`);
+  }
 
   if (flag('--turn')) {
     session.send('Reply with just the word pong');
@@ -78,11 +85,11 @@ try {
     console.log(`${t()} текст: «${text}»`);
     if (first.type !== 'turn.result' || !first.ok) exitCode = 1;
 
-    // resume: новый процесс с --conversation, помнит прошлый ход; init с тем же id
+    // resume: сессия открывается заново через session/resume; init с тем же id
     const id = session.id;
     session.dispose();
     await new Promise((r) => setTimeout(r, 1500));
-    const again = await adapter.resumeSession(id, { cwd, model: MODEL });
+    const again = await adapter.resumeSession(id, { cwd, model: MODEL, effort: EFFORT });
     const events2 = [];
     again.events.on((e) => events2.push(e));
     again.send('Reply with just the word ok');

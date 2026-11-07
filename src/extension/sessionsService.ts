@@ -28,7 +28,7 @@ export interface SessionsServiceDeps {
   adapter: AgentAdapter;
   /** Нет — только Claude (тесты, окно без Codex). */
   codex?: ExtraSessionsSource;
-  /** Нет — без бесед Antigravity. Без `agy` или без `node:sqlite` список просто короче, без ошибок. */
+  /** Нет — без бесед Antigravity. Без `agy` список просто короче, без ошибок. */
   antigravity?: ExtraSessionsSource;
   /** Нет — без сессий Cursor. Бинарника нет или список отказал — строки Claude и Codex остаются. */
   cursor?: ExtraSessionsSource;

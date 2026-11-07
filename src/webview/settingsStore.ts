@@ -8,6 +8,7 @@ import { send } from './vscode';
 
 export const settingsValues = signal<SettingsValues | undefined>(undefined);
 export const codexModels = signal<{ models: ModelOption[]; loading: boolean; error?: string }>({ models: [], loading: true });
+export const antigravityModels = signal<{ models: ModelOption[]; loading: boolean; error?: string }>({ models: [], loading: true });
 /** Jiraffe и свои подключения Jira (страница «Интеграции»); до ответа хоста — `undefined`. */
 export const integrations = signal<IntegrationsState | undefined>(undefined);
 /** Хост просит открыть раздел (`settings.section`); страница забирает запрос и сбрасывает его в `undefined`. */
@@ -32,6 +33,9 @@ export function handleSettingsMessage(m: ToWebview): void {
   switch (m.type) {
     case 'settings.codexModels':
       codexModels.value = { models: m.models, loading: m.loading, ...(m.error ? { error: m.error } : {}) };
+      break;
+    case 'settings.antigravityModels':
+      antigravityModels.value = { models: m.models, loading: m.loading, ...(m.error ? { error: m.error } : {}) };
       break;
     case 'settings.state':
       settingsValues.value = m.values;

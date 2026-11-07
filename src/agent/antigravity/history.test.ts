@@ -1,139 +1,131 @@
 import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { AgentEvent, AgentEventOf } from '../types';
-import { buildAgyHistory, userRequestText } from './history';
-import type { TranscriptStep } from './storage';
+import { buildAgyHistory } from './history';
 
-const fixture = (name: string): TranscriptStep[] =>
-  readFileSync(new URL(`../../../test/fixtures/antigravity/${name}`, import.meta.url), 'utf8')
-    .split('\n')
-    .filter(Boolean)
-    .map((l) => JSON.parse(l) as TranscriptStep);
-const types = (events: AgentEvent[]) => events.map((e) => e.type);
-const of = <T extends AgentEvent['type']>(events: AgentEvent[], type: T) =>
-  events.filter((e): e is AgentEventOf<T> => e.type === type);
-
-describe('userRequestText', () => {
-  it('достаёт запрос из <USER_REQUEST>, остальные обёртки отбрасывает', () => {
-    const raw = fixture('transcript_full.jsonl')[0]?.content ?? '';
-    expect(userRequestText(raw)).toMatch(/^Create a file hello\.txt.*echo done` in shell\.$/);
-    expect(userRequestText('<ADDITIONAL_METADATA>x</ADDITIONAL_METADATA>\nпросто текст\n<USER_SETTINGS_CHANGE>y</USER_SETTINGS_CHANGE>')).toBe('просто текст');
-    expect(userRequestText('<USER_REQUEST>\n  a\n  b\n</USER_REQUEST>')).toBe('a\n  b');
-  });
-});
-
-describe('buildAgyHistory: транскрипт → лента', () => {
-  it('правка, команда и финальный ответ: порядок событий, id как у живой ленты, дифф в результате правки', () => {
-    const history = buildAgyHistory(fixture('transcript_full.jsonl'));
-    expect(history).toMatchObject({ turns: 1, skippedTurns: 0 });
-    const events = history.events;
-    expect(types(events)[0]).toBe('turn.start');
-    expect(types(events).at(-1)).toBe('turn.result');
-    expect(of(events, 'turn.start')[0]?.prompt).toMatch(/^Create a file hello\.txt/);
-    const starts = of(events, 'tool.start');
-    expect(starts.map((t) => [t.toolUseId, t.name])).toEqual([
-      ['agy-2', 'Write'],
-      ['agy-4', 'Edit'],
-      ['agy-6', 'Bash'],
-    ]);
-    expect(starts[2]?.input).toMatchObject({ command: 'echo done' });
-    const res = of(events, 'tool.result');
-    expect(res.map((r) => [r.toolUseId, r.isError])).toEqual([
-      ['agy-2', false],
-      ['agy-4', false],
-      ['agy-6', false],
-    ]);
-    expect(res[0]?.content).toMatch(/^Created file/);
-    expect(res[0]?.content).not.toMatch(/Created At/);
-    expect(res[0]?.result).toMatchObject({ type: 'create', content: 'hi' });
-    expect(res[1]?.result).toMatchObject({ oldString: 'hi', newString: 'hello world' });
-    expect((res[1]?.result as { structuredPatch?: unknown[] }).structuredPatch?.length).toBeGreaterThan(0);
-    expect(res[2]?.content).toContain('done');
-    const final = of(events, 'turn.result')[0];
-    expect(final).toMatchObject({ ok: true, interrupted: false, numTurns: 4, subtype: 'success' });
-    expect(final?.text).toMatch(/^All steps completed/);
-    expect(final?.usage.output).toBe(258 + 183 + 130 + 199);
-    expect(of(events, 'usage.message')).toHaveLength(4);
-    expect(of(events, 'text.delta').map((t) => t.messageId)).toEqual(['agy-7']);
-  });
-
-  it('thinking в ленту не идёт, view_file/прочие инструменты маппятся тем же mapAgyTool', () => {
-    const events = buildAgyHistory(fixture('transcript_full_multiline.jsonl')).events;
-    expect(types(events).some((t) => t.startsWith('thinking'))).toBe(false);
-    expect(of(events, 'tool.start').map((t) => t.name)).toEqual(['Read', 'Edit']);
-  });
-
-  const user = (i: number, text: string): TranscriptStep => ({ step_index: i, type: 'USER_INPUT', status: 'DONE', content: `<USER_REQUEST>\n${text}\n</USER_REQUEST>`, created_at: '2026-10-06T10:00:00Z' });
-  const planner = (i: number, extra: Partial<TranscriptStep> = {}): TranscriptStep => ({ step_index: i, type: 'PLANNER_RESPONSE', status: 'DONE', created_at: '2026-10-06T10:00:02Z', ...extra });
-  const generic = (i: number, extra: Partial<TranscriptStep> = {}): TranscriptStep => ({ step_index: i, type: 'GENERIC', status: 'DONE', content: 'Created At: x\nCompleted At: y\nok', created_at: '2026-10-06T10:00:03Z', ...extra });
-  const run = (cmd: string) => ({ name: 'run_command', args: { CommandLine: cmd } });
-
-  it('отказ по разрешениям: tool.result isError и permissionDenials с именем карточки', () => {
-    const steps = [
-      user(0, 'go'),
-      planner(1, { tool_calls: [run('rm x')] }),
-      generic(2, { status: 'ERROR', content: undefined, error: 'permission check failed for unsandboxed "rm x": user denied' }),
-      planner(3, { content: 'не вышло' }),
+describe('antigravity history: buildAgyHistory', () => {
+  it('builds turns from user_message_chunk and tool updates', () => {
+    const updates = [
+      { sessionUpdate: 'user_message_chunk', content: { type: 'text', text: 'turn 1 prompt' } },
+      {
+        sessionUpdate: 'tool_call',
+        toolCallId: 'call_1',
+        name: 'run_command',
+        status: 'completed',
+        rawInput: { CommandLine: 'echo 1' },
+        rawOutput: { output: '1\n', exit_code: 0 },
+      },
+      { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'done 1' } },
+      { sessionUpdate: 'user_message_chunk', content: { type: 'text', text: 'turn 2 prompt' } },
+      { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'done 2' } },
     ];
-    const events = buildAgyHistory(steps).events;
-    expect(of(events, 'tool.result')[0]).toMatchObject({ toolUseId: 'agy-2', isError: true });
-    expect(of(events, 'turn.result')[0]?.permissionDenials).toEqual([{ toolName: 'Bash', toolUseId: 'agy-2' }]);
+
+    const result = {
+      sessionId: 'sess-1',
+      configOptions: [{ id: 'model', currentValue: 'gemini-3.8-flash' }],
+      modes: { currentModeId: 'default' },
+    };
+
+    const history = buildAgyHistory(updates, result, { now: () => 1000 });
+    expect(history.turns).toBe(2);
+    expect(history.skippedTurns).toBe(0);
+    expect(history.model).toBeUndefined();
+    expect(history.mode).toBeUndefined();
+
+    const types = history.events.map((e) => e.type);
+    expect(types).toEqual([
+      'turn.start',
+      'tool.start',
+      'tool.result',
+      'text.delta',
+      'turn.result',
+      'turn.start',
+      'text.delta',
+      'turn.result',
+    ]);
+
+    const toolStart = history.events.find((e) => e.type === 'tool.start');
+    expect(toolStart).toMatchObject({
+      type: 'tool.start',
+      toolUseId: 'call_1',
+      name: 'Bash',
+      input: { command: 'echo 1' },
+    });
+
+    const toolResult = history.events.find((e) => e.type === 'tool.result');
+    expect(toolResult).toMatchObject({
+      type: 'tool.result',
+      toolUseId: 'call_1',
+      isError: false,
+      content: '1\n',
+    });
   });
 
-  it('оборванный ход: незакрытый инструмент — ошибка, turn.result interrupted; live — ход остаётся открытым', () => {
-    const steps = [user(0, 'go'), planner(1, { tool_calls: [run('sleep 9')] })];
-    const done = buildAgyHistory(steps).events;
-    expect(of(done, 'tool.result')[0]).toMatchObject({ isError: true, content: 'interrupted' });
-    expect(of(done, 'turn.result')[0]).toMatchObject({ ok: false, interrupted: true, subtype: 'interrupted' });
-    const live = buildAgyHistory(steps, { live: true }).events;
-    expect(types(live)).toEqual(['turn.start', 'tool.start']);
-  });
-
-  it('фоновая команда (RUNNING) — результат «запущено», не ошибка; SYSTEM_MESSAGE пропускается', () => {
-    const steps = [
-      user(0, 'go'),
-      planner(1, { tool_calls: [run('sleep 90')] }),
-      generic(2, { status: 'RUNNING', content: 'Created At: x\nTool is running as a background task' }),
-      { step_index: 3, type: 'SYSTEM_MESSAGE', status: 'DONE', content: 'sys' },
-      planner(4, { content: 'ok' }),
+  it('live: true leaves the last turn open without turn.result', () => {
+    const updates = [
+      { sessionUpdate: 'user_message_chunk', content: { type: 'text', text: 'in progress turn' } },
+      { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'partial answer' } },
     ];
-    const events = buildAgyHistory(steps).events;
-    expect(of(events, 'tool.result')[0]).toMatchObject({ isError: false, content: 'Tool is running as a background task' });
-    expect(of(events, 'turn.result')[0]?.ok).toBe(true);
+
+    const history = buildAgyHistory(updates, {}, { live: true, now: () => 1000 });
+    const types = history.events.map((e) => e.type);
+    expect(types).toEqual(['turn.start', 'text.delta']);
   });
 
-  it('повтор после отказа (silentPrompts) — ход без пузыря; maxTurns берёт последние ходы', () => {
-    const steps = [user(0, 'one'), planner(1, { content: 'a' }), user(2, 'RETRY'), planner(3, { content: 'b' }), user(4, 'three'), planner(5, { content: 'c' })];
-    const all = buildAgyHistory(steps, { silentPrompts: ['RETRY'] });
-    expect(of(all.events, 'turn.start').map((t) => t.prompt)).toEqual(['one', undefined, 'three']);
-    const tail = buildAgyHistory(steps, { maxTurns: 1 });
-    expect(tail).toMatchObject({ turns: 3, skippedTurns: 2 });
-    expect(of(tail.events, 'turn.start').map((t) => t.prompt)).toEqual(['three']);
+  it('does not mistake load process mode for saved session mode', () => {
+    const updates = [
+      { sessionUpdate: 'user_message_chunk', content: { type: 'text', text: 'plan something' } },
+      { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'the plan' } },
+    ];
+
+    const result = {
+      modes: { currentModeId: 'plan' },
+    };
+
+    const history = buildAgyHistory(updates, result);
+    expect(history.mode).toBeUndefined();
   });
 
-  it('live: вызов без результата получает id будущего шага tool (склейка с живым продолжением)', () => {
-    const steps = [user(0, 'go'), planner(1, { tool_calls: [run('a'), run('b')] }), generic(2)];
-    const live = buildAgyHistory(steps, { live: true }).events;
-    expect(of(live, 'tool.start').map((t) => t.toolUseId)).toEqual(['agy-2', 'agy-3']);
-    expect(of(live, 'tool.result').map((t) => t.toolUseId)).toEqual(['agy-2']);
-    const done = buildAgyHistory(steps).events;
-    expect(of(done, 'tool.start').map((t) => t.toolUseId)).toEqual(['agy-2', 'agy-1-1']);
-  });
+  it('reconstructs full history from acp-pong.ndjson load scenario', () => {
+    const fixturePath = join(__dirname, '../../../test/fixtures/antigravity/acp-pong.ndjson');
+    const lines = readFileSync(fixturePath, 'utf8').trim().split('\n');
 
-  it('сбой ответа агента (planner ERROR) — ход с ошибкой, не успех', () => {
-    const events = buildAgyHistory([user(0, 'go'), planner(1, { status: 'ERROR', error: 'quota exhausted' })]).events;
-    expect(of(events, 'turn.result')[0]).toMatchObject({ ok: false, subtype: 'error', interrupted: false, errors: ['quota exhausted'] });
-  });
+    const updates: unknown[] = [];
+    let loadResult: unknown = {};
 
-  it('хвост без USER_INPUT: с ответом агента — ход без промпта, одни служебные шаги — без хода; skippedBefore', () => {
-    const sys = { step_index: 0, type: 'SYSTEM_MESSAGE', status: 'DONE', content: 'sys' };
-    expect(buildAgyHistory([sys, user(1, 'go'), planner(2, { content: 'a' })]).turns).toBe(1);
-    const tail = buildAgyHistory([generic(5), planner(6, { content: 'end' }), user(7, 'next'), planner(8, { content: 'b' })], { skippedBefore: 4 });
-    expect(tail).toMatchObject({ turns: 6, skippedTurns: 4 });
-    expect(of(tail.events, 'turn.start').map((t) => t.prompt)).toEqual([undefined, 'next']);
-  });
+    for (const line of lines) {
+      const entry = JSON.parse(line);
+      if (entry.scenario === 'load') {
+        if (entry.dir === 'out' && entry.msg.method === 'session/update') {
+          updates.push(entry.msg.params?.update);
+        } else if (entry.dir === 'out' && entry.msg.result) {
+          loadResult = entry.msg.result;
+        }
+      }
+    }
 
-  it('пустой транскрипт — пустая история', () => {
-    expect(buildAgyHistory([])).toEqual({ events: [], turns: 0, skippedTurns: 0 });
+    expect(updates.length).toBeGreaterThan(10);
+    const history = buildAgyHistory(updates, loadResult);
+    expect(history.model).toBeUndefined();
+    expect(history.mode).toBeUndefined();
+    expect(history.turns).toBeGreaterThan(0);
+    expect(history.events.length).toBeGreaterThan(20);
+
+    // Verify tools were mapped
+    const toolStarts = history.events.filter((e) => e.type === 'tool.start');
+    expect(toolStarts.length).toBeGreaterThan(0);
+    const toolNames = toolStarts.map((t) => (t as { name: string }).name);
+    expect(toolNames).toContain('Read');
+    expect(toolNames).toContain('Write');
+    expect(toolNames).toContain('Edit');
+    expect(toolNames).toContain('Bash');
+
+    // Verify diff results exist
+    const toolResults = history.events.filter((e) => e.type === 'tool.result');
+    const withDiff = toolResults.filter((r) => {
+      const res = (r as { result?: Record<string, unknown> }).result;
+      return res && Array.isArray(res.structuredPatch);
+    });
+    expect(withDiff.length).toBeGreaterThan(0);
   });
 });

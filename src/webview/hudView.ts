@@ -268,28 +268,64 @@ export function limitsView(windows: readonly LimitWindow[], now: number): Limits
   };
 }
 
-/** Квота Antigravity в HUD: недельное окно семейства, процент — израсходованный (как у лимитов Claude). */
+/** Квота Antigravity в HUD: компактная выборка семейств (Gemini, Claude/GPT, Argon), процент — израсходованный. */
 export interface QuotaItem {
   label: string;
   meter: LimitMeter;
   title: string;
 }
 
+function quotaFamily(labelOrName: string): string {
+  if (/argon/i.test(labelOrName)) return 'Argon';
+  if (/gemini/i.test(labelOrName)) return 'Gemini';
+  if (/claude|gpt/i.test(labelOrName)) return 'Claude/GPT';
+  return labelOrName.replace(/\s*(?:5\s*[чh]|7\s*[дd]|week(?:ly)?).*$/i, '').trim() || labelOrName;
+}
+
 export function quotaView(rows: readonly QuotaRow[], now: number): QuotaItem[] {
   // окно уже сбросилось, а свежего `/usage` ещё не было — старый процент врёт, строку не показываем
-  return rows.filter((r) => r.resetsAt === undefined || r.resetsAt > now).map((r) => {
+  const active = rows.filter((r) => r.resetsAt === undefined || r.resetsAt > now);
+  if (!active.length) return [];
+
+  // Группируем по семействам: показываем компактную выборку (лимитирующее/узкое окно на семейство)
+  const byFamily = new Map<string, QuotaRow>();
+  for (const r of active) {
+    const family = quotaFamily(r.label);
+    const existing = byFamily.get(family);
+    if (!existing) {
+      byFamily.set(family, r);
+    } else {
+      const isRMoreLimiting =
+        r.remaining < existing.remaining ||
+        (r.remaining === existing.remaining && r.window === 'fiveHour' && existing.window !== 'fiveHour');
+      if (isRMoreLimiting) {
+        byFamily.set(family, r);
+      }
+    }
+  }
+
+  const items: QuotaItem[] = [];
+  for (const [family, r] of byFamily.entries()) {
+    const windowKind =
+      r.window ?? (/5\s*[чh]/i.test(r.label) ? 'fiveHour' : /7\s*[дd]|week/i.test(r.label) ? 'weekly' : undefined);
     const meter = limitMeter({
-      kind: 'weekly',
+      kind: windowKind === 'fiveHour' ? 'five-hour' : 'weekly',
       percent: 100 - r.remaining,
       ...(r.resetsAt !== undefined ? { resetsAt: r.resetsAt } : {}),
     }) as LimitMeter;
     const left = Math.max(0, Math.min(100, Math.round(r.remaining)));
-    return {
-      label: r.label,
+    items.push({
+      label: family,
       meter,
-      title: ui.compose.quotaTitle(r.label, left, r.resetsAt !== undefined ? resetLabel(r.resetsAt, now) : undefined),
-    };
-  });
+      title: ui.compose.quotaTitle(
+        family,
+        left,
+        r.resetsAt !== undefined ? resetLabel(r.resetsAt, now) : undefined,
+        windowKind,
+      ),
+    });
+  }
+  return items;
 }
 
 // ——— цвета сегментов таймлайна (деталь агента) ———

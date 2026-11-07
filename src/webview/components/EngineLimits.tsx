@@ -112,8 +112,8 @@ function Lims({ e }: { e: EngineView }) {
   if (e.state === 'signedOut' || !e.windows.length) return null;
   return (
     <div class="lims">
-      {e.windows.map((w) => (
-        <LimitLine key={w.label} w={w} />
+      {e.windows.map((w, i) => (
+        <LimitLine key={`${w.label}-${i}`} w={w} />
       ))}
     </div>
   );
@@ -195,36 +195,53 @@ function Switch({ engines, current }: { engines: EngineView[]; current: EngineId
 function Table({ engines }: { engines: EngineView[] }) {
   return (
     <div class="grid">
-      {engines.map((e) => (
-        <Fragment key={e.engine}>
-          <span class="nm" data-tip={engineTip(e)}>
-            <Mark engine={e.engine} />
-            {ui.sidebar.tableShort[e.engine] ?? engineName(e.engine)}
-          </span>
-          {e.state === 'signedOut' ? (
-            <span class="off">
-              <Status e={e} />
-            </span>
-          ) : (
-            [0, 1, 2].map((i) => {
-              const w = e.windows[i];
-              return w ? (
-                <span class={`c ${lv(w.percent)}`} key={`${e.engine}-${i}`} data-tip={w.note}>
-                  <em>{w.short}</em>
-                  <span class="n">{w.percent}%</span>
-                  <span class="bar">
-                    <i style={{ width: `${w.percent}%` }} />
-                  </span>
+      {engines.map((e) => {
+        if (e.state === 'signedOut') {
+          return (
+            <Fragment key={e.engine}>
+              <span class="nm" data-tip={engineTip(e)}>
+                <Mark engine={e.engine} />
+                {ui.sidebar.tableShort[e.engine] ?? engineName(e.engine)}
+              </span>
+              <span class="off">
+                <Status e={e} />
+              </span>
+            </Fragment>
+          );
+        }
+        const chunks: (EngineWindowView | undefined)[][] = [];
+        for (let i = 0; i < Math.max(e.windows.length, 3); i += 3) {
+          chunks.push([e.windows[i], e.windows[i + 1], e.windows[i + 2]]);
+        }
+        return (
+          <Fragment key={e.engine}>
+            {chunks.map((chunk, chunkIdx) => (
+              <Fragment key={`${e.engine}-row-${chunkIdx}`}>
+                <span class={chunkIdx === 0 ? 'nm' : 'nm cont'} data-tip={chunkIdx === 0 ? engineTip(e) : undefined}>
+                  {chunkIdx === 0 && <Mark engine={e.engine} />}
+                  {chunkIdx === 0 ? (ui.sidebar.tableShort[e.engine] ?? engineName(e.engine)) : ''}
                 </span>
-              ) : (
-                <span class="c none" key={`${e.engine}-${i}`}>
-                  {ui.sidebar.unknown}
-                </span>
-              );
-            })
-          )}
-        </Fragment>
-      ))}
+                {chunk.map((w, colIdx) => {
+                  const globalIdx = chunkIdx * 3 + colIdx;
+                  return w ? (
+                    <span class={`c ${lv(w.percent)}`} key={`${e.engine}-${globalIdx}`} data-tip={w.note}>
+                      <em>{w.short}</em>
+                      <span class="n">{w.percent}%</span>
+                      <span class="bar">
+                        <i style={{ width: `${w.percent}%` }} />
+                      </span>
+                    </span>
+                  ) : (
+                    <span class="c none" key={`${e.engine}-${globalIdx}`}>
+                      {ui.sidebar.unknown}
+                    </span>
+                  );
+                })}
+              </Fragment>
+            ))}
+          </Fragment>
+        );
+      })}
     </div>
   );
 }

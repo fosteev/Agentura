@@ -184,6 +184,27 @@ describe('лимиты нескольких движков в боковой п�
     expect(q(host, '.grid .c.lim-warn .n')?.textContent).toBe('78%');
   });
 
+  it('C table: отображает все 5 окон Antigravity с правильными подписями без обрезки', async () => {
+    const agy5 = agy({
+      windows: [
+        { kind: 'model', name: 'Gemini 5ч', percent: 3, resetsAt: soon },
+        { kind: 'model', name: 'Gemini 7д', percent: 1, resetsAt: soon },
+        { kind: 'model', name: 'Claude/GPT 5ч', percent: 0, resetsAt: soon },
+        { kind: 'model', name: 'Claude/GPT 7д', percent: 0, resetsAt: soon },
+        { kind: 'model', name: 'Gemini 4 Argon 7д', percent: 34, resetsAt: soon },
+      ],
+    });
+    const host = await mount({ limits: 'table', engines: [codex(), agy5] });
+    const agyCells = qa(host, '.grid .c em').slice(5);
+    expect(agyCells.map((e) => e.textContent)).toEqual([
+      'Gemini 5ч',
+      'Gemini 7д',
+      'Claude/GPT 5ч',
+      'Claude/GPT 7д',
+      'Gemini 4 Argon 7д',
+    ]);
+  });
+
   it('D active: текущий раскрыт, остальные строкой с худшим окном, клик раскрывает другой', async () => {
     const host = await mount({ limits: 'active', provider: 'codex' });
     expect(q(host, '.exp')?.getAttribute('data-engine')).toBe('codex');

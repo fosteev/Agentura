@@ -39,6 +39,7 @@ import {
   codexCheck,
   cursorCheck,
   codexModels,
+  antigravityModels,
   engineCheck,
   errors,
   integrations,
@@ -82,7 +83,7 @@ const sessionKeys: Record<AgentProvider, SettingKey[]> = {
   claude: ['defaultModel', 'defaultEffort', 'defaultPermissionMode', 'remoteControl', 'remoteControlNamePrefix'],
   codex: ['codex.defaultModel', 'codex.defaultEffort', 'codex.defaultApproval', 'codex.defaultSandbox'],
   cursor: ['cursor.defaultModel', 'defaultPermissionMode'],
-  antigravity: ['defaultPermissionMode'],
+  antigravity: ['antigravity.defaultModel', 'antigravity.defaultEffort', 'defaultPermissionMode'],
 };
 /** Ширина вкладки, с которой разделы — колонкой слева (уже — полосой вкладок над страницей). */
 const NAV_PX = 600;
@@ -729,7 +730,8 @@ export function Settings() {
     document.getElementById(`ns-tab-${provider}`)?.focus();
   };
   const providerHasError = (provider: AgentProvider) => sessionKeys[provider].some(k => errors.value[k])
-    || (provider === 'codex' && !!codexModels.value.error);
+    || (provider === 'codex' && !!codexModels.value.error)
+    || (provider === 'antigravity' && !!antigravityModels.value.error);
   // примерка шрифта (наведение на карточку): образец ленты рисуется им, настройка не меняется
   const [trying, setTrying] = useState<{ k: FontKey; name: string }>();
   const tryFont = (k: FontKey) => (name: string | undefined) =>
@@ -806,6 +808,24 @@ export function Settings() {
   ];
   if (v['codex.defaultEffort'] && !codexModel?.effortLevels?.includes(v['codex.defaultEffort']))
     codexEfforts.push([v['codex.defaultEffort'], `${v['codex.defaultEffort']} (${T.newChat.unavailable})`, true]);
+
+  const agyCatalog = antigravityModels.value;
+  const agyModel = agyCatalog.models.find((m) => m.value === v['antigravity.defaultModel']);
+  const agyModelOptions: [string, string, boolean?][] = [
+    ['', T.newChat.inherit], ...agyCatalog.models.map((m): [string, string] => [m.value, m.displayName]),
+  ];
+  if (v['antigravity.defaultModel'] && !agyModel) agyModelOptions.push([
+    v['antigravity.defaultModel'], `${v['antigravity.defaultModel']}${agyCatalog.loading ? '' : ` (${T.newChat.unavailable})`}`, true,
+  ]);
+  const agyModelSupportsEffort = agyModel ? (agyModel.supportsEffort ?? (agyModel.effortLevels && agyModel.effortLevels.length > 0)) : true;
+  const agyEfforts: [string, string, boolean?][] = [
+    ['', S.agyDefaultEffort],
+    ['low', S.efforts.low],
+    ['medium', S.efforts.medium],
+    ['high', S.efforts.high],
+  ];
+  if (v['antigravity.defaultEffort'] && !['', 'low', 'medium', 'high'].includes(v['antigravity.defaultEffort']))
+    agyEfforts.push([v['antigravity.defaultEffort'], `${v['antigravity.defaultEffort']} (${T.newChat.unavailable})`, true]);
 
   // примеряемый шрифт перекрывает свою переменную только у образцов; '' — значение по умолчанию
   // (у панелей — `initial`: var(--panel-font, …) берёт прежний шрифт)
@@ -1011,7 +1031,23 @@ export function Settings() {
                 </div>
               </div>
               <div id="ns-panel-antigravity" role="tabpanel" aria-labelledby="ns-tab-antigravity" hidden={selectedProvider !== 'antigravity'}>
-                <div class="ns-group"><h4>{S.model}</h4><p>{S.agyNote}</p><p>{S.sharedMode}</p>
+                <div class="ns-group"><h4>{S.modelGroup}</h4>
+                  <Row name={S.model} desc={T.newChat.modelDesc} k="antigravity.defaultModel">
+                    {agyCatalog.models.length > 0 ? (
+                      <Select k="antigravity.defaultModel" value={v['antigravity.defaultModel']} options={agyModelOptions} disabled={agyCatalog.loading} />
+                    ) : (
+                      <TextField k="antigravity.defaultModel" value={v['antigravity.defaultModel']} placeholder="gemini-3.8-flash" />
+                    )}
+                    <button type="button" class="btn" disabled={agyCatalog.loading} onClick={() => send({ type: 'settings.antigravityModels' })}>
+                      {agyCatalog.loading ? T.newChat.modelsLoading : T.newChat.modelsReload}
+                    </button>
+                  </Row>
+                  {!agyCatalog.loading && (agyCatalog.error || !agyCatalog.models.length) &&
+                    <div class="err" role="alert">{agyCatalog.error ?? T.newChat.noModels}</div>}
+                  <Row name={S.effort} desc={T.newChat.effortDesc} k="antigravity.defaultEffort">
+                    <Select k="antigravity.defaultEffort" value={v['antigravity.defaultEffort']} options={agyEfforts} disabled={agyCatalog.loading || !agyModelSupportsEffort} />
+                  </Row>
+                  <p>{S.sharedMode}</p>
                   <button type="button" class="ns-link" onClick={() => selectProvider('claude')}>{S.openClaude}</button>
                 </div>
               </div>

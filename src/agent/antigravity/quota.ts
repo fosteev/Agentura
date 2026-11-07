@@ -1,20 +1,38 @@
 import { execFile } from 'node:child_process';
 
+export type AgyUsageWindow = 'fiveHour' | 'weekly';
+
 /** Строка квоты agy: семейство моделей, сколько осталось (0…100) и когда сброс (мс). */
 export interface AgyQuotaRow {
-  /** Короткая подпись: `Gemini`, `Claude/GPT`; незнакомое семейство — имя как есть. */
+  /** Короткая подпись: `Gemini 5ч`, `Gemini 7д`, `Claude/GPT 5ч`, `Claude/GPT 7д`, `Gemini 4 Argon 7д`; незнакомое — имя как есть. */
   label: string;
-  /** Имя семейства, как его напечатал agy (`Gemini Models`). */
+  /** Имя семейства, как его напечатал agy (`Gemini Models`, `Gemini 4 Argon`). */
   name: string;
   /** Осталось, % (0…100). */
   remaining: number;
   resetsAt?: number;
+  /** Тип окна квоты (5-часовое или недельное). */
+  window?: AgyUsageWindow;
 }
 
-function shortLabel(name: string): string {
+function parseFamily(name: string): string {
+  if (/argon/i.test(name)) return 'Gemini 4 Argon';
   if (/gemini/i.test(name)) return 'Gemini';
   if (/claude|gpt/i.test(name)) return 'Claude/GPT';
   return name;
+}
+
+function parseWindow(caption: string): AgyUsageWindow | undefined {
+  if (/five\s*hour|5\s*h(our)?/i.test(caption)) return 'fiveHour';
+  if (/week|7\s*d(ay)?/i.test(caption)) return 'weekly';
+  return undefined;
+}
+
+function shortLabel(name: string, window?: AgyUsageWindow): string {
+  const family = parseFamily(name);
+  if (window === 'fiveHour') return `${family} 5ч`;
+  if (window === 'weekly') return `${family} 7д`;
+  return family;
 }
 
 /**
@@ -44,11 +62,13 @@ export function parseAgyUsage(output: string): AgyQuotaRow[] {
     if (!dateField && !/limit|remaining|quota|\bused\b|\bleft\b/i.test(caption)) continue;
     const used = /\bused\b|consumed/i.test(caption) && !/remaining|\bleft\b/i.test(caption);
     const at = dateField ? Date.parse(dateField) : NaN;
+    const window = parseWindow(caption);
     rows.push({
-      label: shortLabel(name),
+      label: shortLabel(name, window),
       name,
       remaining: used ? 100 - value : value,
       ...(Number.isFinite(at) ? { resetsAt: at } : {}),
+      ...(window ? { window } : {}),
     });
   }
   return rows;
