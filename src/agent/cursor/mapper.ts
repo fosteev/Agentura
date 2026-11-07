@@ -12,7 +12,8 @@ const ZERO: TokenUsage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 
 /**
  * Ход ACP → `AgentEvent`. В `text.delta` попадает только `agent_message_chunk`.
- * Tool — `tool.start` / `tool.result`. `plan` с entries, мысли, реплика пользователя и каталог команд — не лента.
+ * Tool — `tool.start` / `tool.result`. `session_info_update.title` — название сессии, не строка ленты.
+ * `plan` с entries, мысли, реплика пользователя и каталог команд — не лента.
  */
 export class CursorMapper {
   private messageId = '';
@@ -32,11 +33,16 @@ export class CursorMapper {
   /**
    * Один `session/update.update`.
    * Текст — только `agent_message_chunk`. Tool — `tool_call` / `tool_call_update`.
+   * `session_info_update.title` — `session.title`. Пустой title не событие.
    * `plan` с entries, мысли, реплика пользователя, команды и `current_mode_update` — пусто.
    */
   applyUpdate(update: unknown): AgentEvent[] {
     const kind = sessionUpdateKind(update);
     if (kind === 'tool_call' || kind === 'tool_call_update') return this.toolUpdate(update);
+    if (kind === 'session_info_update') {
+      const title = sessionInfoTitle(update);
+      return title ? [{ type: 'session.title', title }] : [];
+    }
     if (kind !== 'agent_message_chunk') return [];
     const text = chunkText(update);
     if (!text) return [];
@@ -176,6 +182,14 @@ function record(value: unknown): Record<string, unknown> | undefined {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : undefined;
+}
+
+/** `session_info_update.title`. Пусто, пробелы и не-строка — названия нет. */
+function sessionInfoTitle(update: unknown): string | undefined {
+  const title = record(update)?.title;
+  if (typeof title !== 'string') return undefined;
+  const trimmed = title.trim();
+  return trimmed || undefined;
 }
 
 function permissionReason(content: unknown): string {

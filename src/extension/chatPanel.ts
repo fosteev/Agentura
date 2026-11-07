@@ -949,6 +949,7 @@ export class ChatPanel {
         return row && row.title !== id ? row.title : undefined;
       },
       onSession: (id, why) => {
+        panel.setSessionProvider?.(id ? this.provider : undefined);
         // /clear — новая сессия остаётся в группе задачи; сбой возобновления — нет (`nextTabTask`)
         const next = nextTabTask(
           { ...(this.pendingTask ? { pending: this.pendingTask } : {}), ...(this.member ? { member: this.member } : {}) },

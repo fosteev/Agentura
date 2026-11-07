@@ -1141,7 +1141,9 @@ function PromptField({
   return (
     <div class="pop">
       <div class="prompt">
-        <span class="p">$</span>
+        {engineLocked()
+          ? <span class={`p provider-logo provider-logo-${provider.value}`} role="img" aria-label={provider.value} data-tip={provider.value} />
+          : <span class="p">$</span>}
         <div
           ref={edRef}
           class="typed"

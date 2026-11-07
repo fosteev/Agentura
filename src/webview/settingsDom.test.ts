@@ -169,7 +169,7 @@ describe('вкладка настроек', () => {
     const host = mount(Settings);
     state({ defaultModel: 'opus', 'codex.defaultModel': 'gpt-test' });
     await flush();
-    expect([...host.querySelectorAll('#session h3')].map((e) => e.textContent)).toEqual(['Claude', 'Codex', 'Cursor']);
+    expect([...host.querySelectorAll('.ns-providers strong')].map((e) => e.textContent)).toEqual(['Claude', 'Codex', 'Cursor', 'Antigravity']);
     expect(host.querySelector<HTMLInputElement>('[aria-label="defaultModel"]')!.value).toBe('opus');
     expect(host.querySelector<HTMLInputElement>('[aria-label="codex.defaultModel"]')!.value).toBe('gpt-test');
     change(host.querySelector('[aria-label="codex.defaultApproval"]')!, 'never');
@@ -194,6 +194,97 @@ describe('вкладка настроек', () => {
     change(field, 'default[]');
     expect(sets()).toEqual([{ type: 'settings.set', key: 'cursor.defaultModel', value: 'default[]' }]);
   });
+  it('карточки переключают только панель; defaultProvider меняется явным действием', async () => {
+    const host = mount(Settings);
+    state({ defaultProvider: 'codex' });
+    await flush();
+    const tab = (id: string) => host.querySelector<HTMLButtonElement>(`[data-provider="${id}"]`)!;
+    expect(tab('codex').getAttribute('aria-selected')).toBe('true');
+    tab('cursor').click(); await flush();
+    expect(sets()).toEqual([]);
+    expect(host.querySelector<HTMLElement>('#ns-panel-cursor')!.hidden).toBe(false);
+    expect(host.querySelector<HTMLElement>('#ns-panel-codex')!.hidden).toBe(true);
+    host.querySelector<HTMLButtonElement>('.ns-panel-head button')!.click();
+    expect(sets()).toEqual([{ type: 'settings.set', key: 'defaultProvider', value: 'cursor' }]);
+    // Бейдж меняется только после подтверждения хоста.
+    expect(tab('codex').querySelector<HTMLElement>('.ns-default')!.hidden).toBe(false);
+    state({ defaultProvider: 'cursor' }); await flush();
+    expect(tab('cursor').querySelector<HTMLElement>('.ns-default')!.hidden).toBe(false);
+    expect(host.querySelector('.ns-panel-head button')).toBeNull();
+    expect(document.activeElement).toBe(tab('cursor'));
+  });
+
+  it('клавиатура и черновик переживают смену движка', async () => {
+    const host = mount(Settings); state(); await flush();
+    const field = host.querySelector<HTMLInputElement>('[aria-label="defaultModel"]')!;
+    field.value = 'unfinished-model';
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+    host.querySelector('[data-provider="claude"]')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    await flush();
+    expect(document.activeElement).toBe(host.querySelector('[data-provider="codex"]'));
+    expect(host.querySelector('[data-provider="codex"]')!.getAttribute('aria-selected')).toBe('true');
+    host.querySelector<HTMLButtonElement>('[data-provider="claude"]')!.click(); await flush();
+    expect(field.value).toBe('unfinished-model');
+    expect(sets()).toEqual([]);
+  });
+
+  it('ошибки и override видны; переключение не затирает сохранённый полный доступ', async () => {
+    const host = mount(Settings);
+    state({ 'codex.defaultSandbox': 'dangerFullAccess', defaultPermissionMode: 'bypassPermissions' });
+    handleSettingsMessage({ type: 'settings.error', key: 'allowBypassPermissions', message: 'Write denied' });
+    handleSettingsMessage({ type: 'settings.error', key: 'codex.defaultModel', message: 'Unknown model' });
+    overridden.value = ['defaultProvider', 'defaultModel'];
+    await flush();
+    expect(host.querySelector<HTMLDetailsElement>('.ns-advanced')!.open).toBe(true);
+    expect(host.querySelector('.ns-advanced [role="alert"]')!.textContent).toBe('Write denied');
+    expect(host.querySelector('[data-provider="codex"] .ns-provider-error')).not.toBeNull();
+    expect(host.querySelector('.set[data-key="agentura.defaultModel"] .note')).not.toBeNull();
+    host.querySelector<HTMLButtonElement>('[data-provider="codex"]')!.click(); await flush();
+    expect(host.querySelector('#ns-panel-codex [role="alert"]')!.textContent).toBe('Unknown model');
+    expect(host.querySelector<HTMLSelectElement>('[aria-label="codex.defaultSandbox"]')!.value).toBe('dangerFullAccess');
+    expect(sets()).toEqual([]);
+    host.querySelector<HTMLButtonElement>('[aria-label="allowBypassPermissions"]')!.click();
+    expect(sets()).toEqual([{ type: 'settings.set', key: 'allowBypassPermissions', value: true }]);
+  });
+
+  it('отказ записи не меняет defaultProvider и возвращает выбранный режим', async () => {
+    const host = mount(Settings); state(); await flush();
+    host.querySelector<HTMLInputElement>('[name="defaultPermissionMode"][value="plan"]')!.click();
+    handleSettingsMessage({ type: 'settings.error', key: 'defaultPermissionMode', message: 'Read-only settings' });
+    await flush();
+    expect(host.querySelector<HTMLInputElement>('[name="defaultPermissionMode"][value="manual"]')!.checked).toBe(true);
+    expect(host.querySelector('[data-key="agentura.defaultPermissionMode"] [role="alert"]')!.textContent).toBe('Read-only settings');
+    host.querySelector<HTMLButtonElement>('[data-provider="codex"]')!.click(); await flush();
+    host.querySelector<HTMLButtonElement>('.ns-panel-head button')!.click();
+    handleSettingsMessage({ type: 'settings.error', key: 'defaultProvider', message: 'Cannot save provider' });
+    await flush();
+    expect(host.querySelector<HTMLElement>('[data-provider="claude"] .ns-default')!.hidden).toBe(false);
+    expect(host.querySelector('.ns-panel-head button')).not.toBeNull();
+    expect(host.querySelector('#session')!.textContent).toContain('Cannot save provider');
+  });
+
+  it('каталог не подменяется демо; недоступная модель и effort остаются видны', async () => {
+    const host = mount(Settings);
+    state({ defaultProvider: 'codex', 'codex.defaultModel': 'missing', 'codex.defaultEffort': 'max' });
+    handleSettingsMessage({ type: 'settings.codexModels', loading: false, models: [] });
+    await flush();
+    const model = host.querySelector<HTMLSelectElement>('[aria-label="codex.defaultModel"]')!;
+    expect([...model.options].map(o => o.value)).toEqual(['', 'missing']);
+    expect(model.selectedOptions[0]?.textContent).toContain('недоступно');
+    expect(host.querySelector<HTMLSelectElement>('[aria-label="codex.defaultEffort"]')!.disabled).toBe(true);
+    expect(host.querySelector('#ns-panel-codex [role="alert"]')).not.toBeNull();
+  });
+
+  it('Remote Control раскрывает префикс после подтверждения хоста', async () => {
+    const host = mount(Settings); state(); await flush();
+    const prefix = host.querySelector('[data-key="agentura.remoteControlNamePrefix"]')!;
+    expect(prefix.parentElement!.hidden).toBe(true);
+    host.querySelector<HTMLButtonElement>('[aria-label="remoteControl"]')!.click();
+    state({ remoteControl: true }); await flush();
+    expect(prefix.parentElement!.hidden).toBe(false);
+    expect(sets()).toEqual([{ type: 'settings.set', key: 'remoteControl', value: true }]);
+  });
+
   it('пока значений нет — пустая оболочка; пришли — все разделы и поля', async () => {
     const host = mount(Settings);
     expect(host.querySelector('.st-body')).toBeNull();
@@ -207,7 +298,7 @@ describe('вкладка настроек', () => {
       'integrations',
       'engine',
     ]);
-    expect([...host.querySelectorAll('.set .key')].map((e) => e.textContent)).toEqual([
+    expect([...host.querySelectorAll('.set .key')].map((e) => e.textContent).sort()).toEqual([
       // режим по умолчанию можно задать на проект (решение владельца 2026-10-01)
       'agentura.allowBypassPermissions · только эта машина',
       'agentura.defaultPermissionMode',
@@ -264,7 +355,7 @@ describe('вкладка настроек', () => {
       'agentura.codexExecutable · только эта машина',
       'agentura.antigravityExecutable · только эта машина',
       'agentura.cursorExecutable · только эта машина',
-    ]);
+    ].sort());
   });
 
   it('разметка строк и CSS-классы — как в прототипе settings.html', async () => {
@@ -286,8 +377,8 @@ describe('вкладка настроек', () => {
       [...proto.querySelectorAll('.st-page')].map((e) => e.id),
     );
     expect(host.querySelector('.st-wrap > .st-nav')).not.toBeNull();
-    expect(host.querySelector('.set.on .tg.on.danger')).not.toBeNull();
-    expect(host.querySelector('.set.on .warn')).not.toBeNull();
+    expect(host.querySelector('.ns-advanced .tg.on.danger')).not.toBeNull();
+    expect(host.querySelector('.ns-advanced .warn')).not.toBeNull();
   });
 
   it('Remote Control: переключатель и префикс пишут через settings.set', async () => {
@@ -603,13 +694,13 @@ describe('вкладка настроек', () => {
     expect(val('defaultEffort')).toBe('high');
     expect(val('usagePollMinutes')).toBe('30');
     expect(val('defaultModel')).toBe('opus');
-    const modes = [...host.querySelectorAll('[aria-label="defaultPermissionMode"] option')].map(
+    const modes = [...host.querySelectorAll('[aria-label="defaultPermissionMode"] input')].map(
       (o) => (o as HTMLOptionElement).value,
     );
     expect(modes).toEqual(['manual', 'acceptEdits', 'plan']);
     state({ allowBypassPermissions: true });
     await flush();
-    expect(host.querySelectorAll('[aria-label="defaultPermissionMode"] option').length).toBe(4);
+    expect(host.querySelectorAll('[aria-label="defaultPermissionMode"] input').length).toBe(4);
   });
 
   it('переключатель и список пишут через settings.set', async () => {
@@ -617,7 +708,7 @@ describe('вкладка настроек', () => {
     state();
     await flush();
     host.querySelector<HTMLButtonElement>('[aria-label="allowBypassPermissions"]')!.click();
-    change(host.querySelector('[aria-label="defaultPermissionMode"]')!, 'plan');
+    host.querySelector<HTMLInputElement>('[name="defaultPermissionMode"][value="plan"]')!.click();
     expect(sets()).toEqual([
       { type: 'settings.set', key: 'allowBypassPermissions', value: true },
       { type: 'settings.set', key: 'defaultPermissionMode', value: 'plan' },

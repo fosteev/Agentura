@@ -240,3 +240,16 @@ describe('поздний item/completed после turn/completed', () => {
     ]);
   });
 });
+
+
+describe('dynamic Jira wire names', () => {
+  it.each(['comment', 'transition', 'worklog'])('maps %s to the existing Jira UI name, including restored items', (tool) => {
+    const item = { type: 'dynamicToolCall', id: 'jira-1', tool: `agentura_jira_${tool}`, arguments: { text: 'ok' }, status: 'completed', success: true };
+    expect(mapper().map('item/started', started(item))).toMatchObject([
+      { type: 'tool.start', name: `mcp__agentura_jira__${tool}` },
+    ]);
+    expect(of(mapper().map('item/completed', completed(item)), 'tool.start')).toMatchObject([
+      { name: `mcp__agentura_jira__${tool}` },
+    ]);
+  });
+});

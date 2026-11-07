@@ -1,7 +1,7 @@
 import { uiZoom } from '../appearance';
 import type { ComponentChildren } from 'preact';
 import type { AgentProvider } from '../../agent/types';
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import {
   EFFORT_LEVELS,
   LANGUAGE_MODES,
@@ -73,6 +73,17 @@ import {
 } from '../vscode';
 
 const T = ui.settings;
+const S = T.sessionUi;
+const sessionProviders: readonly [AgentProvider, string, string][] = [
+  ['claude', 'Claude', 'Anthropic'], ['codex', 'Codex', 'OpenAI'],
+  ['cursor', 'Cursor', 'Cursor'], ['antigravity', 'Antigravity', 'Google'],
+];
+const sessionKeys: Record<AgentProvider, SettingKey[]> = {
+  claude: ['defaultModel', 'defaultEffort', 'defaultPermissionMode', 'remoteControl', 'remoteControlNamePrefix'],
+  codex: ['codex.defaultModel', 'codex.defaultEffort', 'codex.defaultApproval', 'codex.defaultSandbox'],
+  cursor: ['cursor.defaultModel', 'defaultPermissionMode'],
+  antigravity: ['defaultPermissionMode'],
+};
 /** Ширина вкладки, с которой разделы — колонкой слева (уже — полосой вкладок над страницей). */
 const NAV_PX = 600;
 /** Разделы — отдельные страницы (не якоря одной ленты); открытый раздел помнит состояние webview. */
@@ -81,7 +92,8 @@ const SECTIONS = SETTINGS_SECTIONS;
 /** Черновик поля: пока человек печатает, показываем его; пришло новое значение из хоста — берём его. */
 function useDraft<V>(value: V): [V, (v: V) => void] {
   const [draft, setDraft] = useState(value);
-  useEffect(() => setDraft(value), [JSON.stringify(value)]);
+  // Синхронизируем до ввода: отложенный effect может стереть свежий черновик при смене вкладки.
+  useLayoutEffect(() => setDraft(value), [JSON.stringify(value)]);
   return [draft, setDraft];
 }
 
@@ -710,6 +722,14 @@ function EngineRow({ value, engine = 'claude' }: { value: string; engine?: Engin
 export function Settings() {
   const v = settingsValues.value;
   const [active, setActive] = useState<Section>(readSettingsSection);
+  const [settingsProvider, setSettingsProvider] = useState<AgentProvider>();
+  const selectedProvider = settingsProvider ?? v?.defaultProvider ?? 'claude';
+  const selectProvider = (provider: AgentProvider) => {
+    setSettingsProvider(provider);
+    document.getElementById(`ns-tab-${provider}`)?.focus();
+  };
+  const providerHasError = (provider: AgentProvider) => sessionKeys[provider].some(k => errors.value[k])
+    || (provider === 'codex' && !!codexModels.value.error);
   // примерка шрифта (наведение на карточку): образец ленты рисуется им, настройка не меняется
   const [trying, setTrying] = useState<{ k: FontKey; name: string }>();
   const tryFont = (k: FontKey) => (name: string | undefined) =>
@@ -771,7 +791,7 @@ export function Settings() {
     .map((m) => [m, T.mode.options[m] ?? m]);
   const efforts: [string, string][] = [
     ['', T.effort.engine],
-    ...EFFORT_LEVELS.map((e): [string, string] => [e, e]),
+    ...EFFORT_LEVELS.map((e): [string, string] => [e, S.efforts[e]]),
   ];
   const catalog = codexModels.value;
   const codexModel = catalog.models.find((m) => m.value === v['codex.defaultModel']);
@@ -782,7 +802,7 @@ export function Settings() {
     v['codex.defaultModel'], `${v['codex.defaultModel']}${catalog.loading ? '' : ` (${T.newChat.unavailable})`}`, true,
   ]);
   const codexEfforts: [string, string, boolean?][] = [
-    ['', T.newChat.inherit], ...(codexModel?.effortLevels ?? []).map((e): [string, string] => [e, e]),
+    ['', T.newChat.inherit], ...(codexModel?.effortLevels ?? []).map((e): [string, string] => [e, S.efforts[e]]),
   ];
   if (v['codex.defaultEffort'] && !codexModel?.effortLevels?.includes(v['codex.defaultEffort']))
     codexEfforts.push([v['codex.defaultEffort'], `${v['codex.defaultEffort']} (${T.newChat.unavailable})`, true]);
@@ -827,7 +847,7 @@ export function Settings() {
       aria-labelledby={`st-tab-${id}`}
       hidden={active !== id}
     >
-      <h2>{T.sections[id]}</h2>
+      {id !== 'session' && <h2>{T.sections[id]}</h2>}
       {children}
     </section>
   );
@@ -886,89 +906,124 @@ export function Settings() {
           {page(
             'session',
             <>
-              <p>{T.newChat.note}</p>
-              <Row
-                name={T.bypass.name}
-                desc={T.bypass.desc}
-                k="allowBypassPermissions"
-                machine
-                on={v.allowBypassPermissions}
-                below={
-                  <div class="warn">
-                    <b>{T.bypass.warnTitle}</b>
-                    {T.bypass.warn}
+              <div class="ns-heading">
+                <span class="ns-eyebrow">{S.eyebrow}</span>
+                <h2>{S.title}</h2><p>{S.note}</p>
+              </div>
+              <div class="ns-providers" role="tablist" aria-label={S.tabs}>
+                {sessionProviders.map(([id, name, vendor]) => (
+                  <button type="button" role="tab" id={`ns-tab-${id}`} aria-controls={`ns-panel-${id}`}
+                    aria-selected={selectedProvider === id} tabIndex={selectedProvider === id ? 0 : -1}
+                    data-provider={id} onClick={() => setSettingsProvider(id)}
+                    onKeyDown={(e) => {
+                      const i = sessionProviders.findIndex(([p]) => p === id);
+                      const next = e.key === 'ArrowRight' ? (i + 1) % 4 : e.key === 'ArrowLeft' ? (i + 3) % 4
+                        : e.key === 'Home' ? 0 : e.key === 'End' ? 3 : -1;
+                      if (next < 0) return;
+                      e.preventDefault();
+                      const nextProvider = sessionProviders[next];
+                      if (nextProvider) selectProvider(nextProvider[0]);
+                    }}>
+                    <span class={`ns-logo ns-logo-${id}`} aria-hidden="true" />
+                    <strong>{name}</strong><small>{vendor}</small>
+                    <span class="ns-default" hidden={v.defaultProvider !== id}>{S.defaultBadge}</span>
+                    {providerHasError(id) && <span class="ns-provider-error" role="status">!</span>}
+                  </button>
+                ))}
+              </div>
+              <div class="ns-panel-head">
+                <div><h3>{sessionProviders.find(([id]) => id === selectedProvider)?.[1]}</h3>
+                  <p>{v.defaultProvider === selectedProvider ? S.isDefault : S.notDefault}</p></div>
+                {v.defaultProvider !== selectedProvider && <button type="button" class="btn ns-button"
+                  onClick={() => { commit('defaultProvider', selectedProvider); selectProvider(selectedProvider); }}>{S.makeDefault}</button>}
+              </div>
+              {overridden.value.includes('defaultProvider') && <div class="note">{T.overridden}</div>}
+              {errors.value.defaultProvider && <div class="err" role="alert">{errors.value.defaultProvider}</div>}
+              <div id="ns-panel-claude" role="tabpanel" aria-labelledby="ns-tab-claude" hidden={selectedProvider !== 'claude'}>
+                <div class="ns-group"><h4>{S.modelGroup}</h4>
+                  <Row name={S.model} desc={T.model.desc} k="defaultModel">
+                    <TextField k="defaultModel" value={v.defaultModel} placeholder={T.model.placeholder} />
+                  </Row>
+                  <Row name={S.effort} desc={S.effortDesc} k="defaultEffort">
+                    <Select k="defaultEffort" value={v.defaultEffort} options={efforts} />
+                  </Row>
+                </div>
+                <div class="ns-group ns-mode"><h4>{S.modeGroup}</h4>
+                  <Row name={T.mode.name} desc={S.modeDesc} k="defaultPermissionMode">
+                    <div class="ns-permissions" role="radiogroup" aria-label="defaultPermissionMode">
+                      {modes.map(([value]) => <label class="ns-choice" key={value}>
+                        <input type="radio" name="defaultPermissionMode" value={value} checked={v.defaultPermissionMode === value}
+                          onChange={() => commit('defaultPermissionMode', value)} />
+                        <span><strong>{S.modes[value as keyof typeof S.modes]}</strong>
+                          <small>{S.modeNotes[value as keyof typeof S.modeNotes]}</small></span>
+                      </label>)}
+                    </div>
+                  </Row>
+                </div>
+                <div class="ns-group"><h4>{S.remoteGroup}</h4>
+                  <Row name={S.remote} desc={S.remoteDesc} k="remoteControl" keyNote={T.remoteControl.keyNote}>
+                    <Toggle k="remoteControl" value={v.remoteControl} />
+                  </Row>
+                  <div hidden={!v.remoteControl && !errors.value.remoteControlNamePrefix && !overridden.value.includes('remoteControlNamePrefix')}>
+                    <Row name={T.remoteControlNamePrefix.name} desc={T.remoteControlNamePrefix.desc} k="remoteControlNamePrefix">
+                      <TextField k="remoteControlNamePrefix" value={v.remoteControlNamePrefix} placeholder={T.remoteControlNamePrefix.placeholder} wide />
+                    </Row>
                   </div>
-                }
-              >
-                <Toggle k="allowBypassPermissions" value={v.allowBypassPermissions} danger />
-              </Row>
-              <h3 class="st-sub">Claude</h3>
-              <Row name={T.mode.name} isNew desc={T.mode.desc} k="defaultPermissionMode">
-                <Select k="defaultPermissionMode" value={v.defaultPermissionMode} options={modes} />
-              </Row>
-              <Row name={T.model.name} desc={T.model.desc} k="defaultModel">
-                <TextField
-                  k="defaultModel"
-                  value={v.defaultModel}
-                  placeholder={T.model.placeholder}
-                />
-              </Row>
-              <Row name={T.effort.name} isNew desc={T.effort.desc} k="defaultEffort">
-                <Select k="defaultEffort" value={v.defaultEffort} options={efforts} />
-              </Row>
-              <Row
-                name={T.remoteControl.name}
-                isNew
-                desc={T.remoteControl.desc}
-                k="remoteControl"
-                keyNote={T.remoteControl.keyNote}
-              >
-                <Toggle k="remoteControl" value={v.remoteControl} />
-              </Row>
-              <Row
-                name={T.remoteControlNamePrefix.name}
-                desc={T.remoteControlNamePrefix.desc}
-                k="remoteControlNamePrefix"
-              >
-                <TextField
-                  k="remoteControlNamePrefix"
-                  value={v.remoteControlNamePrefix}
-                  placeholder={T.remoteControlNamePrefix.placeholder}
-                  wide
-                />
-              </Row>
-              <h3 class="st-sub">Codex</h3>
-              <Row name={T.model.name} desc={T.newChat.modelDesc} k="codex.defaultModel">
-                <Select k="codex.defaultModel" value={v['codex.defaultModel']} options={codexModelOptions} disabled={catalog.loading} />
-                <button type="button" class="btn" disabled={catalog.loading} onClick={() => send({ type: 'settings.codexModels' })}>
-                  {catalog.loading ? T.newChat.modelsLoading : T.newChat.modelsReload}
-                </button>
-              </Row>
-              {!catalog.loading && (catalog.error || !catalog.models.length) &&
-                <div class="err" role="alert">{catalog.error ?? T.newChat.noModels}</div>}
-              <Row name={T.effort.name} desc={T.newChat.effortDesc} k="codex.defaultEffort">
-                <Select k="codex.defaultEffort" value={v['codex.defaultEffort']} options={codexEfforts} disabled={catalog.loading || !codexModel} />
-              </Row>
-              <Row name={T.newChat.approval} desc={T.newChat.approvalDesc} k="codex.defaultApproval">
-                <Select k="codex.defaultApproval" value={v['codex.defaultApproval']} options={[
-                  ['', T.newChat.inherit], ['untrusted', 'untrusted'], ['on-request', 'on-request'], ['never', 'never'],
-                ]} />
-              </Row>
-              <Row name={T.newChat.sandbox} desc={T.newChat.sandboxDesc} k="codex.defaultSandbox">
-                <Select k="codex.defaultSandbox" value={v['codex.defaultSandbox']} options={[
-                  ['', T.newChat.inherit], ['readOnly', T.newChat.readOnly], ['workspaceWrite', T.newChat.workspaceWrite],
-                  ...(v.allowBypassPermissions || v['codex.defaultSandbox'] === 'dangerFullAccess'
-                    ? [['dangerFullAccess', T.newChat.dangerFullAccess] as [string, string]] : []),
-                ]} />
-              </Row>
-              <h3 class="st-sub">Cursor</h3>
-              <Row name={T.model.name} desc={T.model.cursorDesc} k="cursor.defaultModel">
-                <TextField
-                  k="cursor.defaultModel"
-                  value={v['cursor.defaultModel']}
-                  placeholder={T.model.cursorPlaceholder}
-                />
-              </Row>
+                </div>
+              </div>
+              <div id="ns-panel-codex" role="tabpanel" aria-labelledby="ns-tab-codex" hidden={selectedProvider !== 'codex'}>
+                <div class="ns-group"><h4>{S.modelGroup}</h4>
+                  <Row name={S.model} desc={T.newChat.modelDesc} k="codex.defaultModel">
+                    <Select k="codex.defaultModel" value={v['codex.defaultModel']} options={codexModelOptions} disabled={catalog.loading} />
+                    <button type="button" class="btn" disabled={catalog.loading} onClick={() => send({ type: 'settings.codexModels' })}>
+                      {catalog.loading ? T.newChat.modelsLoading : T.newChat.modelsReload}
+                    </button>
+                  </Row>
+                  {!catalog.loading && (catalog.error || !catalog.models.length) &&
+                    <div class="err" role="alert">{catalog.error ?? T.newChat.noModels}</div>}
+                  <Row name={S.effort} desc={T.newChat.effortDesc} k="codex.defaultEffort">
+                    <Select k="codex.defaultEffort" value={v['codex.defaultEffort']} options={codexEfforts} disabled={catalog.loading || !codexModel} />
+                  </Row>
+                </div>
+                <div class="ns-group"><h4>{S.permissions}</h4>
+                  <Row name={S.approval} desc={S.approvalDesc} k="codex.defaultApproval">
+                    <Select k="codex.defaultApproval" value={v['codex.defaultApproval']} options={[
+                      ['', T.newChat.inherit], ['untrusted', S.approvals.untrusted], ['on-request', S.approvals['on-request']], ['never', S.approvals.never],
+                    ]} />
+                  </Row>
+                  <Row name={S.sandbox} desc={S.sandboxDesc} k="codex.defaultSandbox">
+                    <Select k="codex.defaultSandbox" value={v['codex.defaultSandbox']} options={[
+                      ['', T.newChat.inherit], ['readOnly', T.newChat.readOnly], ['workspaceWrite', T.newChat.workspaceWrite],
+                      ...(v.allowBypassPermissions || v['codex.defaultSandbox'] === 'dangerFullAccess'
+                        ? [['dangerFullAccess', T.newChat.dangerFullAccess] as [string, string]] : []),
+                    ]} />
+                  </Row>
+                  {v['codex.defaultSandbox'] === 'dangerFullAccess' ? <p>{S.fullHint}</p>
+                    : v['codex.defaultApproval'] === 'never' && v['codex.defaultSandbox'] !== '' ? <p>{S.neverHint}</p> : null}
+                </div>
+              </div>
+              <div id="ns-panel-cursor" role="tabpanel" aria-labelledby="ns-tab-cursor" hidden={selectedProvider !== 'cursor'}>
+                <div class="ns-group"><h4>{S.model}</h4>
+                  <Row name={S.model} desc={T.model.cursorDesc} k="cursor.defaultModel">
+                    <TextField k="cursor.defaultModel" value={v['cursor.defaultModel']} placeholder={T.model.cursorPlaceholder} />
+                  </Row>
+                  <p>{S.sharedMode}</p><button type="button" class="ns-link" onClick={() => selectProvider('claude')}>{S.openClaude}</button>
+                </div>
+              </div>
+              <div id="ns-panel-antigravity" role="tabpanel" aria-labelledby="ns-tab-antigravity" hidden={selectedProvider !== 'antigravity'}>
+                <div class="ns-group"><h4>{S.model}</h4><p>{S.agyNote}</p><p>{S.sharedMode}</p>
+                  <button type="button" class="ns-link" onClick={() => selectProvider('claude')}>{S.openClaude}</button>
+                </div>
+              </div>
+              <details class="ns-advanced" open={errors.value.allowBypassPermissions || overridden.value.includes('allowBypassPermissions') ? true : undefined}>
+                <summary>{S.advanced}<span>{S.advancedNote}</span></summary>
+                <Row name={S.unlock} desc={S.unlockDesc} k="allowBypassPermissions" machine
+                  below={<div class="warn"><b>{T.bypass.warnTitle}</b>{T.bypass.warn}</div>}>
+                  <Toggle k="allowBypassPermissions" value={v.allowBypassPermissions} danger />
+                </Row>
+                {!v.allowBypassPermissions && (v.defaultPermissionMode === 'bypassPermissions' || v['codex.defaultSandbox'] === 'dangerFullAccess') && <p>{S.savedAccess}</p>}
+                <div class="ns-keys">{['defaultProvider', ...sessionKeys[selectedProvider], 'allowBypassPermissions'].map(k => <div key={k}>agentura.{k}</div>)}</div>
+              </details>
             </>,
           )}
 

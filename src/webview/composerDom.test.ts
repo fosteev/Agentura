@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Composer } from './components/Composer';
 import {
   capabilities,
+  provider,
   chat,
   composerLayout,
   dispatchEvent,
@@ -69,12 +70,28 @@ beforeEach(() => {
   hudState.value = initialHud();
   limits.value = { windows: [], updatedAt: 0 };
   composerLayout.value = 'classic';
+  provider.value = 'claude';
   features.value = providerFeatures('claude');
   mcpComposerButton.value = true;
   skillFiles.value = new Set();
 });
 
 describe('поле ввода', () => {
+  it.each(['claude', 'codex', 'cursor', 'antigravity'] as const)('логотип %s появляется после старта/восстановления и сбрасывается с новой сессией', async (engine) => {
+    const host = mount();
+    handleHostMessage({ type: 'chat.info', project: 'p', cwd: '/p', allowBypass: false, provider: engine });
+    await flush();
+    expect(host.querySelector('.prompt .provider-logo')).toBeNull();
+    handleHostMessage({ type: 'session.history', sessionId: `restored-${engine}`, events: [], skippedTurns: 0 });
+    await flush();
+    const logo = host.querySelector('.prompt .provider-logo');
+    expect(logo?.classList.contains(`provider-logo-${engine}`)).toBe(true);
+    expect(logo?.getAttribute('aria-label')).toBe(engine);
+    newSession(); await flush();
+    expect(host.querySelector('.prompt .provider-logo')).toBeNull();
+    expect(host.querySelector('.prompt .p')?.textContent).toBe('$');
+  });
+
   it('каркас: шкала, чипы, поле, строка настроек с приборами и отправкой', () => {
     const host = mount();
     const f = host.querySelector('footer.compose')!;

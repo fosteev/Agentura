@@ -1,5 +1,6 @@
 import type { AgentEvent } from '../types';
 import type { FileUpdateChange, ThreadItem } from './protocol';
+import { codexJiraDisplayName } from './jiraTools';
 import { changePath, displayCommand, parseHunks, sidesOfHunks } from './patch';
 
 /** Вывод команды в `tool.result.content`: длиннее — обрезаем (лента и журнал не для мегабайтов). */
@@ -74,7 +75,7 @@ export class CodexToolMapper {
       case 'mcpToolCall':
         return this.startSimple(item.id, `mcp__${item.server}__${item.tool}`, argsOf(item.arguments), atMs);
       case 'dynamicToolCall':
-        return this.startSimple(item.id, item.tool, argsOf(item.arguments), atMs);
+        return this.startSimple(item.id, codexJiraDisplayName(item.tool), argsOf(item.arguments), atMs);
       case 'webSearch':
         return this.startSimple(item.id, 'WebSearch', { query: searchQuery(item) }, atMs);
       default:
@@ -104,7 +105,7 @@ export class CodexToolMapper {
       }
       case 'dynamicToolCall': {
         const failed = item.success === false || item.status === 'failed';
-        return this.finishSimple(item.id, item.tool, argsOf(item.arguments), failed, failed ? item.status : '', undefined, undefined, atMs);
+        return this.finishSimple(item.id, codexJiraDisplayName(item.tool), argsOf(item.arguments), failed, failed ? item.status : '', undefined, undefined, atMs);
       }
       case 'webSearch':
         return this.finishSimple(item.id, 'WebSearch', { query: searchQuery(item) }, false, '', undefined, undefined, atMs);

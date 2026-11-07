@@ -1,6 +1,15 @@
 import type { AgentEvent, PermissionDecision, TaskTools, TaskToolsSpec } from '../types';
-import { autoCommentOk, jiraMcpName, jiraToolOf, type JiraToolName } from '../../shared/jiraTools';
+import { autoCommentOk, JIRA_TOOLS, jiraMcpName, type JiraToolName } from '../../shared/jiraTools';
 import type { DynamicToolSpec } from './protocol';
+
+// `mcp__` is reserved by app-server; keep wire names separate from UI MCP names.
+export const codexJiraName = (name: JiraToolName): string => `agentura_jira_${name}`;
+export const codexJiraToolOf = (name: string): JiraToolName | undefined =>
+  JIRA_TOOLS.find((tool) => codexJiraName(tool) === name);
+export const codexJiraDisplayName = (name: string): string => {
+  const tool = codexJiraToolOf(name);
+  return tool ? jiraMcpName(tool) : name;
+};
 
 const signature = (s: TaskToolsSpec | undefined) => JSON.stringify(s ?? null);
 const result = (text: string, success = false) => ({ contentItems: [{ type: 'inputText', text }], success });
@@ -29,7 +38,7 @@ export class CodexJiraTools {
       const properties = name === 'comment' ? { text: { type: 'string', minLength: 1, maxLength: 32000 }, issue }
         : name === 'transition' ? { to: { type: 'string', minLength: 1, maxLength: 200 }, issue }
           : { minutes: { type: 'integer', minimum: 1, maximum: 1440 }, date: { type: 'string' }, comment: { type: 'string', maxLength: 30000 }, issue };
-      return { type: 'function', name: jiraMcpName(name),
+      return { type: 'function', name: codexJiraName(name),
         description: `Jira ${name} for ${this.built!.issue} (${this.built!.instance}), as the user. Only write when requested. Comments use Jira wiki markup. Worklogs require an explicit user request.`,
         inputSchema: { type: 'object', properties, required: [name === 'comment' ? 'text' : name === 'transition' ? 'to' : 'minutes'], additionalProperties: false } };
     });
@@ -57,7 +66,7 @@ export class CodexJiraTools {
 
   private async execute(key: string, p: Record<string, unknown>): Promise<ReturnType<typeof result>> {
     const generation = this.generation;
-    const name = typeof p['tool'] === 'string' ? jiraToolOf(p['tool']) : undefined;
+    const name = typeof p['tool'] === 'string' ? codexJiraToolOf(p['tool']) : undefined;
     if (!name || !this.current(name)) return result('Jira tools are unavailable or changed. Start a new chat; nothing was written.');
     const raw = p['arguments'];
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return result('Tool arguments must be an object.');

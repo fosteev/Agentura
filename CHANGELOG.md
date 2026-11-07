@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.22.0 — 2026-11-07
+
+### Added
+
+- **New session settings redesign.** Provider cards for Claude, Codex, Cursor and Antigravity, explicit default-engine selection, grouped model and permission controls, and expandable advanced settings. Drafts and errors survive provider switching; Russian and English layouts adapt to narrow windows.
+- **Provider logos.** Started chats show their engine logo in the editor tab and composer.
+
+### Fixed
+
+- **Codex chats in Jira tasks** no longer fail at startup with `dynamic tool name is reserved`: host tools use names accepted by Codex app-server.
+- **Cursor session title.** The open tab takes the name Cursor sends during a turn (`session_info_update`). The sidebar list still shows the session id.
+
 ## 0.21.0 — 2026-11-06
 
 ### Added

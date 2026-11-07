@@ -238,3 +238,14 @@ html[data-width="380"] .compose[data-layout="gauges"] .top .g { margin-left: 0; 
 .mcpmenu h5 .rf:hover, .mcpp h5 .rf:hover { color: var(--fg); }
 .more { display: block; padding: 3px 12px 2px 30px; color: var(--link); font-size: 12px; background: none; border: 0; cursor: pointer; text-align: left; }
 .allsk { display: flex; flex-wrap: wrap; gap: 2px 10px; padding: 2px 12px 4px 30px; color: var(--fg-mute); font: 11px/1.6 var(--mono); }
+
+/* Провайдер начатого чата вместо символа приглашения. Файлы локальные, как у вкладки редактора. */
+.compose .prompt .p.provider-logo { display: inline-block; width: 16px; height: 16px; margin-top: 2px; background-position: center; background-size: contain; background-repeat: no-repeat; }
+.compose .prompt .p.provider-logo::before { content: none; }
+.compose .prompt .provider-logo-claude { background-image: url('brands/claude-color.svg'); }
+.compose .prompt .provider-logo-codex { background-image: url('brands/openai.svg'); }
+.compose .prompt .provider-logo-cursor { background-image: url('brands/cursor.svg'); }
+.compose .prompt .provider-logo-antigravity { background-image: url('brands/antigravity.svg'); }
+body.vscode-dark .compose .prompt .provider-logo-codex,
+body.vscode-high-contrast .compose .prompt .provider-logo-codex { background-image: url('brands/openai-dark.svg'); }
+.compose[data-layout] .prompt:has(.provider-logo) { grid-template-columns: 16px minmax(0, 1fr); }

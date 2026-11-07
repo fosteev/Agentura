@@ -50,7 +50,13 @@ export class TaskTabPanel {
     panel.iconPath = chatIcon(context);
     panel.webview.html = renderWebview(panel.webview, context.extensionUri, 'chat', 'Agentura', currentLanguage());
     this.slots = new TabSlots(taskKey, {
-      post: (m) => postToWebview(panel.webview, m),
+      post: (m) => {
+        if (m.type === 'tab.chats') {
+          const active = m.persist.chats.find(c => c.id === m.persist.active);
+          panel.iconPath = chatIcon(context, active?.provider);
+        }
+        postToWebview(panel.webview, m);
+      },
       setTitle: (t) => (panel.title = t),
       displayKey: parseTaskKey(taskKey)?.key ?? taskKey,
       // «＋» — как «＋» группы в боковой панели: контекст задачи из источника, чат придёт сюда же (`ChatPanel.apply`)

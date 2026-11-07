@@ -1433,10 +1433,10 @@ describe('Codex dynamic Jira integration', () => {
     const session = await adapter.createSession({ cwd: '/work', taskTools });
     const events = collect(session); session.send('task');
     await until(() => s.methods().includes('turn/start'));
-    expect(s.paramsOf('thread/start')['dynamicTools']).toMatchObject([{ name: `mcp__agentura_jira__${name}` }]);
+    expect(s.paramsOf('thread/start')['dynamicTools']).toMatchObject([{ name: `agentura_jira_${name}` }]);
     expect(s.paramsOf('initialize')['capabilities']).toMatchObject({ experimentalApi: true });
     const args = name === 'comment' ? { text: 'done' } : name === 'transition' ? { to: 'Done' } : { minutes: 2 };
-    s.request(900, 'item/tool/call', { threadId: THREAD, turnId: 'turn-1', callId: 'call-1', namespace: null, tool: `mcp__agentura_jira__${name}`, arguments: args });
+    s.request(900, 'item/tool/call', { threadId: THREAD, turnId: 'turn-1', callId: 'call-1', namespace: null, tool: `agentura_jira_${name}`, arguments: args });
     if (name !== 'comment') {
       await until(() => events.some((e) => e.type === 'permission.request'));
       const e = events.find((e) => e.type === 'permission.request')!;
@@ -1452,7 +1452,7 @@ describe('Codex dynamic Jira integration', () => {
     const session = await adapter.resumeSession(THREAD, { cwd: '/work', taskTools: { spec: () => ({ issue: 'A-1', instance: 'jira', tools: ['comment'] }), onDidChange: () => () => {}, run } });
     session.send('task'); await until(() => s.methods().includes('turn/start'));
     expect(s.paramsOf('thread/resume')).not.toHaveProperty('dynamicTools');
-    s.request(900, 'item/tool/call', { threadId: THREAD, turnId: 'turn-1', callId: 'call-1', namespace: null, tool: 'mcp__agentura_jira__comment', arguments: { text: 'bad' } });
+    s.request(900, 'item/tool/call', { threadId: THREAD, turnId: 'turn-1', callId: 'call-1', namespace: null, tool: 'agentura_jira_comment', arguments: { text: 'bad' } });
     await until(() => s.methods().includes('<response>'));
     expect(s.paramsOf('<response>')).toMatchObject({ result: { success: false } }); expect(run).not.toHaveBeenCalled(); session.dispose();
   });

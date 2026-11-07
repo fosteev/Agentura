@@ -15,7 +15,10 @@
 Личный проект, в Marketplace его нет. Ставится из `.vsix` (см. [Установка](#установка)). Скриншоты — с английским
 интерфейсом, русский включается в `agentura.language`.
 
-> **Новое в 0.21 — движок Cursor.** Cursor CLI (`agent acp`) во вкладке чата: потоковые ответы,
+> **Новое в 0.22 — обновлённые настройки сессии.** Карточки движков, группы модели и разрешений,
+> расширенные параметры и логотипы в чатах. Исправлен запуск Codex внутри задач Jira.
+>
+> **0.21 — движок Cursor.** Cursor CLI (`agent acp`) во вкладке чата: потоковые ответы,
 > разрешения инструментов, одобрение плана, Stop и возобновление сессий. Ограничения — в разделе [Cursor](#cursor).
 >
 > **0.20 — native planning и настройки сессии Codex.** Планирование, approval policy и sandbox переключаются
@@ -122,7 +125,7 @@
 `~/.claude/local` и Homebrew (на Windows — `claude.exe`). Другой путь задаётся в `agentura.claudeExecutable`.
 
 ```
-code --install-extension agentura-0.21.0.vsix
+code --install-extension agentura-0.22.0.vsix
 ```
 
 Сборка из исходников:
@@ -130,7 +133,7 @@ code --install-extension agentura-0.21.0.vsix
 ```
 npm ci
 npm run check      # типы, линтер, юнит-тесты, сборка
-npm run package    # agentura-0.21.0.vsix
+npm run package    # agentura-0.22.0.vsix
 ```
 
 ## Codex

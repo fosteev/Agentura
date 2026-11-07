@@ -43,6 +43,25 @@ describe('Cursor mapper на фикстуре acp-pong', () => {
     expect(events.at(-1)).toMatchObject({ type: 'turn.result', ok: true, subtype: 'end_turn', interrupted: false });
   });
 
+  it('session_info_update.title становится session.title; пустой title и title инструмента — нет', () => {
+    const events = mapScenario('pong');
+    expect(events).toContainEqual({ type: 'session.title', title: 'One Word Pong' });
+    expect(events.filter((e) => e.type === 'session.title')).toHaveLength(1);
+    const mapper = new CursorMapper();
+    expect(mapper.applyUpdate({ sessionUpdate: 'session_info_update' })).toEqual([]);
+    expect(mapper.applyUpdate({ sessionUpdate: 'session_info_update', title: '  ' })).toEqual([]);
+    expect(mapper.applyUpdate({ sessionUpdate: 'session_info_update', title: 1 })).toEqual([]);
+    const tool = mapper.applyUpdate({
+      sessionUpdate: 'tool_call',
+      toolCallId: 'tool_x',
+      title: 'Read note',
+      kind: 'read',
+      status: 'pending',
+      rawInput: { path: 'a' },
+    });
+    expect(tool.some((e) => e.type === 'session.title')).toBe(false);
+  });
+
   it('read: tool.start/tool.result с kind и id кадра, текст хода отдельно', () => {
     const events = mapScenario('read');
     expect(text(events)).toBe('marker-alpha');

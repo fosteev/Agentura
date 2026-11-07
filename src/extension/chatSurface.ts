@@ -4,6 +4,7 @@
  * у фонового чата сообщения в webview не уходят, а «видима» и «в фокусе» — только у показанной внутренней вкладки.
  */
 import * as vscode from 'vscode';
+import type { AgentProvider } from '../agent/types';
 import { postToWebview, type FromWebview, type ToWebview } from '../protocol';
 import type { Logger } from './logger';
 import { attachMessaging, currentLanguage, renderWebview, userFontsDir, webviewOptions } from './webviewHost';
@@ -13,6 +14,8 @@ export interface ChatSurface {
   post(m: ToWebview): void;
   /** Заголовок чата: у своей вкладки — заголовок вкладки, у внутренней — сводный заголовок вкладки задачи. */
   setTitle(title: string): void;
+  /** Логотип начатой сессии; undefined возвращает значок пустого чата. */
+  setSessionProvider?(provider: AgentProvider | undefined): void;
   readonly visible: boolean;
   readonly active: boolean;
   /** Чат показан в своей вкладке редактора (у вкладки задачи — его внутренняя вкладка выбрана), видна она или нет. */
@@ -47,6 +50,7 @@ export function panelSurface(
   return {
     post: (m) => postToWebview(panel.webview, m),
     setTitle: (t) => (panel.title = t),
+    setSessionProvider: (provider) => { panel.iconPath = chatIcon(context, provider); },
     get visible() {
       return panel.visible;
     },
@@ -66,7 +70,14 @@ export function panelSurface(
   };
 }
 
-export function chatIcon(context: vscode.ExtensionContext): { light: vscode.Uri; dark: vscode.Uri } {
+export function chatIcon(context: vscode.ExtensionContext, provider?: AgentProvider): { light: vscode.Uri; dark: vscode.Uri } {
+  if (provider) {
+    const asset = provider === 'codex' ? 'openai' : provider === 'claude' ? 'claude-color' : provider;
+    return {
+      light: vscode.Uri.joinPath(context.extensionUri, 'media', 'brands', `${asset}.svg`),
+      dark: vscode.Uri.joinPath(context.extensionUri, 'media', 'brands', `${provider === 'codex' ? 'openai-dark' : asset}.svg`),
+    };
+  }
   return {
     light: vscode.Uri.joinPath(context.extensionUri, 'media', 'icon-light.svg'),
     dark: vscode.Uri.joinPath(context.extensionUri, 'media', 'icon-dark.svg'),

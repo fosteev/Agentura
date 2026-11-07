@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { AgentEvent, TaskTools, TaskToolsSpec } from '../types';
 import { CodexJiraTools } from './jiraTools';
-import { jiraMcpName } from '../../shared/jiraTools';
+import { codexJiraName } from './jiraTools';
 
 function setup() {
   let spec: TaskToolsSpec | undefined = { issue: 'A-1', instance: 'Jira', instanceId: 'one', tools: ['comment', 'transition', 'worklog'] };
@@ -12,7 +12,7 @@ function setup() {
   const broker = new CodexJiraTools(tools, (e) => events.push(e), 'test:');
   const defs = broker.register();
   let n = 0;
-  const params = (tool = 'comment', args: Record<string, unknown> = { text: 'done' }) => ({ threadId: 'thread', turnId: 'turn', callId: String(++n), namespace: null, tool: jiraMcpName(tool as 'comment'), arguments: args });
+  const params = (tool = 'comment', args: Record<string, unknown> = { text: 'done' }) => ({ threadId: 'thread', turnId: 'turn', callId: String(++n), namespace: null, tool: codexJiraName(tool as 'comment'), arguments: args });
   const call = (p = params()) => broker.call(p, 'thread', 'turn');
   const permission = () => [...events].reverse().find((e) => e.type === 'permission.request');
   return { broker, defs, run, events, params, call, permission, change: (next?: TaskToolsSpec) => { spec = next; changed(); } };
@@ -21,7 +21,7 @@ function setup() {
 describe('Codex Jira host writes', () => {
   it('registers only enabled tools, auto comments and deduplicates call IDs', async () => {
     const t = setup();
-    expect(t.defs.map((d) => d.name)).toEqual(['comment', 'transition', 'worklog'].map((n) => jiraMcpName(n as 'comment')));
+    expect(t.defs.map((d) => d.name)).toEqual(['agentura_jira_comment', 'agentura_jira_transition', 'agentura_jira_worklog']);
     const p = t.params();
     expect(await t.call(p)).toMatchObject({ success: true });
     expect(await t.call(p)).toMatchObject({ success: true });
@@ -74,6 +74,11 @@ describe('Codex Jira host writes', () => {
     const t = setup(); const pending = t.call(t.params('transition', { to: 'Done' }));
     t.broker.respond(t.permission()!.toolUseId, 'allow'); t.broker.cancel();
     expect(await pending).toMatchObject({ success: false }); expect(t.run).not.toHaveBeenCalled();
+  });
+  it.each(['mcp__agentura_jira__comment', 'agentura_jira_delete', 'mcp__jira__comment'])('rejects unregistered name %s', async (tool) => {
+    const t = setup();
+    expect(await t.call({ ...t.params(), tool })).toMatchObject({ success: false });
+    expect(t.run).not.toHaveBeenCalled();
   });
   it('does not serve unregistered resumed tools', async () => {
     const t = setup(); const b = new CodexJiraTools(undefined, () => {}, 'resume:');

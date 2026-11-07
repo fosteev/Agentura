@@ -874,3 +874,73 @@ html[data-width='380'] .num.wide {
 /* подраздел страницы («MCP и скиллы», roadmap 21) */
 .st-body h3.st-sub { margin: 22px 0 2px; font-size: 13px; font-weight: 600; }
 .st-body .st-subnote { margin: 0 0 6px; color: var(--fg-mute); font-size: 12px; }
+
+/* Настройки новой сессии: вариант A. */
+#session { --ns-radius: 8px; padding-bottom: 16px; }
+#session [hidden] { display: none !important; }
+#session .ns-heading { padding: 24px 0 18px; }
+#session .ns-eyebrow { font: 10px var(--mono); letter-spacing: .12em; color: var(--fg-faint); }
+#session .ns-heading h2 { margin: 8px 0; font-size: 21px; letter-spacing: -.5px; font-weight: 600; }
+#session p { color: var(--fg-mute); font-size: 12px; line-height: 1.55; margin: 5px 0 0; }
+.ns-providers { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.ns-providers button { position: relative; display: grid; justify-items: start; align-content: start; gap: 5px; min-width: 0; min-height: 126px; padding: 13px 10px; text-align: left; border: 1px solid var(--line-strong); border-radius: var(--ns-radius); background: var(--bg); }
+.ns-providers button:hover { background: var(--bg-hover); }
+.ns-providers button[aria-selected="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 7%, var(--bg)); box-shadow: inset 0 0 0 1px var(--accent); }
+.ns-providers .ns-logo { width: 25px; height: 25px; object-fit: contain; margin-bottom: 5px; }
+.ns-providers strong { font-size: 13px; font-weight: 600; }
+.ns-providers small { font-size: 11px; color: var(--fg-mute); }
+.ns-default { color: var(--link); font-size: 9px; line-height: 1.3; }
+body.vscode-dark .ns-logo-codex, body.vscode-high-contrast .ns-logo-codex { filter: invert(1); }
+.ns-logo-claude { filter: invert(56%) sepia(32%) saturate(822%) hue-rotate(331deg) brightness(92%) contrast(88%); }
+.ns-panel-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 22px 0 16px; }
+#session h3 { font-size: 15px; font-weight: 600; margin: 0; }
+#session .ns-button { border: 1px solid var(--line-strong); border-radius: 5px; padding: 7px 10px; font-size: 11px; background: var(--bg-raise); }
+#session .ns-button:hover { background: var(--bg-hover); }
+.ns-group { padding: 17px; border: 1px solid var(--line); border-radius: var(--ns-radius); margin-bottom: 12px; }
+#session .ns-group h4 { margin: 0 0 16px; font-size: 11px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; color: var(--fg-mute); }
+.ns-permissions { display: grid; gap: 6px; }
+.ns-choice { display: grid; grid-template-columns: 16px 1fr; align-items: start; gap: 9px; padding: 11px; border: 1px solid var(--line); border-radius: 5px; cursor: pointer; }
+.ns-choice:has(input:checked) { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, var(--bg)); }
+.ns-choice input { margin: 2px 0 0; accent-color: var(--accent); }
+.ns-choice strong { font-size: 12px; font-weight: 500; }
+.ns-choice small { display: block; margin-top: 3px; color: var(--fg-mute); font-size: 11px; line-height: 1.45; }
+.ns-advanced { border-top: 1px solid var(--line); padding-top: 16px; margin-top: 20px; }
+.ns-advanced summary { font-size: 12px; cursor: pointer; }
+.ns-advanced summary span { display: block; margin: 6px 0 18px; font-size: 11px; color: var(--fg-faint); }
+#session :is(button,input,select,summary):focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+html[data-width="380"] .ns-providers { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+html[data-width="380"] .ns-providers button { min-height: 110px; }
+html[data-width="380"] .ns-group { padding: 12px; }
+html[data-width="380"] #session .ns-heading h2 { font-size: 19px; }
+html[data-width="380"] .ns-providers button { grid-template-columns: 25px minmax(0, 1fr); gap: 3px 8px; min-height: 83px; padding: 11px 9px; }
+html[data-width="380"] .ns-providers .ns-logo { grid-row: 1 / span 2; margin: 0; }
+html[data-width="380"] .ns-providers strong { font-size: 11px; }
+html[data-width="380"] .ns-providers small, html[data-width="380"] .ns-default { grid-column: 2; }
+
+.ns-logo { display: block; background: center / contain no-repeat; }
+.ns-logo-claude { background-image: url('brands/claude.svg'); }
+.ns-logo-codex { background-image: url('brands/openai.svg'); }
+.ns-logo-cursor { background-image: url('brands/cursor.svg'); }
+.ns-logo-antigravity { background-image: url('brands/antigravity.svg'); }
+#session .set { grid-template-columns: minmax(0, 1fr) minmax(150px, 46%); gap: 5px 20px; border: 0; padding: 0; margin-top: 18px; }
+#session .ns-group > .set:first-of-type { margin-top: 0; }
+#session .set .key { display: none; }
+#session .set .ctl { min-width: 0; width: 100%; display: flex; flex-wrap: wrap; gap: 6px; }
+#session .set .ds { font-size: 11px; }
+#session .set .dd, #session .set .num { width: 100%; min-width: 0; }
+#session .set .num { text-align: left; padding: 8px 9px; border-radius: 5px; }
+#session .set .dd select { width: 100%; min-width: 0; padding: 8px 26px 8px 9px; }
+#session .ns-mode .set { display: block; }
+#session .ns-mode .nm { display: none; }
+#session .ns-mode .ds { display: block; margin-bottom: 12px; }
+#session .ns-permissions { width: 100%; font-family: var(--font); }
+#session .ns-choice { width: 100%; }
+#session .ns-choice small { font-family: var(--font); }
+#session .note, #session .err { grid-column: 1 / -1; margin-top: 8px; font-size: 11px; line-height: 1.5; }
+#session .note { color: var(--warn); }
+#session .err { color: var(--full); }
+#session .ns-link { font-size: 12px; color: var(--link); margin-top: 12px; text-align: left; }
+.ns-keys { margin-top: 14px; font: 10px/1.8 var(--mono); color: var(--fg-faint); overflow-wrap: anywhere; }
+.ns-provider-error { position: absolute; top: 8px; right: 8px; color: var(--full); font-weight: 700; }
+html[data-width='380'] #session .set { grid-template-columns: minmax(0, 1fr); }
+html[data-width='380'] #session .set .ctl { grid-column: 1; grid-row: auto; }

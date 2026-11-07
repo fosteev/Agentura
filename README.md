@@ -14,7 +14,10 @@ engine as Claude Code, through your installed `claude` and its login. Codex CLI 
 
 Personal project, not on the Marketplace. Install it from a `.vsix` (see [Install](#install)).
 
-> **New in 0.21 — Cursor engine.** Run Cursor CLI (`agent acp`) in a chat tab, with streaming replies,
+> **New in 0.22 — redesigned session settings.** Provider cards, grouped model and permission controls,
+> advanced settings, and engine logos in chats. Codex chats attached to Jira tasks now start correctly.
+>
+> **0.21 — Cursor engine.** Run Cursor CLI (`agent acp`) in a chat tab, with streaming replies,
 > tool permissions, plan approval, Stop and session resume. See [Cursor](#cursor) for limitations.
 >
 > **0.20 — native Codex planning and session controls.** Planning, approval policy and sandbox have separate
@@ -120,7 +123,7 @@ The extension does not ship the engine binary (200+ MB). It finds the system `cl
 `~/.claude/local` or Homebrew (on Windows it looks for `claude.exe`). To point it somewhere else, set `agentura.claudeExecutable`.
 
 ```
-code --install-extension agentura-0.21.0.vsix
+code --install-extension agentura-0.22.0.vsix
 ```
 
 To build from source:
@@ -128,7 +131,7 @@ To build from source:
 ```
 npm ci
 npm run check      # types, lint, unit tests, build
-npm run package    # agentura-0.21.0.vsix
+npm run package    # agentura-0.22.0.vsix
 ```
 
 ## Codex
