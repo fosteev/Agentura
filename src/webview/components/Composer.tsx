@@ -68,7 +68,7 @@ import {
 import { quotaView, type LimitMeter } from '../hudView';
 import { deferredNote } from '../limitView';
 import { menuKeys } from '../a11y';
-import { currentTaskKey, runNewChatCommand } from '../newChat';
+import { currentTaskKey, runNewChatCommand, startNewChat } from '../newChat';
 import { mcpCounts, mcpSurfaceShown } from '../mcpView';
 import { McpSections } from './McpRows';
 import { ui, uiLang } from '../strings';
@@ -1396,41 +1396,76 @@ function engineLocked(): boolean {
 }
 
 function AgentItems({ close }: { close: () => void }) {
+  const root = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const menu = root.current?.closest<HTMLElement>('.agent-menu');
+    const compose = menu?.closest<HTMLElement>('.compose');
+    if (!menu || !compose) return;
+    const position = () => {
+      const parent = menu.offsetParent as HTMLElement | null;
+      if (!parent) return;
+      const rect = parent.getBoundingClientRect();
+      const frame = compose.getBoundingClientRect();
+      const scale = rect.height / parent.offsetHeight || 1;
+      menu.style.bottom = `${(rect.bottom - frame.top) / scale + 6}px`;
+      menu.style.left = `${(frame.left - rect.left) / scale + 14}px`;
+      menu.style.maxWidth = `${Math.max(0, frame.width / scale - 28)}px`;
+    };
+    position();
+    const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(position);
+    observer?.observe(compose);
+    window.addEventListener('resize', position);
+    return () => { observer?.disconnect(); window.removeEventListener('resize', position); };
+  }, []);
   const s = chat.value;
   const cur = provider.value;
   const locked = engineLocked();
-  const item = (p: 'claude' | 'codex' | 'antigravity' | 'cursor', label: string, small: string) => (
-    <ItemButton
-      it={{
-        label,
-        small,
-        hint: cur === p ? ui.compose.agentReady : locked ? ui.compose.agentLocked : '',
-        dis: locked && cur !== p,
-      }}
-      selected={cur === p}
-      onPick={() => {
-        close();
-        // после первого сообщения — только показ; хост всё равно примет выбор лишь в пустой вкладке
-        if (cur !== p && !locked) send({ type: 'engine.set', provider: p });
-      }}
-    />
-  );
+  const agents = [
+    { id: 'claude', label: 'Claude', small: ui.compose.claudeVia(cur === 'claude' ? s.engineVersion : undefined) },
+    { id: 'codex', label: 'Codex', small: ui.compose.codexVia },
+    { id: 'antigravity', label: 'Antigravity', small: ui.compose.antigravityVia(cur === 'antigravity' ? s.engineVersion : undefined) },
+    { id: 'cursor', label: 'Cursor', small: ui.compose.cursorVia },
+  ] as const;
+  const ordered = locked ? [...agents.filter((a) => a.id === cur), ...agents.filter((a) => a.id !== cur)] : agents;
   return (
-    <>
-      <div class="hd">{ui.compose.agentMenu}</div>
-      {item(
-        'claude',
-        'Claude',
-        ui.compose.claudeVia(cur === 'claude' ? s.engineVersion : undefined),
+    <div class="agent-items" ref={root}>
+      <div class="hd">{locked ? ui.compose.agentCurrent : ui.compose.agentChoose}</div>
+      {ordered.map((a, index) => {
+        const selected = a.id === cur;
+        const disabled = locked && !selected;
+        return (
+          <button
+            key={a.id}
+            class={`it agent-row${selected ? ' sel' : ''}${disabled ? ' dis' : ''}${locked && index === 1 ? ' alternatives' : ''}`}
+            role="menuitemradio"
+            aria-checked={selected}
+            aria-disabled={disabled || undefined}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              if (disabled) return;
+              close();
+              if (!selected) send({ type: 'engine.set', provider: a.id });
+            }}
+          >
+            <span class={`agent-logo agent-logo-${a.id}`} aria-hidden="true" />
+            <span class="agent-name">{a.label}</span>
+            {selected && <span class="agent-ready">{ui.compose.agentReady}</span>}
+            <small class="agent-connection">{a.small}</small>
+          </button>
+        );
+      })}
+      {locked && (
+        <div class="agent-footer">
+          <p>{ui.compose.agentLocked}</p>
+          <button class="it agent-new" role="menuitem" onClick={(e) => {
+            close();
+            const taskKey = currentTaskKey();
+            if (taskKey) startNewChat(e, taskKey);
+            else newSession();
+          }}>{ui.compose.agentNewChat}</button>
+        </div>
       )}
-      {item('codex', 'Codex', ui.compose.codexVia)}
-      {item(
-        'antigravity',
-        'Antigravity',
-        ui.compose.antigravityVia(cur === 'antigravity' ? s.engineVersion : undefined),
-      )}
-      {item('cursor', 'Cursor', ui.compose.cursorVia)}
-    </>
+    </div>
   );
 }
 
@@ -1489,7 +1524,7 @@ type TriggerLook = 'label' | 'value';
 
 function AgentMenu({ menu, toggle, close, look = 'label' }: MenuProps & { look?: TriggerLook }) {
   return (
-    <span class="pop" onKeyDown={menuKeys}>
+    <span class="pop agent-pop" onKeyDown={menuKeys}>
       <button
         class="agent"
         data-tip={ui.compose.agentTitle}
@@ -1506,7 +1541,7 @@ function AgentMenu({ menu, toggle, close, look = 'label' }: MenuProps & { look?:
         )}
       </button>
       {menu === 'agent' && (
-        <div class="menu up" role="menu">
+        <div class="menu up agent-menu" role="menu">
           <AgentItems close={close} />
         </div>
       )}
@@ -1730,7 +1765,7 @@ function EngineMenu({
     s.effort ?? 'auto',
   ];
   return (
-    <span class="pop eng" onKeyDown={menuKeys}>
+    <span class="pop eng agent-pop" onKeyDown={menuKeys}>
       <button
         class={look === 'full' ? 'pill engine' : 'engine'}
         data-tip={ui.compose.engineTitle}
@@ -1742,7 +1777,7 @@ function EngineMenu({
         {parts.join(' · ')}
       </button>
       {menu === 'engine' && (
-        <div class="menu up" role="menu">
+        <div class="menu up agent-menu" role="menu">
           <AgentItems close={close} />
           <div class="sep" />
           <ModelItems close={close} models={models} curModel={curModel} />

@@ -18,6 +18,9 @@ import {
   hudState,
   limits,
   newSession,
+  newChatPopover,
+  taskState,
+  tabChats,
   tick,
 } from './store';
 import { initialHud } from './hudState';
@@ -729,5 +732,77 @@ describe('кнопка «mcp N/M» (roadmap 21, этап 3)', () => {
     key(document.body, 'Escape');
     await flush();
     expect(host.querySelector('.mcpmenu')).toBeNull();
+  });
+});
+
+
+describe('меню агента — вариант A', () => {
+  beforeEach(() => {
+    taskState.value = undefined;
+    tabChats.value = undefined;
+    newChatPopover.value = undefined;
+    provider.value = 'antigravity';
+    features.value = providerFeatures('antigravity');
+  });
+
+  it.each(['classic', 'card', 'minimal'] as const)('сохраняет блокировку и открывает новый чат в %s', async (layout) => {
+    composerLayout.value = layout;
+    chat.value = { ...chat.value, sessionId: 'existing', engineVersion: '1.5.3' };
+    const host = mount();
+    host.querySelector<HTMLButtonElement>('.agent, .engine')!.click();
+    await flush();
+    const rows = [...host.querySelectorAll<HTMLButtonElement>('.agent-row')];
+    expect(rows).toHaveLength(4);
+    expect(rows[0]!.textContent).toContain('Antigravity');
+    expect(rows[0]!.textContent).toContain('1.5.3');
+    expect(rows[0]!.getAttribute('aria-checked')).toBe('true');
+    expect(rows.slice(1).every((r) => r.getAttribute('aria-disabled') === 'true')).toBe(true);
+    rows[1]!.click();
+    await flush();
+    expect(posted).not.toContainEqual(expect.objectContaining({ type: 'engine.set' }));
+    expect(host.querySelector('.agent-menu')).not.toBeNull();
+    const trigger = host.querySelector<HTMLElement>('.agent, .engine')!;
+    trigger.focus();
+    key(trigger, 'ArrowDown');
+    expect(document.activeElement).toBe(rows[0]);
+    key(rows[0]!, 'ArrowDown');
+    expect(document.activeElement).toBe(host.querySelector('.agent-new'));
+    host.querySelector<HTMLButtonElement>('.agent-new')!.click();
+    await flush();
+    expect(posted).toContainEqual({ type: 'session.new' });
+    expect(host.querySelector('.agent-menu')).toBeNull();
+    render(null, host);
+  });
+
+  it('для задачи открывает выбор нового чата, сохраняя текущую сессию', async () => {
+    tabChats.value = { type: 'tab.chats', taskKey: 'jira:test:TEST-1', chats: [], persist: { taskKey: 'jira:test:TEST-1', chats: [] } };
+    chat.value = { ...chat.value, sessionId: 'existing' };
+    const host = mount();
+    host.querySelector<HTMLButtonElement>('.agent')!.click();
+    await flush();
+    host.querySelector<HTMLButtonElement>('.agent-new')!.click();
+    await flush();
+    expect(newChatPopover.value).toBeDefined();
+    expect(chat.value.sessionId).toBe('existing');
+    expect(posted).not.toContainEqual({ type: 'session.new' });
+    render(null, host);
+  });
+
+  it('в пустом чате переключает движок без footer; Escape закрывает меню', async () => {
+    const host = mount();
+    host.querySelector<HTMLButtonElement>('.agent')!.click();
+    await flush();
+    expect(host.querySelector('.agent-footer')).toBeNull();
+    const claude = host.querySelector<HTMLButtonElement>('.agent-row')!;
+    expect(claude.getAttribute('aria-disabled')).toBeNull();
+    claude.click();
+    await flush();
+    expect(posted).toContainEqual({ type: 'engine.set', provider: 'claude' });
+    host.querySelector<HTMLButtonElement>('.agent')!.click();
+    await flush();
+    key(host.querySelector('.agent-row')!, 'Escape');
+    await flush();
+    expect(host.querySelector('.agent-menu')).toBeNull();
+    render(null, host);
   });
 });
