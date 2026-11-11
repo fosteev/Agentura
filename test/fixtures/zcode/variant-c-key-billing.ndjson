@@ -1,0 +1,193 @@
+{
+ "_provenance": {
+  "source": "ZCode CLI 0.17.1 bundle; -p и app-server против реального ~/.zcode; провайдер agentura-zai-key (zhipu-coding-plan-api-key); 2026-11-08",
+  "conditions": "кадры 1-4: ход с API-ключом Standard без баланса (429/1113, аутентификация пройдена); кадр 5: session/create без top-level thoughtLevel — reasoningLevel из model.options теряется",
+  "sanitized": "uuid/sess/turn/trace/msg id заменены на сквозные NN; пути → <tmp>; stack обрезан"
+ },
+ "frames": [
+  {
+   "eventId": "uuid-01",
+   "payload": {
+    "previousTitle": "",
+    "source": "first_input",
+    "title": "Reply with exactly: pong"
+   },
+   "seq": 1,
+   "sessionId": "sess_uuid-02",
+   "timestamp": 1794100558064,
+   "traceId": "uuid-03",
+   "turnId": "turn_uuid-04",
+   "type": "session.titleUpdated"
+  },
+  {
+   "eventId": "uuid-05",
+   "payload": {
+    "executionStartedAt": 1794100558035.2126,
+    "turnNumber": 0,
+    "input": "Reply with exactly: pong",
+    "messageId": "msg-01-06",
+    "inputId": "query_uuid-07",
+    "foregroundExecutionId": "runtime_command_1",
+    "queryId": "query_uuid-07",
+    "intent": {
+     "sourceCommandId": "query_uuid-07",
+     "queueItemId": "query_uuid-07",
+     "clientId": "cli",
+     "kind": "sendText",
+     "admissionSeq": 1,
+     "admittedAt": 1794100558033,
+     "requestedDelivery": "auto",
+     "admittedDelivery": "startNow",
+     "modelSelection": {
+      "providerId": "agentura-zai-key",
+      "modelId": "glm-5.3",
+      "options": {
+       "reasoningLevel": "high"
+      }
+     }
+    }
+   },
+   "seq": 2,
+   "sessionId": "sess_uuid-02",
+   "timestamp": 1794100558065,
+   "traceId": "uuid-03",
+   "turnId": "turn_uuid-04",
+   "type": "turn.started"
+  },
+  {
+   "eventId": "uuid-08",
+   "payload": {
+    "baseURL": "https://api.z.ai/api/anthropic",
+    "maxAttempts": 11,
+    "providerId": "agentura-zai-key",
+    "modelId": "glm-5.3",
+    "modelRequestSessionType": "main",
+    "requestId": "uuid-09",
+    "sessionId": "sess_uuid-02",
+    "spanId": "5561db94-a11f-42",
+    "parentSpanId": "086af4ef-d734-4a",
+    "querySource": "main_turn",
+    "queryId": "query_uuid-07",
+    "traceId": "uuid-03",
+    "providerKind": "anthropic",
+    "transport": "sse",
+    "turnId": "turn_uuid-04",
+    "modelCall": {
+     "operation": "agent_step",
+     "actorKind": "main",
+     "operationId": "5561db94-a11f-42",
+     "reasoning": {
+      "capability": "unknown",
+      "requestedControl": "provider_default",
+      "requestedState": "provider_default",
+      "requestedLevel": "high",
+      "effectiveControl": "unknown",
+      "effectiveState": "unknown",
+      "effectiveLevel": "unknown"
+     },
+     "logicalCallId": "uuid-10",
+     "stepIndex": 0
+    },
+    "attempt": 1,
+    "requestHeaderCount": 17,
+    "requestHeaders": {
+     "http-referer": "https://zcode.z.ai",
+     "user-agent": "ZCode/0.17.1",
+     "x-zcode-app-version": "0.17.1",
+     "x-title": "Z Code@cli",
+     "x-release-channel": "production",
+     "x-client-language": "en-NZ",
+     "x-client-timezone": "Europe/Moscow",
+     "x-zcode-agent": "glm",
+     "x-platform": "darwin-arm64",
+     "x-os-category": "macos",
+     "x-os-version": "27.0.0",
+     "x-request-id": "uuid-09",
+     "x-zcode-session-type": "main",
+     "x-zcode-trace-id": "uuid-03",
+     "x-query-id": "uuid-07",
+     "x-zcode-query-source": "main_turn",
+     "x-session-id": "uuid-02"
+    },
+    "timestamp": "2026-11-08T01:15:58.805Z",
+    "type": "model_request_started",
+    "_meta": {
+     "zcode": {
+      "apiRetry": null
+     }
+    }
+   },
+   "seq": 5,
+   "sessionId": "sess_uuid-02",
+   "timestamp": 1794100558807,
+   "traceId": "uuid-03",
+   "turnId": "turn_uuid-04",
+   "type": "session.updated"
+  },
+  {
+   "eventId": "uuid-11",
+   "payload": {
+    "error": {
+     "type": "unknown_error",
+     "attribution": {
+      "source": "provider",
+      "reason": "unknown",
+      "errorPhase": "stream",
+      "exceptionKind": "provider_business",
+      "providerId": "agentura-zai-key",
+      "modelId": "glm-5.3",
+      "providerKind": "anthropic",
+      "transport": "sse",
+      "statusCode": 429,
+      "providerErrorCode": "1113",
+      "retryable": false,
+      "highspeedCardId": null
+     },
+     "code": "1113",
+     "message": "[1113][Insufficient balance or no resource package. Please recharge.][2026110809155772aa0c5740f64621]",
+     "detail": "Turn execution failed\nprovider=agentura-zai-key provider_code=1113 model=glm-5.3 request=uuid-09 reason=unknown status=429 retryable=false",
+     "underlyingErrorMessage": "[1113][Insufficient balance or no resource package. Please recharge.][2026110809155772aa0c5740f64621]",
+     "stack": {
+      "_truncated": true,
+      "_chars": 594
+     }
+    },
+    "turnPhase": "processing_input",
+    "inputId": "query_uuid-07"
+   },
+   "seq": 7,
+   "sessionId": "sess_uuid-02",
+   "timestamp": 1794100560784,
+   "traceId": "uuid-03",
+   "turnId": "turn_uuid-04",
+   "type": "turn.failed"
+  },
+  {
+   "deliveryKind": "desktop-continuous",
+   "eventId": "uuid-12",
+   "payload": {
+    "error": {
+     "type": "unknown_error",
+     "code": "invalid_model_request",
+     "message": "Reasoning level is required for agentura-zai-key/glm-5.3",
+     "detail": "Model creation failed",
+     "underlyingErrorMessage": "Reasoning level is required for agentura-zai-key/glm-5.3",
+     "attribution": {
+      "highspeedCardId": null
+     },
+     "stack": {
+      "_truncated": true,
+      "_chars": 594
+     }
+    },
+    "turnPhase": "model_creation"
+   },
+   "seq": 3,
+   "sessionId": "sess_uuid-13",
+   "timestamp": 1794100880614,
+   "traceId": "uuid-14",
+   "turnId": "turn_uuid-15",
+   "type": "turn.failed"
+  }
+ ]
+}

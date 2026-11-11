@@ -1,0 +1,336 @@
+{
+ "_provenance": "zcode app-server --stdio live dialogue, bundle 0.17.1, isolated ZCODE_DATA_BASE_DIR, 2026-11-07. Turn failed at model auth (project_token_login_failed); auth-dependent payloads (model.streaming text deltas, tool.updated, permission.requested, turn.completed usage) not observed live - schemas in docs/spikes/zcode-cli/report.md.",
+ "sessionCreateResult": {
+  "messages": [],
+  "projection": {
+   "activeToolCalls": [],
+   "backgroundJobs": [],
+   "contextUsed": 0,
+   "contextWindow": 200000,
+   "mode": "build",
+   "pendingPermissions": [],
+   "sessionId": "unknown",
+   "status": "idle",
+   "target": null,
+   "totalTokenCount": 0,
+   "turnCount": 0
+  },
+  "protocol": {
+   "name": "ZCode Protocol",
+   "version": 1
+  },
+  "runtime": {
+   "eventSeq": 0,
+   "pendingRequestIds": [],
+   "goalVerifications": [],
+   "goalVerificationTimeline": [],
+   "stateRevision": 0
+  },
+  "session": {
+   "createdAt": 1794047457493,
+   "mode": "build",
+   "traceId": "uuid-01",
+   "sessionId": "sess_uuid-02",
+   "sessionKind": "interactive",
+   "status": "idle",
+   "target": null,
+   "title": "",
+   "updatedAt": 1794047457493,
+   "workspace": {
+    "workspacePath": "<tmp>/work",
+    "workspaceKey": "<tmp>/work"
+   }
+  },
+  "settings": {
+   "mode": {
+    "current": "guarded"
+   },
+   "model": {
+    "available": []
+   },
+   "permission": {
+    "mode": "guarded"
+   },
+   "thoughtLevel": {
+    "available": [],
+    "enabled": false
+   }
+  },
+  "slashCommands": [
+   {
+    "description": "Show or set the current session goal.",
+    "inputHint": "/goal [pause|resume|clear|replace <objective>|<objective>]",
+    "name": "goal",
+    "source": "builtin"
+   },
+   {
+    "description": "Compact the current conversation with optional instructions.",
+    "inputHint": "/compact [instructions]",
+    "name": "compact",
+    "source": "builtin"
+   },
+   {
+    "description": "Create or update workspace AGENTS.md instructions.",
+    "inputHint": "/init [notes]",
+    "name": "init",
+    "source": "builtin"
+   },
+   {
+    "description": "Hide or show the ZCode badge on the linked ZCode Sites site.",
+    "inputHint": "/site-badge hide | show",
+    "name": "site-badge",
+    "source": "custom"
+   },
+   {
+    "description": "Deploy this project to ZCode Sites, or redeploy the linked site.",
+    "inputHint": "/site-deploy [site id or notes]",
+    "name": "site-deploy",
+    "source": "custom"
+   },
+   {
+    "description": "Show the logs of a ZCode Sites deployment and explain any failure.",
+    "inputHint": "/site-logs [deployment id]",
+    "name": "site-logs",
+    "source": "custom"
+   },
+   {
+    "description": "Take the linked ZCode Sites site offline.",
+    "inputHint": "/site-offline [site id]",
+    "name": "site-offline",
+    "source": "custom"
+   },
+   {
+    "description": "Bring the linked ZCode Sites site back online.",
+    "inputHint": "/site-online [site id]",
+    "name": "site-online",
+    "source": "custom"
+   },
+   {
+    "description": "Show the ZCode Sites site linked to this project.",
+    "inputHint": "/site-status [site id]",
+    "name": "site-status",
+    "source": "custom"
+   },
+   {
+    "description": "Show ZCode Sites usage and plan limits.",
+    "inputHint": "/site-usage",
+    "name": "site-usage",
+    "source": "custom"
+   }
+  ],
+  "todos": [],
+  "todoGroups": []
+ },
+ "sessionSubscribeResult": {
+  "eventSeq": 0,
+  "events": [],
+  "sessionId": "sess_uuid-02"
+ },
+ "sessionSendResult": {
+  "accepted": true,
+  "sessionId": "sess_uuid-02",
+  "stateRevision": 1
+ },
+ "sessionEventNotifications": [
+  {
+   "method": "session/event",
+   "params": {
+    "deliveryKind": "desktop-continuous",
+    "eventId": "uuid-03",
+    "payload": {
+     "previousTitle": "",
+     "source": "first_input",
+     "title": "Reply with exactly: pong"
+    },
+    "seq": 1,
+    "sessionId": "sess_uuid-02",
+    "timestamp": 1794047458157,
+    "traceId": "uuid-01",
+    "turnId": "turn_uuid-04",
+    "type": "session.titleUpdated"
+   }
+  },
+  {
+   "method": "session/event",
+   "params": {
+    "deliveryKind": "desktop-continuous",
+    "eventId": "uuid-05",
+    "payload": {
+     "executionStartedAt": 1794047458134.8787,
+     "turnNumber": 0,
+     "input": "Reply with exactly: pong",
+     "messageId": "msg_mw69ja80_uuid-06",
+     "foregroundExecutionId": "runtime_command_1",
+     "queryId": "query_uuid-07"
+    },
+    "seq": 2,
+    "sessionId": "sess_uuid-02",
+    "timestamp": 1794047458176,
+    "traceId": "uuid-01",
+    "turnId": "turn_uuid-04",
+    "type": "turn.started"
+   }
+  },
+  {
+   "method": "session/event",
+   "params": {
+    "deliveryKind": "desktop-continuous",
+    "eventId": "uuid-08",
+    "payload": {
+     "error": {
+      "type": "unknown_error",
+      "attribution": {
+       "retryable": false,
+       "highspeedCardId": null
+      },
+      "code": "CONFIGURATION_ERROR",
+      "message": "Select a model before continuing",
+      "detail": "Model creation failed",
+      "underlyingErrorMessage": "Select a model before continuing",
+      "stack": "Error: Model creation failed\n    at createCoreError (/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs:116:2685)\n    at createTurnFailureError (/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs:2348:11928)\n    at /Applications/ZCode.app/Contents/Resources/glm/zcode.cjs:14739:5563\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async $D.runRuntimeCommand (/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs:14683:30567)\n    at async $D.drainRuntimeCommandQueue (/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs:14683:27849)"
+     },
+     "turnPhase": "model_creation"
+    },
+    "seq": 3,
+    "sessionId": "sess_uuid-02",
+    "timestamp": 1794047458244,
+    "traceId": "uuid-01",
+    "turnId": "turn_uuid-04",
+    "type": "turn.failed"
+   }
+  }
+ ],
+ "stateUpdatedNotifications": [
+  {
+   "method": "state.updated",
+   "params": {
+    "patch": {
+     "status": "running"
+    },
+    "reason": "prompt_started",
+    "revision": 1,
+    "scope": "session",
+    "sessionId": "sess_uuid-02",
+    "type": "state.updated",
+    "workspace": {
+     "workspacePath": "<tmp>/work",
+     "workspaceKey": "<tmp>/work"
+    }
+   }
+  },
+  {
+   "method": "state.updated",
+   "params": {
+    "patch": {
+     "mode": {
+      "current": "guarded"
+     },
+     "model": {
+      "available": []
+     },
+     "permission": {
+      "mode": "guarded"
+     },
+     "thoughtLevel": {
+      "available": [],
+      "enabled": false
+     }
+    },
+    "reason": "prompt_failed",
+    "revision": 2,
+    "scope": "session",
+    "sessionId": "sess_uuid-02",
+    "type": "state.updated",
+    "workspace": {
+     "workspacePath": "<tmp>/work",
+     "workspaceKey": "<tmp>/work"
+    }
+   }
+  }
+ ],
+ "sessionStopResult": {},
+ "sessionMessagesResult": {
+  "messages": [
+   {
+    "info": {
+     "role": "user",
+     "time": {
+      "created": 1794047458196
+     },
+     "agent": "zcode-agent",
+     "semantics": {
+      "origin": "real_user",
+      "kind": "user_prompt",
+      "uiVisibility": "visible",
+      "providerVisibility": "visible",
+      "transcriptVisibility": "visible"
+     },
+     "anchor": {
+      "turnId": "turn_uuid-04",
+      "origin": "realUser"
+     },
+     "tools": {
+      "Agent": true,
+      "AskUserQuestion": true,
+      "Bash": true,
+      "CronCreate": true,
+      "CronDelete": true,
+      "CronList": true,
+      "CronUpdate": true,
+      "Edit": true,
+      "EnterPlanMode": true,
+      "ExitPlanMode": true,
+      "Read": true,
+      "SendMessage": true,
+      "Skill": true,
+      "TaskOutput": true,
+      "TaskStop": true,
+      "TodoRead": true,
+      "TodoWrite": true,
+      "ToolSearch": true,
+      "WebFetch": true,
+      "WebSearch": true,
+      "Write": true,
+      "DeferredToolCall": true,
+      "CronPauseSelf": true,
+      "ReadSessionContext": true
+     },
+     "id": "msg_mw69ja80_uuid-06",
+     "sessionID": "sess_uuid-02"
+    },
+    "parts": [
+     {
+      "type": "text",
+      "text": "Reply with exactly: pong",
+      "time": {
+       "start": 1794047458196,
+       "end": 1794047458196
+      },
+      "id": "part_mw69ja8n_uuid-09",
+      "sessionID": "sess_uuid-02",
+      "messageID": "msg_mw69ja80_uuid-06"
+     }
+    ]
+   }
+  ]
+ },
+ "sessionListResult": {
+  "sessions": [
+   {
+    "createdAt": 1794047458136,
+    "mode": "build",
+    "traceId": "uuid-01",
+    "sessionId": "sess_uuid-02",
+    "sessionKind": "interactive",
+    "status": "idle",
+    "title": "Reply with exactly: pong",
+    "titleSource": "first_input",
+    "updatedAt": 1794047458244,
+    "workspace": {
+     "workspaceKey": "<tmp>/work",
+     "workspacePath": "<tmp>/work"
+    }
+   }
+  ]
+ }
+}
