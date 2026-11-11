@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agentura · Новый чат по задаче</title>
+<link rel="stylesheet" href="../shared/tokens.css">
+<style>
+*{box-sizing:border-box}body{margin:0;background:var(--bg-side);color:var(--fg);font:13px/1.45 var(--font)}button,input,textarea{font:inherit}button{cursor:pointer;color:inherit}button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:3px}button{border:1px solid var(--line-strong);background:transparent;border-radius:5px;padding:6px 10px}button:hover{background:var(--bg-hover)}:root{--accent:#d47756;--btn:#bd5b39}header.preview{display:flex;align-items:center;gap:12px;padding:12px 20px;border-bottom:1px solid var(--line);font-size:12px;color:var(--fg-mute)}.preview strong{color:var(--fg);font-weight:500}.preview .tools{margin-left:auto;display:flex;gap:6px}.preview button{font-size:12px;padding:4px 9px}.stage{margin:28px auto;max-width:1080px;min-height:750px;border:1px solid var(--line);border-radius:8px;background:var(--bg);position:relative;overflow:hidden}.tabbar{display:flex;align-items:center;gap:22px;padding:12px 20px;border-bottom:1px solid var(--line);color:var(--fg-mute)}.tabbar .active{color:var(--fg)}.issue{padding:30px;opacity:.35}.issue h2{font-size:23px;font-weight:600;max-width:760px;margin:20px 0}.badge{font:12px var(--mono);color:var(--fg-mute);border:1px solid var(--line-strong);padding:3px 7px;border-radius:4px}.skeleton{height:8px;background:var(--line-strong);margin:16px 0;max-width:75%;border-radius:2px}.shade{position:absolute;inset:43px 0 0;background:rgb(0 0 0 / .18)}dialog{position:relative;inset:auto;margin:25px auto 32px;padding:0;width:520px;max-width:calc(100% - 24px);background:var(--bg-raise);color:var(--fg);border:1px solid var(--line-strong);border-radius:10px;box-shadow:0 18px 65px #0006;overflow:hidden}dialog[open]{display:block}.head{display:flex;align-items:flex-start;padding:20px 22px 16px;gap:10px}.head h1{font-size:18px;letter-spacing:-.3px;font-weight:600;margin:0 0 5px}.context{display:flex;align-items:center;gap:8px;color:var(--fg-mute);font-size:12px}.context .badge{font-size:11px;padding:1px 5px}.close{margin-left:auto;border:0;padding:0;width:26px;height:26px;color:var(--fg-mute);font-size:21px}.body{padding:0 22px 20px}fieldset{margin:0;padding:0;border:0;min-width:0}legend,.fieldlabel{display:block;font-weight:600;font-size:12px;margin-bottom:8px}.agents{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px}.choice{position:relative;display:flex;cursor:pointer}.choice input{position:absolute;opacity:0;width:1px;height:1px}.choice .tile{width:100%;border:1px solid var(--line-strong);border-radius:6px;padding:10px 5px;display:flex;align-items:center;justify-content:center;gap:7px;font-size:12px;background:var(--bg)}.choice input:checked+.tile{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 9%,var(--bg));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 20%,transparent)}.choice input:focus-visible+.tile{outline:2px solid var(--accent);outline-offset:2px}.choice:hover .tile{border-color:var(--fg-mute)}.mark{font:600 12px var(--mono);display:grid;place-items:center;width:19px;height:19px;border-radius:4px}.claude{color:#e2997c;background:#c9644226}.codex{color:#b5a9ff;background:#7b68ee26}.agy{color:#78afff;background:#2f7de126}.cursor{color:var(--fg);background:var(--line)}.prompt{margin-top:18px}.optional{font-weight:400;color:var(--fg-mute);margin-left:6px;font-size:11px}textarea{display:block;width:100%;height:80px;resize:vertical;min-height:70px;max-height:180px;padding:10px 11px;background:var(--bg);border:1px solid var(--line-strong);border-radius:6px;color:var(--fg);line-height:1.5}textarea::placeholder{color:var(--fg-mute)}textarea:focus{border-color:var(--accent);outline:0}.help{font-size:11px;color:var(--fg-mute);margin:5px 0 0}.carry{margin-top:20px}.options{border:1px solid var(--line);border-radius:6px;overflow:hidden}.check{display:flex;gap:10px;padding:10px 12px;cursor:pointer;align-items:flex-start}.check+.check{border-top:1px solid var(--line)}.check:hover{background:var(--bg-hover)}.check input{width:15px;height:15px;margin:2px 0 0;accent-color:var(--accent);flex-shrink:0}.check b{display:block;font-size:12px;font-weight:500}.check small{display:block;font-size:11px;color:var(--fg-mute);margin-top:2px}.workspace{margin-top:18px}.locations{display:grid;grid-template-columns:1fr 1fr;gap:8px}.locations .tile{justify-content:flex-start;align-items:flex-start;padding:10px 12px;gap:9px}.tile .radio{margin-top:3px;width:12px;height:12px;border:1px solid var(--fg-mute);border-radius:50%;flex-shrink:0}.choice input:checked+.tile .radio{border:4px solid var(--accent)}.tile b{font-size:12px;font-weight:500;display:block}.tile small{display:block;font-size:11px;color:var(--fg-mute);margin-top:2px}.foot{padding:14px 22px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:8px;background:color-mix(in srgb,var(--bg-side) 40%,transparent)}.foot button{height:33px;font-size:12px;padding:0 12px}.foot .primary{background:var(--btn);border-color:var(--btn);color:#fff}.foot .primary:hover{filter:brightness(1.1)}.key{font-size:11px;opacity:.6;margin-left:12px}.result{margin:0 22px 15px;color:var(--fg-mute);font-size:12px}.result:empty{display:none}.backdrop-content{position:absolute;inset:43px 0;pointer-events:none}.stage.narrow{width:380px;max-width:100%}.stage.narrow .agents{grid-template-columns:repeat(2,1fr)}.stage.narrow .head,.stage.narrow .body,.stage.narrow .foot{padding-left:16px;padding-right:16px}.stage.narrow .key{display:none}[hidden]{display:none!important}@media(max-width:600px){header.preview{padding:10px 12px;flex-wrap:wrap;gap:6px}.preview .tools{margin-left:0}.stage{margin:12px 0;border-radius:0}.agents{grid-template-columns:repeat(2,1fr)}.head,.body,.foot{padding-left:16px;padding-right:16px}.key{display:none}.tabbar{gap:16px}.issue{padding:20px}}
+</style>
+</head>
+<body>
+<header class="preview"><strong>Agentura / Новый чат</strong><span>Прототип</span><div class="tools"><button id="theme" aria-pressed="false">Светлая тема</button><button id="width" aria-pressed="false">Узкая панель</button><button id="reopen">Открыть панель</button></div></header>
+<main class="stage" id="stage">
+<nav class="tabbar"><span>↗ Jira</span><button id="new">＋ чат</button><span class="active">задача</span><span>код</span></nav>
+<div class="backdrop-content"><div class="issue"><span class="badge">AI-89</span><h2>Extend the Pilot user payload</h2><p>Описание задачи</p><div class="skeleton"></div><div class="skeleton" style="width:60%"></div><div class="skeleton" style="width:68%"></div></div></div>
+<div class="shade" id="shade"></div>
+<dialog open aria-labelledby="title" id="panel">
+<form id="form">
+<div class="head"><div><h1 id="title">Новый чат по задаче</h1><div class="context"><span class="badge">AI-89</span><span>Extend the Pilot user payload</span></div></div><button type="button" class="close" id="close" aria-label="Закрыть">×</button></div>
+<div class="body">
+<fieldset><legend>Агент</legend><div class="agents">
+<label class="choice"><input type="radio" name="agent" value="Claude"><span class="tile"><span class="mark claude">C</span>Claude</span></label>
+<label class="choice"><input type="radio" name="agent" value="Codex" checked><span class="tile"><span class="mark codex">X</span>Codex</span></label>
+<label class="choice"><input type="radio" name="agent" value="Antigravity"><span class="tile"><span class="mark agy">G</span>Antigravity</span></label>
+<label class="choice"><input type="radio" name="agent" value="Cursor"><span class="tile"><span class="mark cursor">R</span>Cursor</span></label>
+</div></fieldset>
+<div class="prompt"><label class="fieldlabel" for="prompt">С чего начать<span class="optional">необязательно</span></label><textarea id="prompt" name="prompt" placeholder="Например, проверь реализацию по задаче…"></textarea><p class="help">Станет первым сообщением в новом чате.</p></div>
+<fieldset class="carry"><legend>Передать в новый чат</legend><div class="options">
+<label class="check"><input type="checkbox" name="task" checked><span><b>Контекст задачи</b><small>Описание, комментарии и вложения</small></span></label>
+<label class="check"><input type="checkbox" name="summary" checked><span><b>Итог текущего чата</b><small>Что сделано и что осталось</small></span></label>
+<label class="check"><input type="checkbox" name="changes"><span><b>Изменения по задаче</b><small>Коммиты и незакоммиченные файлы</small></span></label>
+</div></fieldset>
+<fieldset class="workspace"><legend>Рабочая папка</legend><div class="locations">
+<label class="choice"><input type="radio" name="where" value="same" checked><span class="tile"><span class="radio"></span><span><b>Та же папка</b><small>Общие рабочие файлы</small></span></span></label>
+<label class="choice"><input type="radio" name="where" value="worktree"><span class="tile"><span class="radio"></span><span><b>Свой worktree</b><small>Отдельная рабочая копия</small></span></span></label>
+</div></fieldset>
+</div>
+<div class="result" id="result" role="status"></div>
+<footer class="foot"><button type="submit" name="mode" value="beside">Открыть рядом<span class="key">⌥ ↵</span></button><button type="submit" class="primary" name="mode" value="normal">Создать чат<span class="key">↵</span></button></footer>
+</form>
+</dialog>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+function openPanel(){ $('panel').open=true; $('shade').hidden=false; $('result').textContent=''; $('prompt').focus(); }
+function closePanel(){ $('panel').open=false; $('shade').hidden=true; $('new').focus(); }
+$('close').onclick=closePanel;$('shade').onclick=closePanel;$('new').onclick=openPanel;$('reopen').onclick=openPanel;
+$('theme').onclick=()=>{const light=document.documentElement.dataset.theme!=='light';document.documentElement.dataset.theme=light?'light':'dark';$('theme').textContent=light?'Тёмная тема':'Светлая тема';$('theme').setAttribute('aria-pressed',String(light));};
+$('width').onclick=()=>{const narrow=$('stage').classList.toggle('narrow');$('width').textContent=narrow?'Широкая панель':'Узкая панель';$('width').setAttribute('aria-pressed',String(narrow));};
+$('form').onsubmit=e=>{e.preventDefault();const data=new FormData($('form'));$('result').textContent='Демо: '+data.get('agent')+' · '+(data.get('where')==='same'?'та же папка':'свой worktree')+' · '+(e.submitter?.value==='beside'?'открыть рядом':'создать чат')+'. Реальный чат не создаётся.';};
+document.addEventListener('keydown',e=>{if(!$('panel').open)return;if(e.key==='Escape'){e.preventDefault();closePanel();}if(e.key==='Enter'&&!e.shiftKey&&e.target.tagName!=='BUTTON'){e.preventDefault();$('form').requestSubmit(document.querySelector(e.altKey?'[value="beside"]':'[value="normal"]'));}});
+</script>
+</body>
+</html>

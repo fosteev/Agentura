@@ -1,3 +1,4 @@
+import { TaskPicker } from './taskPicker';
 import * as vscode from 'vscode';
 import { ChatPanel, createAdapter, type ChatServices } from './chatPanel';
 import { contextRequest } from './contextRequest';
@@ -170,6 +171,23 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
         : {}),
     }),
   };
+
+  sidebar.taskPicker = new TaskPicker({
+    sources: jira.sources,
+    groups: taskGroups,
+    sessions: () => sessions.summaries(),
+    archived: id => archive.ids().has(id),
+    hasOpen: taskKey => ChatPanel.hasOpenTask(taskKey),
+    open: (taskKey, chat) => chat
+      ? !!ChatPanel.resume(context, log, services, { id: chat.id, provider: chat.provider })
+      : ChatPanel.revealTask(taskKey),
+    create: async (meta, body, provider, prompt) => {
+      if (!vscode.workspace.workspaceFolders?.[0]) return false;
+      await ChatPanel.openWithContext(context, log, services, { task: meta, context: body,
+        name: `${meta.key}.md`, session: 'new', provider, ...(prompt ? { prompt } : {}) });
+      return ChatPanel.hasOpenTask(`jira:${meta.instanceId}:${meta.key}`);
+    },
+  });
 
   /** Быстрый выбор сессии проекта: «Возобновить сессию» из палитры. */
   const pickSession = async (): Promise<void> => {

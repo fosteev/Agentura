@@ -212,6 +212,8 @@ describe('боковая панель (sessions.html)', () => {
     await flush();
     expect(posted.some((m) => m.type === 'session.rename')).toBe(false);
     (host.querySelector('.new') as HTMLElement).click();
+    await flush();
+    (document.querySelector('.sp-menu button') as HTMLElement).click();
     expect(host.querySelector('h3 button.r')).toBeNull();
     expect(posted.map((m) => m.type)).toEqual(['session.new']);
   });
@@ -306,6 +308,8 @@ describe('боковая панель (sessions.html)', () => {
     expect(host.querySelector('.head')!.getAttribute('data-tip')).toContain('Аккаунт: a@b.c');
     (host.querySelector('.head .hl .refresh') as HTMLElement).click();
     (host.querySelector('.sec h3 button.add') as HTMLElement).click();
+    await flush();
+    (document.querySelector('.sp-menu button') as HTMLElement).click();
     expect(posted.map((m) => m.type)).toEqual(['limits.refresh', 'session.new']);
   });
 

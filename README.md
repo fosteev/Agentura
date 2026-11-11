@@ -171,6 +171,12 @@ New read-only/workspace-write presets disable network. Workspace-write also excl
 these flags do not restrict reading temporary files. Full access requires an explicit choice and
 `agentura.allowBypassPermissions`. Pending changes wait for the server; errors keep the last confirmed state.
 
+New Codex chats offer `agentura_record_agent_launch`, asking the main agent to record the exact task and parameters
+before spawning a direct child. The panel and graph show this separately as “Task recorded by parent”; it does not
+verify the actual Codex request. If the agent skips registration, no record is shown. Records include the full text
+and persist outside the project in `~/.local/share/agentura/agent-launches`, including across history reloads.
+Deleting this directory removes only these records. Existing chats do not acquire the new tool retroactively.
+
 Remaining limits:
 
 - Codex has no native plan-acceptance callback equivalent to Claude `ExitPlanMode`; approval/refine/deny plan cards remain Claude-only.

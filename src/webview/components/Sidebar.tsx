@@ -1,3 +1,4 @@
+import { SidebarTaskPicker } from './SidebarTaskPicker';
 import { signal } from '@preact/signals';
 import { useEffect, useRef } from 'preact/hooks';
 import type { AgentProvider } from '../../agent/types';
@@ -756,29 +757,10 @@ export function SidebarView({ look, data }: { look: SidebarLook; data: SidebarDa
           <span class="r" style={{ color: 'var(--fg-mute)' }}>
             {data.project}
           </span>
-          {top !== 'detailed' && (
-            <button
-              type="button"
-              class="add"
-              data-tip={ui.sidebar.newSession}
-              data-tip-key={ui.sidebar.newSessionKey}
-              aria-label={ui.sidebar.newSession}
-              onClick={() => send({ type: 'session.new' })}
-            >
-              ＋
-            </button>
-          )}
+          {top !== 'detailed' && <SidebarTaskPicker />}
           <ListModeButton cur={look.list} />
         </h3>
-        {top === 'detailed' && (
-          <button class="new" onClick={() => send({ type: 'session.new' })}>
-            <span class="plus">＋</span>
-            {ui.sidebar.newSession}
-            <span style={{ marginLeft: 'auto', color: 'var(--fg-faint)', fontSize: '11px' }}>
-              {ui.sidebar.newSessionKey}
-            </span>
-          </button>
-        )}
+        {top === 'detailed' && <SidebarTaskPicker detailed />}
       </section>
       <div class="tools" hidden={f.sessions}>
         <input

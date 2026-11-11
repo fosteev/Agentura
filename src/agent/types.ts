@@ -4,6 +4,17 @@
  * (`src/protocol.ts`, сообщение `agent.event`), поэтому здесь только сериализуемые данные.
  */
 
+/** Parent-reported launch intent, separate from actual Codex execution metadata. */
+export interface AgentLaunchRecord {
+  source: 'parent';
+  taskName: string;
+  prompt: string;
+  forkTurns: 'all' | 'none';
+  model: string | null;
+  reasoningEffort: string | null;
+  recordedAt: number;
+}
+
 /** Native Codex settings stay independent of Claude permission modes. */
 export type CodexPlanningMode = 'plan' | 'default';
 export interface CodexNewChatDefaults {
@@ -355,6 +366,7 @@ export type AgentEvent =
       prompt?: string;
       model?: string;
       reasoningEffort?: string;
+      launchRecord?: AgentLaunchRecord | null;
       /** Задачу запустил субагент (например, его фоновый Bash) — id этого субагента. */
       parentAgentId?: string;
       /** Время запуска, мс: есть у восстановленной истории (живой `task_started` без времени). */

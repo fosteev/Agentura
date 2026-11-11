@@ -29,6 +29,7 @@ import { CodexRpcClient, type RpcId, type RpcProcess } from './client';
 import { CodexEventMapper, type NotedPrompt } from './mapper';
 import { CodexApprovals } from './approvals';
 import { CodexJiraTools } from './jiraTools';
+import { CodexLaunchRecords, LAUNCH_TOOL, launchTool } from './launchRecords';
 import { buildCodexHistory } from './history';
 import { setProjectMcpEnabled } from './mcpConfig';
 import type {
@@ -63,6 +64,8 @@ export type CodexTrace = (
 ) => void;
 
 export interface CodexAdapterConfig {
+  /** Private launch declarations; outside the workspace. Override for tests. */
+  launchRecordsDirectory?: string;
   /** Путь к `codex` (`services.codexEngine.path()`); нет пути — `createSession` бросает «не найден». */
   executablePath?: string | (() => string | undefined | Promise<string | undefined>);
   log?: LogFn;
@@ -205,7 +208,12 @@ export class CodexAdapter implements AgentAdapter {
           return undefined; // удалённый дочерний тред не должен ломать историю основного
         }
       }));
-      return buildCodexHistory(res.thread, { ...historyOptions, children: children.filter((t) => t !== undefined) });
+      const enriched = buildCodexHistory(res.thread, { ...historyOptions, children: children.filter((t) => t !== undefined) });
+      const launches = new CodexLaunchRecords(this.config.launchRecordsDirectory);
+      try { launches.restore(res.thread); }
+      catch { this.config.log?.('warn', 'Could not read agent launch records.'); }
+      enriched.events = enriched.events.map((event) => launches.enrich(event));
+      return enriched;
     });
   }
 
@@ -326,6 +334,7 @@ class CodexSession implements AgentSession {
   private readonly mapper = new CodexEventMapper();
   private readonly approvals: CodexApprovals;
   private readonly jira: CodexJiraTools;
+  private readonly launches: CodexLaunchRecords;
   private readonly log: LogFn;
   private readonly proc: CodexProcess;
   private readonly client: CodexRpcClient;
@@ -393,6 +402,7 @@ class CodexSession implements AgentSession {
       changesOf: (itemId) => this.mapper.changesOf(itemId),
     }, `codex-${++approvalScopes}:`);
     this.jira = new CodexJiraTools(options.taskTools, (event) => this.emit(event), `codex-jira-${approvalScopes}:`);
+    this.launches = new CodexLaunchRecords(config.launchRecordsDirectory);
     this.client = new CodexRpcClient(this.proc, {
       timeoutMs: config.timeoutMs ?? 15_000,
       maxLineBytes: MAX_LINE_BYTES,
@@ -400,7 +410,11 @@ class CodexSession implements AgentSession {
       // approval, вопросы и неизвестные запросы — брокер: каждый получает ответ (в том числе отказ)
       onServerRequest: (id, method, params) => {
         if (method === 'item/tool/call') {
-          void this.jira.call(params, this.id, this.turn?.id).then((result) => {
+          const isLaunch = (params as { tool?: string } | null)?.tool === LAUNCH_TOOL;
+          const call = isLaunch
+            ? Promise.resolve(this.launches.call(params, this.id, this.turn?.id))
+            : this.jira.call(params, this.id, this.turn?.id);
+          void call.then((result) => {
             if (!this.closed) this.client.respond(id, result);
           });
         } else this.approvals.handle(id, method, params);
@@ -712,7 +726,7 @@ class CodexSession implements AgentSession {
     const session = this.resumedId
       ? await this.resumeThread(this.resumedId, settings)
       : await this.rpc('thread/start', { ...settings, ...(() => {
-          const dynamicTools = this.jira.register();
+          const dynamicTools = [...this.jira.register(), launchTool];
           return dynamicTools.length ? { dynamicTools } : {};
         })() }, this.config.startTimeoutMs ?? START_TIMEOUT_MS);
     if (this.newChatDefaults?.effort && this.effort === this.newChatDefaults.effort) {
@@ -728,6 +742,8 @@ class CodexSession implements AgentSession {
     }
     this.threadReady = true;
     const init = this.mapper.init(session, this.effort && EFFORTS.includes(this.effort) ? this.effort as EffortLevel : undefined);
+    try { this.launches.restore(session.thread); }
+    catch { this.log('warn', 'Could not read agent launch records.'); }
     this.model ??= session.model;
     this.effort ??= session.reasoningEffort ?? undefined;
     this.sessionPolicy = init.sessionPolicy;
@@ -889,6 +905,10 @@ class CodexSession implements AgentSession {
       }
       // `turn/completed` карточки НЕ снимает: сервер доделывает элементы и после конца хода (живой прогон —
       // approval пришёл после `turn/completed`), открытый запрос он закрывает сам `serverRequest/resolved`.
+      if (ours && (method === 'item/started' || method === 'item/completed')) {
+        const item = params as { turnId?: string; item?: unknown };
+        if (item.turnId) this.emitAll(this.launches.observe(item.turnId, item.item));
+      }
       const events = this.mapper.map(method, params);
       this.emitAll(events);
       for (const event of events) {
@@ -1011,7 +1031,7 @@ class CodexSession implements AgentSession {
   }
 
   private emit(event: AgentEvent): void {
-    this.events.emit(event);
+    this.events.emit(this.launches.enrich(event));
   }
 
   private emitAll(events: AgentEvent[]): void {

@@ -56,6 +56,27 @@ describe('protocol', () => {
     expect(isFromWebview('ready')).toBe(false);
   });
 
+  it('task picker validates correlated lookup and action payloads', () => {
+    for (const m of [
+      { type: 'task.picker.find', requestId: 1, query: 'P7-1' },
+      { type: 'task.picker.find', requestId: 2, query: 'P7-1', instanceId: 'jira-example' },
+      { type: 'task.picker.act', requestId: 1, mode: 'open' },
+      { type: 'task.picker.act', requestId: 1, mode: 'open', sessionId: 's', provider: 'codex' },
+      { type: 'task.picker.act', requestId: 1, mode: 'create', provider: 'cursor', prompt: 'Review' },
+      { type: 'task.picker.cancel' },
+    ]) expect(isFromWebview(m)).toBe(true);
+    for (const m of [
+      { type: 'task.picker.find', requestId: -1, query: 'P7-1' },
+      { type: 'task.picker.find', requestId: 1, query: 'x'.repeat(2001) },
+      { type: 'task.picker.find', requestId: 1, query: 'P7-1', instanceId: '../bad' },
+      { type: 'task.picker.act', requestId: 1, mode: 'create' },
+      { type: 'task.picker.act', requestId: 1, mode: 'open', sessionId: 's' },
+      { type: 'task.picker.act', requestId: 1, mode: 'create', provider: 'fake' },
+      { type: 'task.picker.act', requestId: 1, mode: 'create', provider: ['codex'] },
+      { type: 'task.picker.act', requestId: 1.5, mode: 'open' },
+    ]) expect(isFromWebview(m)).toBe(false);
+  });
+
   it('граф агентов (roadmap 11): openGraph, snapshot и действия графа проверяются по полям', () => {
     const graph = {
       title: 'сессия',

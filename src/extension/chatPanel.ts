@@ -336,6 +336,19 @@ export class ChatPanel {
   private readonly cwd: string;
   private readonly ownCwd: boolean;
 
+  /** Includes task chats whose first message has not been sent yet. */
+  static hasOpenTask(taskKey: string): boolean {
+    return ChatPanel.panels.some(p => p.task === taskKey);
+  }
+
+  static revealTask(taskKey: string): boolean {
+    const panel = ChatPanel.panels.find(p => p.task === taskKey && p.surface.active)
+      ?? ChatPanel.panels.find(p => p.task === taskKey);
+    if (!panel) return false;
+    panel.surface.reveal();
+    return true;
+  }
+
   /** Id сессии активной (или последней активной) вкладки — строка `cur` боковой панели. */
   static currentSessionId(): string | undefined {
     return (

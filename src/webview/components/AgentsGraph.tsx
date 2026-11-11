@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { AgentLaunchRecord } from './AgentLaunchRecord';
 import type { DetailRowView } from '../agentsView';
 import type { AgentOpenView } from '../agentViews';
 import { graphLayout } from '../agentsGraph/layout';
@@ -140,7 +141,8 @@ function Detail({
           )}
         </div>
       </div>
-      {!d.prompt && <div class="lbl">{ui.agents.view.promptUnavailable}</div>}
+      {!d.prompt && !d.launchRecord && <div class="lbl">{ui.agents.view.promptUnavailable}</div>}
+      {d.launchRecord && <AgentLaunchRecord record={d.launchRecord} />}
       {d.prompt && (
         <>
           <div class="lbl" data-tip={ui.agents.view.estTip}>

@@ -1,4 +1,5 @@
 import { useState } from 'preact/hooks';
+import { AgentLaunchRecord } from './AgentLaunchRecord';
 import type { DetailRowView } from '../agentsView';
 import { clock } from '../chatState';
 import type {
@@ -201,7 +202,8 @@ export function AgentOpen({
           ),
         )}
       </div>
-      {!d.prompt && <div class="lbl">{v().promptUnavailable}</div>}
+      {!d.prompt && !d.launchRecord && <div class="lbl">{v().promptUnavailable}</div>}
+      {d.launchRecord && <AgentLaunchRecord record={d.launchRecord} />}
       {d.prompt && (
         <>
           <div class="lbl" data-tip={v().estTip}>
@@ -570,6 +572,7 @@ function Card({ c, act }: { c: CardView; act: AgentViewActions }) {
       </div>
       <div class="ct">{l.title}</div>
       <div class="cb">{body}</div>
+      {c.launchRecord && <AgentLaunchRecord record={c.launchRecord} />}
       {c.cells.length > 0 && (
         <div class="prog" aria-hidden="true">
           {c.cells.map((x) => (

@@ -1,4 +1,5 @@
 import type { AgentDetailView, AgentMapView, MapRowView } from '../agentsView';
+import { AgentLaunchRecord } from './AgentLaunchRecord';
 import type { AgentScope, ViewsPane } from '../agentViews';
 import { AgentsCards, AgentsLanes, AgentsTree } from './AgentViews';
 import { McpSections } from './McpRows';
@@ -363,6 +364,7 @@ function AgentDetail({
           )}
         </span>
       </div>
+      {d.launchRecord && <AgentLaunchRecord record={d.launchRecord} classic />}
       {d.prompt && (
         <>
           <h6>{ui.agents.detail.prompt}</h6>

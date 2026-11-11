@@ -277,6 +277,7 @@ export interface AgentOpenView {
   meta: AgentDetailView['meta'];
   prompt?: string;
   promptLabel: string;
+  launchRecord?: AgentNode['launchRecord'];
   summary?: string;
   summaryLabel: string;
   callsLabel: string;
@@ -308,6 +309,7 @@ export function agentOpen(
     meta: d.meta,
     ...(a.prompt ? { prompt: a.prompt } : {}),
     promptLabel: ui.agents.view.promptLabel(estLabel(estTokens(a.prompt ?? ''))),
+    ...(a.launchRecord ? { launchRecord: a.launchRecord } : {}),
     ...(done ? { summary: a.summary! } : {}),
     summaryLabel:
       a.status === 'failed'
@@ -543,6 +545,7 @@ export function laneView(h: HudState, g: TurnGroup, now: number): LaneView {
 // ——— Г · карточки ———
 
 export interface CardView {
+  launchRecord?: AgentNode['launchRecord'];
   line: AgentLine;
   /** `Explore · sonnet-5.5`. */
   kind: string;
@@ -569,6 +572,7 @@ export function cardView(a: AgentNode, now: number, cwd?: string, hasSession = t
     .trim();
   return {
     line: agentLine(a, 0, now, cwd),
+    ...(a.launchRecord ? { launchRecord: a.launchRecord } : {}),
     kind: `${a.subagentType ?? a.taskType}${a.model ? ` · ${shortModel(a.model)}` : ''}`,
     live: a.status === 'running' ? currentCall(a, cwd) : null,
     cells: a.segs

@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { AgentEvent, AgentEventOf, AgentSession } from '../types';
 import { CodexAdapter, type CodexAdapterConfig } from './adapter';
 import { FakeAppServer } from './fakeServer';
+import { LAUNCH_TOOL, launchTool } from './launchRecords';
 import type { ThreadSession } from './protocol';
 
 const fixture = JSON.parse(
@@ -216,6 +217,7 @@ describe('CodexAdapter: handshake и ход', () => {
       model: 'gpt-6-luna',
       approvalPolicy: 'on-request',
       sandbox: 'read-only',
+      dynamicTools: [launchTool],
     });
     expect(s.paramsOf('turn/start')).toMatchObject({
       threadId: THREAD,
@@ -234,7 +236,7 @@ describe('CodexAdapter: handshake и ход', () => {
     const session = await open(s).adapter.createSession({ cwd: '/work' });
     session.send('x');
     await until(() => s.methods().includes('turn/start'));
-    expect(s.paramsOf('thread/start')).toEqual({ cwd: '/work' });
+    expect(s.paramsOf('thread/start')).toEqual({ cwd: '/work', dynamicTools: [launchTool] });
     const turn = s.paramsOf('turn/start');
     expect(turn.approvalPolicy).toBeUndefined();
     expect(turn.sandboxPolicy).toBeUndefined();
@@ -1425,6 +1427,44 @@ describe('Codex native skills', () => {
   });
 });
 
+describe('Codex launch records integration', () => {
+  it('routes the tool, decorates live starts, preserves metadata and restores without the child thread', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'agentura-launch-adapter-'));
+    const s = server();
+    const activity = (id: string) => ({ type: 'subAgentActivity', id, kind: 'started', agentThreadId: id,
+      agentPath: `/root/${id}`, model: 'actual-model', reasoningEffort: 'high' });
+    s.handle('thread/read', () => ({ thread: { id: 'a', turns: [] } }));
+    const session = await open(s, { launchRecordsDirectory: directory }).adapter.createSession({ cwd: '/work' });
+    try {
+      const events = collect(session); session.send('test');
+      await until(() => types(events).includes('turn.start'));
+      for (const [index, task] of ['a', 'b'].entries()) {
+        s.request(950 + index, 'item/tool/call', { threadId: THREAD, turnId: 'turn-1', callId: task,
+          tool: LAUNCH_TOOL, arguments: { task_name: task, prompt: `Exact ${task}`, fork_turns: 'none',
+            model: 'declared-model', reasoning_effort: 'low' } });
+      }
+      await until(() => s.received.filter((m) => m.method === '<response>').length === 2);
+      expect(s.received.filter((m) => m.method === '<response>').map((m) => m.params)).toEqual([
+        expect.objectContaining({ result: expect.objectContaining({ success: true }) }),
+        expect.objectContaining({ result: expect.objectContaining({ success: true }) }),
+      ]);
+      for (const id of ['b', 'a']) s.notify('item/completed', { threadId: THREAD, turnId: 'turn-1', item: activity(id) });
+      await until(() => events.filter((e) => e.type === 'agent.start').length >= 2);
+      expect(events).toContainEqual(expect.objectContaining({ type: 'agent.start', agentId: 'a', model: 'actual-model',
+        reasoningEffort: 'high', launchRecord: expect.objectContaining({ prompt: 'Exact a', model: 'declared-model', source: 'parent' }) }));
+      session.dispose();
+      const reader = server();
+      reader.handle('thread/read', (p) => {
+        if (p.threadId !== THREAD) throw new Error('Child unavailable');
+        return { thread: { id: THREAD, turns: [t('turn-1', 'completed', { items: [activity('b'), activity('a')] })] } };
+      });
+      const restored = await open(reader, { launchRecordsDirectory: directory }).adapter.loadHistory(THREAD, '/work');
+      const starts = restored.events.filter((e) => e.type === 'agent.start');
+      expect(starts.map((e) => e.launchRecord?.prompt)).toEqual(['Exact b', 'Exact a']);
+    } finally { session.dispose(); await rm(directory, { recursive: true, force: true }); }
+  });
+});
+
 describe('Codex dynamic Jira integration', () => {
   it.each(['comment', 'transition', 'worklog'] as const)('routes %s to TaskTools with native response', async (name) => {
     const s = server(); const { adapter } = open(s);
@@ -1433,7 +1473,7 @@ describe('Codex dynamic Jira integration', () => {
     const session = await adapter.createSession({ cwd: '/work', taskTools });
     const events = collect(session); session.send('task');
     await until(() => s.methods().includes('turn/start'));
-    expect(s.paramsOf('thread/start')['dynamicTools']).toMatchObject([{ name: `agentura_jira_${name}` }]);
+    expect(s.paramsOf('thread/start')['dynamicTools']).toMatchObject([{ name: `agentura_jira_${name}` }, { name: LAUNCH_TOOL }]);
     expect(s.paramsOf('initialize')['capabilities']).toMatchObject({ experimentalApi: true });
     const args = name === 'comment' ? { text: 'done' } : name === 'transition' ? { to: 'Done' } : { minutes: 2 };
     s.request(900, 'item/tool/call', { threadId: THREAD, turnId: 'turn-1', callId: 'call-1', namespace: null, tool: `agentura_jira_${name}`, arguments: args });

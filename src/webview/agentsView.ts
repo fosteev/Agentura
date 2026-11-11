@@ -321,6 +321,7 @@ export interface AgentDetailView {
   statusText: string;
   meta: { label?: string; value: string }[];
   prompt?: string;
+  launchRecord?: AgentNode['launchRecord'];
   summary?: string;
   summaryLabel: string;
   timelineLabel: string;
@@ -622,6 +623,7 @@ export function agentDetail(
     statusText,
     meta,
     ...(a.prompt ? { prompt: a.prompt } : {}),
+    ...(a.launchRecord ? { launchRecord: a.launchRecord } : {}),
     ...(a.summary && a.status !== 'running' ? { summary: a.summary } : {}),
     summaryLabel: a.status === 'failed' ? ui.agents.detail.error : ui.agents.detail.summary,
     timelineLabel: ui.agents.detail.timeline(calls),

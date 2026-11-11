@@ -276,14 +276,14 @@ describe('«＋ чат» и всплывашка', () => {
   it('клик — всплывашка с умолчаниями: движок вкладки, контекст и итог отмечены, изменения нет, та же папка; повторный клик закрывает', async () => {
     const host = await opened({ prov: 'codex' });
     const pop = q(host, '.ncp');
-    expect(pop.querySelector('h6 .k')!.textContent).toBe('NEWMFC-1482');
-    expect(qa(pop, '.seg')[0]!.querySelector('.on')!.textContent).toContain('codex');
+    expect(pop.querySelector('.ncp-context .k')!.textContent).toBe('NEWMFC-1482');
+    expect(qa(pop, '.seg')[0]!.querySelector('.on')!.textContent).toContain('Codex');
     expect(qa(pop, '.seg')[0]!.querySelectorAll('button')).toHaveLength(4);
     const boxes = qa(pop, '.ck input') as HTMLInputElement[];
     expect(boxes.map((b) => b.checked)).toEqual([true, true, false]);
     expect(boxes.map((b) => b.disabled)).toEqual([false, false, false]);
-    expect(qa(pop, '.seg')[1]!.querySelector('.on')!.textContent).toBe('та же папка');
-    expect(qa(pop, '.ft button').map((b) => b.textContent)).toEqual(['рядом', 'создать ⏎']);
+    expect(qa(pop, '.seg')[1]!.querySelector('.on b')!.textContent).toBe('Та же папка');
+    expect(qa(pop, '.ft button').map((b) => b.textContent)).toEqual(['Открыть рядом⌥ ↵', 'Создать чат↵']);
     expect(sent).toEqual([]);
     click(q(host, '.tk-strip .np'));
     await flush();

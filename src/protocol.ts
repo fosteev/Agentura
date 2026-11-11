@@ -1,3 +1,4 @@
+import type { TaskPickerRequest, TaskPickerResponse } from './shared/taskPicker';
 /**
  * Протокол extension ↔ webview. События агента — `AgentEvent` из `src/agent/types.ts` (этап 2):
  * webview получает их как есть в сообщении `agent.event`.
@@ -166,6 +167,7 @@ export function isSettingsSection(v: unknown): v is SettingsSection {
  * текущую сессию вкладки (до первого `session.init` id ещё пуст).
  */
 export type ToWebview =
+  | TaskPickerResponse
   | { type: 'codex.settingsResult' }
   | { type: 'init'; surface: Surface; version: string }
   /**
@@ -371,6 +373,7 @@ export type ToWebview =
  * открывает нативный дифф, `plan.decide` несёт выбор кнопки и текст доработки.
  */
 export type FromWebview =
+  | TaskPickerRequest
   | { type: 'ready' }
   /**
    * `images` — картинки сообщения (этап 4 roadmap 0.2), уже уменьшенные webview; `files` — текстовые
@@ -652,6 +655,9 @@ const FROM_WEBVIEW_TYPES: Record<FromWebview['type'], true> = {
   'agent.transcript': true,
   'agents.openGraph': true,
   'agents.snapshot': true,
+  'task.picker.find': true,
+  'task.picker.act': true,
+  'task.picker.cancel': true,
   'session.new': true,
   'task.newChat': true,
   'engine.set': true,
@@ -720,6 +726,11 @@ const gitFiles = (m: Record<string, unknown>): boolean => str(m.root) && strings
  * проверяет по полям обработчик.
  */
 const FIELD_CHECKS: Partial<Record<FromWebview['type'], (m: Record<string, unknown>) => boolean>> = {
+  'task.picker.find': (m) => Number.isSafeInteger(m.requestId) && Number(m.requestId) > 0 && str(m.query) && m.query.length > 0 && m.query.length <= 2000 && (m.instanceId === undefined || str(m.instanceId) && /^[a-z0-9-]{1,200}$/i.test(m.instanceId)),
+  'task.picker.act': (m) => Number.isSafeInteger(m.requestId) && Number(m.requestId) > 0 && (m.mode === 'open' || m.mode === 'create') &&
+    (m.sessionId === undefined || str(m.sessionId) && m.sessionId.length > 0 && m.sessionId.length <= 200) &&
+    (m.provider === undefined ? m.mode === 'open' && m.sessionId === undefined : str(m.provider) && ['claude', 'codex', 'antigravity', 'cursor'].includes(m.provider)) &&
+    (m.prompt === undefined || str(m.prompt) && m.prompt.length <= NEW_CHAT_PROMPT_LIMIT),
   'codex.settings': (m) => str(m.sessionId) && isCodexSettingsChange(m.change),
   'engine.set': (m) =>
     m.provider === 'claude' || m.provider === 'codex' || m.provider === 'antigravity' || m.provider === 'cursor',

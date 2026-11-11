@@ -5,6 +5,8 @@
  * совместимость в обе стороны проверяет компилятор в `agentViews.ts`.
  */
 
+import type { AgentLaunchRecord } from '../agent/types';
+
 /** Сколько последних строк хода агента уходит в снимок. */
 export const GRAPH_SEGS = 8;
 
@@ -41,6 +43,7 @@ export interface GraphAgent {
   prompt?: string;
   model?: string;
   reasoningEffort?: string;
+  launchRecord?: AgentLaunchRecord;
   summary?: string;
   segs: GraphSeg[];
   calls: number;
@@ -92,6 +95,11 @@ function isGraphAgent(v: unknown): v is GraphAgent {
     optStr(v.prompt) &&
     optStr(v.model) &&
     optStr(v.reasoningEffort) &&
+    (v.launchRecord === undefined || (isObj(v.launchRecord) && v.launchRecord.source === 'parent' &&
+      typeof v.launchRecord.prompt === 'string' && typeof v.launchRecord.taskName === 'string' &&
+      num(v.launchRecord.recordedAt) && ['all', 'none'].includes(String(v.launchRecord.forkTurns)) &&
+      (v.launchRecord.model === null || typeof v.launchRecord.model === 'string') &&
+      (v.launchRecord.reasoningEffort === null || typeof v.launchRecord.reasoningEffort === 'string'))) &&
     optStr(v.summary) &&
     Array.isArray(v.segs) &&
     v.segs.every((s) => isObj(s) && typeof s.id === 'string' && num(s.at))

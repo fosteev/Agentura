@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import type { TaskPicker } from './taskPicker';
 import { postToWebview, type SessionSummary } from '../protocol';
 import { overriddenKeys, readSettings, writeSetting } from '../settings';
 import type { AccountService } from './account';
@@ -34,6 +35,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
    * откатил бы кнопку и следующий клик посчитался бы не от того вида. Шлём один раз — после последней записи.
    */
   private viewWrites = 0;
+  taskPicker?: TaskPicker;
+  private pickerRequest = 0;
+  private pickerBusy = false;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -54,6 +58,31 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const version = String(this.context.extension.packageJSON.version);
     const sub = attachMessaging(webview, 'sidebar', version, this.log, (m) => {
       switch (m.type) {
+        case 'task.picker.find': {
+          const request = ++this.pickerRequest;
+          void this.taskPicker?.find(m.requestId, m.query, m.instanceId).then(result => {
+            if (request === this.pickerRequest) this.post({ type: 'task.picker.result', requestId: m.requestId, result });
+          });
+          break;
+        }
+        case 'task.picker.cancel':
+          this.pickerRequest++;
+          this.taskPicker?.cancel();
+          break;
+        case 'task.picker.act':
+          if (!this.pickerBusy && this.taskPicker) {
+            this.pickerBusy = true;
+            const request = this.pickerRequest;
+            void this.taskPicker.act(m).then(error => {
+              if (request === this.pickerRequest && this.view === view)
+                this.post({ type: 'task.picker.done', requestId: m.requestId, ...(error ? { error } : {}) });
+            })
+              .finally(() => { this.pickerBusy = false; });
+          }
+          break;
+        case 'task.connect':
+          void vscode.commands.executeCommand('agentura.jira.connect');
+          break;
         case 'session.new':
           void vscode.commands.executeCommand('agentura.newSession');
           break;
@@ -120,6 +149,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     view.onDidDispose(() => {
       sub.dispose();
       unsubscribe.forEach((u) => ('dispose' in u ? u.dispose() : u()));
+      this.pickerRequest++;
+      this.taskPicker?.cancel();
       this.view = undefined;
     });
   }
