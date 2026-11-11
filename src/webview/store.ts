@@ -384,7 +384,7 @@ export function handleHostMessage(m: ToWebview): void {
       // `session.history` (иначе её `init` отфильтровался бы как событие брошенной)
       if (m.event.type === 'session.init') {
         abandonedSessionId = undefined;
-        persistSession(m.event.sessionId, provider.value);
+        if (m.event.sessionId) persistSession(m.event.sessionId, provider.value);
       }
       dispatchEvent(m.event);
       break;

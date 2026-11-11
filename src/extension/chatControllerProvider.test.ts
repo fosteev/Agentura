@@ -379,6 +379,87 @@ describe('ChatController: Antigravity', () => {
   it('протокол: engine.set — antigravity', () => {
     expect(isFromWebview({ type: 'engine.set', provider: 'antigravity' })).toBe(true);
   });
+
+  it('ранний session.init ACP в пустой вкладке отдаёт модель без sessionId и не блокирует смену движка до первого хода', async () => {
+    const onSession = vi.fn();
+    const live = { set: vi.fn(), delete: vi.fn() };
+    const { controller, agy, claude, posted } = setup({
+      provider: 'antigravity',
+      onSession,
+      live: live as unknown as ChatDeps['live'],
+    });
+    controller.start();
+    await tick();
+    const s = agy.sessions[0]!;
+    s.events.emit({
+      type: 'session.init',
+      sessionId: s.id,
+      model: 'gemini-3.1-pro',
+      effort: 'high',
+      cwd: '/p',
+      permissionMode: 'acceptEdits',
+      tools: [],
+      slashCommands: [],
+      skills: [],
+      agents: [],
+      apiKeySource: 'none',
+      engineVersion: '1.5.3',
+    });
+    expect(controller.sessionId).toBeUndefined();
+    expect(controller.pristine).toBe(true);
+    expect(onSession).not.toHaveBeenCalled();
+    expect(live.set).not.toHaveBeenCalled();
+    expect(posted).toContainEqual({
+      type: 'agent.event',
+      sessionId: '',
+      event: expect.objectContaining({
+        type: 'session.init',
+        sessionId: '',
+        model: 'gemini-3.1-pro',
+        effort: 'high',
+        engineVersion: '1.5.3',
+      }),
+    });
+
+    // В пустой вкладке можно сменить модель и затем отправить первое сообщение — тогда сессия регистрируется с актуальной моделью
+    await controller.handle({ type: 'model.set', sessionId: '', model: 'claude-sonnet-4-6' });
+    await controller.handle({ type: 'send', sessionId: '', text: 'привет' });
+    expect(controller.sessionId).toBe(s.id);
+    expect(onSession).toHaveBeenCalledWith(s.id);
+    expect(live.set).toHaveBeenCalledWith(s.id, 'idle', undefined, 'antigravity');
+    expect(posted).toContainEqual({
+      type: 'agent.event',
+      sessionId: s.id,
+      event: expect.objectContaining({
+        type: 'session.init',
+        sessionId: s.id,
+        model: 'claude-sonnet-4-6',
+      }),
+    });
+
+    // А если сообщение ещё не отправляли — движок спокойно переключается обратно на Claude
+    const fresh = setup({ provider: 'antigravity' });
+    fresh.controller.start();
+    await tick();
+    fresh.agy.sessions[0]!.events.emit({
+      type: 'session.init',
+      sessionId: 'agy-unused',
+      model: 'gemini-3.1-pro',
+      cwd: '/p',
+      permissionMode: 'default',
+      tools: [],
+      slashCommands: [],
+      skills: [],
+      agents: [],
+      apiKeySource: 'none',
+      engineVersion: '1.5.3',
+    });
+    await fresh.controller.handle({ type: 'engine.set', provider: 'claude' });
+    await tick();
+    expect(fresh.controller.provider).toBe('claude');
+    expect(fresh.claude.created).toHaveLength(1);
+    expect( claude.created ).toHaveLength(0);
+  });
 });
 
 describe('ChatController: выбор движка engine.set', () => {

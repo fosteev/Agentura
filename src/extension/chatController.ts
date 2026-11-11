@@ -548,6 +548,7 @@ export class ChatController {
   private async reseed(): Promise<void> {
     const id = this.sessionId;
     if (!id) {
+      if (this.lastInit) this.forward('', { ...this.lastInit, sessionId: '' });
       if (this.lastNativeSettings) this.forward('', this.lastNativeSettings);
       // новый чат без сообщений: пересеивать нечего, но меню моделей и команд webview получает заново
       // (возврат к нему во вкладке задачи, «Reload Webviews» пустой вкладки)
@@ -684,8 +685,11 @@ export class ChatController {
     this.readyCount++;
     const reseed = this.seedPending || this.readyCount > 1;
     this.pushInfo();
-    // сессия создана до готовности webview (`start()`), `session.init` ещё не было — меню режима из настроек
+    // сессия создана до готовности webview (`start()`), `session.init` ещё не было — меню режима из настроек;
+    // ACP (`agy`, `cursor`) мог прислать `session.init` раньше первого `ready` — отдать его (без `sessionId`, пока вкладка пуста)
     if (this.defaults && !this.lastInit) deps.post(this.defaults);
+    else if (this.lastInit && !reseed)
+      this.forward(this.sessionId ?? '', { ...this.lastInit, sessionId: this.sessionId ?? '' });
     void this.refreshLimits();
     if (this.editorContext) deps.post(this.editorContext);
     void deps
@@ -990,6 +994,7 @@ export class ChatController {
       switch (m.type) {
         case 'send': {
           this.touched = true;
+          this.activateInit(session);
           this.noteSent(m);
           // по очереди: сообщение с выделением (ждёт чтения файла) не обгоняется следующим
           const run = this.sendQueue.then(() => this.sendNow(session, m));
@@ -1009,15 +1014,20 @@ export class ChatController {
           }
           await session.setMode(m.mode as PermissionMode);
           if (this.defaults) this.defaults = { ...this.defaults, mode: m.mode as PermissionMode };
+          if (this.lastInit)
+            this.lastInit = { ...this.lastInit, permissionMode: m.mode as PermissionMode };
           return;
         case 'model.set':
           await session.setModel(m.model);
+          if (this.lastInit) this.lastInit = { ...this.lastInit, model: m.model };
           return;
         case 'effort.set':
           if (EFFORTS.includes(m.effort)) {
             await session.setEffort(m.effort as EffortLevel);
             if (this.defaults)
               this.defaults = { ...this.defaults, effort: m.effort as EffortLevel };
+            if (this.lastInit)
+              this.lastInit = { ...this.lastInit, effort: m.effort as EffortLevel };
           }
           return;
         case 'compact':
@@ -1117,6 +1127,7 @@ export class ChatController {
       const session = await this.ensureSession();
       if (!session) return;
       this.touched = true;
+      this.activateInit(session);
       this.inflight = prompts.map((m) => ({ m, started: false }));
       for (const prompt of prompts) {
         const run = this.sendQueue.then(() => this.sendNow(session, prompt));
@@ -1687,11 +1698,19 @@ export class ChatController {
 
   private onEvent(session: AgentSession, e: AgentEvent): void {
     if (session !== this.current) return;
-    if (e.type === 'session.init' && session.id) this.lastSessionId = session.id;
+    // ACP (`agy`, `cursor`) шлёт `session.init` сразу из `session/new` при открытии пустой вкладки: модель, effort и
+    // версия нужны меню сразу, но сессия ещё не начата — не регистрируем её и не отдаём `sessionId` до первого сообщения
+    const deferInit =
+      e.type === 'session.init' &&
+      this.pristine &&
+      (this.engineProvider === 'antigravity' || this.engineProvider === 'cursor');
+    if (e.type === 'session.init' && session.id && !deferInit) this.lastSessionId = session.id;
     this.log.debug(`← ${describeEvent(e)}`);
-    this.streamTail.note(e);
-    if (this.reseedBuffer) this.reseedBuffer.push({ sessionId: session.id, event: e });
-    else this.forward(session.id, e);
+    const out = deferInit ? { ...e, sessionId: '' } : e;
+    const sid = deferInit ? '' : session.id;
+    this.streamTail.note(out);
+    if (this.reseedBuffer) this.reseedBuffer.push({ sessionId: sid, event: out });
+    else this.forward(sid, out);
 
     const prev = this.status;
     this.pending = updatePending(this.pending, e);
@@ -1726,6 +1745,7 @@ export class ChatController {
         break;
       case 'turn.start':
         if (!e.agentId) {
+          this.activateInit(session);
           this.turnStartedAt = e.at;
           this.turnSeen = true;
           // ход без промпта начал сам движок (пробуждение фоновой задачей, отказ resume) — сообщения
@@ -1749,9 +1769,11 @@ export class ChatController {
         }
         break;
       case 'session.init':
-        this.register(session.id);
-        this.lastSessionId = session.id || this.lastSessionId;
         this.lastInit = e;
+        if (!deferInit) {
+          this.register(session.id);
+          this.lastSessionId = session.id || this.lastSessionId;
+        }
         void this.postSkillFiles(e.skills);
         if (this.engineProvider === 'claude') this.deps.onEngineVersion?.(e.engineVersion);
         this.log.info(`session.init: ${e.model}, режим ${e.permissionMode}`);
@@ -1810,10 +1832,11 @@ export class ChatController {
         const text = `session.closed: ${e.reason}${e.message ? ` — ${e.message}` : ''}`;
         if (e.reason === 'error') this.log.error(text);
         else this.log.info(text);
-        if (this.registeredId) this.deps.live?.delete(this.registeredId);
+        const prevRegistered = this.registeredId;
+        if (prevRegistered) this.deps.live?.delete(prevRegistered);
         // закрытая сессия больше не «живая», но упавшая или упёршаяся в лимит остаётся в списке
         // строкой `err`/`limit` — до «Повторить ход», возобновления или закрытия вкладки
-        const id = session.id || this.registeredId;
+        const id = prevRegistered || (!this.pristine ? session.id : undefined);
         if (id && (this.status === 'error' || this.status === 'limited')) {
           this.liveSet(id);
           this.stickyLive = id;
@@ -1825,8 +1848,22 @@ export class ChatController {
       default:
         break;
     }
-    if (this.status !== prev && session.id) this.liveSet(session.id);
+    const liveId = this.registeredId || (!this.pristine ? session.id : undefined);
+    if (this.status !== prev && liveId) this.liveSet(liveId);
     this.kickRetry();
+  }
+
+  /** Первый ход ACP-сессии, чей `session.init` пришёл ещё в пустой вкладке: зарегистрировать и отдать `sessionId`. */
+  private activateInit(session: AgentSession | undefined = this.current): void {
+    if (!this.lastInit || this.registeredId) return;
+    const id = session?.id || this.lastInit.sessionId;
+    if (!id) return;
+    this.lastInit = { ...this.lastInit, sessionId: id };
+    this.lastSessionId = id;
+    this.register(id);
+    this.streamTail.note(this.lastInit);
+    if (this.reseedBuffer) this.reseedBuffer.push({ sessionId: id, event: this.lastInit });
+    else this.forward(id, this.lastInit);
   }
 
   /** Реестр живых сессий; сессии Codex и Antigravity он помечает (их списки перечитываются по ним). Вызов Claude — как был. */

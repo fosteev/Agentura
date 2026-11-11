@@ -395,6 +395,37 @@ describe('Выбор движка', () => {
     expect(posted).toContainEqual({ type: 'engine.set', provider: 'antigravity' });
   });
 
+  it('ранний session.init без sessionId (ACP в пустой вкладке) обновляет модель/версию, но не блокирует выбор движка', async () => {
+    info('antigravity');
+    handleHostMessage({
+      type: 'agent.event',
+      sessionId: '',
+      event: {
+        type: 'session.init',
+        sessionId: '',
+        model: 'gemini-3.1-pro',
+        effort: 'high',
+        cwd: '/p',
+        permissionMode: 'default',
+        tools: [],
+        slashCommands: [],
+        skills: [],
+        agents: [],
+        apiKeySource: 'none',
+        engineVersion: '1.5.3',
+      },
+    });
+    expect(chat.value.model).toBe('gemini-3.1-pro');
+    expect(chat.value.engineVersion).toBe('1.5.3');
+    const host = mount();
+    await flush();
+    await openAgentMenu(host);
+    const claude = items(host).find((i) => i.textContent?.startsWith('Claude'))!;
+    expect(claude.getAttribute('aria-disabled')).toBeNull();
+    claude.click();
+    expect(posted).toContainEqual({ type: 'engine.set', provider: 'claude' });
+  });
+
   it('после session.init (есть id) — только показ: другой движок недоступен, engine.set не шлётся', async () => {
     info('codex');
     chat.value = { ...chat.value, sessionId: 'thr-1' };
