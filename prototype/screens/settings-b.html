@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="ru" data-theme="dark" data-width="vscode">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agentura · настройки</title>
+<link rel="stylesheet" href="../shared/tokens.css">
+<link rel="stylesheet" href="../shared/preview.css">
+<link rel="stylesheet" href="../shared/hud.css">
+<link rel="stylesheet" href="../shared/settings.css">
+<link rel="stylesheet" href="../shared/session-settings-b.css">
+<link rel="stylesheet" href="../shared/tooltip.css">
+</head>
+<body>
+<div class="preview-bar">
+  <b>Настройки · вариант Б (Claude)</b>
+  <span class="grp"><button data-set-theme="dark">Тёмная</button><button data-set-theme="light">Светлая</button></span>
+  <span class="grp"><button data-set-width="vscode">боковая панель + вкладка</button><button data-set-width="900">900 · вкладка</button><button data-set-width="380">380 · сплит</button><button data-set-width="full">во всю ширину</button></span>
+  <a href="../index.html">← оглавление</a>
+</div>
+<div class="preview-stage">
+<div class="webview settings" data-sidebar="live" data-gear="on">
+
+  <header class="hud" aria-label="Настройки">
+    <span class="sess" style="display:block;padding-left:8px">Agentura · <b>настройки</b></span>
+    <span class="acts"><button title="Открыть в настройках VS Code">в настройках VS Code</button><button title="Открыть settings.json">settings.json</button></span>
+  </header>
+
+  <div class="st-wrap">
+    <nav class="st-nav">
+      <div class="st-tabs" role="tablist">
+        <button role="tab" data-section="session" class="on" aria-selected="true">Новая сессия</button>
+        <button role="tab" data-section="limits">Контекст и лимиты</button>
+        <button role="tab" data-section="sidebar">Боковая панель</button>
+        <button role="tab" data-section="look">Внешний вид</button>
+        <button role="tab" data-section="integrations">Интеграции</button>
+        <button role="tab" data-section="engine">Движок</button>
+      </div>
+      <div class="src">Хранится в настройках VS Code, раздел «Пользователь». Меняется сразу, без перезапуска.<a href="#">открыть settings.json</a></div>
+    </nav>
+
+    <div class="st-body">
+      <section class="st-page" id="session"></section>
+
+      <section class="st-page" id="limits" hidden>
+      <h2>Контекст и лимиты</h2>
+      <div class="set">
+        <span class="nm">Пороги шкалы контекста</span>
+        <span class="ds">Где полоса и число над полем ввода становятся жёлтыми и оранжевыми. Автосжатие на 200 000 делает движок — здесь не настраивается.</span>
+        <span class="key">agentura.contextThresholds</span>
+        <span class="ctl"><span class="u">жёлтый</span><span class="num">120 000</span><span class="u">оранжевый</span><span class="num">150 000</span></span>
+        <div class="th" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="h"></i><i class="h"></i><i class="h"></i><i class="h"></i><i class="f"></i></div>
+        <div class="thl"><span>0</span><span>120k</span><span style="display:flex;justify-content:space-between"><span>150k</span><span>200k · сжатие</span></span></div>
+      </div>
+      <div class="set">
+        <span class="nm">Опрашивать лимиты каждые</span>
+        <span class="ds">5-часовое и недельное окно в боковой панели и под полем ввода. Вручную — ↻ в боковой панели.</span>
+        <span class="key">agentura.usagePollMinutes · не меньше 5</span>
+        <span class="ctl"><span class="num">15</span><span class="u">мин</span></span>
+      </div>
+      <div class="set">
+        <span class="nm">Читать токен из Keychain macOS</span>
+        <span class="ds">Нужен только для запроса лимитов. Без него проценты появятся после первого хода.</span>
+        <span class="key">agentura.limits.readKeychain</span>
+        <span class="ctl"><span class="tg on" role="switch" aria-checked="true"></span></span>
+      </div>
+      </section>
+
+      <section class="st-page" id="sidebar" hidden>
+      <h2>Боковая панель</h2>
+      <div class="set">
+        <span class="nm">Верх боковой панели<span class="new">новая</span></span>
+        <span class="ds">Сколько места под аккаунтом и лимитами: подробно — таблицей, компактно — по строке, плотно — мини-шкалы лимитов в заголовке панели.</span>
+        <span class="key">agentura.sidebar.top</span>
+        <span class="ctl"><span class="dd">подробно — как сейчас</span></span>
+      </div>
+      <div class="set">
+        <span class="nm">Лимиты движков<span class="new">новая</span></span>
+        <span class="ds">Как выложены лимиты, когда установлено два и больше движков: стопка карточек, переключатель, таблица, активный движок подробно или мини-шкалы в заголовке. Если установлен только Claude, секция выглядит как раньше.</span>
+        <span class="key">agentura.sidebar.limits</span>
+        <span class="ctl"><span class="dd">активный подробно</span></span>
+      </div>
+      <div class="set">
+        <span class="nm">Чьи лимиты показывать<span class="new">новая</span></span>
+        <span class="ds">Снятый флажок прячет лимиты движка из боковой панели и выключает их опрос. Снять все — секции лимитов не будет. Лимиты в шапке чата не меняются.</span>
+        <span class="key">agentura.sidebar.limitsHidden</span>
+        <span class="ctl"><div class="cbs"><label><input type="checkbox" checked>Claude</label><label><input type="checkbox" checked>Codex</label><label><input type="checkbox" checked>Antigravity</label></div></span>
+      </div>
+      <div class="set">
+        <span class="nm">Задачи Jira в боковой панели<span class="new">новая</span></span>
+        <span class="ds">Где показаны чаты по задачам Jira: группами внутри списка сессий (под ключом задачи, статус-пилюля и «＋» нового чата) или отдельной секцией «Задачи» над «Сессиями», а в строке сессии — метка ключа справа.</span>
+        <span class="key">agentura.tasks.sidebar</span>
+        <span class="ctl"><span class="dd">группы в списке сессий</span></span>
+      </div>
+      <div class="set">
+        <span class="nm">Вид списка сессий<span class="new">новая</span></span>
+        <span class="ds">Сколько строк на сессию в боковой панели. Ходы и цена всегда есть в подсказке строки. Переключается и кнопкой в заголовке «Сессии».</span>
+        <span class="key">agentura.sessionList.view</span>
+        <span class="ctl"><span class="dd">компактно — две строки только у важных</span></span>
+      </div>
+      <div class="set">
+        <span class="nm">Контекст в строке<span class="new">новая</span></span>
+        <span class="ds">Колонка справа: контекст последнего запроса сессии, например 173k ctx.</span>
+        <span class="key">agentura.sessionList.context</span>
+        <span class="ctl"><span class="tg on" role="switch" aria-checked="true"></span></span>
+      </div>
+      <div class="set">
+        <span class="nm">Время в строке<span class="new">новая</span></span>
+        <span class="ds">Колонка справа: когда сессия обновлялась — сейчас, 13:05, вт, 25.09.</span>
+        <span class="key">agentura.sessionList.time</span>
+        <span class="ctl"><span class="tg on" role="switch" aria-checked="true"></span></span>
+      </div>
+      </section>
+
+      <section class="st-page" id="look" hidden>
+      <h2>Внешний вид</h2>
+      <div class="set">
+        <span class="nm">Вид ленты чата<span class="new">новая</span></span>
+        <span class="ds">Как выглядит ход: журнал — плоский список, свёрнуто — действия завершённых ходов в одну строку, реплики — пузырь и чипы действий, карточки — ход рамкой с лентой действий. Открытые вкладки меняют вид сразу.</span>
+        <span class="key">agentura.feed.style</span>
+        <span class="ctl"><span class="dd">журнал — как раньше</span></span>
+      </div>
+      <div class="set">
+        <span class="nm">Вид поля ввода<span class="new">новая</span></span>
+        <span class="ds">Как расставлено поле ввода чата: классика — как раньше, карточка — одна рамка с нижним рядом, строка состояния — полоса настроек под полем, приборы сверху — контекст и лимиты над полем, минимум — одна строка, командная строка — «приглашение» с проектом и режимом. Клавиши и поведение везде одинаковые. Открытые вкладки меняют вид сразу.</span>
+        <span class="key">agentura.composer.layout</span>
+        <span class="ctl"><span class="dd">классика — как раньше</span></span>
+      </div>
+      <div class="set">
+        <span class="nm">Карта агентов<span class="new">новая</span></span>
+        <span class="ds">Вкладка «агенты» правой панели: список с деталями, дерево сессии, дорожки времени, карточки или граф во вкладке редактора (в панели при нём остаётся список). Открытые вкладки меняют вид сразу.</span>
+        <span class="key">agentura.agents.view</span>
+        <span class="ctl"><span class="dd">список — агенты хода и детали</span></span>
+      </div>
+      <div class="set">
+        <span class="nm">Вкладка git: несколько репозиториев<span class="new">новая</span></span>
+        <span class="ds">Вкладка git, когда в рабочей папке несколько репозиториев (один репозиторий от настройки не зависит): стопка разделов, выбор репозитория сверху или общий список с одним коммитом в несколько репо. Открытые вкладки меняют раскладку сразу.</span>
+        <span class="key">agentura.git.layout</span>
+        <span class="ctl"><span class="dd">стопка — раздел на репозиторий</span></span>
+      </div>
+      <div class="set">
+        <span class="nm">Вкладка git: скрывать репозитории без изменений<span class="new">новая</span></span>
+        <span class="ds">Когда репозиториев несколько, не показывать те, где нет изменённых файлов, неотправленных коммитов и неопубликованной ветки. Открытые вкладки применяют сразу.</span>
+        <span class="key">agentura.git.hideClean</span>
+        <span class="ctl"><span class="tg" role="switch" aria-checked="false"></span></span>
+      </div>
+      <div class="set">
+        <span class="nm">Карточка задачи в чате<span class="new">новая</span></span>
+        <span class="ds">Где показана задача Jira в чате по задаче. Панель — вкладка «задача» справа (карточка и лента изменений); сплит — карточка Jiraffe слева, чат справа (только с Jiraffe, иначе как панель); полоска — только строка над лентой.</span>
+        <span class="key">agentura.tasks.card</span>
+        <span class="ctl"><span class="dd">панель — вкладка «задача» справа</span></span>
+      </div>
+      <div class="set">
+        <span class="nm">Вкладки чатов по задаче<span class="new">новая</span></span>
+        <span class="ds">Как открываются чаты по задаче Jira. Вкладка на чат — каждый чат в своей вкладке редактора, как без задач; вкладка на задачу — одна вкладка на задачу, её чаты внутренними вкладками под полоской задачи. Действует на чаты, открытые после смены.</span>
+        <span class="key">agentura.tasks.tab</span>
+        <span class="ctl"><span class="dd">вкладка на чат</span></span>
+      </div>
+      <div class="set">
+        <span class="nm">Размер текста ленты<span class="new">новая</span></span>
+        <span class="ds">Лента чата масштабируется целиком: ответы, действия, код, карточки. Открытые вкладки меняются сразу.</span>
+        <span class="key">agentura.feed.fontSize</span>
+        <span class="ctl"><span class="dd">13 px — по умолчанию</span></span>
+      </div>
+      <div class="set">
+        <span class="nm">Размер интерфейса<span class="new">новая</span></span>
+        <span class="ds">Всё, кроме ленты: шапка, поле ввода, панели, боковая панель, эта вкладка. У ленты — свой размер выше. Открытые вкладки меняются сразу.</span>
+        <span class="key">agentura.ui.fontSize</span>
+        <span class="ctl"><span class="dd">13 px — по умолчанию</span></span>
+      </div>
+      <div class="set">
+        <span class="nm">Дифф задачи: подсветка синтаксиса<span class="new">новая</span></span>
+        <span class="ds">Дифф во вкладке «код» задачи. Выключено — только фон добавленных и удалённых строк. Открытые вкладки применяют сразу.</span>
+        <span class="key">agentura.diff.syntaxHighlighting</span>
+        <span class="ctl"><span class="tg on" role="switch" aria-checked="true"></span></span>
+      </div>
+      <div class="set">
+        <span class="nm">Дифф задачи: палитра<span class="new">новая</span></span>
+        <span class="ds">Цвета подсветки, у каждой палитры есть тёмный и светлый вариант. Шрифт диффа — «Шрифт кода» ниже. Открытые вкладки применяют сразу.</span>
+        <span class="key">agentura.diff.highlightTheme</span>
+        <span class="ctl"><span class="dd">github</span></span>
+      </div>
+      <div class="set">
+        <span class="nm">Дифф задачи: размер шрифта<span class="new">новая</span></span>
+        <span class="ds">Во вкладке «код» задачи, px. 0 — размер текста ленты. Открытые вкладки применяют сразу.</span>
+        <span class="key">agentura.diff.fontSize</span>
+        <span class="ctl"><span class="dd">0 — как лента</span></span>
+      </div>
+      <div class="set">
+        <span class="nm">Шрифт интерфейса<span class="new">новая</span></span>
+        <span class="ds">Текст ответов, настройки, боковая панель. Пусто — как в VS Code; шрифта нет в системе — тоже.</span>
+        <span class="key">agentura.font.interface</span>
+        <span class="ctl"><span class="num wide">как в VS Code: system-ui</span></span>
+      </div>
+      <div class="set">
+        <span class="nm">Шрифт панелей<span class="new">новая</span></span>
+        <span class="ds">Шапка, поле ввода, правая и левая панели. Пусто — как сейчас: чат моноширинный, боковая панель — шрифтом интерфейса. Числа, пути и код остаются на шрифте кода.</span>
+        <span class="key">agentura.font.panels</span>
+        <span class="ctl"><span class="num">свой шрифт</span></span>
+      </div>
+      <div class="set">
+        <span class="nm">Шрифт кода<span class="new">новая</span></span>
+        <span class="ds">Моноширинный: код, журнал действий в ленте, цифры. Пусто — шрифт редактора VS Code.</span>
+        <span class="key">agentura.font.code</span>
+        <span class="ctl"><span class="num wide">как в VS Code: Menlo</span></span>
+      </div>
+      <div class="set">
+        <span class="nm">Язык интерфейса<span class="new">новая</span></span>
+        <span class="ds">По умолчанию — как в VS Code. Применяется после перезагрузки окна.</span>
+        <span class="key">agentura.language</span>
+        <span class="ctl"><span class="dd">как в VS Code</span></span>
+      </div>
+      <h3 class="st-sub">MCP и скиллы</h3>
+      <p class="st-subnote">Метки в ленте, кнопка у поля ввода, вкладка правой панели и системная строка. Статус серверов запрашивается, только если включено хотя бы одно из трёх последних.</p>
+      <div class="set">
+        <span class="nm">Метки MCP и скиллов в ленте<span class="new">новая</span></span>
+        <span class="ds">Чип сервера у вызова MCP, полоса у скилла, счётчики «mcp N» и «скилл N» в итоге хода. Выключено — как раньше: короткое имя тула, скилл обычной строкой.</span>
+        <span class="key">agentura.mcp.feedLabels</span>
+        <span class="ctl"><span class="tg on" role="switch" aria-checked="true"></span></span>
+      </div>
+      <div class="set">
+        <span class="nm">Кнопка «mcp N/M» у поля ввода<span class="new">новая</span></span>
+        <span class="ds">Сколько серверов подключено; жёлтая точка — есть сбой. По клику — серверы, «повторить» и скиллы сессии.</span>
+        <span class="key">agentura.mcp.composerButton</span>
+        <span class="ctl"><span class="tg on" role="switch" aria-checked="true"></span></span>
+      </div>
+      <div class="set">
+        <span class="nm">Вкладка «mcp» в правой панели<span class="new">новая</span></span>
+        <span class="ds">Серверы с вызовами по тулам, скиллы сессии и все доступные скиллы.</span>
+        <span class="key">agentura.mcp.panelTab</span>
+        <span class="ctl"><span class="tg on" role="switch" aria-checked="true"></span></span>
+      </div>
+      <div class="set">
+        <span class="nm">Строка о статусе MCP в ленте<span class="new">новая</span></span>
+        <span class="ds">Когда писать в ленту о состоянии MCP-серверов.</span>
+        <span class="key">agentura.mcp.feedStatus</span>
+        <span class="ctl"><span class="dd">только сбои</span></span>
+      </div>
+      </section>
+
+      <section class="st-page" id="integrations" hidden>
+      <h2>Интеграции</h2>
+      <div class="set">
+        <span class="nm">Источник задач Jira<span class="new">новая</span></span>
+        <span class="ds">Откуда Agentura берёт задачи для полоски и вкладки «задача». Авто: Jiraffe, если он установлен и отдаёт API, иначе свои подключения. «Выкл» — задачи не запрашиваются; группы в списке сессий остаются.</span>
+        <span class="key">agentura.jira.source</span>
+        <span class="ctl"><span class="dd">авто</span></span>
+        <div class="ok">Сейчас работает: Jiraffe</div>
+      </div>
+      <div class="set">
+        <span class="nm">Jiraffe</span>
+        <span class="ds">Расширение Jira для VS Code. Берём из него инстансы и токены воркспейса; в карточке задачи появляется «Открыть в Agentura».</span>
+        <span class="key">fosteev.jiraffe</span>
+        <span class="ctl"></span>
+        <div class="ok">✓ Jiraffe 0.8.0 установлен <span class="dim">· 2 инстанса: jira.sccloud.ru, jira.pilot-gps.com</span></div>
+      </div>
+      <div class="set">
+        <span class="nm">Свои подключения</span>
+        <span class="ds">Jira, подключённая прямо в Agentura, без Jiraffe: адрес и токен только для этого воркспейса, токен хранится в SecretStorage VS Code.</span>
+        <span class="key">agentura.jira.connect</span>
+        <span class="ctl"><button class="btn">подключить</button></span>
+        <div class="cn">
+          <div class="r"><span class="n">pilot</span><span class="u">https://jira.pilot-gps.com</span><span class="k">Server / DC</span><button class="btn">проверить</button><button class="btn">удалить</button></div>
+        </div>
+      </div>
+      <div class="set">
+        <span class="nm">Обновлять задачу<span class="new">новая</span></span>
+        <span class="ds">Как часто читать задачу из Jira, пока открыт чат по ней. Вручную — кнопка ↻ во вкладке «задача»; после хода агента задача перечитывается в обоих режимах.</span>
+        <span class="key">agentura.tasks.refresh</span>
+        <span class="ctl"><span class="dd">каждые 30 с</span></span>
+      </div>
+      <div class="set">
+        <span class="nm">Показывать изменения от людей<span class="new">новая</span></span>
+        <span class="ds">Комментарии, статусы и ворклоги, сделанные не агентом, попадают в «изменения» и в плашку «отправить агенту?».</span>
+        <span class="key">agentura.tasks.humanChanges</span>
+        <span class="ctl"><span class="tg on" role="switch"></span></span>
+      </div>
+      <div class="set" data-key="agentura.tasks.code.matchMessage">
+        <span class="nm">Искать ключ в сообщениях коммитов<span class="new">новая</span></span>
+        <span class="ds">Вкладка «код» задачи: коммит попадает в список, если ключ задачи есть в его сообщении (в любой ветке).</span>
+        <span class="key">agentura.tasks.code.matchMessage</span>
+        <span class="ctl"><span class="tg on" role="switch"></span></span>
+      </div>
+      <div class="set" data-key="agentura.tasks.code.matchBranch">
+        <span class="nm">Искать ключ в именах веток<span class="new">новая</span></span>
+        <span class="ds">Вкладка «код» задачи: если ключ есть в имени ветки, берём все её коммиты, которых ещё нет в базе, даже без ключа в сообщении.</span>
+        <span class="key">agentura.tasks.code.matchBranch</span>
+        <span class="ctl"><span class="tg on" role="switch"></span></span>
+      </div>
+      <div class="set" data-key="agentura.jira.agentTools">
+        <span class="nm">Инструменты Jira для агента<span class="new">новая</span></span>
+        <span class="ds">Что агент (движок Claude) может делать в задаче чата от вашего имени через текущий источник: комментарий — без вопроса, статус и ворклог — через карточку разрешения.</span>
+        <span class="key">agentura.jira.agentTools</span>
+        <span class="ctl"><div class="cbs"><label><input type="checkbox" checked>комментарий</label><label><input type="checkbox" checked>статус <em>спрашивать разрешение</em></label><label><input type="checkbox" checked>ворклог <em>спрашивать разрешение</em></label></div></span>
+      </div>
+      <div class="set">
+        <span class="nm">Браузер (Playwright MCP)<span class="new">новая</span></span>
+        <span class="ds">Агент управляет вашим Chrome через расширение Playwright Extension из Chrome Web Store (раньше называлось Playwright MCP Bridge). Claude и Codex: у Claude включается на ходу, у Codex — с нового чата. Страницы могут содержать инструкции для агента (prompt injection), а у агента есть доступ к файлам и терминалу — не включайте без нужды и не разрешайте браузерные действия не глядя.</span>
+        <span class="key">agentura.browser.enabled</span>
+        <span class="ctl"><span class="tg" role="switch" aria-checked="false"></span></span>
+      </div>
+      </section>
+
+      <section class="st-page" id="engine" hidden>
+      <h2>Движок</h2>
+      <div class="set">
+        <span class="nm">Движок по умолчанию<span class="new">новая</span></span>
+        <span class="ds">Движок новых вкладок. Меняется и меню «агент» в поле ввода (пустая вкладка); начатая сессия остаётся на своём движке.</span>
+        <span class="key">agentura.defaultProvider</span>
+        <span class="ctl"><span class="dd">Claude</span></span>
+      </div>
+      <div class="set">
+        <span class="nm">Путь к claude</span>
+        <span class="ds">Пусто — искать системный: PATH, ~/.local/bin, Homebrew.</span>
+        <span class="key">agentura.claudeExecutable · только эта машина</span>
+        <span class="ctl"><span class="num wide">пусто — искать системный</span><button class="btn">проверить</button></span>
+        <div class="ok">✓ найден <span class="dim">~/.local/bin/claude</span> · 2.1.284 · system</div>
+      </div>
+      <div class="set">
+        <span class="nm">Путь к codex</span>
+        <span class="ds">Пусто — искать системный: PATH, ~/.local/bin, Homebrew. Нужен установленный и залогиненный Codex CLI (codex login).</span>
+        <span class="key">agentura.codexExecutable · только эта машина</span>
+        <span class="ctl"><span class="num wide">пусто — искать системный</span><button class="btn">проверить</button></span>
+        <div class="ok">✓ найден <span class="dim">~/.local/bin/codex</span> · 0.160.0 · system</div>
+      </div>
+      <div class="set">
+        <span class="nm">Путь к agy (Antigravity)</span>
+        <span class="ds">Пусто — искать системный: PATH, ~/.local/bin, Homebrew. Нужен только для движка Antigravity; agy должен быть залогинен (запустите его один раз).</span>
+        <span class="key">agentura.antigravityExecutable · только эта машина</span>
+        <span class="ctl"><span class="num wide">пусто — искать системный</span><button class="btn">проверить</button></span>
+      </div>
+      </section>
+    </div>
+  </div>
+
+</div>
+</div>
+<script src="../shared/preview.js"></script>
+<script src="../shared/sidebar.js"></script>
+<script src="../shared/limits.js"></script>
+<script src="../shared/tooltip.js"></script>
+<script src="../shared/session-settings-b.js"></script>
+<script>
+  // разделы — страницы: клик по вкладке или #раздел в адресе (кадры галереи: settings#look)
+  function showSection(id) {
+    if (!document.getElementById(id)) return;
+    document.querySelectorAll('.st-page').forEach((p) => (p.hidden = p.id !== id));
+    document.querySelectorAll('.st-nav .st-tabs button').forEach((b) => {
+      const on = b.dataset.section === id;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-selected', String(on));
+    });
+  }
+  document.querySelectorAll('.st-nav .st-tabs button').forEach((b) =>
+    b.addEventListener('click', () => showSection(b.dataset.section)),
+  );
+  showSection(location.hash.slice(1).split('-')[0] || 'session');
+</script>
+</body>
+</html>

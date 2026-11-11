@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="ru" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agentura · выбор агента</title>
+<link rel="stylesheet" href="../shared/tokens.css">
+<style>
+body { min-height:100vh; background:var(--bg-side); }
+button, select { border-radius:3px; }
+button:focus-visible, select:focus-visible, textarea:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.preview { max-width:800px; margin:24px auto 18px; padding:0 20px; display:flex; align-items:center; flex-wrap:wrap; gap:10px 16px; color:var(--fg-mute); font-size:12px; }
+.preview-title { margin-right:auto; }
+.preview label { display:flex; align-items:center; gap:6px; }
+.preview select { color:var(--fg); background:var(--bg); border:1px solid var(--line-strong); padding:4px; font:inherit; }
+.workspace { width:min(var(--preview-width,760px),calc(100% - 24px)); margin:0 auto 24px; background:var(--bg); border:1px solid var(--line-strong); height:640px; display:flex; flex-direction:column; position:relative; }
+.topbar { display:flex; align-items:center; gap:20px; padding:0 16px; min-height:40px; border-bottom:1px solid var(--line); }
+.tab { align-self:stretch; display:flex; align-items:center; border-bottom:2px solid var(--accent); }
+.project { margin-left:auto; color:var(--fg-mute); font:11px var(--mono); }
+.feed { padding:22px 18px; font:12px/1.7 var(--mono); flex:1; overflow:auto; }
+.feed p { margin:0 0 13px; overflow-wrap:anywhere; }
+.speaker { color:var(--fg-mute); font-size:11px; margin-bottom:5px; }
+.reply { margin-top:24px; }
+.event { color:var(--fg-mute); padding:10px 0; }
+.empty { color:var(--fg-mute); padding-top:18px; }
+.composer { margin:0 12px 13px; position:relative; }
+.entry { display:flex; align-items:flex-start; gap:8px; padding:11px 10px; border:1px solid var(--line-strong); background:var(--bg-input); border-radius:4px; }
+.prompt { color:var(--fg-mute); font-family:var(--mono); }
+textarea { width:100%; min-width:0; resize:vertical; min-height:43px; max-height:100px; border:0; outline:none; background:transparent; padding:0; font:12px/1.6 var(--mono); }
+textarea::placeholder { color:var(--fg-mute); opacity:1; }
+.controls { display:flex; flex-wrap:wrap; align-items:center; gap:5px 10px; margin-top:8px; font-size:11px; color:var(--fg-mute); }
+.controls button { padding:3px 4px; }
+.controls button:hover { background:var(--bg-hover); color:var(--fg); }
+.add { font-size:19px; line-height:17px; }
+.agent-trigger { color:var(--fg); background:var(--bg-hover); max-width:100%; overflow-wrap:anywhere; }
+.agent-trigger b { font-weight:500; }
+.caret { margin-left:4px; color:var(--fg-mute); }
+.model { overflow-wrap:anywhere; min-width:0; }
+.agent-menu { position:absolute; bottom:calc(100% + 9px); left:0; width:304px; max-width:100%; background:var(--bg-raise); border:1px solid var(--line-strong); border-radius:5px; box-shadow:0 8px 24px #0003; padding:5px; z-index:3; }
+.agent-menu[hidden] { display:none; }
+.menu-heading { font-size:11px; color:var(--fg-mute); padding:6px 8px 8px; }
+.agent-row { width:100%; display:grid; grid-template-columns:20px minmax(0,1fr) auto; column-gap:9px; align-items:center; padding:8px; text-align:left; min-height:49px; color:var(--fg); }
+.agent-row:hover:not([aria-disabled="true"]) { background:var(--bg-hover); }
+.agent-row.selected { background:var(--bg-hover); box-shadow:inset 2px 0 var(--accent); }
+.agent-row[aria-disabled="true"] { cursor:default; }
+.agent-row[aria-disabled="true"] .agent-name { color:var(--fg-mute); }
+.logo { width:18px; height:18px; object-fit:contain; }
+.logo-mono { filter:invert(1); opacity:.85; }
+:root[data-theme="light"] .logo-mono { filter:none; }
+.agent-name { display:block; font-size:13px; font-weight:500; }
+.connection { display:block; color:var(--fg-mute); font-size:11px; line-height:1.45; margin-top:1px; overflow-wrap:anywhere; }
+.selection { color:var(--fg-mute); font-size:12px; align-self:start; padding-top:2px; }
+.ready { color:var(--ok); display:flex; align-items:center; gap:4px; font-size:11px; }
+.ready::before { content:""; width:4px; height:4px; border-radius:50%; background:currentColor; }
+.alternatives { margin-top:5px; padding-top:5px; border-top:1px solid var(--line); }
+.menu-footer { border-top:1px solid var(--line); margin-top:5px; padding:9px 8px 6px; }
+.menu-footer p { font-size:11px; line-height:1.5; color:var(--fg-mute); margin:0 0 7px; }
+.new-chat { color:var(--link); font-size:12px; padding:3px 0; }
+.new-chat:hover { text-decoration:underline; }
+.attachment { font-size:11px; color:var(--fg-mute); overflow-wrap:anywhere; margin-bottom:6px; }
+.preview-note { width:min(760px,calc(100% - 24px)); margin:0 auto 24px; font-size:11px; color:var(--fg-mute); }
+@media(max-width:430px) { .preview { margin-top:12px; padding:0 12px; } .preview-title { flex-basis:100%; } .workspace { height:640px; } .topbar { gap:16px; } .controls { column-gap:7px; } }
+</style>
+</head>
+<body>
+<div class="preview" aria-label="Настройки предпросмотра">
+<span class="preview-title">Эксперимент A · меню агента</span>
+<label>Ширина <select id="width"><option value="760">760 px</option><option value="380">380 px</option></select></label>
+<label>Тема <select id="theme"><option value="dark">Dark</option><option value="light">Light</option></select></label>
+<label>Чат <select id="chat"><option value="current">Текущий</option><option value="new">Новый</option></select></label>
+</div>
+<main class="workspace" id="workspace" aria-label="Чат Agentura">
+<header class="topbar"><span class="tab">чат</span><span class="project">queue-board</span></header>
+<section class="feed" id="feed" aria-label="Сообщения"></section>
+<div class="composer">
+<section class="agent-menu" id="agent-menu" aria-label="Выбор агента">
+<div class="menu-heading" id="menu-heading">Агент этого чата</div>
+<div id="agent-list" role="menu" aria-labelledby="menu-heading"></div>
+<div class="menu-footer" id="menu-footer"><p>Сменить агента можно в новом чате.</p><button class="new-chat" id="new-chat">Новый чат</button></div>
+</section>
+<div class="attachment" id="attachment" hidden></div>
+<div class="entry"><span class="prompt" aria-hidden="true">$</span><textarea id="task" aria-label="Сообщение" placeholder="задача, @файл, /команда"></textarea></div>
+<div class="controls">
+<button class="add" id="add" aria-label="Добавить файл">+</button>
+<span>режим <span style="color:var(--fg)">без разрешений</span></span>
+<button class="agent-trigger" id="agent-trigger" aria-haspopup="menu" aria-controls="agent-menu" aria-expanded="true">агент <b id="agent-value">antigravity</b><span class="caret" aria-hidden="true">⌃</span></button>
+<span class="model" id="model">модель <span style="color:var(--fg)">gemini-3.8-flash-medium</span></span>
+</div>
+<input id="file-input" type="file" hidden>
+</div>
+</main>
+<p class="preview-note">Предпросмотр: выбор агента доступен в новом чате. Escape закрывает меню, ↑ и ↓ перемещают фокус. Отправка сообщений не подключена.</p>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const agents = [
+ { id:'claude', name:'Claude', via:'через Claude Agent SDK', logo:'claude.svg' },
+ { id:'codex', name:'Codex', via:'через codex app-server', logo:'openai.svg', mono:true },
+ { id:'antigravity', name:'Antigravity', via:'через agy (Antigravity CLI) · 1.5.3', logo:'antigravity.svg' },
+ { id:'cursor', name:'Cursor', via:'через agent acp', logo:'cursor.svg', mono:true }
+];
+const state = { chat:'current', selected:'antigravity' };
+const params = new URLSearchParams(location.search);
+$('width').value = params.get('width') === '380' ? '380' : '760';
+$('theme').value = params.get('theme') === 'light' ? 'light' : 'dark';
+function preview() {
+ $('workspace').style.setProperty('--preview-width', $('width').value + 'px');
+ document.documentElement.dataset.theme = $('theme').value;
+ const url = new URL(location.href);
+ url.searchParams.set('width', $('width').value);
+ url.searchParams.set('theme', $('theme').value);
+ history.replaceState(null, '', url);
+}
+function setMenu(open, focus = false) {
+ $('agent-menu').hidden = !open;
+ $('agent-trigger').setAttribute('aria-expanded', String(open));
+ if (focus) (open ? $('agent-list').querySelector('.selected') : $('agent-trigger')).focus();
+}
+function renderMenu() {
+ const locked = state.chat === 'current';
+ $('menu-heading').textContent = locked ? 'Агент этого чата' : 'Выберите агента';
+ $('menu-footer').hidden = !locked;
+ $('agent-value').textContent = state.selected;
+ $('model').hidden = state.selected !== 'antigravity';
+ $('agent-list').replaceChildren();
+ const ordered = locked ? [...agents.filter(a => a.id === state.selected), ...agents.filter(a => a.id !== state.selected)] : agents;
+ ordered.forEach((a, index) => {
+  const selected = a.id === state.selected;
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'agent-row' + (selected ? ' selected' : '') + (locked && index === 1 ? ' alternatives' : '');
+  button.dataset.agent = a.id;
+  button.setAttribute('role', 'menuitemradio');
+  button.setAttribute('aria-checked', String(selected));
+  button.setAttribute('aria-disabled', String(locked && !selected));
+  button.innerHTML = '<img class="logo' + (a.mono ? ' logo-mono' : '') + '" src="../shared/brands/' + a.logo + '" alt=""><span><span class="agent-name">' + a.name + '</span><span class="connection">' + a.via + '</span></span>' + (selected ? (a.id === 'antigravity' ? '<span class="selection ready">готов</span>' : '<span class="selection" aria-label="выбран">✓</span>') : '');
+  button.addEventListener('click', () => {
+   if (locked && !selected) return;
+   state.selected = a.id;
+   renderMenu();
+   setMenu(false, true);
+  });
+  $('agent-list').append(button);
+ });
+}
+function setChat(mode) {
+ state.chat = mode;
+ state.selected = 'antigravity';
+ $('chat').value = mode;
+ $('feed').innerHTML = mode === 'current'
+  ? '<div class="speaker">вы</div><p>Проверь, почему мигает счётчик талонов.</p><div class="reply"><div class="speaker">antigravity</div><p>Проверю обновление данных и рендер счётчика.</p><div class="event">▸ read · src/Counter.tsx</div></div>'
+  : '<div class="empty">Новый чат<br>Выберите агента и опишите задачу.</div>';
+ renderMenu();
+ setMenu(true);
+}
+$('width').addEventListener('change', preview);
+$('theme').addEventListener('change', preview);
+$('chat').addEventListener('change', () => setChat($('chat').value));
+$('new-chat').addEventListener('click', () => { setChat('new'); setMenu(true, true); });
+$('agent-trigger').addEventListener('click', () => setMenu($('agent-menu').hidden, $('agent-menu').hidden));
+$('agent-trigger').addEventListener('keydown', e => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); setMenu(true, true); } });
+$('agent-menu').addEventListener('keydown', e => {
+ if (!['ArrowDown','ArrowUp','Home','End'].includes(e.key)) return;
+ e.preventDefault();
+ const rows = [...$('agent-list').querySelectorAll('button')];
+ let i = rows.indexOf(document.activeElement);
+ i = e.key === 'Home' ? 0 : e.key === 'End' ? rows.length - 1 : (i + (e.key === 'ArrowDown' ? 1 : -1) + rows.length) % rows.length;
+ rows[i].focus();
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('agent-menu').hidden) { e.preventDefault(); setMenu(false, true); } });
+document.addEventListener('click', e => { if (!$('agent-menu').contains(e.target) && !$('agent-trigger').contains(e.target) && !e.target.closest('.preview')) setMenu(false); });
+$('add').addEventListener('click', () => $('file-input').click());
+$('file-input').addEventListener('change', () => { const file = $('file-input').files[0]; $('attachment').hidden = !file; $('attachment').textContent = file ? 'файл · ' + file.name : ''; });
+preview();
+setChat('current');
+</script>
+</body>
+</html>

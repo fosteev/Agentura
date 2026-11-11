@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="ru" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agentura · выбор агента</title>
+  <link rel="stylesheet" href="../shared/tokens.css">
+  <style>
+    body { min-height: 100vh; background: var(--bg-side); }
+    button, select { touch-action: manipulation; }
+    button:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .preview { max-width: 800px; margin: 24px auto 16px; padding: 0 20px; color: var(--fg-mute); font-size: 11px; }
+    .preview-title { margin-bottom: 10px; font-family: var(--mono); letter-spacing: .05em; }
+    .preview-controls { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+    .preview label { display: flex; align-items: center; gap: 6px; }
+    select { max-width: 100%; border: 1px solid var(--line-strong); border-radius: 3px; padding: 4px 6px; background: var(--bg); color: var(--fg); font: inherit; }
+    .workspace { width: 760px; max-width: calc(100% - 24px); height: 660px; margin: 0 auto 24px; display: flex; flex-direction: column; background: var(--bg); border: 1px solid var(--line-strong); container-type: inline-size; }
+    .topbar { display: flex; align-items: center; gap: 18px; min-height: 42px; padding: 0 14px; border-bottom: 1px solid var(--line); }
+    .brand { font-weight: 600; font-size: 12px; letter-spacing: .02em; }
+    .tab { align-self: stretch; display: flex; align-items: center; border-bottom: 2px solid var(--accent); font-size: 12px; }
+    .project { margin-left: auto; color: var(--fg-mute); font: 11px var(--mono); }
+    .feed { padding: 24px 18px; flex: 1; min-height: 0; overflow: auto; font: 12px/1.7 var(--mono); }
+    .message { max-width: 600px; margin-bottom: 22px; }
+    .byline { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; color: var(--fg-mute); font-size: 10px; }
+    .byline img { width: 14px; height: 14px; }
+    .message p { margin: 0; overflow-wrap: anywhere; }
+    .event { margin-bottom: 12px; color: var(--fg-mute); font-size: 11px; }
+    .new-context { color: var(--fg-mute); }
+    .new-context strong { display: block; font: 500 13px var(--font); color: var(--fg); margin-bottom: 8px; }
+    .composer { position: relative; padding: 12px 14px 14px; border-top: 1px solid var(--line); }
+    .input-wrap { display: flex; gap: 10px; padding: 10px 0 4px; }
+    .prompt { font-family: var(--mono); color: var(--fg-mute); }
+    textarea { display: block; width: 100%; min-width: 0; min-height: 48px; resize: vertical; max-height: 140px; padding: 0; border: 0; background: transparent; outline-offset: 4px; font: 12px/1.6 var(--mono); }
+    textarea::placeholder { color: var(--fg-mute); opacity: 1; }
+    .tools { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 10px; min-width: 0; font-size: 11px; color: var(--fg-mute); }
+    .tool { padding: 4px 3px; border-radius: 3px; }
+    .tool:hover, .tool[aria-expanded="true"] { background: var(--bg-hover); color: var(--fg); }
+    .plus { font-size: 19px; width: 24px; height: 28px; line-height: 20px; padding: 0; }
+    .agent-trigger { display: inline-flex; align-items: center; gap: 5px; }
+    .agent-trigger img { width: 13px; height: 13px; }
+    .agent-trigger b { font-weight: 500; color: var(--fg); }
+    .model { margin-left: auto; overflow-wrap: anywhere; min-width: 0; }
+    .menu { position: absolute; left: 14px; bottom: calc(100% + 8px); width: 304px; max-width: calc(100% - 28px); background: var(--bg-raise); border: 1px solid var(--line-strong); border-radius: 5px; box-shadow: 0 6px 18px #0003; z-index: 2; transform-origin: bottom left; animation: arrive 120ms ease-out; }
+    .menu[hidden], [hidden] { display: none !important; }
+    @keyframes arrive { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+    .menu-heading { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px 6px; }
+    .menu-heading h1 { font-size: 12px; font-weight: 600; margin: 0; }
+    .close { width: 23px; height: 23px; border-radius: 3px; font-size: 16px; color: var(--fg-mute); }
+    .close:hover { color: var(--fg); background: var(--bg-hover); }
+    .group-label { margin: 5px 12px 3px; color: var(--fg-mute); font-size: 10px; }
+    .agent-list { padding: 0 5px 5px; }
+    .agent-row { display: grid; grid-template-columns: 22px minmax(0, 1fr) 14px; gap: 8px; width: 100%; padding: 8px 7px; border-radius: 3px; text-align: left; align-items: center; transition: background 100ms ease; }
+    .agent-row:hover:not(:disabled) { background: var(--bg-hover); }
+    .agent-row.selected { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+    .agent-row:disabled { cursor: default; }
+    .agent-row img { width: 20px; height: 20px; object-fit: contain; }
+    .agent-row:disabled img { opacity: .72; }
+    .row-name { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 8px; font-size: 12px; font-weight: 500; }
+    .ready { color: var(--fg-mute); font-size: 10px; font-weight: 400; }
+    .ready::before { content: '·'; padding-right: 5px; }
+    .transport { display: block; margin-top: 2px; color: var(--fg-mute); font-size: 10px; line-height: 1.4; overflow-wrap: anywhere; }
+    .check { color: var(--link); font-size: 12px; }
+    .divider { border-top: 1px solid var(--line); margin: 5px 7px 7px; }
+    .menu-footer { border-top: 1px solid var(--line); padding: 9px 12px; display: flex; justify-content: space-between; align-items: center; gap: 10px; color: var(--fg-mute); font-size: 10px; }
+    .new-chat { color: var(--link); white-space: nowrap; padding: 3px 0; font-size: 11px; }
+    .new-chat:hover { text-decoration: underline; }
+    .attachment { margin: 0 0 4px 22px; color: var(--fg-mute); font-size: 11px; overflow-wrap: anywhere; }
+    .attachment button { color: var(--link); margin-left: 8px; }
+    .sr-only { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); overflow: hidden; }
+    @container (max-width: 450px) { .model { flex-basis: 100%; margin-left: 34px; } .feed { padding: 20px 14px; } .topbar { gap: 14px; } }
+    @media (max-width: 420px) { .preview { padding: 0 12px; margin-top: 14px; } .workspace { max-width: calc(100% - 16px); } }
+  </style>
+</head>
+<body>
+  <aside class="preview" aria-label="Настройки предпросмотра">
+    <div class="preview-title">ЭКСПЕРИМЕНТ B · МЕНЮ АГЕНТА</div>
+    <div class="preview-controls">
+      <label>Ширина <select id="width"><option value="760">760 px</option><option value="380">380 px</option></select></label>
+      <label>Тема <select id="theme"><option value="dark">Тёмная</option><option value="light">Светлая</option></select></label>
+      <label>Чат <select id="scenario"><option value="current">Текущий</option><option value="new">Новый</option></select></label>
+    </div>
+  </aside>
+  <main class="workspace" aria-label="Agentura">
+    <header class="topbar"><span class="brand">Agentura</span><span class="tab">чат</span><span class="project">Agentura / main</span></header>
+    <section class="feed" aria-label="Переписка">
+      <div id="current-feed">
+        <div class="message"><div class="byline">вы <span>16:42</span></div><p>Покажи, где выбирается агент для чата.</p></div>
+        <div class="message"><div class="byline"><img src="../shared/brands/antigravity.svg" alt="">antigravity</div><div class="event">▸ read · Composer.tsx</div><p>Агент выбирается под полем ввода. После начала разговора он закреплён за чатом.</p></div>
+      </div>
+      <div id="new-feed" class="new-context" hidden><strong>Новый чат</strong>Выберите агента и введите задачу.</div>
+    </section>
+    <section class="composer" aria-label="Сообщение">
+      <section class="menu" id="agent-menu" aria-label="Выбор агента">
+        <header class="menu-heading"><h1>Агент</h1><button class="close" id="close-menu" aria-label="Закрыть меню">×</button></header>
+        <div id="agent-options"></div>
+        <footer class="menu-footer"><span id="menu-note">Агент закреплён за чатом</span><button id="new-chat" class="new-chat">Новый чат ↗</button></footer>
+      </section>
+      <div id="attachment" class="attachment" hidden><span></span><button aria-label="Убрать вложение">×</button></div>
+      <div class="input-wrap"><span class="prompt" aria-hidden="true">$</span><textarea aria-label="Задача" placeholder="задача, @файл, /команда"></textarea></div>
+      <div class="tools">
+        <button class="tool plus" id="attach" aria-label="Прикрепить файл">+</button><input type="file" id="file" hidden>
+        <span>без разрешений</span>
+        <button class="tool agent-trigger" id="agent-trigger" aria-expanded="true" aria-controls="agent-menu"><img src="../shared/brands/antigravity.svg" alt=""><span>агент <b>antigravity</b></span><span aria-hidden="true">⌃</span></button>
+        <span class="model" id="model">gemini-3.8-flash-medium</span>
+      </div>
+      <span id="announcement" class="sr-only" role="status"></span>
+    </section>
+  </main>
+  <script>
+    const $ = (selector) => document.querySelector(selector);
+    const params = new URLSearchParams(location.search);
+    const providers = [
+      { id: 'claude', name: 'Claude', via: 'через Claude Agent SDK', icon: 'claude' },
+      { id: 'codex', name: 'Codex', via: 'через codex app-server', icon: 'openai' },
+      { id: 'antigravity', name: 'Antigravity', via: 'через agy (Antigravity CLI) · 1.5.3', icon: 'antigravity' },
+      { id: 'cursor', name: 'Cursor', via: 'через agent acp', icon: 'cursor' }
+    ];
+    let selected = 'antigravity';
+    let current = true;
+    $('#width').value = params.get('width') === '380' ? '380' : '760';
+    $('#theme').value = params.get('theme') === 'light' ? 'light' : 'dark';
+    function appearance() {
+      document.documentElement.dataset.theme = $('#theme').value;
+      $('.workspace').style.width = $('#width').value + 'px';
+    }
+    $('#width').addEventListener('change', appearance);
+    $('#theme').addEventListener('change', appearance);
+    function toggleMenu(open, focus = false) {
+      $('#agent-menu').hidden = !open;
+      $('#agent-trigger').setAttribute('aria-expanded', String(open));
+      if (focus) (open ? $('.agent-row:not(:disabled)') : $('#agent-trigger')).focus();
+    }
+    function row(provider) {
+      const chosen = selected === provider.id;
+      const disabled = current && !chosen;
+      return `<button class="agent-row${chosen ? ' selected' : ''}" data-agent="${provider.id}" aria-pressed="${chosen}" ${disabled ? 'disabled aria-describedby="locked-label"' : ''}><img src="../shared/brands/${provider.icon}.svg" alt=""><span><span class="row-name">${provider.name}${provider.id === 'antigravity' ? '<span class="ready">готов</span>' : ''}</span><span class="transport">${provider.via}</span></span><span class="check" aria-hidden="true">${chosen ? '✓' : ''}</span></button>`;
+    }
+    function render() {
+      $('#agent-options').innerHTML = current
+        ? `<div class="group-label">В этом чате</div><div class="agent-list">${row(providers[2])}<div class="divider"></div><div class="group-label" id="locked-label">В новом чате</div>${providers.filter(p => p.id !== 'antigravity').map(row).join('')}</div>`
+        : `<div class="group-label">Выберите для нового чата</div><div class="agent-list">${providers.map(row).join('')}</div>`;
+      const provider = providers.find(p => p.id === selected);
+      $('#agent-trigger b').textContent = selected;
+      $('#agent-trigger img').src = `../shared/brands/${provider.icon}.svg`;
+      $('#model').textContent = selected === 'antigravity' ? 'gemini-3.8-flash-medium' : 'модель не выбрана';
+      $('#menu-note').textContent = current ? 'Агент закреплён за чатом' : 'Можно изменить до первого сообщения';
+      $('#new-chat').hidden = !current;
+      $('#current-feed').hidden = !current;
+      $('#new-feed').hidden = current;
+    }
+    function changeScenario() {
+      current = $('#scenario').value === 'current';
+      selected = 'antigravity';
+      render();
+      toggleMenu(true);
+    }
+    $('#scenario').addEventListener('change', changeScenario);
+    $('#new-chat').addEventListener('click', () => {
+      $('#scenario').value = 'new';
+      changeScenario();
+      $('.agent-row').focus();
+      $('#announcement').textContent = 'Новый чат. Все агенты доступны для выбора.';
+    });
+    $('#agent-options').addEventListener('click', (event) => {
+      const button = event.target.closest('[data-agent]');
+      if (!button || button.disabled) return;
+      if (!current) selected = button.dataset.agent;
+      render();
+      toggleMenu(false, true);
+      $('#announcement').textContent = 'Выбран агент ' + selected;
+    });
+    $('#agent-trigger').addEventListener('click', () => toggleMenu($('#agent-menu').hidden, true));
+    $('#close-menu').addEventListener('click', () => toggleMenu(false, true));
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && !$('#agent-menu').hidden) { event.preventDefault(); toggleMenu(false, true); }
+      if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && event.target.matches('.agent-row')) {
+        event.preventDefault();
+        const buttons = [...document.querySelectorAll('.agent-row:not(:disabled)')];
+        const next = (buttons.indexOf(event.target) + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length;
+        buttons[next].focus();
+      }
+    });
+    document.addEventListener('pointerdown', (event) => {
+      if (!event.target.closest('#agent-menu, #agent-trigger, .preview')) toggleMenu(false);
+    });
+    $('#attach').addEventListener('click', () => $('#file').click());
+    $('#file').addEventListener('change', () => {
+      const file = $('#file').files[0];
+      $('#attachment').hidden = !file;
+      $('#attachment span').textContent = file ? file.name : '';
+    });
+    $('#attachment button').addEventListener('click', () => { $('#attachment').hidden = true; $('#file').value = ''; });
+    appearance();
+    render();
+  </script>
+</body>
+</html>
