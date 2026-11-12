@@ -489,7 +489,10 @@ export function agentMapView(
 
 export function mapRow(a: AgentNode, depth: number, now: number, sel: boolean, cwd?: string): MapRowView {
   const time = formatDuration(elapsed(a, now));
-  const model = a.model ? `${shortModel(a.model)} · ` : '';
+  const modelTag = [a.model ? shortModel(a.model) : '', a.reasoningEffort ?? '']
+    .filter(Boolean)
+    .join(' · ');
+  const model = modelTag ? `${modelTag} · ` : '';
   const status =
     a.status === 'running'
       ? 'busy'
@@ -500,12 +503,12 @@ export function mapRow(a: AgentNode, depth: number, now: number, sel: boolean, c
           : '';
   const meta =
     a.status === 'running'
-      ? `${currentCall(a, cwd)} · ${time}`
+      ? `${model}${currentCall(a, cwd)} · ${time}`
       : a.status === 'completed'
         ? `${model}${ui.agents.doneIn(time)}`
         : a.status === 'failed'
-          ? `${ui.agents.failed} · ${firstLine(a.summary) || '—'} · ${time}`
-          : `${ui.agents.stopped} · ${time}`;
+          ? `${model}${ui.agents.failed} · ${firstLine(a.summary) || '—'} · ${time}`
+          : `${model}${ui.agents.stopped} · ${time}`;
   return {
     agentId: a.agentId,
     cls: ['a', 'sub', status, sel && 'sel'].filter(Boolean).join(' '),

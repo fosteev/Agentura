@@ -2,7 +2,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { streamLines } from '../../data/jsonlStream';
 import { hostStrings, type Lang } from '../../shared/l10n';
-import type { AgentEvent, AgentEventOf, TokenUsage } from '../types';
+import type { AgentEvent, AgentEventOf, EffortLevel, TokenUsage } from '../types';
 import { buildAgyContextUsage, DEFAULT_AGY_DATA_DIR } from './context';
 import { mapAgyTool } from './tools';
 
@@ -14,6 +14,9 @@ const HEADER_STRIP_RE = /^(?:(?:Created|Completed) At:[^\n]*\n)+/i;
 const SYSTEM_MSG_BLOCK_RE = /<SYSTEM_MESSAGE>\s*([\s\S]*?)\s*<\/SYSTEM_MESSAGE>/gi;
 const MESSAGE_PREFIX_RE = /^\[Message\][^\n]*?\bcontent=([\s\S]*)$/;
 const SENDER_RE = /\[Message\][^\n]*?\bsender=([^\s]+)/;
+const TRUNCATED_SUFFIX_RE = /\r?\n?<truncated \d+ bytes>"?\s*$/i;
+const USER_MODEL_SELECTION_RE =
+  /(?:setting\s+`Model Selection`|Model Selection)\s+from\s+[^\n]+?\s+to\s+([^\n]+?)\.(?:\s|$)/gi;
 
 export const DEFAULT_WAITING_THRESHOLD_MS = 2500;
 export const DEFAULT_SUBAGENT_POLL_MS = 400;
@@ -26,6 +29,8 @@ const RESULT_CHARS = 3000;
 export interface AgySubagentMeta {
   description?: string;
   agentType?: string;
+  model?: string;
+  effort?: EffortLevel;
 }
 
 export interface ManagedSubagentsResult {
@@ -74,6 +79,234 @@ export function nonZeroExitCode(content: string): boolean {
   if (!m) return false;
   const code = Number.parseInt(m[1]!, 10);
   return Number.isFinite(code) && code !== 0;
+}
+
+function unescapeBrokenJsonString(inner: string): string {
+  return inner.replace(/\\(["\\/bfnrt]|u[0-9a-fA-F]{4})/g, (match, esc: string) => {
+    switch (esc) {
+      case '"':
+        return '"';
+      case '\\':
+        return '\\';
+      case '/':
+        return '/';
+      case 'b':
+        return '\b';
+      case 'f':
+        return '\f';
+      case 'n':
+        return '\n';
+      case 'r':
+        return '\r';
+      case 't':
+        return '\t';
+      default:
+        if (esc.startsWith('u')) {
+          return String.fromCharCode(Number.parseInt(esc.slice(1), 16));
+        }
+        return match;
+    }
+  });
+}
+
+const RAW_TEXT_ARG_KEYS = new Set([
+  'CommandLine',
+  'command',
+  'Content',
+  'CodeContent',
+  'Target',
+  'TargetContent',
+  'Replacement',
+  'ReplacementContent',
+  'Prompt',
+  'prompt',
+  'Message',
+  'message',
+  'Path',
+  'AbsolutePath',
+  'FilePath',
+  'TargetFile',
+  'query',
+  'Query',
+  'Pattern',
+  'Url',
+  'URL',
+  'Role',
+  'TypeName',
+  'Model',
+  'Workspace',
+  'Recipient',
+  'Action',
+  'ServerName',
+  'ToolName',
+  'Uri',
+  'chunk_id',
+  'toolSummary',
+  'Description',
+  'description',
+  'SystemPrompt',
+]);
+
+function looksLikeJsonEncodedValue(v: string): boolean {
+  const t = v.trim();
+  return (
+    t.startsWith('"') ||
+    t.startsWith('{') ||
+    t.startsWith('[') ||
+    t === 'true' ||
+    t === 'false' ||
+    t === 'null' ||
+    /^-?\d+(?:\.\d+)?$/.test(t)
+  );
+}
+
+/**
+ * В `transcript.jsonl` (`oneharness` / `agy`) значения `tool_calls[i].args` сериализуются как JSON-литералы
+ * внутри строк (`"Path": "\"/abs/file.ts\""`, `"WaitMsBeforeAsync": "5000"`), а при усечении длинных аргументов
+ * заканчиваются на `\n<truncated N bytes>` без закрывающей кавычки. Декодирует их обратно в JS-значения,
+ * не ломая уже распакованные объекты из синтетических тестов.
+ */
+export function normalizeTranscriptArgs(raw: unknown): Record<string, unknown> {
+  if (!isPlainObject(raw)) return {};
+  const entries = Object.entries(raw);
+  const allJsonEncoded =
+    entries.length > 0 &&
+    entries.every(([, val]) => typeof val === 'string' && looksLikeJsonEncodedValue(val));
+
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of entries) {
+    if (typeof v !== 'string') {
+      out[k] = v;
+      continue;
+    }
+    const trimmed = v.trim();
+    if (trimmed.startsWith('"')) {
+      try {
+        out[k] = JSON.parse(trimmed);
+        continue;
+      } catch {
+        const wasTruncated = TRUNCATED_SUFFIX_RE.test(trimmed);
+        const withoutTrunc = trimmed.replace(TRUNCATED_SUFFIX_RE, '');
+        try {
+          const parsed: unknown = JSON.parse(`${withoutTrunc}"`);
+          out[k] = typeof parsed === 'string' && wasTruncated ? `${parsed.trimEnd()}…` : parsed;
+          continue;
+        } catch {
+          const inner = unescapeBrokenJsonString(withoutTrunc.slice(1).replace(/"$/, ''));
+          out[k] = wasTruncated ? `${inner.trimEnd()}…` : inner;
+          continue;
+        }
+      }
+    }
+    if ((trimmed.startsWith('{') || trimmed.startsWith('[')) && !RAW_TEXT_ARG_KEYS.has(k)) {
+      try {
+        out[k] = JSON.parse(trimmed);
+        continue;
+      } catch {
+        // оставляем исходную строку
+      }
+    }
+    if (
+      allJsonEncoded &&
+      !RAW_TEXT_ARG_KEYS.has(k) &&
+      (trimmed === 'true' ||
+        trimmed === 'false' ||
+        trimmed === 'null' ||
+        /^-?\d+(?:\.\d+)?$/.test(trimmed))
+    ) {
+      try {
+        out[k] = JSON.parse(trimmed);
+        continue;
+      } catch {
+        // оставляем исходную строку
+      }
+    }
+    out[k] = v;
+  }
+  return out;
+}
+
+/**
+ * Извлекает базовую модель и `effort` из `<USER_SETTINGS_CHANGE>` в `transcript.jsonl`
+ * (например, `Model Selection from None to Gemini 4 Carbon (Medium).`).
+ */
+export function parseAgyUserSettingsModel(
+  raw: string,
+): { model: string; effort?: EffortLevel } | undefined {
+  if (!raw || !raw.includes('Model Selection')) return undefined;
+  USER_MODEL_SELECTION_RE.lastIndex = 0;
+  let lastLabel: string | undefined;
+  let m: RegExpExecArray | null;
+  while ((m = USER_MODEL_SELECTION_RE.exec(raw)) !== null) {
+    if (m[1]?.trim()) lastLabel = m[1].trim();
+  }
+  if (!lastLabel) return undefined;
+  if (/^gpt-oss\s+120b/i.test(lastLabel)) {
+    return { model: 'gpt-oss-120b-medium' };
+  }
+  const effortMatch = /\s*\((Low|Medium|High)\)\s*$/i.exec(lastLabel);
+  const effort = effortMatch ? (effortMatch[1]!.toLowerCase() as EffortLevel) : undefined;
+  const withoutEffort = (effortMatch ? lastLabel.slice(0, effortMatch.index) : lastLabel)
+    .replace(/\s*\(Thinking\)\s*$/i, '')
+    .trim();
+  const claudeMatch = /^claude\s+([a-z]+)\s+(\d+)\.(\d+)$/i.exec(withoutEffort);
+  if (claudeMatch) {
+    return {
+      model: `claude-${claudeMatch[1]!.toLowerCase()}-${claudeMatch[2]}-${claudeMatch[3]}`,
+      ...(effort ? { effort } : {}),
+    };
+  }
+  const slug = withoutEffort
+    .toLowerCase()
+    .replace(/[()]/g, '')
+    .trim()
+    .replace(/\s+/g, '-');
+  if (!slug) return undefined;
+  return { model: slug, ...(effort ? { effort } : {}) };
+}
+
+/**
+ * Разрешает эффективные `model` и `reasoningEffort` дочернего субагента `invoke_subagent`:
+ * при `Model: "inherit"` или пустом значении наследует модель и effort родителя.
+ */
+export function resolveAgySubagentModelEffort(
+  rawModel: string | undefined,
+  parentModel: string | undefined,
+  parentEffort: EffortLevel | undefined,
+): { model?: string; reasoningEffort?: EffortLevel } {
+  const splitCombined = (id: string | undefined): { base?: string; effort?: EffortLevel } => {
+    const trimmed = id?.trim();
+    if (!trimmed) return {};
+    if (/^gpt-oss-120b/i.test(trimmed)) return { base: trimmed };
+    const m = /^(.*?)-(low|medium|high)$/i.exec(trimmed);
+    if (m && m[1]) {
+      return { base: m[1], effort: m[2]!.toLowerCase() as EffortLevel };
+    }
+    return { base: trimmed };
+  };
+
+  const parentSplit = splitCombined(parentModel);
+  const effectiveParentModel = parentSplit.base;
+  const effectiveParentEffort = parentEffort ?? parentSplit.effort;
+
+  const trimmedRaw = rawModel?.trim();
+  if (!trimmedRaw || trimmedRaw.toLowerCase() === 'inherit') {
+    return {
+      ...(effectiveParentModel ? { model: effectiveParentModel } : {}),
+      ...(effectiveParentEffort ? { reasoningEffort: effectiveParentEffort } : {}),
+    };
+  }
+
+  const rawSplit = splitCombined(trimmedRaw);
+  const resolvedEffort =
+    rawSplit.effort ??
+    (trimmedRaw.toLowerCase() === 'flash_lite' || /^gpt-oss-/i.test(trimmedRaw)
+      ? undefined
+      : effectiveParentEffort);
+  return {
+    ...(rawSplit.base ? { model: rawSplit.base } : {}),
+    ...(resolvedEffort ? { reasoningEffort: resolvedEffort } : {}),
+  };
 }
 
 /**
@@ -396,6 +629,8 @@ export interface AgySubagentReaderOptions {
   subagentType?: string;
   prompt?: string;
   model?: string;
+  reasoningEffort?: EffortLevel;
+  reportSummary?: string;
   startedAt?: number;
   visitedUuids?: ReadonlySet<string>;
   onSubagentMeta?: (childUuid: string, meta: AgySubagentMeta) => void;
@@ -418,6 +653,7 @@ export class AgySubagentReader {
   private subagentType: string | undefined;
   private prompt: string | undefined;
   private model: string | undefined;
+  private reasoningEffort: EffortLevel | undefined;
   private readonly visitedUuids: Set<string>;
   private readonly onSubagentMeta: ((childUuid: string, meta: AgySubagentMeta) => void) | undefined;
   private readonly tailer: ByteLineTailer | undefined;
@@ -434,6 +670,7 @@ export class AgySubagentReader {
   private toolUses = 0;
   private lastToolName: string | undefined;
   private lastSendMessageSummary: string | undefined;
+  private parentReportSummary: string | undefined;
   private readonly openTools: PendingSubagentTool[] = [];
   private readonly activeBgTasks = new Map<string, ActiveBgTask>();
   private readonly nestedReaders = new Map<string, AgySubagentReader>();
@@ -452,6 +689,8 @@ export class AgySubagentReader {
     this.subagentType = options.subagentType;
     this.prompt = options.prompt;
     this.model = options.model;
+    this.reasoningEffort = options.reasoningEffort;
+    this.parentReportSummary = options.reportSummary?.trim() || undefined;
     this.startedAt = options.startedAt ?? Date.now();
     this.startedAtLocked = options.startedAt !== undefined;
     this.visitedUuids = new Set(options.visitedUuids ?? []);
@@ -486,6 +725,12 @@ export class AgySubagentReader {
     return false;
   }
 
+  /** Запоминает неусечённый отчёт субагента из родительского `SYSTEM_MESSAGE` (`sender=<childUuid>`). */
+  noteParentReport(summary: string): void {
+    const clean = summary.trim();
+    if (clean) this.parentReportSummary = clean;
+  }
+
   buildStartEvent(at?: number): AgentEventOf<'agent.start'> {
     return {
       type: 'agent.start',
@@ -497,6 +742,7 @@ export class AgySubagentReader {
       ...(this.parentAgentId ? { parentAgentId: this.parentAgentId } : {}),
       ...(this.prompt ? { prompt: this.prompt } : {}),
       ...(this.model ? { model: this.model } : {}),
+      ...(this.reasoningEffort ? { reasoningEffort: this.reasoningEffort } : {}),
       background: true,
       ...(at !== undefined ? { at } : {}),
     };
@@ -508,6 +754,7 @@ export class AgySubagentReader {
     this.roundCompleted = false;
     this.waitingEmitted = false;
     this.lastSendMessageSummary = undefined;
+    this.parentReportSummary = undefined;
     if (prompt) this.prompt = prompt;
     return [this.buildStartEvent(now)];
   }
@@ -693,6 +940,11 @@ export class AgySubagentReader {
         });
       }
 
+      if (sender && this.nestedReaders.has(sender.toLowerCase())) {
+        const body = unwrapAgySystemMessage(rawContent);
+        if (body) this.nestedReaders.get(sender.toLowerCase())!.noteParentReport(body);
+      }
+
       const cleanPrompt = unwrapAgySystemMessage(rawContent);
       if (!this.prompt && cleanPrompt && stepIndex === 0) {
         this.prompt = cleanPrompt;
@@ -703,6 +955,7 @@ export class AgySubagentReader {
         this.roundCompleted = false;
         this.waitingEmitted = false;
         this.lastSendMessageSummary = undefined;
+        this.parentReportSummary = undefined;
         out.push(this.buildStartEvent(at));
       }
       return out;
@@ -717,6 +970,7 @@ export class AgySubagentReader {
         this.roundCompleted = false;
         this.waitingEmitted = false;
         this.lastSendMessageSummary = undefined;
+        this.parentReportSummary = undefined;
         out.push(this.buildStartEvent(at));
       }
 
@@ -750,7 +1004,7 @@ export class AgySubagentReader {
       if (calls.length > 0) {
         calls.forEach((call, callIndex) => {
           const rawName = typeof call['name'] === 'string' && call['name'].trim() ? call['name'].trim() : 'tool';
-          const rawArgs = isPlainObject(call['args']) ? call['args'] : {};
+          const rawArgs = normalizeTranscriptArgs(call['args']);
           const mapped = mapAgyTool(rawName, rawArgs, this.mcpServers);
           const toolUseId = `agy-tc:${this.childUuid}:${stepIndex}:${callIndex}`;
           this.toolUses += 1;
@@ -803,7 +1057,13 @@ export class AgySubagentReader {
 
       if (this.openTools.length === 0) {
         const finalText = typeof row['content'] === 'string' ? row['content'] : undefined;
-        const summary = pickSubagentSummary(this.lastSendMessageSummary, finalText);
+        const bestSendMsg =
+          this.parentReportSummary &&
+          (!this.lastSendMessageSummary ||
+            this.parentReportSummary.length >= this.lastSendMessageSummary.length)
+            ? this.parentReportSummary
+            : this.lastSendMessageSummary;
+        const summary = pickSubagentSummary(bestSendMsg, finalText);
         out.push(...this.closeAllBgTasks('completed', at));
         this.roundCompleted = true;
         this.completedStepIndex = stepIndex;
@@ -912,11 +1172,12 @@ export class AgySubagentReader {
           const desc = pickStr(pending.rawArgs, 'Role', 'TypeName', 'description') ?? 'subagent';
           const prompt = pickStr(pending.rawArgs, 'Prompt', 'prompt');
           const rawModel = pickStr(pending.rawArgs, 'Model', 'model');
-          const nestedModel =
-            rawModel && rawModel !== 'inherit' ? rawModel : this.model;
+          const resolved = resolveAgySubagentModelEffort(rawModel, this.model, this.reasoningEffort);
           this.onSubagentMeta?.(nestedUuid, {
             description: desc,
             ...(subType ? { agentType: subType } : {}),
+            ...(resolved.model ? { model: resolved.model } : {}),
+            ...(resolved.reasoningEffort ? { effort: resolved.reasoningEffort } : {}),
           });
           const nestedReader = new AgySubagentReader({
             agentId: nestedAgentId,
@@ -931,7 +1192,8 @@ export class AgySubagentReader {
             description: desc,
             ...(subType ? { subagentType: subType } : {}),
             ...(prompt ? { prompt } : {}),
-            ...(nestedModel ? { model: nestedModel } : {}),
+            ...(resolved.model ? { model: resolved.model } : {}),
+            ...(resolved.reasoningEffort ? { reasoningEffort: resolved.reasoningEffort } : {}),
             startedAt: at,
             visitedUuids: this.visitedUuids,
             ...(this.onSubagentMeta ? { onSubagentMeta: this.onSubagentMeta } : {}),
@@ -1171,7 +1433,7 @@ export class AgyParentTranscriptTailer {
           calls.forEach((call, callIdx) => {
             const rawName =
               typeof call['name'] === 'string' && call['name'].trim() ? call['name'].trim() : 'tool';
-            const rawArgs = isPlainObject(call['args']) ? call['args'] : {};
+            const rawArgs = normalizeTranscriptArgs(call['args']);
             const mapped = mapAgyTool(rawName, rawArgs, this.mcpServers);
             const toolUseId = `agy-parent:${stepIndex}:${callIdx}`;
             this.silentTurn!.openTools.push({
@@ -1250,6 +1512,341 @@ export class AgyParentTranscriptTailer {
   }
 }
 
+export interface ParentOrchestrationCall {
+  id: string;
+  stepIndex: number;
+  callIndex: number;
+  rawName: 'invoke_subagent' | 'manage_subagents';
+  args: Record<string, unknown>;
+  subagentType?: string;
+  description?: string;
+  prompt?: string;
+  action?: string;
+  content: string;
+  isError: boolean;
+  childUuid?: string;
+  at?: number;
+}
+
+export interface ParentTranscriptSummary {
+  invokeOutputs: ParentOrchestrationCall[];
+  manageOutputs: ParentOrchestrationCall[];
+  childReports: Map<string, string>;
+  modelSettings?: { model: string; effort?: EffortLevel };
+}
+
+interface PendingParentTranscriptCall {
+  stepIndex: number;
+  callIndex: number;
+  rawName: string;
+  args: Record<string, unknown>;
+  at?: number;
+}
+
+function feedParentTranscriptRecord(
+  row: Record<string, unknown>,
+  state: {
+    lastStep: number;
+    openCalls: PendingParentTranscriptCall[];
+    invokeOutputs: ParentOrchestrationCall[];
+    manageOutputs: ParentOrchestrationCall[];
+    childReports: Map<string, string>;
+    freshReports?: { childUuid: string; summary: string }[];
+    modelSettings?: { model: string; effort?: EffortLevel };
+  },
+): void {
+  const stepIndex =
+    typeof row['step_index'] === 'number' && Number.isFinite(row['step_index'])
+      ? row['step_index']
+      : state.lastStep + 1;
+  if (stepIndex <= state.lastStep) return;
+
+  const rowType = typeof row['type'] === 'string' ? row['type'] : '';
+  const status = typeof row['status'] === 'string' ? row['status'] : 'DONE';
+  const at = parseTimestamp(row['created_at']);
+
+  if (rowType === 'USER_INPUT' || rowType === 'SYSTEM_MESSAGE') {
+    state.lastStep = stepIndex;
+    const rawContent = typeof row['content'] === 'string' ? row['content'] : '';
+    const parsedModel = parseAgyUserSettingsModel(rawContent);
+    if (parsedModel) {
+      state.modelSettings = parsedModel;
+    }
+    const sender = extractSystemSender(rawContent);
+    if (sender && isValidAgyUuid(sender)) {
+      const body = unwrapAgySystemMessage(rawContent);
+      if (body) {
+        const norm = sender.toLowerCase();
+        state.childReports.set(norm, body);
+        state.freshReports?.push({ childUuid: norm, summary: body });
+      }
+    }
+    return;
+  }
+
+  if (rowType === 'PLANNER_RESPONSE') {
+    if (status !== 'DONE') return;
+    state.lastStep = stepIndex;
+    while (state.openCalls.length > 0 && state.openCalls[0]!.stepIndex < stepIndex) {
+      state.openCalls.shift();
+    }
+    const rawCalls = Array.isArray(row['tool_calls']) ? row['tool_calls'] : [];
+    rawCalls.filter(isPlainObject).forEach((call, callIndex) => {
+      const rawName = typeof call['name'] === 'string' && call['name'].trim() ? call['name'].trim() : 'tool';
+      const args = normalizeTranscriptArgs(call['args']);
+      state.openCalls.push({
+        stepIndex,
+        callIndex,
+        rawName,
+        args,
+        ...(at !== undefined ? { at } : {}),
+      });
+    });
+    return;
+  }
+
+  if (rowType === 'GENERIC') {
+    if (
+      status !== 'DONE' &&
+      status !== 'ERROR' &&
+      status !== 'CANCELED' &&
+      status !== 'CANCELLED'
+    ) {
+      return;
+    }
+    state.lastStep = stepIndex;
+    const pending = state.openCalls.shift();
+    if (!pending) return;
+    if (pending.rawName !== 'invoke_subagent' && pending.rawName !== 'manage_subagents') {
+      return;
+    }
+    const content =
+      typeof row['content'] === 'string'
+        ? row['content']
+        : hasErrorField(row['error'])
+          ? typeof row['error'] === 'string'
+            ? row['error']
+            : JSON.stringify(row['error'])
+          : '';
+    const isError = status !== 'DONE' || hasErrorField(row['error']);
+    if (pending.rawName === 'invoke_subagent') {
+      const subType = pickStr(pending.args, 'TypeName', 'subagent_type');
+      const desc = pickStr(pending.args, 'Role', 'TypeName', 'description');
+      const prompt = pickStr(pending.args, 'Prompt', 'prompt');
+      const childUuid = !isError ? parseCreatedSubagent(content) : undefined;
+      state.invokeOutputs.push({
+        id: `${pending.stepIndex}:${pending.callIndex}`,
+        stepIndex: pending.stepIndex,
+        callIndex: pending.callIndex,
+        rawName: 'invoke_subagent',
+        args: pending.args,
+        ...(subType ? { subagentType: subType } : {}),
+        ...(desc ? { description: desc } : {}),
+        ...(prompt ? { prompt } : {}),
+        content,
+        isError,
+        ...(childUuid ? { childUuid } : {}),
+        ...(at !== undefined ? { at } : pending.at !== undefined ? { at: pending.at } : {}),
+      });
+    } else {
+      const action = pickStr(pending.args, 'Action', 'action')?.toLowerCase();
+      state.manageOutputs.push({
+        id: `${pending.stepIndex}:${pending.callIndex}`,
+        stepIndex: pending.stepIndex,
+        callIndex: pending.callIndex,
+        rawName: 'manage_subagents',
+        args: pending.args,
+        ...(action ? { action } : {}),
+        content,
+        isError,
+        ...(at !== undefined ? { at } : pending.at !== undefined ? { at: pending.at } : {}),
+      });
+    }
+  }
+}
+
+/**
+ * Одноразовое чтение родительского `transcript.jsonl` для `loadHistory` (`withAgySubagentTimelines`):
+ * извлекает результаты `invoke_subagent` / `manage_subagents` (которые `agy acp` не кладёт в `rawOutput`),
+ * неусечённые отчёты дочерних агентов из `SYSTEM_MESSAGE` и модель/effort из `<USER_SETTINGS_CHANGE>`.
+ */
+export async function readParentTranscriptSummary(
+  sessionId: string,
+  dataDir: string = DEFAULT_AGY_DATA_DIR,
+): Promise<ParentTranscriptSummary | undefined> {
+  const filePath = agyTranscriptPath(sessionId, dataDir);
+  if (!filePath) return undefined;
+  try {
+    await fs.access(filePath);
+  } catch {
+    return undefined;
+  }
+
+  const state = {
+    lastStep: -1,
+    openCalls: [] as PendingParentTranscriptCall[],
+    invokeOutputs: [] as ParentOrchestrationCall[],
+    manageOutputs: [] as ParentOrchestrationCall[],
+    childReports: new Map<string, string>(),
+    modelSettings: undefined as { model: string; effort?: EffortLevel } | undefined,
+  };
+
+  try {
+    await streamLines(
+      filePath,
+      (line) => {
+        const trimmed = line.trim();
+        if (!trimmed) return;
+        try {
+          const rec: unknown = JSON.parse(trimmed);
+          if (isPlainObject(rec)) feedParentTranscriptRecord(rec, state);
+        } catch {
+          // ignore malformed line
+        }
+      },
+      { acceptTail: () => true },
+    );
+  } catch {
+    return undefined;
+  }
+
+  return {
+    invokeOutputs: state.invokeOutputs,
+    manageOutputs: state.manageOutputs,
+    childReports: state.childReports,
+    ...(state.modelSettings ? { modelSettings: state.modelSettings } : {}),
+  };
+}
+
+function matchesInvokeCall(
+  candidate: ParentOrchestrationCall,
+  query: { subagentType?: string; description?: string; prompt?: string },
+): boolean {
+  if (query.subagentType && candidate.subagentType && query.subagentType !== candidate.subagentType) {
+    return false;
+  }
+  if (query.description && candidate.description && query.description !== candidate.description) {
+    return false;
+  }
+  if (query.prompt && candidate.prompt && query.prompt !== candidate.prompt) {
+    return false;
+  }
+  return Boolean(query.subagentType || query.description || query.prompt);
+}
+
+/**
+ * Инкрементальный ридер родительского `transcript.jsonl` для живой `AgySession`:
+ * подтягивает выводы `GENERIC` для `invoke_subagent` и `manage_subagents` (отсутствующие в ACP `tool_call_update`),
+ * а также неусечённые отчёты дочерних агентов из `SYSTEM_MESSAGE`.
+ */
+export class AgyParentToolOutputReader {
+  private readonly tailer: ByteLineTailer | undefined;
+  private lastStep = -1;
+  private readonly openCalls: PendingParentTranscriptCall[] = [];
+  private readonly invokeUnclaimed: ParentOrchestrationCall[] = [];
+  private readonly manageUnclaimed: ParentOrchestrationCall[] = [];
+  private readonly childReports = new Map<string, string>();
+  private modelSettings: { model: string; effort?: EffortLevel } | undefined;
+
+  constructor(sessionId: string, dataDir: string = DEFAULT_AGY_DATA_DIR) {
+    const filePath = agyTranscriptPath(sessionId, dataDir);
+    this.tailer = filePath ? new ByteLineTailer(filePath) : undefined;
+  }
+
+  /** Проматывает существующие шаги истории при `handshake`/`respawn`, сохраняя последнюю модель/effort из транскрипта. */
+  async syncToEnd(): Promise<{ modelSettings?: { model: string; effort?: EffortLevel } }> {
+    await this.poll();
+    this.openCalls.length = 0;
+    this.invokeUnclaimed.length = 0;
+    this.manageUnclaimed.length = 0;
+    return this.modelSettings ? { modelSettings: this.modelSettings } : {};
+  }
+
+  async poll(): Promise<{
+    freshReports: { childUuid: string; summary: string }[];
+    modelSettings?: { model: string; effort?: EffortLevel };
+  }> {
+    if (!this.tailer) return { freshReports: [] };
+    const lines = await this.tailer.readNewLines();
+    if (lines.length === 0) {
+      return {
+        freshReports: [],
+        ...(this.modelSettings ? { modelSettings: this.modelSettings } : {}),
+      };
+    }
+
+    const freshReports: { childUuid: string; summary: string }[] = [];
+    const state = {
+      lastStep: this.lastStep,
+      openCalls: this.openCalls,
+      invokeOutputs: this.invokeUnclaimed,
+      manageOutputs: this.manageUnclaimed,
+      childReports: this.childReports,
+      freshReports,
+      modelSettings: this.modelSettings,
+    };
+
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line) continue;
+      try {
+        const rec: unknown = JSON.parse(line);
+        if (isPlainObject(rec)) feedParentTranscriptRecord(rec, state);
+      } catch {
+        // ignore malformed line
+      }
+    }
+
+    this.lastStep = state.lastStep;
+    this.modelSettings = state.modelSettings;
+    return {
+      freshReports,
+      ...(this.modelSettings ? { modelSettings: this.modelSettings } : {}),
+    };
+  }
+
+  reportOf(childUuid: string): string | undefined {
+    return this.childReports.get(childUuid.toLowerCase());
+  }
+
+  claimByChildUuid(childUuid: string): void {
+    const norm = childUuid.toLowerCase();
+    const idx = this.invokeUnclaimed.findIndex((c) => c.childUuid === norm);
+    if (idx >= 0) this.invokeUnclaimed.splice(idx, 1);
+  }
+
+  claimInvoke(
+    query: { subagentType?: string; description?: string; prompt?: string },
+    allowPositional: boolean,
+  ): ParentOrchestrationCall | undefined {
+    const exactIdx = this.invokeUnclaimed.findIndex((c) => matchesInvokeCall(c, query));
+    if (exactIdx >= 0) {
+      return this.invokeUnclaimed.splice(exactIdx, 1)[0];
+    }
+    if (allowPositional && this.invokeUnclaimed.length > 0) {
+      return this.invokeUnclaimed.shift();
+    }
+    return undefined;
+  }
+
+  claimManage(action: string | undefined, allowPositional: boolean): ParentOrchestrationCall | undefined {
+    const norm = action?.toLowerCase();
+    if (norm) {
+      const idx = this.manageUnclaimed.findIndex((c) => c.action === norm);
+      if (idx >= 0) return this.manageUnclaimed.splice(idx, 1)[0];
+    }
+    if (allowPositional && this.manageUnclaimed.length > 0) {
+      return this.manageUnclaimed.shift();
+    }
+    return undefined;
+  }
+
+  clearUnclaimed(): void {
+    this.invokeUnclaimed.length = 0;
+    this.manageUnclaimed.length = 0;
+  }
+}
+
 function clipText(text: string, t: ReturnType<typeof hostStrings>): string {
   const lines = text.split('\n');
   let out = lines.slice(0, RESULT_LINES).join('\n');
@@ -1272,6 +1869,8 @@ export async function agySubagentMarkdown(
   meta: {
     title?: string;
     agentType?: string;
+    model?: string;
+    effort?: EffortLevel;
     lang?: Lang;
     mcpServers?: readonly string[];
   } = {},
@@ -1310,10 +1909,12 @@ export async function agySubagentMarkdown(
   const normalizedUuid = childUuid.toLowerCase();
   const title = meta.title?.trim() || normalizedUuid;
   const openLabel = lang === 'en' ? 'Open session' : 'Открыть сессию';
+  const modelInfo = [meta.model, meta.effort ? `effort: ${meta.effort}` : ''].filter(Boolean).join(' · ');
 
   const parts: string[] = [
     `# ${title}${meta.agentType ? ` · ${meta.agentType}` : ''}`,
     '',
+    ...(modelInfo ? [`\`${modelInfo}\``, ''] : []),
     `[${openLabel}](conversation://${normalizedUuid})`,
     '',
     t.agentReadOnly,
@@ -1350,7 +1951,7 @@ export async function agySubagentMarkdown(
       for (const call of rawCalls) {
         if (!isPlainObject(call)) continue;
         const rawName = typeof call['name'] === 'string' && call['name'] ? call['name'] : 'tool';
-        const rawArgs = isPlainObject(call['args']) ? call['args'] : {};
+        const rawArgs = normalizeTranscriptArgs(call['args']);
         const mapped = mapAgyTool(rawName, rawArgs, meta.mcpServers);
         const input = JSON.stringify(mapped.input);
         parts.push(
@@ -1390,6 +1991,7 @@ export interface AgyTimelineOptions {
   live?: boolean;
   tasksAlive?: boolean;
   parentModel?: string;
+  parentEffort?: EffortLevel;
   parentSessionId?: string;
   waitingThresholdMs?: number;
   onSubagentMeta?: (childUuid: string, meta: AgySubagentMeta) => void;
@@ -1488,6 +2090,68 @@ export async function withAgySubagentTimelines(
   const keepAlive = Boolean(options.live || options.tasksAlive);
   const startsById = new Map<string, Extract<AgentEvent, { type: 'tool.start' }>>();
 
+  const parentSummary = options.parentSessionId
+    ? await readParentTranscriptSummary(options.parentSessionId, dataDir)
+    : undefined;
+  const effectiveParentModel = options.parentModel ?? parentSummary?.modelSettings?.model;
+  const effectiveParentEffort = options.parentEffort ?? parentSummary?.modelSettings?.effort;
+
+  // Выравниваем пулы вызовов родительского транскрипта по хвосту на случай срезки ранних ходов `maxTurns`
+  const preStarts = new Map<string, Extract<AgentEvent, { type: 'tool.start' }>>();
+  let totalAgentResults = 0;
+  let totalManageResults = 0;
+  for (const ev of out) {
+    if (ev.agentId) continue;
+    if (ev.type === 'tool.start') {
+      preStarts.set(ev.toolUseId, ev);
+    } else if (ev.type === 'tool.result') {
+      const s = preStarts.get(ev.toolUseId);
+      if (s?.name === 'Agent') totalAgentResults += 1;
+      else if (s?.name === 'manage_subagents') totalManageResults += 1;
+    }
+  }
+
+  const invokePool = parentSummary
+    ? parentSummary.invokeOutputs.slice(
+        Math.max(0, parentSummary.invokeOutputs.length - totalAgentResults),
+      )
+    : [];
+  const managePool = parentSummary
+    ? parentSummary.manageOutputs.slice(
+        Math.max(0, parentSummary.manageOutputs.length - totalManageResults),
+      )
+    : [];
+
+  const claimHistoryInvoke = (
+    start: Extract<AgentEvent, { type: 'tool.start' }>,
+    directUuid: string | undefined,
+  ): ParentOrchestrationCall | undefined => {
+    if (directUuid) {
+      const idx = invokePool.findIndex((c) => c.childUuid === directUuid);
+      if (idx >= 0) return invokePool.splice(idx, 1)[0];
+      return undefined;
+    }
+    const query = {
+      subagentType: pickStr(start.input, 'subagent_type', 'TypeName'),
+      description: pickStr(start.input, 'description', 'Role'),
+      prompt: pickStr(start.input, 'prompt', 'Prompt'),
+    };
+    const exactIdx = invokePool.findIndex((c) => matchesInvokeCall(c, query));
+    if (exactIdx >= 0) return invokePool.splice(exactIdx, 1)[0];
+    return invokePool.shift();
+  };
+
+  const claimHistoryManage = (
+    start: Extract<AgentEvent, { type: 'tool.start' }>,
+  ): ParentOrchestrationCall | undefined => {
+    const action = pickStr(start.input, 'Action', 'action')?.toLowerCase();
+    if (action) {
+      const idx = managePool.findIndex((c) => c.action === action);
+      if (idx >= 0) return managePool.splice(idx, 1)[0];
+    }
+    return managePool.shift();
+  };
+
   interface LaunchEntry {
     resultIndex: number;
     toolStart: Extract<AgentEvent, { type: 'tool.start' }>;
@@ -1497,6 +2161,7 @@ export async function withAgySubagentTimelines(
     waitingReported: boolean;
     sendCount: number;
     lastSentPrompt?: string;
+    fallbackAt?: number;
   }
 
   const launches: LaunchEntry[] = [];
@@ -1515,8 +2180,10 @@ export async function withAgySubagentTimelines(
       const start = startsById.get(ev.toolUseId);
       if (!start) continue;
 
-      if (start.name === 'Agent' && !ev.isError) {
-        const childUuid = parseCreatedSubagent(ev.content);
+      if (start.name === 'Agent') {
+        const directUuid = !ev.isError ? parseCreatedSubagent(ev.content) : undefined;
+        const matched = claimHistoryInvoke(start, directUuid);
+        const childUuid = !ev.isError ? (directUuid ?? matched?.childUuid) : undefined;
         if (childUuid) {
           const entry: LaunchEntry = {
             resultIndex: i,
@@ -1526,6 +2193,7 @@ export async function withAgySubagentTimelines(
             killed: false,
             waitingReported: false,
             sendCount: 0,
+            ...(matched?.at !== undefined ? { fallbackAt: matched.at } : {}),
           };
           launches.push(entry);
           launchesByUuid.set(childUuid, entry);
@@ -1539,7 +2207,10 @@ export async function withAgySubagentTimelines(
           if (msg) target.lastSentPrompt = msg;
         }
       } else if (start.name === 'manage_subagents') {
-        const managed = parseManagedSubagents(start.input, ev.content, ev.isError);
+        const matchedManage = claimHistoryManage(start);
+        const effectiveContent = ev.content.trim() ? ev.content : (matchedManage?.content ?? '');
+        const effectiveError = ev.isError || Boolean(matchedManage?.isError);
+        const managed = parseManagedSubagents(start.input, effectiveContent, effectiveError);
         if (managed.action === 'list') {
           for (const id of managed.waitingIds) {
             const target = launchesByUuid.get(id);
@@ -1572,12 +2243,19 @@ export async function withAgySubagentTimelines(
       pickStr(toolStart.input, 'description', 'Role', 'subagent_type', 'TypeName') ?? 'subagent';
     const prompt = pickStr(toolStart.input, 'prompt', 'Prompt');
     const rawModel = pickStr(toolStart.input, 'model', 'Model');
-    const model = rawModel && rawModel !== 'inherit' ? rawModel : options.parentModel;
-    const startedAt = toolStart.at;
+    const resolved = resolveAgySubagentModelEffort(
+      rawModel,
+      effectiveParentModel,
+      effectiveParentEffort,
+    );
+    const startedAt = toolStart.at ?? entry.fallbackAt;
+    const reportSummary = parentSummary?.childReports.get(childUuid);
 
     options.onSubagentMeta?.(childUuid, {
       description: desc,
       ...(subType ? { agentType: subType } : {}),
+      ...(resolved.model ? { model: resolved.model } : {}),
+      ...(resolved.reasoningEffort ? { effort: resolved.reasoningEffort } : {}),
     });
 
     if (idx < tailCutoff) {
@@ -1590,7 +2268,8 @@ export async function withAgySubagentTimelines(
           taskType: 'subagent',
           ...(subType ? { subagentType: subType } : {}),
           ...(prompt ? { prompt } : {}),
-          ...(model ? { model } : {}),
+          ...(resolved.model ? { model: resolved.model } : {}),
+          ...(resolved.reasoningEffort ? { reasoningEffort: resolved.reasoningEffort } : {}),
           background: true,
           ...(startedAt !== undefined ? { at: startedAt } : {}),
         },
@@ -1619,7 +2298,9 @@ export async function withAgySubagentTimelines(
         description: desc,
         ...(subType ? { subagentType: subType } : {}),
         ...(prompt ? { prompt } : {}),
-        ...(model ? { model } : {}),
+        ...(resolved.model ? { model: resolved.model } : {}),
+        ...(resolved.reasoningEffort ? { reasoningEffort: resolved.reasoningEffort } : {}),
+        ...(reportSummary ? { reportSummary } : {}),
         ...(startedAt !== undefined ? { startedAt } : {}),
         ...(options.onSubagentMeta ? { onSubagentMeta: options.onSubagentMeta } : {}),
       });

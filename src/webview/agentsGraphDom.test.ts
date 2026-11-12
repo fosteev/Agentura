@@ -91,6 +91,9 @@ describe('вкладка графа', () => {
     const graph = mountGraph();
     await flush();
     expect(q(graph, '.gd').textContent).toContain(ui.agents.view.promptUnavailable);
+    expect(q(graph, '.gmap .n[data-agent] .h').textContent).toContain('gpt-6-astra · high');
+    expect(q(graph, '.gd .hd .m').textContent).toContain('gpt-6-astra');
+    expect(q(graph, '.gd .hd .m').textContent).toContain('effort high');
     const host = document.createElement('div');
     mounted.push(host);
     document.body.append(host);

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.23.1 — 2026-11-13
+
+### Fixed
+
+- **Antigravity subagents in the `agents` panel and `AgentsGraph`.** Real `agy acp` omits `rawOutput` / `content` on `invoke_subagent` and `manage_subagents` over ACP (both live and in `session/load`) and stores `tool_calls[].args` as JSON-encoded strings in `transcript.jsonl`. Live sessions (`AgyParentToolOutputReader`) and restored history (`readParentTranscriptSummary`) now pair parent `PLANNER_RESPONSE` calls with `GENERIC` outputs in `brain/<sessionId>/.system_generated/logs/transcript.jsonl`, decode `oneharness` JSON-stringified tool arguments, prefer untruncated `<SYSTEM_MESSAGE>` child reports over truncated child `send_message` payloads, and resolve inherited `model` + `reasoningEffort` (`Model: "inherit"` and `<USER_SETTINGS_CHANGE>`).
+- **Subagent launch prompt, model and reasoning effort across panel & graph views.** `tree`, `lanes`, `cards`, `list`, `AgentsGraph` nodes/details and read-only subagent Markdown transcripts display each subagent's resolved model, `reasoningEffort` and launch prompt (with scrollable multi-line prompts in `tree` and `lanes`).
+
 ## 0.23.0 — 2026-11-13
 
 ### Added

@@ -42,7 +42,7 @@ describe('Codex subagents → graph', () => {
     expect(snapshot.agents[0]).toMatchObject({ model: 'gpt-6.1-sol', reasoningEffort: 'high', subagentType: 'Codex' });
     expect(snapshot.agents[0]?.prompt).toBeUndefined();
     expect(model.total?.tokens).toBe('—');
-    expect(model.nodes[0]?.head).toBe('Codex · gpt-6.1-sol');
+    expect(model.nodes[0]?.head).toBe('Codex · gpt-6.1-sol · high');
   });
 
   it('running child exposes full prompt, model and effort in panel and graph details', () => {

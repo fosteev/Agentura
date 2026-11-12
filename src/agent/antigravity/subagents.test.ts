@@ -12,8 +12,11 @@ import {
   agyTranscriptPath,
   isValidAgyUuid,
   nonZeroExitCode,
+  normalizeTranscriptArgs,
+  parseAgyUserSettingsModel,
   parseCreatedSubagent,
   parseManagedSubagents,
+  resolveAgySubagentModelEffort,
   unwrapAgySystemMessage,
   withAgySubagentTimelines,
 } from './subagents';
@@ -689,5 +692,293 @@ describe('antigravity subagents: AgySubagentReader & agySubagentMarkdown', () =>
     // Recent 30 (5..34) have their inner tool calls reconstructed
     const lastInnerTools = manyOut.filter((e) => e.type === 'tool.start' && e.agentId === 'sub_34');
     expect(lastInnerTools).toHaveLength(1);
+  });
+
+  it('decodes oneharness JSON-stringified tool_calls args, resolves model/effort inheritance, and pairs empty ACP tool.result via parent transcript.jsonl', async () => {
+    expect(
+      normalizeTranscriptArgs({
+        Path: '"/work/src/index.ts"',
+        StartLine: '10',
+        Overwrite: 'true',
+        ConversationIds: `["${CHILD_UUID}"]`,
+        Arguments: '{"query":"acp"}',
+        Message: '"Первая строка\\nВторая обрезана\n<truncated 412 bytes>',
+      }),
+    ).toEqual({
+      Path: '/work/src/index.ts',
+      StartLine: 10,
+      Overwrite: true,
+      ConversationIds: [CHILD_UUID],
+      Arguments: { query: 'acp' },
+      Message: 'Первая строка\nВторая обрезана…',
+    });
+
+    // Plain JS test args remain untouched
+    expect(normalizeTranscriptArgs({ CommandLine: 'false' })).toEqual({ CommandLine: 'false' });
+    expect(normalizeTranscriptArgs({ id: '123', query: 'acp' })).toEqual({ id: '123', query: 'acp' });
+    expect(normalizeTranscriptArgs({ Content: '{"a":1}' })).toEqual({ Content: '{"a":1}' });
+
+    // USER_SETTINGS_CHANGE + model/effort inheritance
+    expect(
+      parseAgyUserSettingsModel(
+        '<USER_SETTINGS_CHANGE>\nModel Selection from None to Gemini 4 Carbon (Medium).\n</USER_SETTINGS_CHANGE>',
+      ),
+    ).toEqual({ model: 'gemini-4-carbon', effort: 'medium' });
+    expect(
+      parseAgyUserSettingsModel(
+        'Model Selection from Gemini 4 Carbon (Medium) to Claude Sonnet 4.6 (Thinking).',
+      ),
+    ).toEqual({ model: 'claude-sonnet-4-6' });
+    expect(
+      parseAgyUserSettingsModel('Model Selection from None to GPT-OSS 120B (Medium).'),
+    ).toEqual({ model: 'gpt-oss-120b-medium' });
+
+    expect(resolveAgySubagentModelEffort('inherit', 'gemini-4-carbon', 'medium')).toEqual({
+      model: 'gemini-4-carbon',
+      reasoningEffort: 'medium',
+    });
+    expect(resolveAgySubagentModelEffort(undefined, 'gemini-4-argon', 'high')).toEqual({
+      model: 'gemini-4-argon',
+      reasoningEffort: 'high',
+    });
+    expect(resolveAgySubagentModelEffort('gemini-3.8-flash-low', 'gemini-4-carbon', 'high')).toEqual({
+      model: 'gemini-3.8-flash',
+      reasoningEffort: 'low',
+    });
+    expect(resolveAgySubagentModelEffort('flash_lite', 'gemini-4-carbon', 'high')).toEqual({
+      model: 'flash_lite',
+    });
+    expect(resolveAgySubagentModelEffort('gpt-oss-120b-medium', 'gemini-4-carbon', 'high')).toEqual({
+      model: 'gpt-oss-120b-medium',
+    });
+
+    // Real agy acp flow: parent transcript has JSON-stringified args, USER_SETTINGS_CHANGE,
+    // GENERIC Created outputs, and full SYSTEM_MESSAGE child report, while ACP tool.result has content: ''
+    await ensureBrainTranscript(tmpDir, PARENT_UUID, [
+      {
+        step_index: 0,
+        source: 'USER_EXPLICIT',
+        type: 'USER_INPUT',
+        status: 'DONE',
+        content:
+          'Запусти субагентов\n\n<USER_SETTINGS_CHANGE>\nModel Selection from None to Gemini 4 Carbon (Medium).\n</USER_SETTINGS_CHANGE>',
+      },
+      {
+        step_index: 1,
+        source: 'MODEL',
+        type: 'PLANNER_RESPONSE',
+        status: 'DONE',
+        created_at: '2026-11-12T22:00:01Z',
+        tool_calls: [
+          {
+            name: 'invoke_subagent',
+            args: {
+              Model: '"inherit"',
+              Prompt: '"Проверь структуру корня репозитория"',
+              Role: '"Repo Structure Inspector"',
+              TypeName: '"research"',
+            },
+          },
+          {
+            name: 'invoke_subagent',
+            args: {
+              Model: '"flash"',
+              Prompt: '"Проверь git status -sb"',
+              Role: '"Git State Checker"',
+              TypeName: '"self"',
+            },
+          },
+        ],
+      },
+      {
+        step_index: 2,
+        source: 'MODEL',
+        type: 'GENERIC',
+        status: 'DONE',
+        content: `Created the following subagent:\n{"conversationId":"${CHILD_UUID}"}`,
+      },
+      {
+        step_index: 3,
+        source: 'MODEL',
+        type: 'GENERIC',
+        status: 'DONE',
+        content: `Created the following subagent:\n{"conversationId":"${NESTED_UUID}"}`,
+      },
+      {
+        step_index: 4,
+        source: 'SYSTEM',
+        type: 'SYSTEM_MESSAGE',
+        status: 'DONE',
+        created_at: '2026-11-12T22:00:05Z',
+        content: `<SYSTEM_MESSAGE>\n[Message] timestamp=2026-11-12T22:00:05Z sender=${CHILD_UUID} content=Полный отчёт по структуре проекта без усечения.\n</SYSTEM_MESSAGE>`,
+      },
+    ]);
+
+    await ensureBrainTranscript(tmpDir, CHILD_UUID, [
+      {
+        step_index: 0,
+        type: 'SYSTEM_MESSAGE',
+        status: 'DONE',
+        created_at: '2026-11-12T22:00:01Z',
+        content: 'Проверь структуру корня репозитория',
+      },
+      {
+        step_index: 1,
+        type: 'PLANNER_RESPONSE',
+        status: 'DONE',
+        created_at: '2026-11-12T22:00:02Z',
+        input_tokens: 14_000,
+        cache_read_tokens: 1_000,
+        output_tokens: 200,
+        tool_calls: [
+          {
+            name: 'read_file',
+            args: { Path: '"/work/package.json"' },
+          },
+          {
+            name: 'send_message',
+            args: {
+              Recipient: `"${PARENT_UUID}"`,
+              Message: '"Полный отчёт по структуре\n<truncated 320 bytes>',
+            },
+          },
+        ],
+        truncated_fields: ['tool_calls'],
+      },
+      { step_index: 2, type: 'GENERIC', status: 'DONE', content: '{"name":"agentura"}' },
+      { step_index: 3, type: 'GENERIC', status: 'DONE', content: 'Message sent.' },
+      {
+        step_index: 4,
+        type: 'PLANNER_RESPONSE',
+        status: 'DONE',
+        created_at: '2026-11-12T22:00:04Z',
+        input_tokens: 15_000,
+        cache_read_tokens: 1_000,
+        output_tokens: 40,
+        content: '',
+      },
+    ]);
+
+    await ensureBrainTranscript(tmpDir, NESTED_UUID, [
+      {
+        step_index: 0,
+        type: 'SYSTEM_MESSAGE',
+        status: 'DONE',
+        created_at: '2026-11-12T22:00:01Z',
+        content: 'Проверь git status -sb',
+      },
+      {
+        step_index: 1,
+        type: 'PLANNER_RESPONSE',
+        status: 'DONE',
+        created_at: '2026-11-12T22:00:03Z',
+        input_tokens: 9_000,
+        output_tokens: 120,
+        content: 'Ветка main чистая.',
+      },
+    ]);
+
+    const acpHistoryEvents: AgentEvent[] = [
+      { type: 'turn.start', prompt: 'Запусти субагентов', at: 1000 },
+      {
+        type: 'tool.start',
+        toolUseId: 'acp_sub_1',
+        name: 'Agent',
+        input: {
+          description: 'Repo Structure Inspector',
+          prompt: 'Проверь структуру корня репозитория',
+          subagent_type: 'research',
+          model: 'inherit',
+        },
+      },
+      {
+        type: 'tool.result',
+        toolUseId: 'acp_sub_1',
+        isError: false,
+        content: '', // real agy acp sends empty output!
+      },
+      {
+        type: 'tool.start',
+        toolUseId: 'acp_sub_2',
+        name: 'Agent',
+        input: {
+          description: 'Git State Checker',
+          prompt: 'Проверь git status -sb',
+          subagent_type: 'self',
+          model: 'flash',
+        },
+      },
+      {
+        type: 'tool.result',
+        toolUseId: 'acp_sub_2',
+        isError: false,
+        content: '', // real agy acp sends empty output!
+      },
+    ];
+
+    const capturedMeta: Array<[string, Record<string, unknown>]> = [];
+    const enriched = await withAgySubagentTimelines(acpHistoryEvents, tmpDir, undefined, {
+      parentSessionId: PARENT_UUID,
+      onSubagentMeta: (uuid, meta) => capturedMeta.push([uuid, meta as Record<string, unknown>]),
+    });
+
+    const start1 = enriched.find(
+      (e) => e.type === 'agent.start' && e.agentId === 'acp_sub_1',
+    ) as AgentEventOf<'agent.start'> | undefined;
+    const start2 = enriched.find(
+      (e) => e.type === 'agent.start' && e.agentId === 'acp_sub_2',
+    ) as AgentEventOf<'agent.start'> | undefined;
+    expect(start1).toMatchObject({
+      taskId: CHILD_UUID,
+      subagentType: 'research',
+      description: 'Repo Structure Inspector',
+      prompt: 'Проверь структуру корня репозитория',
+      model: 'gemini-4-carbon',
+      reasoningEffort: 'medium',
+    });
+    expect(start2).toMatchObject({
+      taskId: NESTED_UUID,
+      subagentType: 'self',
+      description: 'Git State Checker',
+      prompt: 'Проверь git status -sb',
+      model: 'flash',
+      reasoningEffort: 'medium',
+    });
+
+    // Inner JSON-quoted Read path was decoded to /work/package.json
+    expect(
+      enriched.find((e) => e.type === 'tool.start' && e.agentId === 'acp_sub_1'),
+    ).toMatchObject({
+      name: 'Read',
+      input: { file_path: '/work/package.json' },
+    });
+
+    // Untruncated parent SYSTEM_MESSAGE report overrides truncated child send_message
+    expect(
+      enriched.find((e) => e.type === 'agent.end' && e.agentId === 'acp_sub_1'),
+    ).toMatchObject({
+      status: 'completed',
+      summary: 'Полный отчёт по структуре проекта без усечения.',
+      totalTokens: 16_040,
+    });
+    expect(capturedMeta).toContainEqual([
+      CHILD_UUID,
+      {
+        description: 'Repo Structure Inspector',
+        agentType: 'research',
+        model: 'gemini-4-carbon',
+        effort: 'medium',
+      },
+    ]);
+
+    const md = await agySubagentMarkdown(CHILD_UUID, tmpDir, {
+      title: 'Repo Structure Inspector',
+      agentType: 'research',
+      model: 'gemini-4-carbon',
+      effort: 'medium',
+      lang: 'ru',
+    });
+    expect(md).toContain('`gemini-4-carbon · effort: medium`');
+    expect(md).toContain('/work/package.json');
   });
 });

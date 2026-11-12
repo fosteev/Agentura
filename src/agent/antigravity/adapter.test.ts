@@ -15,6 +15,9 @@ import {
 import { AGY_NOT_FOUND } from './executable';
 import { createFakeAgyServer, FakeAgyAcp, DEFAULT_SESSION_ID, FAKE_MODELS, FAKE_MODES, makeConfigOptions } from './fakeServer';
 import { memoryStore } from './sessionIndex';
+import { applyHud, initialHud } from '../../webview/hudState';
+import { agentGraphView, agentsViewPane } from '../../webview/agentViews';
+import { graphModel } from '../../webview/agentsGraph/model';
 
 function setup(s: FakeAgyAcp = createFakeAgyServer(), config: Partial<AntigravityAdapterConfig> = {}) {
   const logs: string[] = [];
@@ -2315,6 +2318,362 @@ describe('AntigravityAdapter (ACP)', () => {
         // Metadata cached during loadHistory is used by agentTranscript
         const md = await adapter.agentTranscript(DEFAULT_SESSION_ID, '/work', CHILD_1, '');
         expect(md).toContain('# A11y Auditor · flutter_a11y_agent');
+      } finally {
+        await rm(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it('resolves live and historical subagents when agy acp omits rawOutput, propagating prompt, model and effort to panel & graph', async () => {
+      const CHILD_3 = '33333333-3333-4333-8333-333333333333';
+      const tempDir = await mkdtemp(join(os.tmpdir(), 'agy-real-acp-subagents-'));
+      try {
+        await brainFile(tempDir, CHILD_1, [
+          {
+            step_index: 0,
+            type: 'SYSTEM_MESSAGE',
+            status: 'DONE',
+            created_at: '2026-11-12T22:10:01Z',
+            content: 'Изучи корень проекта и назови назначение',
+          },
+          {
+            step_index: 1,
+            type: 'PLANNER_RESPONSE',
+            status: 'DONE',
+            created_at: '2026-11-12T22:10:02Z',
+            input_tokens: 45_000,
+            output_tokens: 600,
+            tool_calls: [
+              { name: 'read_file', args: { Path: '"/work/package.json"' } },
+              {
+                name: 'send_message',
+                args: {
+                  Recipient: `"${DEFAULT_SESSION_ID}"`,
+                  Message: '"Обрезанный отчёт\n<truncated 250 bytes>',
+                },
+              },
+            ],
+          },
+          { step_index: 2, type: 'GENERIC', status: 'DONE', content: '{}' },
+          { step_index: 3, type: 'GENERIC', status: 'DONE', content: 'Message sent.' },
+          {
+            step_index: 4,
+            type: 'PLANNER_RESPONSE',
+            status: 'DONE',
+            created_at: '2026-11-12T22:10:04Z',
+            input_tokens: 45_200,
+            output_tokens: 50,
+            content: '',
+          },
+        ]);
+        await brainFile(tempDir, CHILD_2, [
+          {
+            step_index: 0,
+            type: 'SYSTEM_MESSAGE',
+            status: 'DONE',
+            created_at: '2026-11-12T22:10:01Z',
+            content: 'Проверь .codex и правила воркфлоу',
+          },
+          {
+            step_index: 1,
+            type: 'PLANNER_RESPONSE',
+            status: 'DONE',
+            created_at: '2026-11-12T22:10:03Z',
+            input_tokens: 32_000,
+            output_tokens: 200,
+            content: 'Воркфлоу настроен в .codex/WORKFLOW.md.',
+          },
+        ]);
+        await brainFile(tempDir, CHILD_3, [
+          {
+            step_index: 0,
+            type: 'SYSTEM_MESSAGE',
+            status: 'DONE',
+            created_at: '2026-11-12T22:10:01Z',
+            content: 'Проверь git status -sb и последний коммит',
+          },
+          {
+            step_index: 1,
+            type: 'PLANNER_RESPONSE',
+            status: 'DONE',
+            created_at: '2026-11-12T22:10:03Z',
+            input_tokens: 28_000,
+            output_tokens: 150,
+            content: 'Ветка main, незакоммичено 2 файла.',
+          },
+        ]);
+
+        const server = createFakeAgyServer();
+        const emitAcpSubagentCallsWithoutOutput = (sessionId: string) => {
+          for (const [tcId, typeName, role, prompt, model] of [
+            ['live_sub_1', 'research', 'Repo Structure Inspector', 'Изучи корень проекта и назови назначение', 'inherit'],
+            ['live_sub_2', 'research', 'Workflow Config Inspector', 'Проверь .codex и правила воркфлоу', 'inherit'],
+            ['live_sub_3', 'self', 'Git State Checker', 'Проверь git status -sb и последний коммит', 'gemini-3.8-flash-low'],
+          ] as const) {
+            server.notify('session/update', {
+              sessionId,
+              update: {
+                sessionUpdate: 'tool_call',
+                toolCallId: tcId,
+                name: 'invoke_subagent',
+                kind: 'other',
+                rawInput: { TypeName: typeName, Role: role, Prompt: prompt, Model: model },
+                status: 'completed',
+                // NO rawOutput and NO content — exact agy acp wire payload!
+              },
+            });
+          }
+          server.notify('session/update', {
+            sessionId,
+            update: {
+              sessionUpdate: 'tool_call',
+              toolCallId: 'live_mgr_list',
+              name: 'manage_subagents',
+              kind: 'other',
+              rawInput: { Action: 'list' },
+              status: 'completed',
+              // NO rawOutput and NO content!
+            },
+          });
+        };
+
+        server.handle('session/prompt', async (params) => {
+          // Real agy writes parent transcript steps during session/prompt
+          const parentPath = await brainFile(tempDir, DEFAULT_SESSION_ID, [
+            {
+              step_index: 0,
+              source: 'USER_EXPLICIT',
+              type: 'USER_INPUT',
+              status: 'DONE',
+              content:
+                'Запусти трёх субагентов\n\n<USER_SETTINGS_CHANGE>\nsetting `Model Selection` from None to Gemini 4 Argon (Medium).\n</USER_SETTINGS_CHANGE>',
+            },
+            {
+              step_index: 1,
+              source: 'MODEL',
+              type: 'PLANNER_RESPONSE',
+              status: 'DONE',
+              created_at: '2026-11-12T22:10:01Z',
+              tool_calls: [
+                {
+                  name: 'invoke_subagent',
+                  args: {
+                    Model: '"inherit"',
+                    Prompt: '"Изучи корень проекта и назови назначение"',
+                    Role: '"Repo Structure Inspector"',
+                    TypeName: '"research"',
+                  },
+                },
+                {
+                  name: 'invoke_subagent',
+                  args: {
+                    Model: '"inherit"',
+                    Prompt: '"Проверь .codex и правила воркфлоу"',
+                    Role: '"Workflow Config Inspector"',
+                    TypeName: '"research"',
+                  },
+                },
+                {
+                  name: 'invoke_subagent',
+                  args: {
+                    Model: '"gemini-3.8-flash-low"',
+                    Prompt: '"Проверь git status -sb и последний коммит"',
+                    Role: '"Git State Checker"',
+                    TypeName: '"self"',
+                  },
+                },
+                {
+                  name: 'manage_subagents',
+                  args: { Action: '"list"' },
+                },
+              ],
+            },
+            {
+              step_index: 2,
+              type: 'GENERIC',
+              status: 'DONE',
+              content: `Created the following subagent:\n{"conversationId":"${CHILD_1}"}`,
+            },
+            {
+              step_index: 3,
+              type: 'GENERIC',
+              status: 'DONE',
+              content: `Created the following subagent:\n{"conversationId":"${CHILD_2}"}`,
+            },
+            {
+              step_index: 4,
+              type: 'GENERIC',
+              status: 'DONE',
+              content: `Created the following subagent:\n{"conversationId":"${CHILD_3}"}`,
+            },
+            {
+              step_index: 5,
+              type: 'GENERIC',
+              status: 'DONE',
+              content: JSON.stringify({
+                subagents: [{ conversationId: CHILD_2, state: 'waiting_for_input' }],
+              }),
+            },
+          ]);
+          await appendFile(
+            parentPath,
+            JSON.stringify({
+              step_index: 6,
+              source: 'SYSTEM',
+              type: 'SYSTEM_MESSAGE',
+              status: 'DONE',
+              created_at: '2026-11-12T22:10:05Z',
+              content: `<SYSTEM_MESSAGE>\n[Message] sender=${CHILD_1} content=Полный отчёт Repo Structure Inspector без усечения.\n</SYSTEM_MESSAGE>`,
+            }) + '\n',
+            'utf8',
+          );
+          emitAcpSubagentCallsWithoutOutput(String(params.sessionId));
+          return { stopReason: 'end_turn', usage: { inputTokens: 1200, outputTokens: 80 } };
+        });
+
+        server.handle('session/load', (params) => {
+          server.notify('session/update', {
+            sessionId: params.sessionId,
+            update: { sessionUpdate: 'user_message_chunk', content: { type: 'text', text: 'Запусти трёх субагентов' } },
+          });
+          emitAcpSubagentCallsWithoutOutput(String(params.sessionId));
+          server.notify('session/update', {
+            sessionId: params.sessionId,
+            update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Готово' } },
+          });
+          return { sessionId: params.sessionId };
+        });
+
+        const { adapter } = setup(server, {
+          dataDir: tempDir,
+          subagentPollMs: 15,
+          subagentWaitingMs: 5000,
+        });
+        const session = await adapter.createSession({
+          cwd: '/work',
+          model: 'gemini-4-argon',
+          effort: 'medium',
+        });
+        const events = collect(session);
+        await until(() => events.some((e) => e.type === 'session.init'), 'session.init');
+
+        session.send('Запусти трёх субагентов');
+        await until(
+          () =>
+            events.some((e) => e.type === 'agent.end' && e.agentId === 'live_sub_1') &&
+            events.some((e) => e.type === 'agent.end' && e.agentId === 'live_sub_2') &&
+            events.some((e) => e.type === 'agent.end' && e.agentId === 'live_sub_3'),
+          'all 3 subagents resolved and completed via parent transcript',
+        );
+
+        // manage_subagents(list) without ACP rawOutput still emitted waiting_for_input for live_sub_2
+        expect(
+          events.some(
+            (e) =>
+              e.type === 'agent.progress' &&
+              e.agentId === 'live_sub_2' &&
+              e.status === 'waiting_for_input',
+          ),
+        ).toBe(true);
+
+        // Verify right-side panel (tree & cards) + Agents Graph end-to-end from live events
+        const hud = events.reduce((s, e) => applyHud(s, e, 10_000), initialHud());
+        expect(hud.agents).toHaveLength(3);
+        expect(hud.agents[0]).toMatchObject({
+          agentId: 'live_sub_1',
+          taskId: CHILD_1,
+          subagentType: 'research',
+          description: 'Repo Structure Inspector',
+          prompt: 'Изучи корень проекта и назови назначение',
+          model: 'gemini-4-argon',
+          reasoningEffort: 'medium',
+          status: 'completed',
+          summary: 'Полный отчёт Repo Structure Inspector без усечения.',
+        });
+        expect(hud.agents[2]).toMatchObject({
+          agentId: 'live_sub_3',
+          taskId: CHILD_3,
+          subagentType: 'self',
+          model: 'gemini-3.8-flash',
+          reasoningEffort: 'low',
+        });
+
+        const treePane = agentsViewPane(hud, 'tree', 'session', {
+          working: false,
+          waiting: false,
+          now: 10_000,
+          selected: 'live_sub_1',
+        });
+        expect(treePane.groups[0]!.agents).toHaveLength(3);
+        expect(treePane.groups[0]!.agents[0]!.modelTag).toBe('argon-4 · medium');
+        expect(treePane.groups[0]!.agents[2]!.modelTag).toBe('flash-3.8 · low');
+        expect(treePane.open?.prompt).toBe('Изучи корень проекта и назови назначение');
+        expect(treePane.open?.meta).toContainEqual({ value: 'gemini-4-argon' });
+        expect(treePane.open?.meta).toContainEqual({ label: 'effort', value: 'medium' });
+
+        const cardsPane = agentsViewPane(hud, 'cards', 'turn', {
+          working: false,
+          waiting: false,
+          now: 10_000,
+        });
+        expect(cardsPane.cardsOf(0)[0]!.kind).toBe('research · argon-4 · medium');
+        expect(cardsPane.cardsOf(0)[0]!.promptExcerpt).toBe('Изучи корень проекта и назови назначение');
+
+        const graphSnap = agentGraphView(hud, { state: 'idle', model: 'gemini-4-argon' });
+        const gModel = graphModel(graphSnap, { now: 10_000, selected: 'live_sub_1', hasSession: true });
+        expect(gModel.nodes).toHaveLength(3);
+        expect(gModel.nodes[0]!.head).toBe('research · argon-4 · medium');
+        expect(gModel.nodes[2]!.head).toBe('self · flash-3.8 · low');
+        expect(gModel.detail?.prompt).toBe('Изучи корень проекта и назови назначение');
+        expect(gModel.detail?.meta).toContainEqual({ value: 'gemini-4-argon' });
+        expect(gModel.detail?.meta).toContainEqual({ label: 'effort', value: 'medium' });
+
+        session.dispose();
+
+        // Also verify loadHistory (which spawns a fresh short-lived agy acp) reconstructs all 3 subagents + transcript metadata when ACP omits rawOutput
+        const serverHist = createFakeAgyServer();
+        serverHist.handle('session/load', (params) => {
+          const sid = String(params.sessionId);
+          serverHist.notify('session/update', {
+            sessionId: sid,
+            update: { sessionUpdate: 'user_message_chunk', content: { type: 'text', text: 'Запусти трёх субагентов' } },
+          });
+          for (const [tcId, typeName, role, prompt, model] of [
+            ['live_sub_1', 'research', 'Repo Structure Inspector', 'Изучи корень проекта и назови назначение', 'inherit'],
+            ['live_sub_2', 'research', 'Workflow Config Inspector', 'Проверь .codex и правила воркфлоу', 'inherit'],
+            ['live_sub_3', 'self', 'Git State Checker', 'Проверь git status -sb и последний коммит', 'gemini-3.8-flash-low'],
+          ] as const) {
+            serverHist.notify('session/update', {
+              sessionId: sid,
+              update: {
+                sessionUpdate: 'tool_call',
+                toolCallId: tcId,
+                name: 'invoke_subagent',
+                kind: 'other',
+                rawInput: { TypeName: typeName, Role: role, Prompt: prompt, Model: model },
+                status: 'completed',
+              },
+            });
+          }
+          serverHist.notify('session/update', {
+            sessionId: sid,
+            update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Готово' } },
+          });
+          return { sessionId: sid };
+        });
+        const { adapter: histAdapter } = setup(serverHist, { dataDir: tempDir });
+        const history = await histAdapter.loadHistory(DEFAULT_SESSION_ID, '/work');
+        const histHud = history.events.reduce((s, e) => applyHud(s, e, 10_000), initialHud());
+        expect(histHud.agents).toHaveLength(3);
+        expect(histHud.agents[0]).toMatchObject({
+          prompt: 'Изучи корень проекта и назови назначение',
+          model: 'gemini-4-argon',
+          reasoningEffort: 'medium',
+          summary: 'Полный отчёт Repo Structure Inspector без усечения.',
+        });
+
+        const md = await histAdapter.agentTranscript(DEFAULT_SESSION_ID, '/work', CHILD_1, '');
+        expect(md).toContain('# Repo Structure Inspector · research');
+        expect(md).toContain('`gemini-4-argon · effort: medium`');
       } finally {
         await rm(tempDir, { recursive: true, force: true });
       }

@@ -60,6 +60,7 @@ import { buildAgyHistory } from './history';
 import { agyContextWindow } from './models';
 import { AgySessionIndex, type AgySessionSettings, type AgyStateStore } from './sessionIndex';
 import {
+  AgyParentToolOutputReader,
   AgyParentTranscriptTailer,
   AgySubagentReader,
   DEFAULT_SUBAGENT_POLL_MS,
@@ -68,8 +69,10 @@ import {
   isValidAgyUuid,
   parseCreatedSubagent,
   parseManagedSubagents,
+  resolveAgySubagentModelEffort,
   withAgySubagentTimelines,
   type AgySubagentMeta,
+  type ManagedSubagentsResult,
 } from './subagents';
 import { mapAgyTool, readAgyMcpServers } from './tools';
 
@@ -119,6 +122,8 @@ const DEFAULT_GRACE_MS = 2000;
 const INTERRUPT_WAIT_MS = 10_000;
 const DEFAULT_WAKEUP_IDLE_MS = 800;
 const SILENT_WAKEUP_WATCH_MS = 15_000;
+const PARENT_TOOL_RESOLVE_TTL_MS = 3_000;
+const PARENT_TOOL_FAST_RETRY_MS = 50;
 /** Тариф аккаунта меняется редко; `session/new` ради него — отдельный процесс `agy acp`. */
 const ACCOUNT_TTL_MS = 10 * 60_000;
 
@@ -276,6 +281,12 @@ export class AntigravityAdapter implements AgentAdapter {
       if (saved?.model) history.model = saved.model;
       if (saved?.permissionMode) history.mode = saved.permissionMode;
       const ctxModel = history.model ?? parseConfig(loaded.result).model?.current;
+      const ctxEffort =
+        saved?.effort ??
+        (() => {
+          const th = parseConfig(loaded.result).thoughtLevel?.current;
+          return th && isEffort(th) ? th : undefined;
+        })();
       history.events = await withAgySubagentTimelines(
         history.events,
         this.config.dataDir,
@@ -284,6 +295,7 @@ export class AntigravityAdapter implements AgentAdapter {
           ...(options.live ? { live: true } : {}),
           ...(options.tasksAlive ? { tasksAlive: true } : {}),
           ...(ctxModel ? { parentModel: ctxModel } : {}),
+          ...(ctxEffort ? { parentEffort: ctxEffort } : {}),
           parentSessionId: sessionId,
           ...(this.config.subagentWaitingMs !== undefined
             ? { waitingThresholdMs: this.config.subagentWaitingMs }
@@ -319,6 +331,8 @@ export class AntigravityAdapter implements AgentAdapter {
     return agySubagentMarkdown(taskId, this.config.dataDir, {
       title: title || saved?.description || taskId.toLowerCase(),
       ...(saved?.agentType ? { agentType: saved.agentType } : {}),
+      ...(saved?.model ? { model: saved.model } : {}),
+      ...(saved?.effort ? { effort: saved.effort } : {}),
       ...(this.config.lang ? { lang: this.config.lang() } : {}),
       mcpServers: this.knownMcpServers(),
     });
@@ -358,6 +372,8 @@ export class AntigravityAdapter implements AgentAdapter {
       ...prev,
       ...(meta.description ? { description: meta.description } : {}),
       ...(meta.agentType ? { agentType: meta.agentType } : {}),
+      ...(meta.model ? { model: meta.model } : {}),
+      ...(meta.effort ? { effort: meta.effort } : {}),
     });
   }
 
@@ -546,8 +562,24 @@ class AgySession implements AgentSession {
   private readonly pendingPermissions = new Map<string, { id: RpcId; toolUseId: string }>();
   private readonly pendingQuestions = new Map<string, { id: RpcId; toolUseId: string; parsed: ParsedElicitation }>();
   private readonly subagentReaders = new Map<string, AgySubagentReader>();
-  private readonly parentToolStarts = new Map<string, { name: string; input: Record<string, unknown> }>();
+  private parentToolSeq = 0;
+  private readonly parentToolStarts = new Map<
+    string,
+    { name: string; input: Record<string, unknown>; seq: number; at?: number }
+  >();
+  private readonly pendingParentToolResolutions: {
+    kind: 'agent' | 'manage';
+    toolUseId: string;
+    seq: number;
+    input: Record<string, unknown>;
+    at?: number;
+    isError: boolean;
+    queuedAt: number;
+  }[] = [];
   private parentTailer: AgyParentTranscriptTailer | undefined;
+  private parentToolReader: AgyParentToolOutputReader | undefined;
+  private parentToolRetryTimer: NodeJS.Timeout | undefined;
+  private transcriptModelFallback: { model: string; effort?: EffortLevel } | undefined;
   private subagentTimer: NodeJS.Timeout | undefined;
   private subagentPollInFlight = false;
   private subagentPollQueued = false;
@@ -1045,6 +1077,11 @@ class AgySession implements AgentSession {
         this.permissionMode = permissionModeOf(this.serverMode);
       }
       await this.syncParentTailer();
+      if (this.parentToolReader) {
+        const toolSnap = await this.parentToolReader.syncToEnd();
+        if (this.closed) return;
+        if (toolSnap.modelSettings) this.transcriptModelFallback = toolSnap.modelSettings;
+      }
       this.loading = false;
       readyDeferred.resolve();
     } catch (error) {
@@ -1118,6 +1155,12 @@ class AgySession implements AgentSession {
     if (tailSnap.maxStepIndex > this.lastStepIndex) {
       this.lastStepIndex = tailSnap.maxStepIndex;
       if (tailSnap.usedTokens !== undefined) this.usedTokens = tailSnap.usedTokens;
+    }
+    this.parentToolReader = new AgyParentToolOutputReader(sessionId, this.config0.dataDir);
+    const toolSnap = await this.parentToolReader.syncToEnd();
+    if (this.closed) return;
+    if (toolSnap.modelSettings) {
+      this.transcriptModelFallback = toolSnap.modelSettings;
     }
     const activeModel = this.config.model?.current ?? requestedModel;
     if (this.usedTokens > 0 || (activeModel && agyContextWindow(activeModel) !== undefined)) {
@@ -1602,6 +1645,8 @@ class AgySession implements AgentSession {
     this.stopSubagentPoller();
     this.subagentReaders.clear();
     this.parentToolStarts.clear();
+    this.pendingParentToolResolutions.length = 0;
+    this.parentToolReader?.clearUnclaimed();
     this.parentTailer?.discardOpenTurn();
     this.queue.length = 0;
     this.turn?.done.resolve();
@@ -1643,6 +1688,7 @@ class AgySession implements AgentSession {
 
   private shouldPollSubagents(): boolean {
     if (this.closed) return false;
+    if (this.pendingParentToolResolutions.length > 0) return true;
     if (this.hasActiveSubagents()) return true;
     if (this.parentTailer?.hasOpenTurn()) return true;
     if (Date.now() < this.silentWatchUntil) return true;
@@ -1662,9 +1708,23 @@ class AgySession implements AgentSession {
     }
   }
 
+  private scheduleFastParentToolRetry(): void {
+    if (this.closed || this.parentToolRetryTimer || this.pendingParentToolResolutions.length === 0) {
+      return;
+    }
+    this.parentToolRetryTimer = setTimeout(() => {
+      this.parentToolRetryTimer = undefined;
+      if (!this.closed) void this.pollSubagentsOnce();
+    }, PARENT_TOOL_FAST_RETRY_MS);
+    this.parentToolRetryTimer.unref?.();
+  }
+
   private refreshSubagentPoller(): void {
     if (this.shouldPollSubagents()) {
       this.ensureSubagentPoller(false);
+      if (this.pendingParentToolResolutions.length > 0) {
+        this.scheduleFastParentToolRetry();
+      }
     } else {
       this.stopSubagentPoller();
     }
@@ -1675,7 +1735,187 @@ class AgySession implements AgentSession {
       clearInterval(this.subagentTimer);
       this.subagentTimer = undefined;
     }
+    if (this.parentToolRetryTimer) {
+      clearTimeout(this.parentToolRetryTimer);
+      this.parentToolRetryTimer = undefined;
+    }
     this.subagentPollQueued = false;
+  }
+
+  private currentParentModel(): string | undefined {
+    return this.config.model?.current || this.transcriptModelFallback?.model;
+  }
+
+  private currentParentEffort(): EffortLevel | undefined {
+    const th = this.config.thoughtLevel?.current;
+    if (th && isEffort(th)) return th;
+    if (this.config.thoughtLevel && this.effort) return this.effort;
+    return this.transcriptModelFallback?.effort;
+  }
+
+  private pickInputStr(input: Record<string, unknown>, ...keys: string[]): string | undefined {
+    for (const k of keys) {
+      const v = input[k];
+      if (typeof v === 'string' && v.trim()) return v.trim();
+    }
+    return undefined;
+  }
+
+  private launchSubagentReader(
+    toolUseId: string,
+    childUuid: string,
+    input: Record<string, unknown>,
+    startedAt: number | undefined,
+  ): void {
+    const normUuid = childUuid.toLowerCase();
+    if (this.subagentReaders.has(normUuid)) return;
+
+    const subagentType = this.pickInputStr(input, 'subagent_type', 'TypeName');
+    const description =
+      this.pickInputStr(input, 'description', 'Role') ?? subagentType ?? 'subagent';
+    const prompt = this.pickInputStr(input, 'prompt', 'Prompt');
+    const rawModel = this.pickInputStr(input, 'model', 'Model');
+    const resolved = resolveAgySubagentModelEffort(
+      rawModel,
+      this.currentParentModel(),
+      this.currentParentEffort(),
+    );
+
+    this.onSubagentMeta(normUuid, {
+      description,
+      ...(subagentType ? { agentType: subagentType } : {}),
+      ...(resolved.model ? { model: resolved.model } : {}),
+      ...(resolved.reasoningEffort ? { effort: resolved.reasoningEffort } : {}),
+    });
+
+    const reportSummary = this.parentToolReader?.reportOf(normUuid);
+    const reader = new AgySubagentReader({
+      agentId: toolUseId,
+      childUuid: normUuid,
+      ...(this.config0.dataDir ? { dataDir: this.config0.dataDir } : {}),
+      mcpServers: this.mcpServers,
+      ...(this.sessionId ? { parentSessionId: this.sessionId } : {}),
+      description,
+      ...(subagentType ? { subagentType } : {}),
+      ...(prompt ? { prompt } : {}),
+      ...(resolved.model ? { model: resolved.model } : {}),
+      ...(resolved.reasoningEffort ? { reasoningEffort: resolved.reasoningEffort } : {}),
+      ...(reportSummary ? { reportSummary } : {}),
+      ...(startedAt !== undefined ? { startedAt } : {}),
+      waitingThresholdMs: this.subagentWaitingMs,
+      onSubagentMeta: (uuid, meta) => this.onSubagentMeta(uuid, meta),
+    });
+    this.subagentReaders.set(normUuid, reader);
+    this.emit(reader.buildStartEvent(startedAt));
+    this.silentWatchUntil = Math.max(this.silentWatchUntil, Date.now() + SILENT_WAKEUP_WATCH_MS);
+  }
+
+  private applyManagedSubagents(managed: ManagedSubagentsResult, at: number | undefined): void {
+    if (managed.action === 'list') {
+      for (const id of managed.waitingIds) {
+        for (const reader of this.subagentReaders.values()) {
+          const evs = reader.markWaitingByUuid(id, at);
+          if (evs.length > 0) this.emitAll(evs);
+        }
+      }
+    } else if (managed.action === 'kill_all') {
+      for (const reader of this.subagentReaders.values()) {
+        if (!reader.isStopped()) {
+          this.emitAll(reader.stopAll(at));
+        }
+      }
+      this.refreshSubagentPoller();
+    } else if (managed.action === 'kill') {
+      for (const id of managed.killedIds) {
+        for (const reader of this.subagentReaders.values()) {
+          const evs = reader.stopByUuid(id, at);
+          if (evs.length > 0) this.emitAll(evs);
+        }
+      }
+      this.refreshSubagentPoller();
+    }
+  }
+
+  private async pollParentToolOutputs(): Promise<void> {
+    if (!this.parentToolReader || this.closed) return;
+    if (this.pendingParentToolResolutions.length === 0 && this.subagentReaders.size === 0) {
+      return;
+    }
+
+    const polled = await this.parentToolReader.poll();
+    if (this.closed) return;
+    if (polled.modelSettings) {
+      this.transcriptModelFallback = polled.modelSettings;
+    }
+    for (const rep of polled.freshReports) {
+      this.subagentReaders.get(rep.childUuid)?.noteParentReport(rep.summary);
+    }
+
+    if (this.pendingParentToolResolutions.length === 0) return;
+
+    const now = Date.now();
+    this.pendingParentToolResolutions.sort((a, b) => a.seq - b.seq);
+    const remaining: typeof this.pendingParentToolResolutions = [];
+
+    for (const item of this.pendingParentToolResolutions) {
+      if (this.closed) return;
+      if (item.kind === 'agent') {
+        const query = {
+          subagentType: this.pickInputStr(item.input, 'subagent_type', 'TypeName'),
+          description: this.pickInputStr(item.input, 'description', 'Role'),
+          prompt: this.pickInputStr(item.input, 'prompt', 'Prompt'),
+        };
+        const earlierAgentInputs = [
+          ...[...this.parentToolStarts.values()]
+            .filter((s) => s.name === 'Agent' && s.seq < item.seq)
+            .map((s) => s.input),
+          ...remaining
+            .filter((p) => p.kind === 'agent' && p.seq < item.seq)
+            .map((p) => p.input),
+        ];
+        const sameEarlier = earlierAgentInputs.some(
+          (inp) =>
+            this.pickInputStr(inp, 'subagent_type', 'TypeName') === query.subagentType &&
+            this.pickInputStr(inp, 'description', 'Role') === query.description &&
+            this.pickInputStr(inp, 'prompt', 'Prompt') === query.prompt,
+        );
+        const matched = sameEarlier
+          ? undefined
+          : this.parentToolReader.claimInvoke(query, earlierAgentInputs.length === 0);
+        if (matched) {
+          if (!item.isError && !matched.isError && matched.childUuid) {
+            this.launchSubagentReader(
+              item.toolUseId,
+              matched.childUuid,
+              item.input,
+              item.at ?? matched.at,
+            );
+          }
+          continue;
+        }
+      } else {
+        const action = this.pickInputStr(item.input, 'Action', 'action')?.toLowerCase();
+        const hasEarlierManage =
+          [...this.parentToolStarts.values()].some(
+            (s) => s.name === 'manage_subagents' && s.seq < item.seq,
+          ) || remaining.some((p) => p.kind === 'manage' && p.seq < item.seq);
+        const matched = this.parentToolReader.claimManage(action, !hasEarlierManage);
+        if (matched) {
+          if (!item.isError && !matched.isError) {
+            const managed = parseManagedSubagents(item.input, matched.content, false);
+            this.applyManagedSubagents(managed, item.at ?? matched.at);
+          }
+          continue;
+        }
+      }
+
+      if (now - item.queuedAt < PARENT_TOOL_RESOLVE_TTL_MS) {
+        remaining.push(item);
+      }
+    }
+
+    this.pendingParentToolResolutions.length = 0;
+    this.pendingParentToolResolutions.push(...remaining);
   }
 
   private async pollSubagentsOnce(): Promise<void> {
@@ -1689,6 +1929,9 @@ class AgySession implements AgentSession {
     }
     this.subagentPollInFlight = true;
     try {
+      await this.pollParentToolOutputs();
+      if (this.closed) return;
+
       let sawAgentEnd = false;
       for (const reader of this.subagentReaders.values()) {
         if (this.closed) break;
@@ -1766,7 +2009,12 @@ class AgySession implements AgentSession {
   private handleParentToolEvent(event: AgentEvent): void {
     if (this.closed) return;
     if (event.type === 'tool.start' && !event.agentId) {
-      this.parentToolStarts.set(event.toolUseId, { name: event.name, input: event.input });
+      this.parentToolStarts.set(event.toolUseId, {
+        name: event.name,
+        input: event.input,
+        seq: ++this.parentToolSeq,
+        ...(event.at !== undefined ? { at: event.at } : {}),
+      });
       return;
     }
     if (event.type !== 'tool.result' || event.agentId) return;
@@ -1774,66 +2022,47 @@ class AgySession implements AgentSession {
     this.parentToolStarts.delete(event.toolUseId);
     if (!started) return;
 
-    const { name, input } = started;
-    if (name === 'Agent' && !event.isError) {
+    const { name, input, seq } = started;
+    const startedAt = started.at ?? event.at;
+    if (name === 'Agent') {
+      if (event.isError) {
+        this.pendingParentToolResolutions.push({
+          kind: 'agent',
+          toolUseId: event.toolUseId,
+          seq,
+          input,
+          ...(startedAt !== undefined ? { at: startedAt } : {}),
+          isError: true,
+          queuedAt: Date.now(),
+        });
+        this.ensureSubagentPoller(true);
+        return;
+      }
       const childUuid = parseCreatedSubagent(event.content);
-      if (!childUuid) return;
-      const subagentType =
-        typeof input['subagent_type'] === 'string' && input['subagent_type'].trim()
-          ? input['subagent_type'].trim()
-          : undefined;
-      const description =
-        typeof input['description'] === 'string' && input['description'].trim()
-          ? input['description'].trim()
-          : (subagentType ?? 'subagent');
-      const prompt =
-        typeof input['prompt'] === 'string' && input['prompt'].trim()
-          ? input['prompt'].trim()
-          : undefined;
-      const model =
-        typeof input['model'] === 'string' && input['model'].trim()
-          ? input['model'].trim()
-          : undefined;
-
-      this.onSubagentMeta(childUuid, {
-        description,
-        ...(subagentType ? { agentType: subagentType } : {}),
+      if (childUuid) {
+        this.parentToolReader?.claimByChildUuid(childUuid);
+        this.launchSubagentReader(event.toolUseId, childUuid, input, startedAt);
+        this.ensureSubagentPoller(true);
+        return;
+      }
+      // В реальном `agy acp` `tool_call_update` для `invoke_subagent` не содержит `rawOutput`:
+      // `conversationId` дочитывается из родительского `transcript.jsonl` (`GENERIC`).
+      this.pendingParentToolResolutions.push({
+        kind: 'agent',
+        toolUseId: event.toolUseId,
+        seq,
+        input,
+        ...(startedAt !== undefined ? { at: startedAt } : {}),
+        isError: false,
+        queuedAt: Date.now(),
       });
-
-      const reader = new AgySubagentReader({
-        agentId: event.toolUseId,
-        childUuid,
-        ...(this.config0.dataDir ? { dataDir: this.config0.dataDir } : {}),
-        mcpServers: this.mcpServers,
-        ...(this.sessionId ? { parentSessionId: this.sessionId } : {}),
-        description,
-        ...(subagentType ? { subagentType } : {}),
-        ...(prompt ? { prompt } : {}),
-        ...(model ? { model } : {}),
-        ...(event.at !== undefined ? { startedAt: event.at } : {}),
-        waitingThresholdMs: this.subagentWaitingMs,
-        onSubagentMeta: (uuid, meta) => this.onSubagentMeta(uuid, meta),
-      });
-      this.subagentReaders.set(childUuid, reader);
-      this.emit(reader.buildStartEvent(event.at));
-      this.silentWatchUntil = Math.max(this.silentWatchUntil, Date.now() + SILENT_WAKEUP_WATCH_MS);
       this.ensureSubagentPoller(true);
       return;
     }
 
     if (name === 'send_message' && !event.isError) {
-      const recipient =
-        typeof input['Recipient'] === 'string'
-          ? input['Recipient'].trim()
-          : typeof input['recipient'] === 'string'
-            ? input['recipient'].trim()
-            : '';
-      const msg =
-        typeof input['Message'] === 'string' && input['Message'].trim()
-          ? input['Message'].trim()
-          : typeof input['message'] === 'string' && input['message'].trim()
-            ? input['message'].trim()
-            : undefined;
+      const recipient = this.pickInputStr(input, 'Recipient', 'recipient') ?? '';
+      const msg = this.pickInputStr(input, 'Message', 'message');
       if (isValidAgyUuid(recipient)) {
         for (const reader of this.subagentReaders.values()) {
           const reopened = reader.reopenByUuid(recipient, event.at, msg);
@@ -1852,30 +2081,28 @@ class AgySession implements AgentSession {
     }
 
     if (name === 'manage_subagents') {
-      const managed = parseManagedSubagents(input, event.content, event.isError);
-      if (managed.action === 'list') {
-        for (const id of managed.waitingIds) {
-          for (const reader of this.subagentReaders.values()) {
-            const evs = reader.markWaitingByUuid(id, event.at);
-            if (evs.length > 0) this.emitAll(evs);
-          }
-        }
-      } else if (managed.action === 'kill_all') {
-        for (const reader of this.subagentReaders.values()) {
-          if (!reader.isStopped()) {
-            this.emitAll(reader.stopAll(event.at));
-          }
-        }
-        this.refreshSubagentPoller();
-      } else if (managed.action === 'kill') {
-        for (const id of managed.killedIds) {
-          for (const reader of this.subagentReaders.values()) {
-            const evs = reader.stopByUuid(id, event.at);
-            if (evs.length > 0) this.emitAll(evs);
-          }
-        }
-        this.refreshSubagentPoller();
+      if (event.content.trim() !== '' || event.isError) {
+        const managed = parseManagedSubagents(input, event.content, event.isError);
+        this.applyManagedSubagents(managed, event.at);
+        return;
       }
+      const immediate = parseManagedSubagents(input, '', false);
+      if (
+        immediate.action === 'kill_all' ||
+        (immediate.action === 'kill' && immediate.killedIds.length > 0)
+      ) {
+        this.applyManagedSubagents(immediate, event.at);
+      }
+      this.pendingParentToolResolutions.push({
+        kind: 'manage',
+        toolUseId: event.toolUseId,
+        seq,
+        input,
+        ...(event.at !== undefined ? { at: event.at } : {}),
+        isError: false,
+        queuedAt: Date.now(),
+      });
+      this.ensureSubagentPoller(true);
     }
   }
 
