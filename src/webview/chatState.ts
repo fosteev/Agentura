@@ -768,7 +768,10 @@ function retryRow(s: ChatState, message: string): ChatState {
   if (last?.kind === 'sys' && last.tag === 'retry') {
     return replaceAt(s, i, { ...last, text: [message] });
   }
-  return push(s, { kind: 'sys', tag: 'retry', text: [message] });
+  const closed = s.rows.map((r): FeedRow =>
+    r.kind === 'text' && r.streaming ? { ...r, streaming: false } : r,
+  );
+  return push({ ...s, rows: closed }, { kind: 'sys', tag: 'retry', text: [message] });
 }
 
 function failRow(

@@ -104,7 +104,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           if (m.key === 'sessionList.view') void this.setListView(m.value);
           break;
         case 'limits.refresh':
-          void this.refreshUsage();
+          void this.refreshUsage(true);
           break;
         case 'engine.login':
           void this.openLogin(m.engine);
@@ -266,7 +266,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   }
 
   /** Кнопка ↻ в боковой панели и команда «Обновить лимиты». Claude, Codex и Antigravity — параллельно. */
-  async refreshUsage(): Promise<void> {
+  async refreshUsage(force = false): Promise<void> {
     const { codexLimits, agyQuota, antigravityEngine } = this.engines;
     // скрытые в панели движки не опрашиваем; Claude опрашивается всегда — его лимиты нужны и шапке чата
     const hidden = readSettings(vscode.workspace.getConfiguration('agentura'))['sidebar.limitsHidden'];
@@ -274,7 +274,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     // agy — только установленный: `AgyQuotaService` ищет его громко, и без agy каждый опрос писал бы «не найден»
     const agy = hidden.includes('antigravity')
       ? undefined
-      : antigravityEngine.available().then((ok) => (ok ? agyQuota.refresh() : undefined));
+      : antigravityEngine.available().then((ok) => (ok ? agyQuota.refresh(force) : undefined));
     const others = Promise.allSettled([codex, agy]).then(() => this.pushEngineLimits());
     const snap = await this.usage.refresh();
     if (snap.error) this.log.warn(`Лимиты не обновились: ${snap.error}`);

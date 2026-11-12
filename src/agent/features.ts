@@ -104,7 +104,8 @@ export const CODEX_FEATURES: Readonly<ProviderFeatures> = {
 
 /**
  * Antigravity (`agy acp`): режимы есть (`default`, `accept-edits`, `plan`), вопросы (`ask_question` через
- * `elicitation/create`), картинки, compact и окно контекста; субагентов и плана нет; приборов нет (стоимости нет).
+ * `elicitation/create`), картинки, compact, окно контекста, живой граф и транскрипты субагентов
+ * (`agentStop: false` — точечный останов только у модели через `manage_subagents`); плана и цены нет.
  */
 export const ANTIGRAVITY_FEATURES: Readonly<ProviderFeatures> = {
   nativeSettings: false,
@@ -113,9 +114,9 @@ export const ANTIGRAVITY_FEATURES: Readonly<ProviderFeatures> = {
   autoCompact: false,
   context: true,
   cost: false,
-  subagents: false,
+  subagents: true,
   agentStop: false,
-  agentTranscript: false,
+  agentTranscript: true,
   plan: false,
   questions: true,
   images: true,

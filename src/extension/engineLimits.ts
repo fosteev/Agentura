@@ -23,24 +23,24 @@ export function summarizeCodex(snap: CodexLimitsSnapshot, version?: string): Eng
 
 /**
  * Квота agy → сводка. Остаток превращаем в «израсходовано» (`100 − remaining`). Нет исполняемого файла — `missing`;
- * ни разу не получали — `loading`; запуск удался, а строк нет (agy напечатал «not logged in» или формат не узнали) —
- * `signedOut`. Email у `/usage` нет.
+ * состояние и текст ошибки идут из `AgyQuotaService`, при `error` прежние окна сохраняются. Email у `/usage` нет.
  */
 export function summarizeAgy(snap: AgyQuotaSnapshot, installed: boolean, version?: string): EngineLimitsSummary {
-  const state = !installed ? 'missing' : snap.updatedAt === 0 ? 'loading' : snap.rows.length === 0 ? 'signedOut' : 'ok';
+  const state = !installed ? 'missing' : snap.state;
+  const showWindows = state === 'ok' || state === 'error';
   return {
     engine: 'antigravity',
     state,
     ...(version ? { version } : {}),
-    windows:
-      state === 'ok'
-        ? snap.rows.map((r) => ({
-            kind: 'model' as const,
-            name: r.label,
-            percent: Math.max(0, Math.min(100, 100 - r.remaining)),
-            ...(r.resetsAt !== undefined ? { resetsAt: r.resetsAt } : {}),
-          }))
-        : [],
+    windows: showWindows
+      ? snap.rows.map((r) => ({
+          kind: 'model' as const,
+          name: r.label,
+          percent: Math.max(0, Math.min(100, 100 - r.remaining)),
+          ...(r.resetsAt !== undefined ? { resetsAt: r.resetsAt } : {}),
+        }))
+      : [],
     updatedAt: snap.updatedAt,
+    ...(state === 'error' && snap.error ? { error: snap.error } : {}),
   };
 }

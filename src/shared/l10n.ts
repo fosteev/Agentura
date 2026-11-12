@@ -16,6 +16,39 @@ function ruPlural(n: number, one: string, few: string, many: string): string {
   return many;
 }
 
+/**
+ * Компактная суть сетевого сбоя из сырой строки ошибки Go/HTTP (`agy acp`):
+ * без полных URL `https://...` и без локальных/удалённых IP и портов `read tcp 192.168...->...`.
+ */
+export function compactApiRetryDetail(detail?: string): string | undefined {
+  if (typeof detail !== 'string' || !detail) return undefined;
+  const raw = detail.trim();
+  if (!raw) return undefined;
+
+  const statusMatch =
+    /\b(?:HTTP(?:\/\d(?:\.\d)?)?|Error|status(?:\s+code)?):?\s+(408|429|5\d\d)\b/i.exec(raw) ??
+    /^(408|429|5\d\d)\b/.exec(raw);
+  if (statusMatch) return `HTTP ${statusMatch[1]}`;
+
+  let s = raw
+    .replace(/^(?:Get|Post|Put|Patch|Delete|Head|Options)\s+(?:"https?:\/\/[^"]*"|https?:\/\/\S+):?\s*/i, '')
+    .replace(/"https?:\/\/[^"]*"|https?:\/\/\S+/gi, '')
+    .replace(/\b(?:read|write|dial)\s+(?:tcp[46]?|udp[46]?)(?:\s+\S+)?:\s*/gi, '')
+    .replace(/\blookup\s+\S+(?:\s+on\s+\S+)?:\s*/gi, '')
+    .replace(/\b\d{1,3}(?:\.\d{1,3}){3}:\d+(?:->\d{1,3}(?:\.\d{1,3}){3}:\d+)?\b/g, '')
+    .replace(/\b(context deadline exceeded)\s*\([^)]*\)/gi, '$1');
+
+  let prev = '';
+  while (s !== prev) {
+    prev = s;
+    s = s.replace(/^(?:net\/http|http2|tls|read|write|connect|connectex|wsarecv|wsasend|recvfrom):\s*/i, '');
+  }
+
+  s = s.replace(/\s+/g, ' ').replace(/^[:;\s-]+|[:;\s-]+$/g, '');
+  if (!s) return undefined;
+  return s.length > 80 ? `${s.slice(0, 79).trimEnd()}…` : s;
+}
+
 const ru = {
   /** Локаль для дат и чисел (`toLocaleString`). */
   locale: 'ru',
@@ -192,6 +225,10 @@ const ru = {
   // повтор запроса к API (плашка в ленте)
   apiRetry: (attempt: number, max: number, status?: number) =>
     `Повтор запроса к API ${attempt}/${max}${status ? ` (HTTP ${status})` : ''}`,
+  agyApiRetry: (attempt: number, detail?: string) => {
+    const info = compactApiRetryDetail(detail);
+    return `Повтор запроса к API (попытка ${attempt})${info ? ` · ${info}` : ''}`;
+  },
 
   // поиск движка
   engineNotFound:
@@ -455,6 +492,10 @@ const en: HostUi = {
 
   apiRetry: (attempt, max, status) =>
     `Retrying API request ${attempt}/${max}${status ? ` (HTTP ${status})` : ''}`,
+  agyApiRetry: (attempt, detail) => {
+    const info = compactApiRetryDetail(detail);
+    return `Retrying API request (attempt ${attempt})${info ? ` · ${info}` : ''}`;
+  },
 
   engineNotFound:
     'Claude Code (claude) not found. Install it and sign in (claude → /login), or set the path in agentura.claudeExecutable.',

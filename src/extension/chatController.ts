@@ -123,7 +123,7 @@ export interface ChatDeps {
   /** Лимиты подписки (этап 4): `refresh` ограничен кулдауном сервиса, ответ уходит в webview. */
   usage?: { refresh(): Promise<{ windows: LimitWindow[]; updatedAt: number; error?: string }> };
   /** Квота Antigravity: сервис сам ограничивает частоту запусков `agy -p "/usage"`. */
-  agyQuota?: { refresh(): Promise<{ rows: QuotaRow[]; updatedAt: number }> };
+  agyQuota?: { refresh(force?: boolean): Promise<{ rows: QuotaRow[]; updatedAt: number; error?: string }> };
   /** Окна из `rate_limit_event` движка — запас для `LimitsSource`. */
   observeLimits?(windows: LimitWindow[]): void;
   findFiles(query: string): Promise<FileHit[]>;
@@ -810,6 +810,18 @@ export class ChatController {
           deps.openExternal?.(m.url);
           return;
         }
+        if (/^conversation:/i.test(m.url)) {
+          const conv =
+            /^conversation:\/\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/?$/i.exec(
+              m.url,
+            );
+          if (!conv) {
+            this.log.warn(`ссылка не открыта: ${m.url}`);
+            return;
+          }
+          await deps.openSession?.(conv[1]!.toLowerCase(), 'antigravity');
+          return;
+        }
         let path: string;
         try {
           path = decodeURIComponent(m.url);
@@ -889,7 +901,7 @@ export class ChatController {
         return;
       }
       case 'limits.refresh':
-        await this.refreshLimits();
+        await this.refreshLimits(true);
         return;
       case 'log.show':
         deps.showLogs?.();
@@ -1558,14 +1570,19 @@ export class ChatController {
   }
 
   /** Лимиты подписки → webview (`limits.update`). Не чаще кулдауна `UsageService`. */
-  private async refreshLimits(): Promise<void> {
+  private async refreshLimits(force = false): Promise<void> {
     const { usage, post, agyQuota } = this.deps;
     if (this.engineProvider === 'antigravity') {
       // квота Antigravity вместо лимитов Claude: у agy своих окон 5ч/неделя нет
       if (!agyQuota) return;
       try {
-        const snap = await agyQuota.refresh();
-        post({ type: 'quota.update', rows: snap.rows, updatedAt: snap.updatedAt });
+        const snap = await (force ? agyQuota.refresh(true) : agyQuota.refresh());
+        post({
+          type: 'quota.update',
+          rows: snap.rows,
+          updatedAt: snap.updatedAt,
+          ...(snap.error ? { error: snap.error } : {}),
+        });
       } catch (e) {
         this.log.warn(`квота agy: ${String(e)}`);
       }

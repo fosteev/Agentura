@@ -98,8 +98,8 @@ export const limits = signal<{
   updatedAt: number;
   error?: string;
 }>({ windows: [], updatedAt: 0 });
-/** Квота Antigravity (`quota.update`): пусто — не получена или не разобрана, HUD ничего не рисует. */
-export const quota = signal<{ rows: QuotaRow[]; updatedAt: number }>({ rows: [], updatedAt: 0 });
+/** Квота Antigravity (`quota.update`): пусто без `error` — не получена или не разобрана, HUD ничего не рисует. */
+export const quota = signal<{ rows: QuotaRow[]; updatedAt: number; error?: string }>({ rows: [], updatedAt: 0 });
 export const capabilities = signal<{ models: ModelOption[]; commands: CommandOption[] }>({
   models: [],
   commands: [],
@@ -455,7 +455,11 @@ export function handleHostMessage(m: ToWebview): void {
       };
       break;
     case 'quota.update':
-      quota.value = { rows: m.rows, updatedAt: m.updatedAt };
+      quota.value = {
+        rows: m.rows.length || !m.error ? m.rows : quota.value.rows,
+        updatedAt: m.updatedAt,
+        ...(m.error ? { error: m.error } : {}),
+      };
       break;
     case 'capabilities':
       capabilities.value = { models: m.models, commands: m.commands };

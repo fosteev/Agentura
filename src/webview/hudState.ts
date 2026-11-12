@@ -234,21 +234,36 @@ export function applyHud(s: HudState, e: AgentEvent, now = Date.now()): HudState
           background: e.background,
           startedAt: e.at ?? now,
         }),
-        (a) => ({
-          ...a,
-          taskId: e.taskId,
-          description: e.description,
-          taskType: e.taskType,
-          background: e.background,
-          ...(e.subagentType ? { subagentType: e.subagentType } : {}),
-          ...(e.parentAgentId ? { parentAgentId: e.parentAgentId } : {}),
-          ...(e.prompt ? { prompt: e.prompt } : {}),
-          ...(e.model ? { model: e.model } : {}),
-          ...(e.reasoningEffort ? { reasoningEffort: e.reasoningEffort } : {}),
-          ...(e.launchRecord !== undefined ? { launchRecord: e.launchRecord ?? undefined } : {}),
-        }),
+        (a) => {
+          const { endedAt: _ended, summary: _sum, ...rest } = a;
+          void _ended;
+          void _sum;
+          return {
+            ...rest,
+            status: 'running',
+            taskId: e.taskId,
+            description: e.description,
+            taskType: e.taskType,
+            background: e.background,
+            ...(e.subagentType ? { subagentType: e.subagentType } : {}),
+            ...(e.parentAgentId ? { parentAgentId: e.parentAgentId } : {}),
+            ...(e.prompt ? { prompt: e.prompt } : {}),
+            ...(e.model ? { model: e.model } : {}),
+            ...(e.reasoningEffort ? { reasoningEffort: e.reasoningEffort } : {}),
+            ...(e.launchRecord !== undefined ? { launchRecord: e.launchRecord ?? undefined } : {}),
+          };
+        },
       );
-    case 'agent.progress':
+    case 'agent.progress': {
+      const waitingDetail =
+        e.status === 'waiting_for_input'
+          ? e.description?.trim() || e.lastToolName?.trim() || 'waiting_for_input'
+          : undefined;
+      const lastTool = waitingDetail
+        ? waitingDetail.startsWith('⏳')
+          ? waitingDetail
+          : `⏳ ${waitingDetail}`
+        : e.lastToolName;
       return updateAgent(
         s,
         e.agentId,
@@ -259,9 +274,10 @@ export function applyHud(s: HudState, e: AgentEvent, now = Date.now()): HudState
           ...(e.totalTokens !== undefined ? { tokens: e.totalTokens } : {}),
           ...(e.toolUses !== undefined ? { toolUses: e.toolUses } : {}),
           ...(e.durationMs !== undefined ? { durationMs: e.durationMs } : {}),
-          ...(e.lastToolName ? { lastTool: e.lastToolName } : {}),
+          ...(lastTool ? { lastTool } : {}),
         }),
       );
+    }
     case 'agent.end':
       // конец задачи, начала которой нет (старт отрезан `maxTurns`, старый транскрипт): узел без
       // типа и описания стал бы фантомным «субагентом» в карте и бейдже — пропускаем

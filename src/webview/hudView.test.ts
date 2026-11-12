@@ -360,4 +360,38 @@ describe('quotaView (квота Antigravity)', () => {
   it('окно уже сбросилось — строка не показывается', () => {
     expect(quotaView([{ label: 'Gemini', remaining: 5, resetsAt: 1000 }], 2000)).toEqual([]);
   });
+
+  it('именные пулы Gemini (Argon, Carbon) не схлопываются в общий Gemini', () => {
+    const rows = [
+      { label: 'Gemini 7д', remaining: 95, resetsAt: 10_000, window: 'weekly' as const },
+      { label: 'Gemini 4 Argon 7д', remaining: 70, resetsAt: 10_000, window: 'weekly' as const },
+      { label: 'Gemini 4 Carbon 7д', remaining: 40, resetsAt: 10_000, window: 'weekly' as const },
+      { label: 'Gemini 4 Carbon 5ч', remaining: 55, resetsAt: 5_000, window: 'fiveHour' as const },
+    ];
+    const items = quotaView(rows, 0);
+    expect(items.map((i) => [i.label, i.meter.percent])).toEqual([
+      ['Gemini', 5],
+      ['Argon', 30],
+      ['Carbon', 60],
+    ]);
+  });
+
+  it('при сбое обновления добавляет error в тултип активных колец, а без колец отдаёт диагностический индикатор', () => {
+    const err = 'Eligibility check failed: not available in your location';
+    const withRings = quotaView([{ label: 'Gemini 7д', remaining: 80, resetsAt: 10_000, window: 'weekly' }], 0, err);
+    expect(withRings).toHaveLength(1);
+    expect(withRings[0]!.label).toBe('Gemini');
+    expect(withRings[0]!.meter.percent).toBe(20);
+    expect(withRings[0]!.title).toContain('80%');
+    expect(withRings[0]!.title).toContain(err);
+
+    const coldError = quotaView([], 0, err);
+    expect(coldError).toHaveLength(1);
+    expect(coldError[0]).toMatchObject({
+      label: 'agy !',
+      staleError: true,
+      meter: { level: 'lim-warn' },
+    });
+    expect(coldError[0]!.title).toContain(err);
+  });
 });

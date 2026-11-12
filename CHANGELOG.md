@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.23.0 — 2026-11-13
+
+### Added
+
+- **Antigravity ACP (`agy acp`), subagents graph and `/compact`.** Native ACP sessions (`agy >= 1.5.0`, standard `1.5.6+`) with live permissions, interactive questions (`ask_question`), slash-command autocomplete (`/`), context window gauge (`1M` Gemini, `200k` Claude, `128k` GPT-OSS) with instant recalculation on model switch, and manual `/compact`. Child subagents (`invoke_subagent`) render in `AgentGroup`, the **agents** tab and `AgentsGraph` (nested subagents, background bash tasks, `waiting_for_input` detection, `send_message` reopening, history reconstruction, read-only Markdown transcripts and clickable `conversation://<uuid>` links), and inherit auto-approval in `bypassPermissions` via `agy acp --dangerously-skip-permissions` with transparent `session/resume` rotation.
+- **Antigravity MCP chips and `/usage` quota diagnostics.** Eager and lazy MCP calls resolve full server chips against `<dataDir>/mcp`, orchestration tools get dedicated feed labels, and `agy -p "/usage"` keeps dedicated model pools (`Gemini 4 Argon`, `Gemini 4 Carbon`) separate from general `Gemini`, preserving cached rings and surfacing `Eligibility check failed` / network errors with manual refresh.
+- **MCP tab search and server details** across supported engines, plus opening bound Jira issues directly from session rows and recording Codex agent launches.
+
+### Fixed
+
+- **Antigravity transient API retries** (`⚠ API error (attempt N)`) collapse into compact `api_retry` rows instead of merging into the assistant reply text, `\r` spinner frames no longer corrupt `agy models` / `/usage` parsing, late server titles (`session_info_update`) update after turn completion, and server-side `auto` mode is preserved on resume.
+- **Empty Antigravity and Cursor tabs** initialize cleanly without stale state, and the composer agent menu layout stays aligned.
+
 ## 0.22.0 — 2026-11-07
 
 ### Added

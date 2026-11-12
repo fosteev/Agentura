@@ -1877,12 +1877,12 @@ function Meters({
   // Этот виджет включает Claude cache TTL; Codex usage показан в итогах ходов, лимиты — в sidebar.
   // Исключение — квота Antigravity (`/usage`): недельные окна семейств моделей, пока она получена и разобрана.
   if (!features.value.cost) {
-    const items = provider.value === 'antigravity' ? quotaView(quota.value.rows, Date.now()) : [];
+    const items = provider.value === 'antigravity' ? quotaView(quota.value.rows, Date.now(), quota.value.error) : [];
     if (!items.length) return null;
     return (
       <span class="meters alert">
         {items.map((q, i) => (
-          <LimitText key={i} label={q.label} meter={q.meter} title={q.title} />
+          <LimitText key={i} label={q.label} meter={q.meter} title={q.title} hidePercent={q.staleError} />
         ))}
       </span>
     );
@@ -1930,11 +1930,27 @@ function Meters({
   );
 }
 
-/** Окно лимита текстом «5ч 82%» (раскладка `minimal`). */
-function LimitText({ label, meter, title }: { label: string; meter: LimitMeter; title: string }) {
+/** Окно лимита текстом «5ч 82%» (раскладка `minimal`) или диагностический индикатор квоты. */
+function LimitText({
+  label,
+  meter,
+  title,
+  hidePercent,
+}: {
+  label: string;
+  meter: LimitMeter;
+  title: string;
+  hidePercent?: boolean;
+}) {
   return (
     <span class={`m lim ${meter.level}`} data-tip={title}>
-      {label} <b class={meter.full ? 'pct full' : 'pct'}>{meter.percent}%</b>
+      {label}
+      {!hidePercent && (
+        <>
+          {' '}
+          <b class={meter.full ? 'pct full' : 'pct'}>{meter.percent}%</b>
+        </>
+      )}
     </span>
   );
 }

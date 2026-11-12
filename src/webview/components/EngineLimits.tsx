@@ -92,6 +92,8 @@ function Status({ e }: { e: EngineView }) {
   }
   if (e.state === 'loading' && !e.windows.length)
     return <span class="wait">{ui.sidebar.engineLoading}</span>;
+  if (e.state === 'error' && !e.windows.length && !whoText(e) && e.error)
+    return <span class="wait">{e.error}</span>;
   return <span>{whoText(e)}</span>;
 }
 
@@ -175,7 +177,7 @@ function Switch({ engines, current }: { engines: EngineView[]; current: EngineId
         })}
       </div>
       <div class="who" data-tip={engineTip(e)}>
-        {e.state === 'ok' || e.state === 'error' ? (
+        {e.state === 'ok' || (e.state === 'error' && (Boolean(whoText(e)) || e.windows.length > 0 || !e.error)) ? (
           <>
             <b>{e.email ?? ui.sidebar.unknown}</b>
             {e.plan && <span>· {e.plan}</span>}
@@ -196,7 +198,7 @@ function Table({ engines }: { engines: EngineView[] }) {
   return (
     <div class="grid">
       {engines.map((e) => {
-        if (e.state === 'signedOut') {
+        if (e.state === 'signedOut' || (e.state === 'error' && !e.windows.length && e.error)) {
           return (
             <Fragment key={e.engine}>
               <span class="nm" data-tip={engineTip(e)}>

@@ -27,17 +27,39 @@ describe('summarizeCodex', () => {
 describe('summarizeAgy', () => {
   const rows = [{ label: 'Gemini 7д', name: 'Gemini Models', remaining: 26, resetsAt: 7 }];
   it('остаток → израсходовано', () => {
-    expect(summarizeAgy({ rows, updatedAt: 5 }, true)).toEqual({
+    expect(summarizeAgy({ state: 'ok', rows, updatedAt: 5 }, true)).toEqual({
       engine: 'antigravity',
       state: 'ok',
       windows: [{ kind: 'model', name: 'Gemini 7д', percent: 74, resetsAt: 7 }],
       updatedAt: 5,
     });
   });
-  it('missing / loading / signedOut', () => {
-    expect(summarizeAgy({ rows, updatedAt: 5 }, false).state).toBe('missing');
-    expect(summarizeAgy({ rows: [], updatedAt: 0 }, true).state).toBe('loading');
-    expect(summarizeAgy({ rows: [], updatedAt: 5 }, true)).toMatchObject({ state: 'signedOut', windows: [] });
+  it('missing / loading / signedOut / error', () => {
+    expect(summarizeAgy({ state: 'ok', rows, updatedAt: 5 }, false).state).toBe('missing');
+    expect(summarizeAgy({ state: 'loading', rows: [], updatedAt: 0 }, true).state).toBe('loading');
+    expect(summarizeAgy({ state: 'signedOut', rows: [], updatedAt: 5 }, true)).toMatchObject({
+      state: 'signedOut',
+      windows: [],
+    });
+    // Сбой на холодном старте (updatedAt === 0) не маскируется под вечный loading
+    expect(
+      summarizeAgy({ state: 'error', rows: [], updatedAt: 0, error: 'Eligibility check failed' }, true, 'agy 1.5.6'),
+    ).toEqual({
+      engine: 'antigravity',
+      state: 'error',
+      version: 'agy 1.5.6',
+      windows: [],
+      updatedAt: 0,
+      error: 'Eligibility check failed',
+    });
+    // Сбой после успешного опроса сохраняет прежние окна и добавляет error
+    expect(summarizeAgy({ state: 'error', rows, updatedAt: 5, error: 'timeout' }, true)).toEqual({
+      engine: 'antigravity',
+      state: 'error',
+      windows: [{ kind: 'model', name: 'Gemini 7д', percent: 74, resetsAt: 7 }],
+      updatedAt: 5,
+      error: 'timeout',
+    });
   });
 
   it('сохраняет все 5 окон agy 1.5.3', () => {
@@ -48,7 +70,7 @@ describe('summarizeAgy', () => {
       { label: 'Claude/GPT 5ч', name: 'Claude and GPT models', remaining: 100 },
       { label: 'Gemini 4 Argon 7д', name: 'Gemini 4 Argon', remaining: 66 },
     ];
-    const s = summarizeAgy({ rows: rows5, updatedAt: 10 }, true);
+    const s = summarizeAgy({ state: 'ok', rows: rows5, updatedAt: 10 }, true);
     expect(s.windows.map((w) => [w.name, w.percent])).toEqual([
       ['Gemini 7д', 1],
       ['Gemini 5ч', 3],

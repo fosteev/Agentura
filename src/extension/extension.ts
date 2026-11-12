@@ -123,7 +123,13 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     );
   }
 
-  const agyQuota = new AgyQuotaService(() => antigravityEngine.path());
+  const agyQuota = new AgyQuotaService(
+    () => antigravityEngine.path(),
+    undefined,
+    undefined,
+    undefined,
+    (m) => log.warn(`квота agy: ${m}`),
+  );
   const codexLimits = new CodexLimitsService(async () => ((await codexEngine.available()) ? codexEngine.path() : undefined));
   const sidebar = new SidebarProvider(context, log, usage, sessions, account, taskGroups, archive, {
     codexLimits,
@@ -506,7 +512,7 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     vscode.commands.registerCommand('agentura.debug.showState', (name?: unknown) =>
       showDebugState(context, log, name),
     ),
-    vscode.commands.registerCommand('agentura.refreshUsage', () => sidebar.refreshUsage()),
+    vscode.commands.registerCommand('agentura.refreshUsage', () => sidebar.refreshUsage(true)),
   );
   // в тестовом режиме (`extensionTestsPath`) — тоже: так запускается интеграционный набор
   return context.extensionMode !== vscode.ExtensionMode.Production ? { WorkspaceFiles } : undefined;

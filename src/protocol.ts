@@ -343,8 +343,8 @@ export type ToWebview =
    * `account.info`. Движок без исполняемого файла приходит с `state: 'missing'` (не показывается).
    */
   | { type: 'engines.limits'; engines: EngineLimitsSummary[] }
-  /** Квота Antigravity (`agy -p "/usage"`): строки по семействам моделей; пусто — не показываем. */
-  | { type: 'quota.update'; rows: QuotaRow[]; updatedAt: number }
+  /** Квота Antigravity (`agy -p "/usage"`): строки по семействам моделей; `error` — причина сбоя обновления. */
+  | { type: 'quota.update'; rows: QuotaRow[]; updatedAt: number; error?: string }
   /**
    * Вкладка «git» (roadmap 12): `git.state` — снимок на каждое изменение и на `ready`, `git.error` — отказ
    * действия, `git.commit.result` — итог коммита по каждому репозиторию, `git.message.result` — ✦ сообщение.

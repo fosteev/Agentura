@@ -291,24 +291,41 @@ export function limitsView(windows: readonly LimitWindow[], now: number): Limits
   };
 }
 
-/** Квота Antigravity в HUD: компактная выборка семейств (Gemini, Claude/GPT, Argon), процент — израсходованный. */
+/** Квота Antigravity в HUD: компактная выборка семейств (Gemini, Claude/GPT, Argon, Carbon…), процент — израсходованный. */
 export interface QuotaItem {
   label: string;
   meter: LimitMeter;
   title: string;
+  /** Сбой обновления квоты без активных строк: компактный индикатор без процента. */
+  staleError?: boolean;
 }
 
 function quotaFamily(labelOrName: string): string {
-  if (/argon/i.test(labelOrName)) return 'Argon';
-  if (/gemini/i.test(labelOrName)) return 'Gemini';
-  if (/claude|gpt/i.test(labelOrName)) return 'Claude/GPT';
-  return labelOrName.replace(/\s*(?:5\s*[чh]|7\s*[дd]|week(?:ly)?).*$/i, '').trim() || labelOrName;
+  const base =
+    labelOrName.replace(/\s+(?:5\s*[чh](?:our)?|7\s*[дd](?:ay)?|five\s*hour|week(?:ly)?)(?:\b.*)?$/i, '').trim() ||
+    labelOrName.trim();
+  if (/^gemini(?:\s+models)?$/i.test(base)) return 'Gemini';
+  if (/claude|gpt/i.test(base)) return 'Claude/GPT';
+  const geminiNamed = /^gemini\s+\d+(?:\.\d+)?\s+(.+)$/i.exec(base);
+  if (geminiNamed?.[1]) return geminiNamed[1].trim();
+  return base;
 }
 
-export function quotaView(rows: readonly QuotaRow[], now: number): QuotaItem[] {
+export function quotaView(rows: readonly QuotaRow[], now: number, error?: string): QuotaItem[] {
+  const cleanError = error?.trim() || undefined;
   // окно уже сбросилось, а свежего `/usage` ещё не было — старый процент врёт, строку не показываем
   const active = rows.filter((r) => r.resetsAt === undefined || r.resetsAt > now);
-  if (!active.length) return [];
+  if (!active.length) {
+    if (!cleanError) return [];
+    return [
+      {
+        label: 'agy !',
+        meter: { percent: 100, cells: 10, level: 'lim-warn', full: false },
+        title: ui.sidebar.engineError(cleanError),
+        staleError: true,
+      },
+    ];
+  }
 
   // Группируем по семействам: показываем компактную выборку (лимитирующее/узкое окно на семейство)
   const byFamily = new Map<string, QuotaRow>();
@@ -337,15 +354,16 @@ export function quotaView(rows: readonly QuotaRow[], now: number): QuotaItem[] {
       ...(r.resetsAt !== undefined ? { resetsAt: r.resetsAt } : {}),
     }) as LimitMeter;
     const left = Math.max(0, Math.min(100, Math.round(r.remaining)));
+    const baseTitle = ui.compose.quotaTitle(
+      family,
+      left,
+      r.resetsAt !== undefined ? resetLabel(r.resetsAt, now) : undefined,
+      windowKind,
+    );
     items.push({
       label: family,
       meter,
-      title: ui.compose.quotaTitle(
-        family,
-        left,
-        r.resetsAt !== undefined ? resetLabel(r.resetsAt, now) : undefined,
-        windowKind,
-      ),
+      title: cleanError ? `${baseTitle}\n${ui.sidebar.engineError(cleanError)}` : baseTitle,
     });
   }
   return items;

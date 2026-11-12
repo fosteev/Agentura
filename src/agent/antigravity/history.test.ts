@@ -1,7 +1,10 @@
 import { readFileSync } from 'node:fs';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { buildAgyHistory } from './history';
+import type { AgentEventOf } from '../types';
+import { buildAgyHistory, withAgySubagentTimelines } from './history';
 
 describe('antigravity history: buildAgyHistory', () => {
   it('builds turns from user_message_chunk and tool updates', () => {
@@ -127,5 +130,150 @@ describe('antigravity history: buildAgyHistory', () => {
       return res && Array.isArray(res.structuredPatch);
     });
     expect(withDiff.length).toBeGreaterThan(0);
+  });
+
+  it('reconstructs subagent timelines, nested subagents, multi-round send_message, kill, and tasksAlive vs stopped', async () => {
+    const tmpDir = await mkdtemp(join(os.tmpdir(), 'agy-history-subagents-'));
+    const childCompleted = 'aaaaaaaa-1111-4222-8333-444444444444';
+    const childRunning = 'bbbbbbbb-1111-4222-8333-444444444444';
+    const childKilled = 'cccccccc-1111-4222-8333-444444444444';
+
+    try {
+      const writeBrain = async (uuid: string, steps: unknown[]) => {
+        const dir = join(tmpDir, 'brain', uuid, '.system_generated', 'logs');
+        await mkdir(dir, { recursive: true });
+        await writeFile(
+          join(dir, 'transcript.jsonl'),
+          steps.map((s) => JSON.stringify(s) + '\n').join(''),
+          'utf8',
+        );
+      };
+
+      // childCompleted: 2 rounds (initial + follow-up via send_message)
+      await writeBrain(childCompleted, [
+        { step_index: 0, type: 'SYSTEM_MESSAGE', status: 'DONE', content: 'Round 1 prompt' },
+        {
+          step_index: 1,
+          type: 'PLANNER_RESPONSE',
+          status: 'DONE',
+          input_tokens: 300,
+          output_tokens: 20,
+          tool_calls: [{ name: 'read_file', args: { Path: '/work/a.ts' } }],
+        },
+        { step_index: 2, type: 'GENERIC', status: 'DONE', content: 'export const a = 1;' },
+        {
+          step_index: 3,
+          type: 'PLANNER_RESPONSE',
+          status: 'DONE',
+          input_tokens: 400,
+          output_tokens: 25,
+          content: 'Round 1 summary',
+        },
+        { step_index: 4, type: 'SYSTEM_MESSAGE', status: 'DONE', content: 'Round 2 follow-up' },
+        {
+          step_index: 5,
+          type: 'PLANNER_RESPONSE',
+          status: 'DONE',
+          input_tokens: 500,
+          output_tokens: 30,
+          content: 'Round 2 final summary',
+        },
+      ]);
+
+      // childRunning: still open (waiting on GENERIC)
+      await writeBrain(childRunning, [
+        { step_index: 0, type: 'SYSTEM_MESSAGE', status: 'DONE', content: 'Long task' },
+        {
+          step_index: 1,
+          type: 'PLANNER_RESPONSE',
+          status: 'DONE',
+          tool_calls: [{ name: 'run_command', args: { CommandLine: 'npm test' } }],
+        },
+      ]);
+
+      // childKilled: open in transcript, killed by parent manage_subagents(kill)
+      await writeBrain(childKilled, [
+        { step_index: 0, type: 'SYSTEM_MESSAGE', status: 'DONE', content: 'Doomed task' },
+        {
+          step_index: 1,
+          type: 'PLANNER_RESPONSE',
+          status: 'DONE',
+          tool_calls: [{ name: 'run_command', args: { CommandLine: 'sleep 60' } }],
+        },
+      ]);
+
+      const updates = [
+        { sessionUpdate: 'user_message_chunk', content: { type: 'text', text: 'orchestrate subagents' } },
+        {
+          sessionUpdate: 'tool_call',
+          toolCallId: 'sub_done',
+          name: 'invoke_subagent',
+          status: 'completed',
+          rawInput: { TypeName: 'research', Role: 'Explorer', Prompt: 'Round 1 prompt' },
+          rawOutput: { output: `Created the following subagent:\n{"conversationId":"${childCompleted}"}` },
+        },
+        {
+          sessionUpdate: 'tool_call',
+          toolCallId: 'sub_msg',
+          name: 'send_message',
+          status: 'completed',
+          rawInput: { Recipient: childCompleted, Message: 'Round 2 follow-up' },
+          rawOutput: { output: 'Sent' },
+        },
+        {
+          sessionUpdate: 'tool_call',
+          toolCallId: 'sub_open',
+          name: 'invoke_subagent',
+          status: 'completed',
+          rawInput: { TypeName: 'self', Role: 'Tester', Prompt: 'Long task' },
+          rawOutput: { output: `Created the following subagent:\n{"conversationId":"${childRunning}"}` },
+        },
+        {
+          sessionUpdate: 'tool_call',
+          toolCallId: 'sub_kill',
+          name: 'invoke_subagent',
+          status: 'completed',
+          rawInput: { TypeName: 'self', Role: 'Temp Worker', Prompt: 'Doomed task' },
+          rawOutput: { output: `Created the following subagent:\n{"conversationId":"${childKilled}"}` },
+        },
+        {
+          sessionUpdate: 'tool_call',
+          toolCallId: 'mgr_kill',
+          name: 'manage_subagents',
+          status: 'completed',
+          rawInput: { Action: 'kill', ConversationIds: [childKilled] },
+          rawOutput: { output: 'Killed' },
+        },
+        { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Orchestration dispatched.' } },
+      ];
+
+      const base = buildAgyHistory(updates, {});
+
+      // 1) Closed session (tasksAlive: false): childRunning gets closed as 'stopped'
+      const closedEvents = await withAgySubagentTimelines(base.events, tmpDir, undefined, {
+        live: false,
+        tasksAlive: false,
+      });
+      const closedEnds = closedEvents.filter((e) => e.type === 'agent.end') as AgentEventOf<'agent.end'>[];
+      expect(closedEnds.map((e) => [e.agentId, e.status])).toEqual([
+        ['sub_done', 'completed'],
+        ['sub_open', 'stopped'],
+        ['sub_kill', 'stopped'],
+      ]);
+      expect(closedEnds.find((e) => e.agentId === 'sub_done')?.summary).toBe('Round 2 final summary');
+
+      // 2) Live session (tasksAlive: true): childRunning remains open (no agent.end), childKilled is 'stopped'
+      const liveEvents = await withAgySubagentTimelines(base.events, tmpDir, undefined, {
+        tasksAlive: true,
+      });
+      const liveEnds = liveEvents.filter((e) => e.type === 'agent.end') as AgentEventOf<'agent.end'>[];
+      expect(liveEnds.map((e) => [e.agentId, e.status])).toEqual([
+        ['sub_done', 'completed'],
+        ['sub_kill', 'stopped'],
+      ]);
+      expect(liveEvents.some((e) => e.type === 'agent.start' && e.agentId === 'sub_open')).toBe(true);
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
   });
 });

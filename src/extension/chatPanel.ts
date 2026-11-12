@@ -231,6 +231,7 @@ export function createAdapter(
     (agy ??= new AntigravityAdapter({
       executablePath: () => antigravityEngine.path(),
       engineVersion: () => agyVersion,
+      lang: currentLanguage,
       log: (level, message) => log[level](message),
       ...(state ? { state } : {}),
     }));
@@ -1110,7 +1111,12 @@ export class ChatPanel {
       // свежая квота agy доходит до открытых чатов (на движке agy её рисует HUD)
       {
         dispose: services.agyQuota.onUpdate((snap) =>
-          panel.post({ type: 'quota.update', rows: snap.rows, updatedAt: snap.updatedAt }),
+          panel.post({
+            type: 'quota.update',
+            rows: snap.rows,
+            updatedAt: snap.updatedAt,
+            ...(snap.error ? { error: snap.error } : {}),
+          }),
         ),
       },
       // список сессий — и во вкладку: попап «sessions» и экран empty

@@ -1,5 +1,8 @@
+import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import * as os from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { parseAgyUsage } from './quota';
+import { cleanAgyUsageError, isAgyAuthError, parseAgyUsage, runAgyUsage } from './quota';
 
 const REAL_OLD =
   'Gemini Models\tWeekly Limit Remaining\t26%\t2026-10-12T16:21:42Z\n' +
@@ -55,5 +58,82 @@ describe('parseAgyUsage', () => {
 
   it('процент зажат в 0…100', () => {
     expect(parseAgyUsage('Gemini\tWeekly Limit Remaining\t140%\n')[0]?.remaining).toBe(100);
+  });
+
+  it('очищает \\r-спиннер и оставляет именные пулы Gemini (Argon, Carbon) отдельными семействами', () => {
+    const out156 =
+      '\r⠋ Fetching usage...\r\x1b[2KGemini Models\tWeekly Limit Remaining\t88%\t2026-11-18T12:00:00Z\r\n' +
+      '\r⠙ Fetching usage...\rGemini 4 Argon\tGemini 4 Argon Weekly Limit\t65%\t2026-11-18T12:00:00Z\r\n' +
+      'Gemini 4 Carbon\tGemini 4 Carbon Weekly Limit\t42%\t2026-11-18T12:00:00Z\n';
+    expect(parseAgyUsage(out156)).toEqual([
+      { label: 'Gemini 7д', name: 'Gemini Models', remaining: 88, resetsAt: Date.parse('2026-11-18T12:00:00Z'), window: 'weekly' },
+      { label: 'Gemini 4 Argon 7д', name: 'Gemini 4 Argon', remaining: 65, resetsAt: Date.parse('2026-11-18T12:00:00Z'), window: 'weekly' },
+      { label: 'Gemini 4 Carbon 7д', name: 'Gemini 4 Carbon', remaining: 42, resetsAt: Date.parse('2026-11-18T12:00:00Z'), window: 'weekly' },
+    ]);
+  });
+});
+
+describe('runAgyUsage & isAgyAuthError', () => {
+  it('захватывает stderr в runAgyUsage, очищая спиннер, ANSI и префикс error:', async () => {
+    const dir = await mkdtemp(join(os.tmpdir(), 'agy-usage-test-'));
+    try {
+      const script = join(dir, 'fake-agy.sh');
+      await writeFile(
+        script,
+        '#!/bin/sh\nprintf "\\r⠋ Fetching...\\r\\033[31merror: Eligibility check failed: Your current account is not eligible for Antigravity, because it is not currently available in your location.\\033[0m\\n" >&2\nexit 1\n',
+        'utf8',
+      );
+      await chmod(script, 0o755);
+      await expect(runAgyUsage(script)).rejects.toThrow(
+        'Eligibility check failed: Your current account is not eligible for Antigravity, because it is not currently available in your location.',
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('cleanAgyUsageError берёт stdout или сообщение ошибки при пустом stderr', () => {
+    expect(cleanAgyUsageError(new Error('Command failed: agy -p /usage'), 'Error: not logged in\n', '').message).toBe(
+      'not logged in',
+    );
+    expect(cleanAgyUsageError(new Error('connect ECONNRESET 142.250.74.10:443'), '', '').message).toBe(
+      'connect ECONNRESET 142.250.74.10:443',
+    );
+  });
+
+  it('isAgyAuthError отличает реальный разлогин от регионального отказа Eligibility check failed и сети', () => {
+    expect(isAgyAuthError(new Error('Error: not logged in\nrun agy to sign in'))).toBe(true);
+    expect(isAgyAuthError('unauthenticated: login required')).toBe(true);
+    expect(isAgyAuthError(new Error('oauth2: invalid_grant'))).toBe(true);
+    expect(isAgyAuthError(new Error('missing credentials'))).toBe(true);
+
+    expect(
+      isAgyAuthError(
+        new Error(
+          'Eligibility check failed: Your current account is not eligible for Antigravity, because it is not currently available in your location.',
+        ),
+      ),
+    ).toBe(false);
+    expect(
+      isAgyAuthError(
+        new Error('Post "https://oauth2.googleapis.com/oauth/token": dial tcp 142.250.74.95:443: i/o timeout'),
+      ),
+    ).toBe(false);
+    expect(
+      isAgyAuthError(
+        new Error('Post "https://example.com/oauth/token": read tcp 10.0.0.2:54321->142.250.74.95:443: connection reset by peer'),
+      ),
+    ).toBe(false);
+    expect(
+      isAgyAuthError(new Error('Post "https://oauth2.googleapis.com/token": tls handshake timeout')),
+    ).toBe(false);
+    expect(isAgyAuthError(new Error('Get "https://auth.example.com/login": context deadline exceeded'))).toBe(false);
+    expect(isAgyAuthError(new Error('Post "https://oauth2.googleapis.com/token": unexpected EOF'))).toBe(false);
+    expect(isAgyAuthError(new Error('getaddrinfo ENOTFOUND oauth2.googleapis.com'))).toBe(false);
+    expect(isAgyAuthError(new Error('getaddrinfo EAI_AGAIN oauth2.googleapis.com'))).toBe(false);
+    expect(isAgyAuthError(new Error('connect ECONNREFUSED 127.0.0.1:443'))).toBe(false);
+    expect(isAgyAuthError(new Error('agy -p /usage: no answer'))).toBe(false);
+    expect(isAgyAuthError(new Error('connect ECONNRESET'))).toBe(false);
+    expect(isAgyAuthError('')).toBe(false);
   });
 });

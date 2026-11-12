@@ -64,6 +64,24 @@ export function sessionTitleOf(update: unknown): string | undefined {
   return typeof title === 'string' ? title.trim() || undefined : undefined;
 }
 
+/** `available_commands_update.availableCommands[].name` без ведущего `/`, без пустых и дублей (порядок сохранён). */
+export function availableCommandsOf(update: unknown): string[] | undefined {
+  if (sessionUpdateKind(update) !== 'available_commands_update') return undefined;
+  const list = record(update)?.availableCommands;
+  if (!Array.isArray(list)) return undefined;
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of list) {
+    const raw = record(item)?.name;
+    if (typeof raw !== 'string') continue;
+    const name = raw.trim().replace(/^\/+/, '').trim();
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    out.push(name);
+  }
+  return out;
+}
+
 /** Тариф аккаунта: `_meta.antigravity.tier.name` из `session/new` / `session/resume`. */
 export function tierNameOf(result: unknown): string | undefined {
   return text(record(record(record(record(result)?._meta)?.antigravity)?.tier)?.name);
@@ -189,11 +207,35 @@ export function normalizeModel(value: string, config: AgyConfig): { model: strin
 
 // ---- режимы -------------------------------------------------------------------------------------------------
 
-export type AgyModeId = 'default' | 'accept-edits' | 'plan';
+export type AgyModeId = 'default' | 'accept-edits' | 'auto' | 'plan';
+
+const AGY_MODE_IDS: readonly AgyModeId[] = ['default', 'accept-edits', 'auto', 'plan'];
+
+function isAgyModeId(value: string): value is AgyModeId {
+  return (AGY_MODE_IDS as readonly string[]).includes(value);
+}
+
+/** Доступные режимы сервера из `modes.availableModes` (`id` / `modeId` / `value`) без дублей. */
+export function availableModesOf(result: unknown): AgyModeId[] {
+  const list = record(record(result)?.modes)?.availableModes;
+  if (!Array.isArray(list)) return [];
+  const seen = new Set<AgyModeId>();
+  const out: AgyModeId[] = [];
+  for (const item of list) {
+    const row = record(item);
+    const raw = text(row?.id) ?? text(row?.modeId) ?? text(row?.value);
+    if (raw && isAgyModeId(raw) && !seen.has(raw)) {
+      seen.add(raw);
+      out.push(raw);
+    }
+  }
+  return out;
+}
 
 /**
  * `default`→`default`, `acceptEdits`→`accept-edits`, `plan`→`plan`. `bypassPermissions` при разрешении в настройках —
- * `accept-edits` (команды сервер всё равно спросит: их разрешает адаптер, этап 3), без разрешения — `default`.
+ * `accept-edits` (команды сервер всё равно спросит: их разрешает адаптер, а дочерним субагентам права передаются
+ * флагом запуска `--dangerously-skip-permissions`), без разрешения — `default`.
  */
 export function agyModeId(mode: PermissionMode, allowBypass: boolean): AgyModeId {
   if (mode === 'plan') return 'plan';
@@ -202,10 +244,10 @@ export function agyModeId(mode: PermissionMode, allowBypass: boolean): AgyModeId
   return 'default';
 }
 
-/** Серверный режим → режим Agentura для `session.init`, когда `resume` вернул режим не тот, что просили. */
+/** Серверный режим → режим Agentura для `session.init` (`'auto'` отображается как `'acceptEdits'`). */
 export function permissionModeOf(modeId: string | undefined): PermissionMode {
   if (modeId === 'plan') return 'plan';
-  if (modeId === 'accept-edits') return 'acceptEdits';
+  if (modeId === 'accept-edits' || modeId === 'auto') return 'acceptEdits';
   return 'default';
 }
 

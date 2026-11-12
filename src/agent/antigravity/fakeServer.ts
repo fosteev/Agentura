@@ -30,9 +30,16 @@ export const FAKE_MODES = {
   availableModes: [
     { id: 'default', name: 'Default', description: 'Ask before edits and commands, per your permission settings.' },
     { id: 'accept-edits', name: 'Accept edits', description: 'Approve file edits in the workspace without asking.' },
+    { id: 'auto', name: 'Auto', description: 'Approve edits and safe commands; ask before irreversible actions.' },
     { id: 'plan', name: 'Plan', description: 'Plan carefully before executing a task.' },
   ],
 };
+
+export const FAKE_AVAILABLE_COMMANDS = [
+  { name: 'goal', description: 'Run until the specified goal is completely finished.' },
+  { name: 'compact', description: 'Compact the conversation now (summarize history to free up the context window).' },
+  { _commandsCount: 89 },
+];
 
 export function makeConfigOptions(model = 'gemini-4-argon', thoughtLevel = 'medium', mode = 'default') {
   const modelOption = {
@@ -72,6 +79,7 @@ export function makeConfigOptions(model = 'gemini-4-argon', thoughtLevel = 'medi
     options: [
       { value: 'default', name: 'Default' },
       { value: 'accept-edits', name: 'Accept edits' },
+      { value: 'auto', name: 'Auto' },
       { value: 'plan', name: 'Plan' },
     ],
   };
@@ -214,11 +222,20 @@ function rpcId(value: object): number | string | undefined {
   return typeof id === 'number' || typeof id === 'string' ? id : undefined;
 }
 
-export function createFakeAgyServer(sessionId = DEFAULT_SESSION_ID): FakeAgyAcp {
+export interface FakeAgyServerOptions {
+  model?: string;
+  thoughtLevel?: string;
+  mode?: string;
+}
+
+export function createFakeAgyServer(
+  sessionId = DEFAULT_SESSION_ID,
+  initial: FakeAgyServerOptions = {},
+): FakeAgyAcp {
   const s = new FakeAgyAcp();
-  let currentModel = 'gemini-4-argon';
-  let currentThought = 'medium';
-  let currentMode = 'default';
+  let currentModel = initial.model ?? 'gemini-4-argon';
+  let currentThought = initial.thoughtLevel ?? 'medium';
+  let currentMode = initial.mode ?? 'default';
 
   s.handle('initialize', () => ({
     protocolVersion: 1,
@@ -231,29 +248,42 @@ export function createFakeAgyServer(sessionId = DEFAULT_SESSION_ID): FakeAgyAcp 
     },
   }));
 
-  s.handle('session/new', () => ({
-    sessionId,
-    models: FAKE_MODELS,
-    modes: FAKE_MODES,
-    configOptions: makeConfigOptions(currentModel, currentThought, currentMode),
-    _meta: {
-      antigravity: {
-        tier: { name: 'Google AI Pro', id: 'g1-pro-tier' },
+  s.handle('session/new', () => {
+    s.notify('session/update', {
+      sessionId,
+      update: { sessionUpdate: 'available_commands_update', availableCommands: FAKE_AVAILABLE_COMMANDS },
+    });
+    return {
+      sessionId,
+      models: FAKE_MODELS,
+      modes: { ...FAKE_MODES, currentModeId: currentMode },
+      configOptions: makeConfigOptions(currentModel, currentThought, currentMode),
+      _meta: {
+        antigravity: {
+          tier: { name: 'Google AI Pro', id: 'g1-pro-tier' },
+        },
       },
-    },
-  }));
+    };
+  });
 
-  s.handle('session/resume', (params) => ({
-    sessionId: (params.sessionId as string) || sessionId,
-    models: FAKE_MODELS,
-    modes: FAKE_MODES,
-    configOptions: makeConfigOptions(currentModel, currentThought, currentMode),
-    _meta: {
-      antigravity: {
-        tier: { name: 'Google AI Pro', id: 'g1-pro-tier' },
+  s.handle('session/resume', (params) => {
+    const resolvedId = (params.sessionId as string) || sessionId;
+    s.notify('session/update', {
+      sessionId: resolvedId,
+      update: { sessionUpdate: 'available_commands_update', availableCommands: FAKE_AVAILABLE_COMMANDS },
+    });
+    return {
+      sessionId: resolvedId,
+      models: FAKE_MODELS,
+      modes: { ...FAKE_MODES, currentModeId: currentMode },
+      configOptions: makeConfigOptions(currentModel, currentThought, currentMode),
+      _meta: {
+        antigravity: {
+          tier: { name: 'Google AI Pro', id: 'g1-pro-tier' },
+        },
       },
-    },
-  }));
+    };
+  });
 
   s.handle('session/set_config_option', (params) => {
     const configId = params.configId as string;

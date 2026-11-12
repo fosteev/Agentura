@@ -1,13 +1,14 @@
 import { readFileSync } from 'node:fs';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import * as os from 'node:os';
 import { join } from 'node:path';
 import { AcpRpcError } from '../acp/client';
-import { parseElicitation, formatElicitationAnswer } from './acpProtocol';
+import { availableCommandsOf, availableModesOf, permissionModeOf, parseElicitation, formatElicitationAnswer } from './acpProtocol';
 import { describe, expect, it } from 'vitest';
 import type { AgentEvent, AgentEventOf, AgentSession, PromptImage } from '../types';
 import {
   AntigravityAdapter,
+  agySpawnArgs,
   type AntigravityAdapterConfig,
   type AgySpawnOptions,
 } from './adapter';
@@ -1177,6 +1178,1146 @@ describe('AntigravityAdapter (ACP)', () => {
       });
 
       session.dispose();
+    });
+  });
+
+  describe('out-of-turn notifications (available_commands_update & session_info_update)', () => {
+    it('availableCommandsOf extracts clean deduplicated command names and ignores non-command frames', () => {
+      const frames = readFileSync(join(__dirname, '../../../test/fixtures/antigravity/acp-pong.ndjson'), 'utf8')
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line));
+      const cmdUpdate = frames.find(
+        (f) => f.msg.method === 'session/update' && f.msg.params?.update?.sessionUpdate === 'available_commands_update',
+      ).msg.params.update;
+      expect(availableCommandsOf(cmdUpdate)).toEqual(['goal', 'compact']);
+      expect(
+        availableCommandsOf({
+          sessionUpdate: 'available_commands_update',
+          availableCommands: [
+            { name: ' /goal ' },
+            { name: 'compact' },
+            { name: 'goal' },
+            { name: '   ' },
+            { name: '/' },
+            { _commandsCount: 10 },
+            { name: '//plan' },
+          ],
+        }),
+      ).toEqual(['goal', 'compact', 'plan']);
+      expect(availableCommandsOf({ sessionUpdate: 'session_info_update', title: 'Hi' })).toBeUndefined();
+      expect(availableCommandsOf({ sessionUpdate: 'available_commands_update' })).toBeUndefined();
+    });
+
+    it('captures available_commands_update during handshake and re-emits session.init when commands change in idle', async () => {
+      const s = createFakeAgyServer();
+      const { adapter } = setup(s);
+      const session = await adapter.createSession({ cwd: '/work' });
+      const events = collect(session);
+      await until(() => events.some((e) => e.type === 'session.init'), 'session.init');
+
+      const firstInit = events.find((e) => e.type === 'session.init') as AgentEventOf<'session.init'>;
+      expect(firstInit.slashCommands).toEqual(['goal', 'compact']);
+
+      // Identical list in idle does not spam duplicate session.init
+      s.notify('session/update', {
+        sessionId: DEFAULT_SESSION_ID,
+        update: {
+          sessionUpdate: 'available_commands_update',
+          availableCommands: [{ name: 'goal' }, { name: 'compact' }],
+        },
+      });
+      // Foreign sessionId is ignored
+      s.notify('session/update', {
+        sessionId: '00000000-0000-4000-8000-000000000000',
+        update: {
+          sessionUpdate: 'available_commands_update',
+          availableCommands: [{ name: 'foreign' }],
+        },
+      });
+      await new Promise((r) => setTimeout(r, 20));
+      expect(events.filter((e) => e.type === 'session.init')).toHaveLength(1);
+
+      // Changed list in idle re-emits session.init
+      s.notify('session/update', {
+        sessionId: DEFAULT_SESSION_ID,
+        update: {
+          sessionUpdate: 'available_commands_update',
+          availableCommands: [{ name: '/goal' }, { name: 'compact' }, { name: 'schedule' }],
+        },
+      });
+      await until(() => events.filter((e) => e.type === 'session.init').length === 2, 'updated session.init');
+      const secondInit = events.filter((e) => e.type === 'session.init')[1] as AgentEventOf<'session.init'>;
+      expect(secondInit.slashCommands).toEqual(['goal', 'compact', 'schedule']);
+
+      session.dispose();
+    });
+
+    it('emits session.title on delayed session_info_update after session/prompt without duplicating in-turn updates', async () => {
+      const s = createFakeAgyServer();
+      s.handle('session/prompt', (params) => {
+        s.notify('session/update', {
+          sessionId: params.sessionId,
+          update: { sessionUpdate: 'session_info_update', title: 'In-Turn Title' },
+        });
+        s.notify('session/update', {
+          sessionId: params.sessionId,
+          update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'done' } },
+        });
+        return { stopReason: 'end_turn', usage: { inputTokens: 5, outputTokens: 5, totalTokens: 10 } };
+      });
+
+      const { adapter } = setup(s);
+      const session = await adapter.createSession({ cwd: '/work' });
+      const events = collect(session);
+      await until(() => events.some((e) => e.type === 'session.init'), 'session.init');
+
+      session.send('hello');
+      await until(() => events.some((e) => e.type === 'turn.result'), 'turn.result');
+
+      // In-turn session_info_update emitted exactly once
+      expect(events.filter((e) => e.type === 'session.title')).toEqual([
+        { type: 'session.title', title: 'In-Turn Title' },
+      ]);
+
+      // Foreign session title in idle is ignored
+      s.notify('session/update', {
+        sessionId: '00000000-0000-4000-8000-000000000000',
+        update: { sessionUpdate: 'session_info_update', title: 'Wrong Session' },
+      });
+      // Delayed auto-title arriving after session/prompt finished
+      s.notify('session/update', {
+        sessionId: DEFAULT_SESSION_ID,
+        update: { sessionUpdate: 'session_info_update', title: 'Delayed Auto Title' },
+      });
+
+      await until(
+        () => events.some((e) => e.type === 'session.title' && e.title === 'Delayed Auto Title'),
+        'delayed session.title',
+      );
+      expect(events.filter((e) => e.type === 'session.title')).toEqual([
+        { type: 'session.title', title: 'In-Turn Title' },
+        { type: 'session.title', title: 'Delayed Auto Title' },
+      ]);
+
+      session.dispose();
+    });
+
+    it('resolves eager MCP server names from <dataDir>/mcp in live sessions, permissions, and loadHistory', async () => {
+      const tmp = await mkdtemp(join(os.tmpdir(), 'agy-adapter-mcp-'));
+      try {
+        await mkdir(join(tmp, 'mcp', 'hansard_history'), { recursive: true });
+        await mkdir(join(tmp, 'mcp', 'gemini-api_gemini-api-docs'), { recursive: true });
+
+        const s = createFakeAgyServer();
+        let promptResolve!: (val: unknown) => void;
+        s.handle('session/prompt', (params) => {
+          s.request('req_perm_mcp', 'session/request_permission', {
+            sessionId: params.sessionId,
+            toolCall: {
+              toolCallId: 'perm-mcp-1',
+              name: 'mcp_hansard_history_search_past_sessions',
+              rawInput: { query: 'test' },
+            },
+            options: [
+              { optionId: 'allow', kind: 'allow_once' },
+              { optionId: 'deny', kind: 'reject_once' },
+            ],
+          });
+          s.notify('session/update', {
+            sessionId: params.sessionId,
+            update: {
+              sessionUpdate: 'tool_call',
+              toolCallId: 'perm-mcp-1',
+              name: 'mcp_hansard_history_search_past_sessions',
+              rawInput: { query: 'test' },
+              status: 'completed',
+              rawOutput: { output: 'ok' },
+            },
+          });
+          return new Promise((resolve) => {
+            promptResolve = resolve;
+          });
+        });
+
+        let currentServer = s;
+        const adapter = new AntigravityAdapter({
+          executablePath: '/bin/agy',
+          dataDir: tmp,
+          spawn: () => currentServer,
+          graceMs: 20,
+          interruptWaitMs: 50,
+        });
+        const session = await adapter.createSession({ cwd: '/work' });
+        const events = collect(session);
+        await until(() => events.some((e) => e.type === 'session.init'), 'session.init');
+
+        session.send('run mcp');
+        await until(() => events.some((e) => e.type === 'permission.request'), 'permission.request');
+        session.respondPermission('perm-mcp-1', 'allow');
+        await until(() => s.replies().some((r) => r.id === 'req_perm_mcp'), 'reply req_perm_mcp');
+        promptResolve({ stopReason: 'end_turn' });
+        await until(() => events.some((e) => e.type === 'turn.result'), 'turn.result');
+
+        expect(events.find((e) => e.type === 'permission.request')).toMatchObject({
+          toolName: 'mcp__hansard_history__search_past_sessions',
+        });
+        expect(events.find((e) => e.type === 'tool.start')).toMatchObject({
+          name: 'mcp__hansard_history__search_past_sessions',
+        });
+        session.dispose();
+
+        // Remove directory on disk: adapter caches mcpServers read once and reuses it in loadHistory
+        await rm(join(tmp, 'mcp'), { recursive: true, force: true });
+        const loader = createFakeAgyServer();
+        loader.handle('session/load', (params) => {
+          loader.notify('session/update', {
+            sessionId: params.sessionId,
+            update: { sessionUpdate: 'user_message_chunk', content: { type: 'text', text: 'hi' } },
+          });
+          loader.notify('session/update', {
+            sessionId: params.sessionId,
+            update: {
+              sessionUpdate: 'tool_call',
+              toolCallId: 'hist-mcp-1',
+              name: 'mcp_gemini-api_gemini-api-docs_gemini_search_docs',
+              rawInput: { query: 'docs' },
+              status: 'completed',
+              rawOutput: { output: 'found' },
+            },
+          });
+          return {};
+        });
+        currentServer = loader;
+        const history = await adapter.loadHistory(DEFAULT_SESSION_ID, '/work');
+        expect(history.events.find((e) => e.type === 'tool.start')).toMatchObject({
+          name: 'mcp__gemini-api_gemini-api-docs__gemini_search_docs',
+        });
+      } finally {
+        await rm(tmp, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe('bypassPermissions inheritance, server auto mode, and reactive parent wakeup', () => {
+    it('spawns agy with --dangerously-skip-permissions strictly when bypassPermissions and allowBypassPermissions are both active', async () => {
+      expect(agySpawnArgs('bypassPermissions', true)).toEqual(['acp', '--dangerously-skip-permissions']);
+      expect(agySpawnArgs('bypassPermissions', false)).toEqual(['acp']);
+      expect(agySpawnArgs('acceptEdits', true)).toEqual(['acp']);
+      expect(agySpawnArgs('default', true)).toEqual(['acp']);
+      expect(agySpawnArgs('plan', true)).toEqual(['acp']);
+      expect(agySpawnArgs(undefined, true)).toEqual(['acp']);
+      expect(agySpawnArgs(undefined, false)).toEqual(['acp']);
+
+      const spawned: { args: string[]; server: FakeAgyAcp }[] = [];
+      const adapter = new AntigravityAdapter({
+        executablePath: '/bin/agy',
+        graceMs: 20,
+        interruptWaitMs: 50,
+        spawn: (_path, args) => {
+          const server = createFakeAgyServer();
+          spawned.push({ args, server });
+          return server;
+        },
+      });
+
+      const sBypass = await adapter.createSession({
+        cwd: '/work',
+        permissionMode: 'bypassPermissions',
+        allowBypassPermissions: true,
+      });
+      await sBypass.capabilities();
+      expect(spawned[0]?.args).toEqual(['acp', '--dangerously-skip-permissions']);
+      sBypass.dispose();
+
+      const sGated = await adapter.createSession({
+        cwd: '/work',
+        permissionMode: 'bypassPermissions',
+        allowBypassPermissions: false,
+      });
+      await sGated.capabilities();
+      expect(spawned[1]?.args).toEqual(['acp']);
+      sGated.dispose();
+
+      const sAccept = await adapter.createSession({
+        cwd: '/work',
+        permissionMode: 'acceptEdits',
+        allowBypassPermissions: true,
+      });
+      await sAccept.capabilities();
+      expect(spawned[2]?.args).toEqual(['acp']);
+      sAccept.dispose();
+
+      await adapter.listSessions('/work');
+      expect(spawned[3]?.args).toEqual(['acp']);
+
+      const freshAdapter = new AntigravityAdapter({
+        executablePath: '/bin/agy',
+        graceMs: 20,
+        spawn: (_path, args) => {
+          const server = createFakeAgyServer();
+          spawned.push({ args, server });
+          return server;
+        },
+      });
+      await freshAdapter.accountInfo('/work');
+      expect(spawned[4]?.args).toEqual(['acp']);
+    });
+
+    it('transparently respawns agy via session/resume on idle setMode(bypassPermissions) <-> setMode(default) without session.closed', async () => {
+      const spawned: { args: string[]; server: FakeAgyAcp }[] = [];
+      const adapter = new AntigravityAdapter({
+        executablePath: '/bin/agy',
+        graceMs: 20,
+        interruptWaitMs: 50,
+        spawn: (_path, args) => {
+          const server = createFakeAgyServer(DEFAULT_SESSION_ID);
+          server.handle('session/prompt', (params) => {
+            server.notify('session/update', {
+              sessionId: params.sessionId,
+              update: {
+                sessionUpdate: 'agent_message_chunk',
+                content: { type: 'text', text: `handled-by-${spawned.length}` },
+              },
+            });
+            return { stopReason: 'end_turn', usage: { inputTokens: 4, outputTokens: 2, totalTokens: 6 } };
+          });
+          spawned.push({ args, server });
+          return server;
+        },
+      });
+
+      const session = await adapter.createSession({
+        cwd: '/work',
+        model: 'claude-sonnet-5-5',
+        effort: 'high',
+        permissionMode: 'default',
+        allowBypassPermissions: true,
+      });
+      const events = collect(session);
+      await until(() => events.some((e) => e.type === 'session.init'), 'session.init');
+      expect(spawned).toHaveLength(1);
+      expect(spawned[0]?.args).toEqual(['acp']);
+
+      // Idle switch default -> bypassPermissions: rotates transport and resumes same sessionId
+      await session.setMode('bypassPermissions');
+      expect(spawned).toHaveLength(2);
+      expect(spawned[0]?.server.exited).toBe(true);
+      expect(spawned[1]?.args).toEqual(['acp', '--dangerously-skip-permissions']);
+      expect(spawned[1]?.server.methods()).toContain('session/resume');
+      expect(spawned[1]?.server.paramsOf('session/resume')).toMatchObject({
+        sessionId: DEFAULT_SESSION_ID,
+        cwd: '/work',
+      });
+      const resumedConfigs = spawned[1]!.server.received
+        .filter((m) => m.method === 'session/set_config_option')
+        .map((m) => m.params);
+      expect(resumedConfigs).toEqual([
+        { sessionId: DEFAULT_SESSION_ID, configId: 'model', value: 'claude-sonnet-5-5' },
+        { sessionId: DEFAULT_SESSION_ID, configId: 'thought_level', value: 'high' },
+      ]);
+      expect(spawned[1]?.server.paramsOf('session/set_mode')).toMatchObject({
+        sessionId: DEFAULT_SESSION_ID,
+        modeId: 'accept-edits',
+      });
+      expect(events.some((e) => e.type === 'session.closed')).toBe(false);
+      expect(events.filter((e) => e.type === 'mode.changed').at(-1)).toMatchObject({
+        type: 'mode.changed',
+        mode: 'bypassPermissions',
+      });
+
+      // Prompt runs on the newly spawned bypass worker
+      session.send('run child');
+      await until(() => events.some((e) => e.type === 'turn.result'), 'first turn.result');
+      expect(events.find((e) => e.type === 'turn.result')).toMatchObject({ text: 'handled-by-2' });
+
+      // Idle switch bypassPermissions -> default: rotates back to plain ['acp']
+      await session.setMode('default');
+      expect(spawned).toHaveLength(3);
+      expect(spawned[1]?.server.exited).toBe(true);
+      expect(spawned[2]?.args).toEqual(['acp']);
+      expect(spawned[2]?.server.methods()).toContain('session/resume');
+      expect(events.some((e) => e.type === 'session.closed')).toBe(false);
+      expect(events.filter((e) => e.type === 'mode.changed').at(-1)).toMatchObject({
+        type: 'mode.changed',
+        mode: 'default',
+      });
+
+      session.send('after downgrade');
+      await until(() => events.filter((e) => e.type === 'turn.result').length === 2, 'second turn.result');
+      expect(events.filter((e) => e.type === 'turn.result')[1]).toMatchObject({ text: 'handled-by-3' });
+
+      session.dispose();
+    });
+
+    it('defers respawn (pendingRespawn) when setMode(bypassPermissions) is called mid-turn and respawns before next queued prompt', async () => {
+      const spawned: { args: string[]; server: FakeAgyAcp }[] = [];
+      let finishFirstTurn!: () => void;
+
+      const adapter = new AntigravityAdapter({
+        executablePath: '/bin/agy',
+        graceMs: 20,
+        interruptWaitMs: 50,
+        spawn: (_path, args) => {
+          const idx = spawned.length;
+          const server = createFakeAgyServer(DEFAULT_SESSION_ID);
+          if (idx === 0) {
+            server.handle('session/prompt', (params) => {
+              server.request('perm_mid_1', 'session/request_permission', {
+                sessionId: params.sessionId,
+                toolCall: { toolCallId: 'call_mid_1', name: 'run_command', args: { CommandLine: 'git status' } },
+              });
+              return new Promise((resolve) => {
+                finishFirstTurn = () => {
+                  server.notify('session/update', {
+                    sessionId: params.sessionId,
+                    update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'turn-1' } },
+                  });
+                  resolve({ stopReason: 'end_turn', usage: { inputTokens: 3, outputTokens: 2, totalTokens: 5 } });
+                };
+              });
+            });
+          } else {
+            server.handle('session/prompt', (params) => {
+              server.notify('session/update', {
+                sessionId: params.sessionId,
+                update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'turn-2-on-bypass' } },
+              });
+              return { stopReason: 'end_turn', usage: { inputTokens: 3, outputTokens: 2, totalTokens: 5 } };
+            });
+          }
+          spawned.push({ args, server });
+          return server;
+        },
+      });
+
+      const session = await adapter.createSession({
+        cwd: '/work',
+        model: 'gemini-3.8-flash',
+        effort: 'low',
+        permissionMode: 'default',
+        allowBypassPermissions: true,
+      });
+      const events = collect(session);
+      await until(() => events.some((e) => e.type === 'session.init'), 'session.init');
+
+      session.send('first prompt');
+      await until(() => events.some((e) => e.type === 'permission.request'), 'permission.request');
+
+      // Switch to bypassPermissions mid-turn + enqueue second prompt before turn 1 ends
+      await session.setMode('bypassPermissions');
+      session.send('second prompt');
+
+      // Still on process #1 while turn 1 is open, but set_mode applied and hanging permission auto-allowed
+      expect(spawned).toHaveLength(1);
+      expect(spawned[0]?.server.exited).toBe(false);
+      expect(spawned[0]?.server.paramsOf('session/set_mode')).toMatchObject({ modeId: 'accept-edits' });
+      expect(spawned[0]?.server.replies().find((r) => r.id === 'perm_mid_1')?.result).toEqual({
+        outcome: { outcome: 'selected', optionId: 'allow' },
+      });
+
+      // Finish turn 1 -> pendingRespawn rotates worker BEFORE 'second prompt' is sent
+      finishFirstTurn();
+      await until(() => events.filter((e) => e.type === 'turn.result').length === 2, 'both turns finished');
+
+      expect(spawned).toHaveLength(2);
+      expect(spawned[0]?.server.exited).toBe(true);
+      expect(spawned[1]?.args).toEqual(['acp', '--dangerously-skip-permissions']);
+      expect(spawned[1]?.server.methods()).toContain('session/resume');
+      expect(spawned[1]?.server.paramsOf('session/prompt')).toMatchObject({
+        sessionId: DEFAULT_SESSION_ID,
+        prompt: [{ type: 'text', text: 'second prompt' }],
+      });
+      expect(events.filter((e) => e.type === 'turn.result').map((e) => (e as AgentEventOf<'turn.result'>).text)).toEqual([
+        'turn-1',
+        'turn-2-on-bypass',
+      ]);
+      expect(events.some((e) => e.type === 'session.closed')).toBe(false);
+
+      session.dispose();
+    });
+
+    it('preserves server auto mode across repeated resumeSession without sending session/set_mode, and exits auto on explicit setMode', async () => {
+      expect(availableModesOf({ modes: FAKE_MODES })).toEqual(['default', 'accept-edits', 'auto', 'plan']);
+      expect(
+        availableModesOf({
+          modes: {
+            availableModes: [
+              { modeId: 'auto' },
+              { value: 'plan' },
+              { id: 'auto' },
+              { id: 'unknown-mode' },
+            ],
+          },
+        }),
+      ).toEqual(['auto', 'plan']);
+      expect(permissionModeOf('auto')).toBe('acceptEdits');
+
+      const state = memoryStore();
+      const s1 = createFakeAgyServer(DEFAULT_SESSION_ID, { mode: 'auto' });
+      const { adapter: adapter1 } = setup(s1, { state });
+
+      // 1st resume without explicit permissionMode
+      const resumed1 = await adapter1.resumeSession(DEFAULT_SESSION_ID, { cwd: '/work' });
+      const events1 = collect(resumed1);
+      await until(() => events1.some((e) => e.type === 'session.init'), 'resumed1 session.init');
+
+      expect(events1.find((e) => e.type === 'session.init')).toMatchObject({
+        permissionMode: 'acceptEdits',
+      });
+      expect(s1.methods().filter((m) => m === 'session/set_mode')).toHaveLength(0);
+      resumed1.dispose();
+
+      // 2nd resume with the same state store: saved settings must NOT clobber server 'auto' into 'accept-edits'
+      const s2 = createFakeAgyServer(DEFAULT_SESSION_ID, { mode: 'auto' });
+      const { adapter: adapter2 } = setup(s2, { state });
+      const resumed2 = await adapter2.resumeSession(DEFAULT_SESSION_ID, { cwd: '/work' });
+      const events2 = collect(resumed2);
+      await until(() => events2.some((e) => e.type === 'session.init'), 'resumed2 session.init');
+
+      expect(events2.find((e) => e.type === 'session.init')).toMatchObject({
+        permissionMode: 'acceptEdits',
+      });
+      expect(s2.methods().filter((m) => m === 'session/set_mode')).toHaveLength(0);
+
+      // Explicit user setMode('default') transitions server out of 'auto' and persists choice
+      await resumed2.setMode('default');
+      expect(s2.paramsOf('session/set_mode')).toMatchObject({
+        sessionId: DEFAULT_SESSION_ID,
+        modeId: 'default',
+      });
+      expect(events2.filter((e) => e.type === 'mode.changed').at(-1)).toMatchObject({
+        type: 'mode.changed',
+        mode: 'default',
+      });
+      resumed2.dispose();
+
+      // 3rd resume after explicit setMode('default'): now 'default' IS enforced over server 'auto'
+      const s3 = createFakeAgyServer(DEFAULT_SESSION_ID, { mode: 'auto' });
+      const { adapter: adapter3 } = setup(s3, { state });
+      const resumed3 = await adapter3.resumeSession(DEFAULT_SESSION_ID, { cwd: '/work' });
+      const events3 = collect(resumed3);
+      await until(() => events3.some((e) => e.type === 'session.init'), 'resumed3 session.init');
+      expect(events3.find((e) => e.type === 'session.init')).toMatchObject({
+        permissionMode: 'default',
+      });
+      expect(s3.paramsOf('session/set_mode')).toMatchObject({
+        sessionId: DEFAULT_SESSION_ID,
+        modeId: 'default',
+      });
+      resumed3.dispose();
+    });
+
+    it('delivers parent subagent reply both when session/prompt is held open (HoldOwnedTurn) and via out-of-turn reactive wakeupTurn', async () => {
+      const tempDir = await mkdtemp(join(os.tmpdir(), 'agy-wakeup-test-'));
+      try {
+        const transcriptDir = join(tempDir, 'brain', DEFAULT_SESSION_ID, '.system_generated', 'logs');
+        await mkdir(transcriptDir, { recursive: true });
+        const transcriptPath = join(transcriptDir, 'transcript.jsonl');
+
+        // 1) HoldOwnedTurn: session/prompt stays open across invoke_subagent + schedule until WAKEUP_OK
+        const sHeld = createFakeAgyServer();
+        sHeld.handle('session/prompt', async (params) => {
+          sHeld.notify('session/update', {
+            sessionId: params.sessionId,
+            update: {
+              sessionUpdate: 'tool_call',
+              toolCallId: 'sub_1',
+              name: 'invoke_subagent',
+              rawInput: { TypeName: 'self', Role: 'Ping', Prompt: 'reply PONG' },
+              status: 'in_progress',
+            },
+          });
+          sHeld.notify('session/update', {
+            sessionId: params.sessionId,
+            update: {
+              sessionUpdate: 'tool_call_update',
+              toolCallId: 'sub_1',
+              name: 'invoke_subagent',
+              status: 'completed',
+              rawOutput: { output: 'Created subagent' },
+            },
+          });
+          await new Promise((r) => setTimeout(r, 10));
+          sHeld.notify('session/update', {
+            sessionId: params.sessionId,
+            update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'WAKEUP_' } },
+          });
+          sHeld.notify('session/update', {
+            sessionId: params.sessionId,
+            update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'OK' } },
+          });
+          await writeFile(
+            transcriptPath,
+            JSON.stringify({
+              type: 'PLANNER_RESPONSE',
+              status: 'DONE',
+              step_index: 2,
+              input_tokens: 4000,
+              cache_read_tokens: 1000,
+              cache_write_tokens: 0,
+              output_tokens: 50,
+            }) + '\n',
+            'utf8',
+          );
+          return { stopReason: 'end_turn', usage: { inputTokens: 9000, outputTokens: 100, totalTokens: 9100 } };
+        });
+
+        const { adapter: heldAdapter } = setup(sHeld, { dataDir: tempDir, wakeupIdleMs: 25 });
+        const heldSession = await heldAdapter.createSession({
+          cwd: '/work',
+          model: 'gemini-3.8-flash',
+          permissionMode: 'bypassPermissions',
+          allowBypassPermissions: true,
+        });
+        const heldEvents = collect(heldSession);
+        await until(() => heldEvents.some((e) => e.type === 'session.init'), 'held session.init');
+
+        heldSession.send('ping child');
+        await until(() => heldEvents.some((e) => e.type === 'turn.result'), 'held turn.result');
+        expect(heldEvents.find((e) => e.type === 'turn.result')).toMatchObject({
+          ok: true,
+          subtype: 'end_turn',
+          text: 'WAKEUP_OK',
+        });
+        expect(heldEvents.filter((e) => e.type === 'context.usage').at(-1)).toMatchObject({
+          usedTokens: 5050,
+        });
+        heldSession.dispose();
+
+        // 2) Out-of-turn reactive wakeup: session/prompt ends with WAITING, then server pushes session/update while idle
+        const sAsync = createFakeAgyServer();
+        let promptCalls = 0;
+        sAsync.handle('session/prompt', (params) => {
+          promptCalls++;
+          const text = promptCalls === 1 ? 'WAITING' : 'NEXT_USER_TURN';
+          sAsync.notify('session/update', {
+            sessionId: params.sessionId,
+            update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text } },
+          });
+          return { stopReason: 'end_turn', usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 } };
+        });
+
+        const { adapter: asyncAdapter } = setup(sAsync, { dataDir: tempDir, wakeupIdleMs: 25 });
+        const asyncSession = await asyncAdapter.createSession({
+          cwd: '/work',
+          model: 'gemini-3.8-flash',
+          permissionMode: 'bypassPermissions',
+          allowBypassPermissions: true,
+        });
+        const asyncEvents = collect(asyncSession);
+        await until(() => asyncEvents.some((e) => e.type === 'session.init'), 'async session.init');
+
+        asyncSession.send('spawn child and stop');
+        await until(() => asyncEvents.some((e) => e.type === 'turn.result'), 'initial turn.result');
+
+        // Transcript updated by reactive wakeup step
+        await writeFile(
+          transcriptPath,
+          JSON.stringify({
+            type: 'PLANNER_RESPONSE',
+            status: 'DONE',
+            step_index: 5,
+            input_tokens: 6000,
+            cache_read_tokens: 2000,
+            cache_write_tokens: 0,
+            output_tokens: 120,
+          }) + '\n',
+          'utf8',
+        );
+
+        // Out-of-turn wakeup frames arrive when this.turn === undefined
+        sAsync.notify('session/update', {
+          sessionId: DEFAULT_SESSION_ID,
+          update: { sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: 'got PONG' } },
+        });
+        sAsync.notify('session/update', {
+          sessionId: DEFAULT_SESSION_ID,
+          update: {
+            sessionUpdate: 'tool_call',
+            toolCallId: 'wake_tool_1',
+            name: 'read_file',
+            rawInput: { Path: '/work/out.txt' },
+            status: 'completed',
+            rawOutput: { output: 'PONG' },
+          },
+        });
+        sAsync.notify('session/update', {
+          sessionId: DEFAULT_SESSION_ID,
+          update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'WAKEUP_OK' } },
+        });
+
+        await until(
+          () => asyncEvents.filter((e) => e.type === 'turn.result').length === 2,
+          'wakeup turn.result after idleMs',
+        );
+
+        const turnStarts = asyncEvents.filter((e) => e.type === 'turn.start') as AgentEventOf<'turn.start'>[];
+        expect(turnStarts).toHaveLength(2);
+        expect(turnStarts[0]?.prompt).toBe('spawn child and stop');
+        // Engine-initiated wakeup turn has no prompt so UI does not render an empty user bubble
+        expect(turnStarts[1]?.prompt).toBeUndefined();
+
+        const turnResults = asyncEvents.filter((e) => e.type === 'turn.result') as AgentEventOf<'turn.result'>[];
+        expect(turnResults[1]).toMatchObject({
+          ok: true,
+          subtype: 'end_turn',
+          text: 'WAKEUP_OK',
+        });
+        expect(asyncEvents.filter((e) => e.type === 'context.usage').at(-1)).toMatchObject({
+          usedTokens: 8120,
+        });
+
+        // 3) Wakeup turn interrupted by a new user send() closes immediately before the user turn starts
+        const slowAdapterSetup = setup(sAsync, { dataDir: tempDir, wakeupIdleMs: 5000 });
+        const slowSession = await slowAdapterSetup.adapter.createSession({ cwd: '/work' });
+        const slowEvents = collect(slowSession);
+        await until(() => slowEvents.some((e) => e.type === 'session.init'), 'slow session.init');
+
+        sAsync.notify('session/update', {
+          sessionId: DEFAULT_SESSION_ID,
+          update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'PARTIAL_WAKEUP' } },
+        });
+        await until(() => slowEvents.some((e) => e.type === 'text.delta'), 'partial wakeup delta');
+
+        slowSession.send('follow-up question');
+        await until(
+          () => slowEvents.filter((e) => e.type === 'turn.result').length === 2,
+          'both partial wakeup and follow-up finished',
+        );
+
+        const orderedTurns = slowEvents.filter((e) => e.type === 'turn.start' || e.type === 'turn.result');
+        expect(orderedTurns.map((e) => (e.type === 'turn.start' ? `start:${e.prompt ?? '<wakeup>'}` : `end:${e.text}`))).toEqual([
+          'start:<wakeup>',
+          'end:PARTIAL_WAKEUP',
+          'start:follow-up question',
+          'end:NEXT_USER_TURN',
+        ]);
+
+        slowSession.dispose();
+        asyncSession.dispose();
+      } finally {
+        await rm(tempDir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe('live subagent graph, transcripts, history timelines, and silent parent wakeup (Stage 5)', () => {
+    const CHILD_1 = 'aaaaaaaa-1111-4222-8333-aaaaaaaaaaaa';
+    const CHILD_2 = 'bbbbbbbb-2222-4333-8444-bbbbbbbbbbbb';
+    const NESTED_1 = 'cccccccc-3333-4444-8555-cccccccccccc';
+
+    async function brainFile(dataDir: string, uuid: string, rows: unknown[] = []): Promise<string> {
+      const dir = join(dataDir, 'brain', uuid.toLowerCase(), '.system_generated', 'logs');
+      await mkdir(dir, { recursive: true });
+      const file = join(dir, 'transcript.jsonl');
+      await writeFile(file, rows.map((r) => JSON.stringify(r) + '\n').join(''), 'utf8');
+      return file;
+    }
+
+    it('streams live subagents, nested subagents, waiting_for_input, send_message reopen, and agentTranscript', async () => {
+      const tempDir = await mkdtemp(join(os.tmpdir(), 'agy-stage5-live-'));
+      try {
+        const childPath = await brainFile(tempDir, CHILD_1, []);
+        await brainFile(tempDir, NESTED_1, [
+          { step_index: 0, type: 'SYSTEM_MESSAGE', status: 'DONE', content: 'Nested brief' },
+          {
+            step_index: 1,
+            type: 'PLANNER_RESPONSE',
+            status: 'DONE',
+            input_tokens: 200,
+            output_tokens: 15,
+            content: 'Nested summary ok',
+          },
+        ]);
+
+        const server = createFakeAgyServer();
+        let promptTurn = 0;
+        server.handle('session/prompt', (params) => {
+          promptTurn++;
+          if (promptTurn === 1) {
+            server.notify('session/update', {
+              sessionId: params.sessionId,
+              update: {
+                sessionUpdate: 'tool_call',
+                toolCallId: 'call_agent_1',
+                name: 'invoke_subagent',
+                rawInput: { TypeName: 'research', Role: 'Repo Explorer', Prompt: 'Inspect repo' },
+                status: 'in_progress',
+              },
+            });
+            server.notify('session/update', {
+              sessionId: params.sessionId,
+              update: {
+                sessionUpdate: 'tool_call_update',
+                toolCallId: 'call_agent_1',
+                name: 'invoke_subagent',
+                status: 'completed',
+                rawOutput: {
+                  output: `Created the following subagent:\n{\n  "conversationId": "${CHILD_1}"\n}`,
+                },
+              },
+            });
+            return { stopReason: 'end_turn', usage: { inputTokens: 100, outputTokens: 10 } };
+          }
+          // Turn 2: parent sends follow-up via send_message to CHILD_1
+          server.notify('session/update', {
+            sessionId: params.sessionId,
+            update: {
+              sessionUpdate: 'tool_call',
+              toolCallId: 'call_send_1',
+              name: 'send_message',
+              rawInput: { Recipient: CHILD_1, Message: 'Check one more file' },
+              status: 'completed',
+              rawOutput: { output: 'Message sent.' },
+            },
+          });
+          return { stopReason: 'end_turn', usage: { inputTokens: 120, outputTokens: 10 } };
+        });
+
+        const { adapter } = setup(server, {
+          dataDir: tempDir,
+          subagentPollMs: 15,
+          subagentWaitingMs: 30,
+        });
+        const session = await adapter.createSession({ cwd: '/work' });
+        const events = collect(session);
+        await until(() => events.some((e) => e.type === 'session.init'), 'session.init');
+
+        session.send('launch researcher');
+        await until(
+          () => events.some((e) => e.type === 'agent.start' && e.agentId === 'call_agent_1'),
+          'top-level agent.start',
+        );
+        expect(events.find((e) => e.type === 'agent.start' && e.agentId === 'call_agent_1')).toMatchObject({
+          type: 'agent.start',
+          agentId: 'call_agent_1',
+          taskId: CHILD_1,
+          description: 'Repo Explorer',
+          subagentType: 'research',
+          taskType: 'subagent',
+          background: true,
+        });
+
+        // Child writes step 0 + step 1 with unclosed tool_call -> triggers waiting_for_input after 30ms
+        await appendFile(
+          childPath,
+          JSON.stringify({ step_index: 0, type: 'SYSTEM_MESSAGE', status: 'DONE', content: 'Inspect repo' }) +
+            '\n' +
+            JSON.stringify({
+              step_index: 1,
+              type: 'PLANNER_RESPONSE',
+              status: 'DONE',
+              thinking: 'Launching nested helper',
+              tool_calls: [
+                { name: 'invoke_subagent', args: { TypeName: 'self', Role: 'Sub Helper', Prompt: 'Nested brief' } },
+              ],
+            }) +
+            '\n',
+          'utf8',
+        );
+
+        await until(
+          () =>
+            events.some(
+              (e) =>
+                e.type === 'agent.progress' &&
+                e.agentId === 'call_agent_1' &&
+                e.status === 'waiting_for_input',
+            ),
+          'waiting_for_input progress',
+        );
+
+        // Complete nested subagent spawn + final round 1 response
+        await appendFile(
+          childPath,
+          JSON.stringify({
+            step_index: 2,
+            type: 'GENERIC',
+            status: 'DONE',
+            content: `Created the following subagent:\n{"conversationId":"${NESTED_1}"}`,
+          }) +
+            '\n' +
+            JSON.stringify({
+              step_index: 3,
+              type: 'PLANNER_RESPONSE',
+              status: 'DONE',
+              input_tokens: 700,
+              output_tokens: 30,
+              content: 'Round 1 complete',
+            }) +
+            '\n',
+          'utf8',
+        );
+
+        await until(
+          () =>
+            events.some((e) => e.type === 'agent.end' && e.agentId === 'call_agent_1') &&
+            events.some((e) => e.type === 'agent.end' && e.taskId === NESTED_1),
+          'round 1 and nested agent.end',
+        );
+
+        // Parent sends follow-up message -> reopens agent.start for call_agent_1
+        session.send('ask follow-up');
+        await until(
+          () => events.filter((e) => e.type === 'agent.start' && e.agentId === 'call_agent_1').length === 2,
+          'reopened agent.start via send_message',
+        );
+
+        await appendFile(
+          childPath,
+          JSON.stringify({ step_index: 4, type: 'SYSTEM_MESSAGE', status: 'DONE', content: 'Check one more file' }) +
+            '\n' +
+            JSON.stringify({
+              step_index: 5,
+              type: 'PLANNER_RESPONSE',
+              status: 'DONE',
+              input_tokens: 800,
+              output_tokens: 25,
+              content: 'Round 2 complete',
+            }) +
+            '\n',
+          'utf8',
+        );
+
+        await until(
+          () => events.filter((e) => e.type === 'agent.end' && e.agentId === 'call_agent_1').length === 2,
+          'round 2 agent.end',
+        );
+
+        // Verify agentTranscript uses cached Role + TypeName even when chatController passes empty title ''
+        const transcriptMd = await adapter.agentTranscript(DEFAULT_SESSION_ID, '/work', CHILD_1, '');
+        expect(transcriptMd).toContain('# Repo Explorer · research');
+        expect(transcriptMd).toContain(`conversation://${CHILD_1}`);
+        expect(transcriptMd).toContain('Round 2 complete');
+
+        // Path traversal and missing transcripts return undefined
+        expect(await adapter.agentTranscript(DEFAULT_SESSION_ID, '/work', '../etc/passwd', '')).toBeUndefined();
+        expect(await adapter.agentTranscript(DEFAULT_SESSION_ID, '/work', CHILD_2, '')).toBeUndefined();
+
+        session.dispose();
+      } finally {
+        await rm(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it('handles manage_subagents(list | kill | kill_all) and picks up silent reactive parent turn from transcript.jsonl', async () => {
+      const tempDir = await mkdtemp(join(os.tmpdir(), 'agy-stage5-silent-'));
+      try {
+        const parentPath = await brainFile(tempDir, DEFAULT_SESSION_ID, [
+          { step_index: 0, type: 'USER_INPUT', status: 'DONE', content: 'start workers' },
+          {
+            step_index: 1,
+            type: 'PLANNER_RESPONSE',
+            status: 'DONE',
+            input_tokens: 500,
+            output_tokens: 20,
+            content: 'spawned',
+          },
+        ]);
+        await brainFile(tempDir, CHILD_1, [
+          { step_index: 0, type: 'SYSTEM_MESSAGE', status: 'DONE', content: 'worker 1' },
+          {
+            step_index: 1,
+            type: 'PLANNER_RESPONSE',
+            status: 'DONE',
+            tool_calls: [{ name: 'ask_question', args: { questions: [] } }],
+          },
+        ]);
+        await brainFile(tempDir, CHILD_2, [
+          { step_index: 0, type: 'SYSTEM_MESSAGE', status: 'DONE', content: 'worker 2' },
+          {
+            step_index: 1,
+            type: 'PLANNER_RESPONSE',
+            status: 'DONE',
+            tool_calls: [{ name: 'run_command', args: { CommandLine: 'sleep 30' } }],
+          },
+        ]);
+
+        const server = createFakeAgyServer();
+        let callNo = 0;
+        server.handle('session/prompt', (params) => {
+          callNo++;
+          if (callNo === 1) {
+            for (const [tcId, uuid, role] of [
+              ['sub_a', CHILD_1, 'Worker A'],
+              ['sub_b', CHILD_2, 'Worker B'],
+            ] as const) {
+              server.notify('session/update', {
+                sessionId: params.sessionId,
+                update: {
+                  sessionUpdate: 'tool_call',
+                  toolCallId: tcId,
+                  name: 'invoke_subagent',
+                  rawInput: { TypeName: 'self', Role: role, Prompt: role },
+                  status: 'completed',
+                  rawOutput: { output: `Created the following subagent:\n{"conversationId":"${uuid}"}` },
+                },
+              });
+            }
+            server.notify('session/update', {
+              sessionId: params.sessionId,
+              update: {
+                sessionUpdate: 'tool_call',
+                toolCallId: 'mgr_list',
+                name: 'manage_subagents',
+                rawInput: { Action: 'list' },
+                status: 'completed',
+                rawOutput: {
+                  output: JSON.stringify({
+                    subagents: [{ conversationId: CHILD_1, state: 'waiting_for_input' }],
+                  }),
+                },
+              },
+            });
+            return { stopReason: 'end_turn', usage: { inputTokens: 500, outputTokens: 20 } };
+          }
+          // Turn 2: kill_all
+          server.notify('session/update', {
+            sessionId: params.sessionId,
+            update: {
+              sessionUpdate: 'tool_call',
+              toolCallId: 'mgr_kill_all',
+              name: 'manage_subagents',
+              rawInput: { Action: 'kill_all' },
+              status: 'completed',
+              rawOutput: { output: 'All killed' },
+            },
+          });
+          return { stopReason: 'end_turn', usage: { inputTokens: 520, outputTokens: 10 } };
+        });
+
+        const { adapter } = setup(server, {
+          dataDir: tempDir,
+          subagentPollMs: 15,
+          subagentWaitingMs: 5000, // high threshold so list triggers waiting_for_input immediately
+        });
+        const session = await adapter.createSession({ cwd: '/work', model: 'gemini-3.8-flash' });
+        const events = collect(session);
+        await until(() => events.some((e) => e.type === 'session.init'), 'session.init');
+
+        session.send('start workers');
+        await until(() => events.some((e) => e.type === 'turn.result'), 'turn 1 result');
+
+        expect(
+          events.some(
+            (e) =>
+              e.type === 'agent.progress' &&
+              e.agentId === 'sub_a' &&
+              e.status === 'waiting_for_input',
+          ),
+        ).toBe(true);
+
+        // Silent reactive parent turn written ONLY to parent transcript.jsonl (no session/update on ACP stdout!)
+        await appendFile(
+          parentPath,
+          JSON.stringify({
+            step_index: 2,
+            type: 'SYSTEM_MESSAGE',
+            status: 'DONE',
+            content: `<SYSTEM_MESSAGE>\n[Message] sender=${CHILD_1} content=Need guidance\n</SYSTEM_MESSAGE>`,
+          }) +
+            '\n' +
+            JSON.stringify({
+              step_index: 3,
+              type: 'PLANNER_RESPONSE',
+              status: 'DONE',
+              input_tokens: 3000,
+              cache_read_tokens: 1000,
+              output_tokens: 55,
+              thinking: 'Subagent A needs input',
+              content: 'SILENT_PARENT_REPLY_OK',
+            }) +
+            '\n',
+          'utf8',
+        );
+
+        await until(
+          () =>
+            events.some(
+              (e) => e.type === 'turn.result' && (e as AgentEventOf<'turn.result'>).text === 'SILENT_PARENT_REPLY_OK',
+            ),
+          'silent parent reactive turn picked up',
+        );
+
+        expect(events.filter((e) => e.type === 'context.usage').at(-1)).toMatchObject({
+          usedTokens: 4055,
+        });
+
+        // Now send Turn 2 with manage_subagents(kill_all) -> both sub_a and sub_b close with status: 'stopped'
+        session.send('kill everything');
+        await until(
+          () =>
+            events.some((e) => e.type === 'agent.end' && e.agentId === 'sub_a' && e.status === 'stopped') &&
+            events.some((e) => e.type === 'agent.end' && e.agentId === 'sub_b' && e.status === 'stopped'),
+          'kill_all stopped both subagents',
+        );
+
+        session.dispose();
+      } finally {
+        await rm(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it('reconstructs subagent timelines via adapter.loadHistory and populates agentTranscript metadata', async () => {
+      const tempDir = await mkdtemp(join(os.tmpdir(), 'agy-stage5-history-'));
+      try {
+        await brainFile(tempDir, CHILD_1, [
+          { step_index: 0, type: 'SYSTEM_MESSAGE', status: 'DONE', content: 'Audit code' },
+          {
+            step_index: 1,
+            type: 'PLANNER_RESPONSE',
+            status: 'DONE',
+            input_tokens: 600,
+            output_tokens: 40,
+            content: 'Audit clean',
+          },
+        ]);
+
+        const server = createFakeAgyServer();
+        server.handle('session/load', (params) => {
+          server.notify('session/update', {
+            sessionId: params.sessionId,
+            update: { sessionUpdate: 'user_message_chunk', content: { type: 'text', text: 'run audit' } },
+          });
+          server.notify('session/update', {
+            sessionId: params.sessionId,
+            update: {
+              sessionUpdate: 'tool_call',
+              toolCallId: 'hist_sub_1',
+              name: 'invoke_subagent',
+              status: 'completed',
+              rawInput: { TypeName: 'flutter_a11y_agent', Role: 'A11y Auditor', Prompt: 'Audit code' },
+              rawOutput: { output: `Created the following subagent:\n{"conversationId":"${CHILD_1}"}` },
+            },
+          });
+          server.notify('session/update', {
+            sessionId: params.sessionId,
+            update: {
+              sessionUpdate: 'agent_message_chunk',
+              content: { type: 'text', text: 'Done' },
+            },
+          });
+          return { sessionId: params.sessionId };
+        });
+
+        const { adapter } = setup(server, { dataDir: tempDir });
+        const history = await adapter.loadHistory(DEFAULT_SESSION_ID, '/work');
+        expect(history.events.some((e) => e.type === 'agent.start' && e.agentId === 'hist_sub_1')).toBe(true);
+        expect(history.events.find((e) => e.type === 'agent.end' && e.agentId === 'hist_sub_1')).toMatchObject({
+          type: 'agent.end',
+          agentId: 'hist_sub_1',
+          taskId: CHILD_1,
+          status: 'completed',
+          summary: 'Audit clean',
+        });
+
+        // Metadata cached during loadHistory is used by agentTranscript
+        const md = await adapter.agentTranscript(DEFAULT_SESSION_ID, '/work', CHILD_1, '');
+        expect(md).toContain('# A11y Auditor · flutter_a11y_agent');
+      } finally {
+        await rm(tempDir, { recursive: true, force: true });
+      }
     });
   });
 });

@@ -37,6 +37,26 @@ describe('agy models', () => {
     expect(await listAgyModels('/x/agy', async () => out)).toHaveLength(14);
     expect(await loadAntigravityCatalog('/x/agy', async () => out)).toHaveLength(7);
   });
+
+  it('очищает прогресс TTY-спиннера по \\r и схлопывает gemini-4-carbon-{low,medium,high}', () => {
+    const raw156 =
+      '\r⠋ Fetching available models...\r\x1b[2Kgemini-4-carbon-low\tGemini 4 Carbon (Low)\r\n' +
+      '\r⠙ Fetching available models...\rgemini-4-carbon-medium\tGemini 4 Carbon (Medium)\r\n' +
+      'gemini-4-carbon-high\tGemini 4 Carbon (High)\n';
+    expect(parseModels(raw156)).toEqual([
+      { value: 'gemini-4-carbon-low', displayName: 'Gemini 4 Carbon (Low)', supportsEffort: false },
+      { value: 'gemini-4-carbon-medium', displayName: 'Gemini 4 Carbon (Medium)', supportsEffort: false },
+      { value: 'gemini-4-carbon-high', displayName: 'Gemini 4 Carbon (High)', supportsEffort: false },
+    ]);
+    expect(parseAgyModels(raw156)).toEqual([
+      {
+        value: 'gemini-4-carbon',
+        displayName: 'Gemini 4 Carbon',
+        supportsEffort: true,
+        effortLevels: ['low', 'medium', 'high'],
+      },
+    ]);
+  });
 });
 
 describe('agyContextWindow', () => {

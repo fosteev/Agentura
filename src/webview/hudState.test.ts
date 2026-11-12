@@ -416,4 +416,134 @@ describe('агенты', () => {
     expect(s.agents[1]).toMatchObject({ status: 'stopped', endedAt: 300 });
     expect(s.agents[0]).toMatchObject({ status: 'completed', endedAt: 200 });
   });
+
+  it('повторный agent.start переоткрывает завершённого субагента с сохранением segs/tokens/calls, а waiting_for_input отражается в lastTool', () => {
+    let s = initialHud();
+    s = applyHud(
+      s,
+      ev({
+        type: 'agent.start',
+        agentId: 'sub_1',
+        taskId: '11111111-2222-3333-4444-555555555555',
+        description: 'Researcher',
+        taskType: 'subagent',
+        subagentType: 'research',
+        background: true,
+      }),
+      100,
+    );
+    s = applyHud(
+      s,
+      ev({
+        type: 'tool.start',
+        agentId: 'sub_1',
+        toolUseId: 'tc_1',
+        name: 'Read',
+        input: { file_path: 'a.ts' },
+        at: 110,
+      }),
+      110,
+    );
+    s = applyHud(
+      s,
+      ev({
+        type: 'tool.result',
+        agentId: 'sub_1',
+        toolUseId: 'tc_1',
+        isError: false,
+        content: 'ok',
+        at: 130,
+      }),
+      130,
+    );
+    s = applyHud(
+      s,
+      ev({
+        type: 'agent.end',
+        agentId: 'sub_1',
+        taskId: '11111111-2222-3333-4444-555555555555',
+        status: 'completed',
+        summary: 'Round 1 report',
+        totalTokens: 4200,
+        toolUses: 1,
+      }),
+      200,
+    );
+    expect(s.agents[0]).toMatchObject({
+      status: 'completed',
+      endedAt: 200,
+      summary: 'Round 1 report',
+      tokens: 4200,
+      toolUses: 1,
+      calls: 1,
+    });
+
+    // Возврат субагента в работу (send_message): статус running, endedAt и старый summary убраны, таймлайн сохранён
+    s = applyHud(
+      s,
+      ev({
+        type: 'agent.start',
+        agentId: 'sub_1',
+        taskId: '11111111-2222-3333-4444-555555555555',
+        description: 'Researcher',
+        taskType: 'subagent',
+        subagentType: 'research',
+        background: true,
+      }),
+      250,
+    );
+    expect(s.agents[0]?.status).toBe('running');
+    expect(s.agents[0]?.endedAt).toBeUndefined();
+    expect(s.agents[0]?.summary).toBeUndefined();
+    expect(s.agents[0]?.segs).toHaveLength(1);
+    expect(s.agents[0]?.tokens).toBe(4200);
+    expect(s.agents[0]?.toolUses).toBe(1);
+    expect(s.agents[0]?.calls).toBe(1);
+
+    // Новые вызовы во втором раунде снова пишутся в segs
+    s = applyHud(
+      s,
+      ev({
+        type: 'tool.start',
+        agentId: 'sub_1',
+        toolUseId: 'tc_2',
+        name: 'Bash',
+        input: { command: 'npm test' },
+        at: 260,
+      }),
+      260,
+    );
+    expect(s.agents[0]?.segs).toHaveLength(2);
+    expect(s.agents[0]?.calls).toBe(2);
+
+    // Ожидание подтверждения в субагенте отражается в lastTool без поломки типа status
+    s = applyHud(
+      s,
+      ev({
+        type: 'agent.progress',
+        agentId: 'sub_1',
+        taskId: '11111111-2222-3333-4444-555555555555',
+        status: 'waiting_for_input',
+        description: 'Bash: npm test',
+        lastToolName: 'Bash',
+      }),
+      300,
+    );
+    expect(s.agents[0]?.status).toBe('running');
+    expect(s.agents[0]?.lastTool).toBe('⏳ Bash: npm test');
+
+    // Fallback на lastToolName при отсутствии description
+    s = applyHud(
+      s,
+      ev({
+        type: 'agent.progress',
+        agentId: 'sub_1',
+        taskId: '11111111-2222-3333-4444-555555555555',
+        status: 'waiting_for_input',
+        lastToolName: 'Edit',
+      }),
+      310,
+    );
+    expect(s.agents[0]?.lastTool).toBe('⏳ Edit');
+  });
 });

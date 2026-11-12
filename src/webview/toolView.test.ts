@@ -231,6 +231,100 @@ describe('toolView: метки B (roadmap 21, этап 2)', () => {
   it('инструменты Jira остаются «jira» и с флагом', () => {
     expect(toolView('mcp__agentura_jira__comment', { issue: 'A-1' }, undefined, undefined, true).op).toBe('jira');
   });
+
+  it('MCP Antigravity с `_` и `-` в имени сервера и пропуском служебного toolSummary', () => {
+    expect(
+      toolView(
+        'mcp__hansard_history__search_past_sessions',
+        { query: 'roadmap 38' },
+        undefined,
+        undefined,
+        true,
+      ),
+    ).toEqual({
+      op: 'mcp',
+      server: 'hansard_history',
+      what: 'search_past_sessions',
+      dim: 'roadmap 38',
+      dimAfter: true,
+    });
+    expect(
+      toolView(
+        'mcp__gemini-api_gemini-api-docs__gemini_search_docs',
+        { toolSummary: 'Search docs', query: 'links.create' },
+        undefined,
+        undefined,
+        true,
+      ),
+    ).toEqual({
+      op: 'mcp',
+      server: 'gemini-api_gemini-api-docs',
+      what: 'gemini_search_docs',
+      dim: 'links.create',
+      dimAfter: true,
+    });
+    expect(
+      toolView('mcp__flutter_dart-mcp-server__analyze_files', {}, undefined, undefined, true),
+    ).toEqual({
+      op: 'mcp',
+      server: 'flutter_dart-mcp-server',
+      what: 'analyze_files',
+    });
+  });
+
+  it('оркестрация oneharness (Antigravity) и чтение SKILL.md', () => {
+    expect(toolView('Agent', { description: 'Codebase Researcher', prompt: 'Find X' })).toEqual({
+      op: 'agent',
+      what: 'Codebase Researcher',
+    });
+    expect(toolView('manage_subagents', { Action: 'list' })).toEqual({
+      op: 'agent',
+      what: 'list',
+    });
+    expect(
+      toolView('manage_subagents', { Action: 'kill', ConversationIds: ['id-1', 'id-2'] }),
+    ).toEqual({
+      op: 'agent',
+      what: 'kill · id-1, id-2',
+    });
+    expect(
+      toolView('send_message', { Recipient: 'fa861d57', Message: '\nГотово\nДетали' }),
+    ).toEqual({
+      op: 'msg',
+      what: 'fa861d57 · Готово',
+    });
+    expect(
+      toolView('define_subagent', { Name: 'verifier', Description: 'Checks diffs' }),
+    ).toEqual({
+      op: 'agent',
+      what: 'verifier — Checks diffs',
+    });
+    expect(toolView('manage_task', { Action: 'status', TaskId: 'task-3' })).toEqual({
+      op: 'task',
+      what: 'status · task-3',
+    });
+    expect(
+      toolView('schedule', { CronExpression: '*/5 * * * *', Prompt: 'Check build' }),
+    ).toEqual({
+      op: 'cron',
+      what: '*/5 * * * * · Check build',
+    });
+    expect(toolView('schedule', { DurationSeconds: 45, Prompt: 'Wake up' })).toEqual({
+      op: 'timer',
+      what: '45s · Wake up',
+    });
+    expect(toolView('swarm', { action: 'add', name: 'reviewer', brief: 'Review MR' })).toEqual({
+      op: 'swarm',
+      what: 'add · reviewer',
+    });
+    expect(
+      toolView('Read', { file_path: '/Users/fost/.gemini/config/skills/plan/SKILL.md' }, cwd),
+    ).toEqual({
+      op: 'read',
+      dim: '/Users/fost/.gemini/config/skills/plan/',
+      what: 'SKILL.md',
+    });
+  });
 });
 
 describe('toolInputText', () => {

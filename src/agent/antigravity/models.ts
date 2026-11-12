@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import type { EffortLevel, ModelOption } from '../types';
+import { stripAgySpinnerLine } from './executable';
 
 /**
  * Модель по умолчанию, если расширение не передало свою: `--model` agy обязателен (без него ход может висеть).
@@ -7,11 +8,12 @@ import type { EffortLevel, ModelOption } from '../types';
  */
 export const DEFAULT_AGY_MODEL = 'gemini-3.8-flash-medium';
 
-/** Вывод `agy models`: строка «Fetching available models…», затем `id<TAB>Название` на модель. */
+/** Вывод `agy models`: строка «Fetching available models…» (возможен `\r`-спиннер), затем `id<TAB>Название` на модель. */
 export function parseModels(output: string): ModelOption[] {
   const models: ModelOption[] = [];
-  for (const line of output.split('\n')) {
-    const m = /^(\S+)(?:\t| {2,})(.+?)\s*$/.exec(line.replace(/\r$/, ''));
+  for (const rawLine of output.split('\n')) {
+    const line = stripAgySpinnerLine(rawLine);
+    const m = /^(\S+)(?:\t| {2,})(.+?)\s*$/.exec(line);
     if (m?.[1] && m[2] && !m[1].includes('Fetching') && !m[2].includes('Fetching')) {
       models.push({ value: m[1], displayName: m[2], supportsEffort: false });
     }

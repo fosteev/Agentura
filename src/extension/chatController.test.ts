@@ -662,6 +662,40 @@ describe('ChatController', () => {
     expect(deps.openPath).toHaveBeenCalledTimes(4);
   });
 
+  it('link.open: conversation://<uuid> открывает вкладку Antigravity, кривые conversation:// блокируются', async () => {
+    const { controller, deps } = setup();
+    const opened: [string, string][] = [];
+    deps.openSession = (id, provider) => void opened.push([id, provider]);
+    deps.openPath = vi.fn(async () => {});
+    deps.openExternal = vi.fn();
+
+    await controller.handle({
+      type: 'link.open',
+      url: 'conversation://FA861D57-7CED-4EE4-A717-33C7361CCA46',
+    });
+    await controller.handle({
+      type: 'link.open',
+      url: 'conversation://c376a54f-80a7-42e0-92d6-223ba479e1a9/',
+    });
+    expect(opened).toEqual([
+      ['fa861d57-7ced-4ee4-a717-33c7361cca46', 'antigravity'],
+      ['c376a54f-80a7-42e0-92d6-223ba479e1a9', 'antigravity'],
+    ]);
+
+    for (const bad of [
+      'conversation://../etc/passwd',
+      'conversation://not-a-uuid',
+      'conversation://fa861d57-7ced-4ee4-a717-33c7361cca46/../etc/passwd',
+      'conversation:12',
+    ]) {
+      await controller.handle({ type: 'link.open', url: bad });
+    }
+    expect(opened).toHaveLength(2);
+    expect(deps.openPath).not.toHaveBeenCalled();
+    expect(deps.openExternal).not.toHaveBeenCalled();
+    expect(deps.log.warn).toHaveBeenCalledTimes(4);
+  });
+
   it('interrupt, режим, compact доходят до сессии', async () => {
     const { controller, sessions } = setup();
     controller.start();
@@ -789,6 +823,23 @@ describe('ChatController', () => {
     expect(posted).toContainEqual({ type: 'quota.update', rows, updatedAt: 5 });
     expect(refresh).not.toHaveBeenCalled();
     expect(posted.some((m) => m.type === 'limits.update')).toBe(false);
+  });
+
+  it('limits.refresh на Antigravity форсит agyQuota.refresh(true) и пробрасывает error в quota.update', async () => {
+    const { posted, deps } = setup();
+    const agy = vi.fn<
+      (force?: boolean) => Promise<{ rows: never[]; updatedAt: number; error: string }>
+    >(async () => ({ rows: [], updatedAt: 0, error: 'Eligibility check failed' }));
+    const agyController = new ChatController({ ...deps, provider: 'antigravity', agyQuota: { refresh: agy } });
+    agyController.start();
+    await agyController.handle({ type: 'limits.refresh' });
+    expect(agy).toHaveBeenLastCalledWith(true);
+    expect(posted).toContainEqual({
+      type: 'quota.update',
+      rows: [],
+      updatedAt: 0,
+      error: 'Eligibility check failed',
+    });
   });
 
   it('limits.refresh и конец хода перечитывают лимиты; ошибка источника не роняет чат', async () => {

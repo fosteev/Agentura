@@ -312,12 +312,24 @@ describe('лимиты нескольких движков в боковой п�
       type: 'engines.limits',
       engines: [
         codex({ state: 'error', error: 'timeout' }),
-        agy({ state: 'missing', windows: [] }),
+        agy({ state: 'error', windows: [], error: 'Eligibility check failed' }),
       ],
     });
     await flush();
     expect(q(host, '.eng[data-engine="codex"] .eh')?.getAttribute('data-tip')).toContain('timeout');
     expect(qa(host, '.eng[data-engine="codex"] .L').length).toBe(2); // последние известные окна
+    expect(q(host, '.eng[data-engine="antigravity"] .wait')?.textContent).toBe('Eligibility check failed');
+    expect(q(host, '.eng[data-engine="antigravity"] .eh')?.getAttribute('data-tip')).toContain(
+      'Eligibility check failed',
+    );
+    msg({
+      type: 'engines.limits',
+      engines: [
+        codex({ state: 'error', error: 'timeout' }),
+        agy({ state: 'missing', windows: [] }),
+      ],
+    });
+    await flush();
     expect(host.querySelectorAll('.eng[data-engine="antigravity"]').length).toBe(0);
   });
 

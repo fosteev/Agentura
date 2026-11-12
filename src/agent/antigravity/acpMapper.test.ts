@@ -291,4 +291,208 @@ describe('AgyAcpMapper', () => {
     expect(types).toContain('tool.result');
     expect(types).toContain('turn.result');
   });
+
+  it('api_retry before answer closes open thinking and strips Go/HTTP URLs and socket addresses', () => {
+    const mapper = new AgyAcpMapper();
+    mapper.startTurn('explain', 1000);
+
+    mapper.applyUpdate(
+      {
+        sessionUpdate: 'agent_thought_chunk',
+        content: { type: 'text', text: 'thinking...' },
+      },
+      1050,
+    );
+
+    const retryEvents = mapper.applyUpdate(
+      {
+        sessionUpdate: 'agent_message_chunk',
+        content: {
+          type: 'text',
+          text: '\n⚠ API error (attempt 1): Post "https://daily-cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse": read tcp 192.168.1.42:54321->142.250.74.106:443: read: connection reset by peer\n',
+        },
+      },
+      1100,
+    );
+
+    expect(retryEvents).toHaveLength(2);
+    expect(retryEvents[0]).toMatchObject({ type: 'thinking.stop', at: 1100 });
+    expect(retryEvents[1]).toEqual({
+      type: 'error',
+      fatal: false,
+      code: 'api_retry',
+      message: 'Повтор запроса к API (попытка 1) · connection reset by peer',
+    });
+    expect((retryEvents[1] as Extract<AgentEvent, { type: 'error' }>).message).not.toContain('https://');
+    expect((retryEvents[1] as Extract<AgentEvent, { type: 'error' }>).message).not.toContain('192.168.');
+
+    const answer = mapper.applyUpdate(
+      {
+        sessionUpdate: 'agent_message_chunk',
+        content: { type: 'text', text: 'Готово.' },
+      },
+      1200,
+    );
+    expect(answer).toHaveLength(1);
+    expect(answer[0]).toMatchObject({ type: 'text.delta', text: 'Готово.' });
+
+    const done = mapper.finish({ stopReason: 'end_turn' }, 1000, 1300);
+    expect(done[0]).toMatchObject({ type: 'turn.result', text: 'Готово.' });
+  });
+
+  it('api_retry supports EN locale and extracts compact timeout / TLS / EOF / HTTP status details', () => {
+    const mapper = new AgyAcpMapper({ lang: () => 'en' });
+    mapper.startTurn('check', 1000);
+
+    const cases: Array<[string, string]> = [
+      [
+        '\n⚠ API error (attempt 1): Post "https://daily-cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse": dial tcp 142.250.74.106:443: i/o timeout\n',
+        'Retrying API request (attempt 1) · i/o timeout',
+      ],
+      [
+        '\n⚠ API error (attempt 2): Post "https://daily-cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse": net/http: TLS handshake timeout\n',
+        'Retrying API request (attempt 2) · TLS handshake timeout',
+      ],
+      [
+        '\n⚠ API error (attempt 3): Post "https://daily-cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse": EOF\n',
+        'Retrying API request (attempt 3) · EOF',
+      ],
+      [
+        '\n⚠ API error (attempt 4): googleapi: Error 429: Resource has been exhausted (e.g. check quota)., rateLimitExceeded\n',
+        'Retrying API request (attempt 4) · HTTP 429',
+      ],
+      [
+        '\n⚠ API error (attempt 5): Post "https://daily-cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse": unexpected HTTP 503 Service Unavailable\n',
+        'Retrying API request (attempt 5) · HTTP 503',
+      ],
+    ];
+
+    for (const [raw, expected] of cases) {
+      const evs = mapper.applyUpdate({
+        sessionUpdate: 'agent_message_chunk',
+        content: { type: 'text', text: raw },
+      });
+      expect(evs).toEqual([{ type: 'error', fatal: false, code: 'api_retry', message: expected }]);
+    }
+
+    const done = mapper.finish({ stopReason: 'end_turn' }, 1000, 1500);
+    expect((done[0] as Extract<AgentEvent, { type: 'turn.result' }>).text).toBeUndefined();
+  });
+
+  it('api_retry between stream chunks (separate and consolidated) splits messageId and keeps turn.result.text clean', () => {
+    // 1. Separate chunks: text -> attempt 1 -> attempt 2 -> text
+    const separate = new AgyAcpMapper();
+    separate.startTurn('stream', 1000);
+
+    const first = separate.applyUpdate({
+      sessionUpdate: 'agent_message_chunk',
+      content: { type: 'text', text: 'Первая часть. ' },
+    });
+    const r1 = separate.applyUpdate({
+      sessionUpdate: 'agent_message_chunk',
+      content: { type: 'text', text: '\n⚠ API error (attempt 1): Post "https://daily-cloudcode-pa.googleapis.com/v1": EOF\n' },
+    });
+    const r2 = separate.applyUpdate({
+      sessionUpdate: 'agent_message_chunk',
+      content: { type: 'text', text: '\n⚠ API error (attempt 2): Post "https://daily-cloudcode-pa.googleapis.com/v1": i/o timeout\n' },
+    });
+    const second = separate.applyUpdate({
+      sessionUpdate: 'agent_message_chunk',
+      content: { type: 'text', text: 'Вторая часть.' },
+    });
+    const sepDone = separate.finish({ stopReason: 'end_turn' }, 1000, 2000);
+
+    expect(first).toHaveLength(1);
+    expect(second).toHaveLength(1);
+    const id1 = (first[0] as Extract<AgentEvent, { type: 'text.delta' }>).messageId;
+    const id2 = (second[0] as Extract<AgentEvent, { type: 'text.delta' }>).messageId;
+    expect(id1).not.toBe(id2);
+    expect(r1).toEqual([
+      { type: 'error', fatal: false, code: 'api_retry', message: 'Повтор запроса к API (попытка 1) · EOF' },
+    ]);
+    expect(r2).toEqual([
+      { type: 'error', fatal: false, code: 'api_retry', message: 'Повтор запроса к API (попытка 2) · i/o timeout' },
+    ]);
+    expect(sepDone[0]).toMatchObject({ type: 'turn.result', text: 'Первая часть. Вторая часть.' });
+
+    // 2. Consolidated chunk (e.g. session/load replay)
+    const consolidated = new AgyAcpMapper();
+    consolidated.startTurn('replay', 1000);
+    const events = consolidated.applyUpdate({
+      sessionUpdate: 'agent_message_chunk',
+      content: {
+        type: 'text',
+        text: 'До сбоя.\n⚠ API error (attempt 1): Post "https://daily-cloudcode-pa.googleapis.com/v1": EOF\nПосле сбоя.',
+      },
+    });
+    expect(events).toHaveLength(3);
+    expect(events[0]).toMatchObject({ type: 'text.delta', text: 'До сбоя.' });
+    expect(events[1]).toEqual({
+      type: 'error',
+      fatal: false,
+      code: 'api_retry',
+      message: 'Повтор запроса к API (попытка 1) · EOF',
+    });
+    expect(events[2]).toMatchObject({ type: 'text.delta', text: 'После сбоя.' });
+    expect((events[0] as Extract<AgentEvent, { type: 'text.delta' }>).messageId).not.toBe(
+      (events[2] as Extract<AgentEvent, { type: 'text.delta' }>).messageId,
+    );
+
+    const consDone = consolidated.finish({ stopReason: 'end_turn' }, 1000, 1500);
+    expect(consDone[0]).toMatchObject({ type: 'turn.result', text: 'До сбоя.После сбоя.' });
+  });
+
+  it('normal response containing ⚠ without API error template passes through unchanged', () => {
+    const mapper = new AgyAcpMapper();
+    mapper.startTurn('warn', 1000);
+
+    const text = '⚠ Внимание: проверьте конфиг!\n⚠ API error: без номера попытки';
+    const events = mapper.applyUpdate({
+      sessionUpdate: 'agent_message_chunk',
+      content: { type: 'text', text },
+    });
+    expect(events).toEqual([{ type: 'text.delta', messageId: 'a1', text }]);
+
+    const done = mapper.finish({ stopReason: 'end_turn' }, 1000, 1200);
+    expect(done[0]).toMatchObject({ type: 'turn.result', text });
+  });
+
+  it('passes mcpServers to mapAgyTool for eager MCP and maps invoke_subagent to Agent', () => {
+    const mapper = new AgyAcpMapper({
+      mcpServers: ['gemini-api_gemini-api-docs', 'hansard_history'],
+    });
+    mapper.startTurn('check', 1000);
+
+    const mcpEvents = mapper.applyUpdate({
+      sessionUpdate: 'tool_call',
+      toolCallId: 'tc-mcp',
+      name: 'mcp_hansard_history_search_past_sessions',
+      rawInput: { query: 'roadmap 38' },
+      status: 'in_progress',
+    });
+    expect(mcpEvents).toEqual([
+      {
+        type: 'tool.start',
+        toolUseId: 'tc-mcp',
+        name: 'mcp__hansard_history__search_past_sessions',
+        input: { query: 'roadmap 38' },
+      },
+    ]);
+
+    const subEvents = mapper.applyUpdate({
+      sessionUpdate: 'tool_call',
+      toolCallId: 'tc-sub',
+      name: 'invoke_subagent',
+      rawInput: { TypeName: 'self', Role: 'Stage 3 Coder', Prompt: 'Do work' },
+      status: 'in_progress',
+    });
+    expect(subEvents).toEqual([
+      {
+        type: 'tool.start',
+        toolUseId: 'tc-sub',
+        name: 'Agent',
+        input: { description: 'Stage 3 Coder', prompt: 'Do work', subagent_type: 'self' },
+      },
+    ]);
+  });
 });

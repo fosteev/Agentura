@@ -32,11 +32,16 @@ marked.use({
 
 export type Sanitizer = (html: string) => string;
 
+// Стандартные безопасные URI DOMPurify + ссылки на дочерние сессии Antigravity (`conversation://<uuid>`).
+const ALLOWED_URI_REGEXP =
+  /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|matrix):|conversation:\/\/|[^a-z]|[a-z+.-]+(?:[^a-z+.\-:]|$))/i;
+
 const purify: Sanitizer = (html) =>
   DOMPurify.sanitize(html, {
     ADD_ATTR: ['data-copy'],
     FORBID_TAGS: ['style', 'form', 'input'],
     FORBID_ATTR: ['style'],
+    ALLOWED_URI_REGEXP,
   });
 
 export function renderMarkdown(source: string, sanitize: Sanitizer = purify): string {

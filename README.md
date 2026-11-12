@@ -14,7 +14,12 @@ engine as Claude Code, through your installed `claude` and its login. Codex CLI 
 
 Personal project, not on the Marketplace. Install it from a `.vsix` (see [Install](#install)).
 
-> **New in 0.22 — redesigned session settings.** Provider cards, grouped model and permission controls,
+> **New in 0.23 — Antigravity ACP, subagents graph and `/compact`.** Native `agy acp` sessions with live
+> subagent timelines and transcripts, clickable `conversation://` links, `/` slash commands, MCP server chips,
+> context window gauge, `/compact`, `bypassPermissions` inheritance and `/usage` quota diagnostics. See
+> [Antigravity engine](#antigravity-engine-experimental).
+>
+> **0.22 — redesigned session settings.** Provider cards, grouped model and permission controls,
 > advanced settings, and engine logos in chats. Codex chats attached to Jira tasks now start correctly.
 >
 > **0.21 — Cursor engine.** Run Cursor CLI (`agent acp`) in a chat tab, with streaming replies,
@@ -123,7 +128,7 @@ The extension does not ship the engine binary (200+ MB). It finds the system `cl
 `~/.claude/local` or Homebrew (on Windows it looks for `claude.exe`). To point it somewhere else, set `agentura.claudeExecutable`.
 
 ```
-code --install-extension agentura-0.22.0.vsix
+code --install-extension agentura-0.23.0.vsix
 ```
 
 To build from source:
@@ -131,7 +136,7 @@ To build from source:
 ```
 npm ci
 npm run check      # types, lint, unit tests, build
-npm run package    # agentura-0.22.0.vsix
+npm run package    # agentura-0.23.0.vsix
 ```
 
 ## Codex
@@ -210,7 +215,7 @@ found and the Claude and Codex lists stay.
 A chat tab can also run on Google's Antigravity CLI (`agy`): pick it in the engine menu of an empty tab, or set
 `agentura.defaultProvider` to `antigravity`. Models inside `agy` include Gemini, Claude and GPT.
 
-Agentura requires `agy >= 1.5.0` (standard: `1.5.3`) and connects via the official ACP protocol (`agy acp`, JSON-RPC 2.0
+Agentura requires `agy >= 1.5.0` (standard: `1.5.6+`) and connects via the official ACP protocol (`agy acp`, JSON-RPC 2.0
 over stdio). Agentura finds the binary in `PATH`, `~/.local/bin` or Homebrew; `agentura.antigravityExecutable` points
 elsewhere (⚙ → "Engine" has a check button). When signed out, the sidebar offers interactive sign-in via
 `agy acp --login`.
@@ -222,23 +227,36 @@ Changing the model adjusts supported effort levels (`low`, `medium`, `high`); mo
 
 Supported features:
 
-- **Streaming replies and Stop**: text and reasoning blocks stream in real time; Stop sends `session/cancel` and leaves
-  the process alive and ready for subsequent turns.
+- **Streaming replies, API retry badges and Stop**: text and reasoning blocks stream in real time, transient Cloud Code
+  retries (`⚠ API error (attempt N)`) collapse into compact `api_retry` badges instead of polluting the reply text, and
+  Stop sends `session/cancel` while leaving the process alive for subsequent turns.
+- **Slash command autocomplete (`/`)**: server-advertised commands (`available_commands_update`) populate the `/` menu in
+  the composer on session start and resume.
 - **Live permissions**: file edits and bash commands prompt for approval in the feed (`Allow`, `Deny`, or `Allow edits`)
   without restarting the process.
-- **Native modes**: switch between `default` (ask per action), `accept-edits` (auto-approve workspace file edits), and
-  `plan` (text planning). `bypassPermissions` requires `agentura.allowBypassPermissions` and switches to `accept-edits`
-  with auto-approval.
+- **Native modes and subagent permission inheritance**: switch between `default` (ask per action), `accept-edits`
+  (auto-approve workspace file edits), and `plan` (text planning), while preserving server-side `auto` mode on resume.
+  `bypassPermissions` (when `agentura.allowBypassPermissions` is enabled) runs `agy acp --dangerously-skip-permissions`
+  so child subagents and worktrees inherit auto-approval, transparently rotating the worker via `session/resume` when
+  toggled.
+- **Subagents graph, transcripts and `conversation://` links**: live subagent tree (`AgentsGraph`), inline `AgentGroup`
+  cards, the **agents** tab (including nested subagents, background bash tasks, `waiting_for_input` detection, and
+  `send_message` reopening), history reconstruction, read-only Markdown transcripts, and clickable
+  `conversation://<uuid>` links that open the referenced session in an Agentura chat tab.
 - **Images**: image attachments in messages are sent as ACP image blocks.
 - **Interactive questions**: `ask_question` renders interactive single- and multi-choice cards (`elicitation/create`)
   with answers returned to the agent in the same turn.
-- **Diffs and tools**: tool calls render cards (`Bash`, `Read`, `Edit`, `Write`, `WebSearch`), and file diffs are
-  extracted directly from ACP updates without reading `~/.gemini`.
+- **Diffs, MCP chips and orchestration tools**: tool calls render native cards (`Bash`, `Read`, `Edit`, `Write`,
+  `WebSearch`, `Agent`), eager and lazy MCP calls render server chips resolved against `<dataDir>/mcp`, orchestration
+  tools (`manage_subagents`, `send_message`, `define_subagent`, `manage_task`, `schedule`, `swarm`) have structured feed
+  labels, and file diffs are extracted directly from ACP updates without writing to `~/.gemini`.
 - **Session history**: the sidebar lists project conversations via `session/list` (filtered by workspace folder),
-  resuming uses `session/resume`, and opening past threads replays history via `session/load`. Session renaming works
-  via Agentura's index.
-- **Account quota**: 5-window usage from `agy -p "/usage"` (Gemini 5h/7d, Claude/GPT 5h/7d, Gemini 4 Argon 7d;
-  polled at most once per 10 minutes) shows in the compact HUD by the input box and in the limits panel.
+  resuming uses `session/resume`, opening past threads replays history via `session/load`, and late server-generated
+  titles (`session_info_update`) update automatically. Session renaming works via Agentura's index.
+- **Account quota diagnostics and manual refresh**: quota pools from `agy -p "/usage"` (general Gemini 5h/7d, Claude/GPT
+  5h/7d, and dedicated model pools such as `Gemini 4 Argon` / `Gemini 4 Carbon`; polled every 10 minutes with a 60s error
+  cooldown) show in the compact HUD and in the limits panel, surfacing `Eligibility check failed` / network errors while
+  preserving cached rings and supporting manual refresh.
 - **Context window gauge and `/compact`**: tracks used and available context window tokens (`1M` for Gemini, `200k` for
   Claude, `128k` for `gpt-oss-120b`; reading the `transcript.jsonl` tail with single-step ACP fallback), recalculates
   the remaining window immediately on model switch in active chats without losing history, and supports manual context
@@ -247,8 +265,10 @@ Supported features:
 Remaining limits:
 
 - No USD cost estimation (ACP does not report token prices).
-- No native plan acceptance callback (plans stream as text).
-- No subagents or document/PDF attachment blocks.
+- No native plan acceptance card (plans stream as text).
+- No PDF/document attachment blocks.
+- No per-subagent stop button in the UI (`agentStop: false` — ACP has no client RPC to cancel a single child
+  `conversationId`).
 
 ## Jira tasks
 
