@@ -97,6 +97,7 @@ describe('форматы', () => {
     expect(shortModel('claude-opus-5-5')).toBe('opus-5.5');
     expect(shortModel('claude-sonnet-5-5')).toBe('sonnet-5.5');
     expect(shortModel('claude-sonnet-4-20250514')).toBe('sonnet-4');
+    expect(shortModel('gemini-4-carbon-medium')).toBe('carbon-4');
     expect(shortModel('gemini-4-argon')).toBe('argon-4');
     expect(shortModel('gemini-3.8-flash')).toBe('flash-3.8');
     expect(shortModel('gpt-oss-120b-medium')).toBe('gpt-oss-120b');

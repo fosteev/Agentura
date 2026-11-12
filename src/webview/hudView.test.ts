@@ -10,6 +10,7 @@ import {
   contextFullAt,
   contextScale,
   contextView,
+  kilo,
   contextZone,
   formatCountdown,
   limitLevel,
@@ -113,6 +114,31 @@ describe('contextView', () => {
     expect(contextScale(1_000_000, [300_000, 400_000])).toBe(533_334);
     expect(contextScale(200_000, [300_000, 400_000])).toBe(200_000);
     expect(contextScale(200_000, [120_000, 150_000])).toBe(200_000);
+  });
+
+  it('без порогов, окно известно (Antigravity 1M): загружено и остаток', () => {
+    const v = contextView({ ...initialHud([]), context: { used: 81_000, max: 1_000_000 } });
+    expect(v.hasMax).toBe(true);
+    expect(v.short).toBe('81k/1M');
+    expect(v.max).toBe('1 000 000');
+    expect(v.title).toBe('Контекст: загружено 81k · осталось 919k из 1M');
+    expect(kilo(200_000)).toBe('200k');
+    expect(kilo(1_500_000)).toBe('1.5M');
+  });
+
+  it('без порогов, окно неизвестно: только загруженное, без потолка и шкалы', () => {
+    const v = contextView({ ...initialHud([]), context: { used: 81_000 } });
+    expect(v.hasMax).toBe(false);
+    expect(v.short).toBe('81k');
+    expect(v.max).toBe('');
+    expect(v.blocks).toEqual([]);
+    expect(v.marks).toEqual([]);
+    expect(v.percent).toBe(0);
+    expect(v.fill).toBe(0);
+    expect(v.zone).toBe('ok');
+    expect(v.numCls).toBe('ok');
+    expect(v.title).toBe('Контекст: загружено 81k');
+    expect(contextView(initialHud([])).numCls).toBe('zero');
   });
 });
 

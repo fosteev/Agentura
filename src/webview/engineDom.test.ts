@@ -258,6 +258,74 @@ describe('Composer: контекст Codex без порогов', () => {
   });
 });
 
+describe('Composer: контекст Antigravity (roadmap 37)', () => {
+  const usage = (usedTokens: number, maxTokens?: number) =>
+    handleHostMessage({
+      type: 'agent.event',
+      sessionId: 's',
+      event: {
+        type: 'context.usage',
+        usedTokens,
+        ...(maxTokens !== undefined ? { maxTokens } : {}),
+        source: 'usage',
+      },
+    } as never);
+  const text = (el: Element | null) => (el?.textContent ?? '').replace(/\s/g, ' ');
+
+  it('известное окно 1M: счётчик «/ 1 000 000» и тултип с остатком', async () => {
+    info('antigravity');
+    usage(81_000, 1_000_000);
+    expect(hudState.value.thresholds).toEqual([]);
+    const host = mount();
+    await flush();
+    const cn = host.querySelector('.cn')!;
+    expect(text(cn)).toContain('81 000');
+    expect(text(cn)).toContain('/ 1 000 000');
+    expect(cn.getAttribute('data-tip')).toBe('Контекст: загружено 81k · осталось 919k из 1M');
+    expect(host.querySelector('.blocks')).not.toBeNull();
+  });
+
+  describe.each<ComposerLayout>(['classic', 'card', 'gauges', 'statusline', 'shell'])(
+    'раскладка %s',
+    (layout) => {
+      beforeEach(() => {
+        composerLayout.value = layout;
+      });
+
+      it('1M → 200k → неизвестная модель: потолок, кольцо, % и полоса исчезают, остаётся число токенов', async () => {
+        info('antigravity');
+        usage(81_000, 1_000_000);
+        const host = mount();
+        await flush();
+        // с известным окном — кольцо, % или полоса есть
+        expect(host.querySelector('.ring, .bar, .pc, .blocks'), layout).not.toBeNull();
+
+        usage(81_000, 200_000);
+        await flush();
+        expect(host.querySelector('.ring, .bar, .pc, .blocks'), layout).not.toBeNull();
+        expect(text(host)).toMatch(layout === 'shell' ? /41%/ : /200k|200 000/);
+
+        usage(81_000, 0);
+        await flush();
+        const ctx = text(host.querySelector('.cn, .cs'));
+        expect(ctx, layout).toMatch(/81( 000|k)/);
+        expect(ctx, layout).not.toMatch(/200|1M|1 000 000|\//);
+        expect(host.textContent).not.toMatch(/200\s000/);
+        expect(host.querySelector('.ring, .bar, .pc, .blocks'), layout).toBeNull();
+        expect(host.textContent).not.toMatch(/\d\s?%/);
+      });
+
+      it('неизвестное окно и ничего не загружено: индикатор скрыт', async () => {
+        info('antigravity');
+        usage(0, 0);
+        const host = mount();
+        await flush();
+        expect(host.querySelector(CTX_SEL), layout).toBeNull();
+      });
+    },
+  );
+});
+
 describe('Composer: Codex', () => {
   it('Codex slash menu includes compact and native plan', async () => {
     info('codex');

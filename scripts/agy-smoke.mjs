@@ -72,6 +72,20 @@ try {
   const flash = caps.models.find((m) => m.value === MODEL);
   if (!flash || !flash.effortLevels?.includes(EFFORT)) exitCode = 1;
 
+  const initialUsage = events.find((e) => e.type === 'context.usage');
+  console.log(`${t()} context.usage init: maxTokens=${initialUsage?.maxTokens}`);
+  if (!initialUsage || initialUsage.maxTokens !== 1_000_000) exitCode = 1;
+
+  await session.setModel('claude-sonnet-5-5');
+  const claudeUsage = events.filter((e) => e.type === 'context.usage').at(-1);
+  console.log(`${t()} setModel(claude-sonnet-5-5): maxTokens=${claudeUsage?.maxTokens}`);
+  if (!claudeUsage || claudeUsage.maxTokens !== 200_000) exitCode = 1;
+
+  await session.setModel(MODEL);
+  const resetUsage = events.filter((e) => e.type === 'context.usage').at(-1);
+  console.log(`${t()} setModel(${MODEL}): maxTokens=${resetUsage?.maxTokens}`);
+  if (!resetUsage || resetUsage.maxTokens !== 1_000_000) exitCode = 1;
+
   const account = await adapter.accountInfo(cwd);
   if (account.subscriptionType) {
     console.log(`${t()} tariff: ${account.subscriptionType}`);
@@ -84,6 +98,22 @@ try {
     const text = events.filter((e) => e.type === 'text.delta').map((e) => e.text).join('');
     console.log(`${t()} текст: «${text}»`);
     if (first.type !== 'turn.result' || !first.ok) exitCode = 1;
+
+    const turnUsage = events.filter((e) => e.type === 'context.usage').at(-1);
+    console.log(`${t()} turn context.usage: usedTokens=${turnUsage?.usedTokens}, maxTokens=${turnUsage?.maxTokens}`);
+    if (!turnUsage || typeof turnUsage.usedTokens !== 'number' || turnUsage.usedTokens <= 0 || turnUsage.maxTokens !== 1_000_000) {
+      exitCode = 1;
+    }
+    const usedBefore = turnUsage?.usedTokens;
+
+    await session.setModel('claude-sonnet-5-5');
+    const claudeTurnUsage = events.filter((e) => e.type === 'context.usage').at(-1);
+    console.log(`${t()} turn setModel(claude): usedTokens=${claudeTurnUsage?.usedTokens}, maxTokens=${claudeTurnUsage?.maxTokens}`);
+    if (!claudeTurnUsage || claudeTurnUsage.usedTokens !== usedBefore || claudeTurnUsage.maxTokens !== 200_000) {
+      exitCode = 1;
+    }
+
+    await session.setModel(MODEL);
 
     // resume: сессия открывается заново через session/resume; init с тем же id
     const id = session.id;

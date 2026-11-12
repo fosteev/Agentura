@@ -921,7 +921,7 @@ export function Composer() {
 
   return (
     <footer {...rootProps}>
-      {contextShown.value && <ContextBlocks blocks={hv.context.blocks} />}
+      {contextShown.value && hv.context.hasMax && <ContextBlocks blocks={hv.context.blocks} />}
       <Drafts drafts={drafts} fileDrafts={fileDrafts} />
       <div class="ctx">
         <DraftHint drafts={drafts.length} files={fileDrafts.length} />
@@ -1102,10 +1102,15 @@ function ContextCount({
           </span>{' '}
         </>
       )}
-      / {hv.context.max} ·{' '}
+      {hv.context.hasMax ? (
+        <>/ {hv.context.max} ·{' '}</>
+      ) : (
+        (hv.context.compacting || hv.context.note || features.value.compact) && <>·{' '}</>
+      )}
       {hv.context.compacting && (
         <>
-          <span class="spin" aria-hidden="true" /> {ui.log.compacting} ·{' '}
+          <span class="spin" aria-hidden="true" /> {ui.log.compacting}
+          {hv.context.hasMax || hv.context.note || features.value.compact ? ' ·' : ''}{' '}
         </>
       )}
       {hv.context.note && <>{hv.context.note} · </>}
@@ -1791,7 +1796,7 @@ function EngineMenu({
 
 /** Кольцо заполнения контекста (`used / fullAt`) и процент; цвет — по зоне. */
 function ContextRing({ hv }: { hv: Hv }) {
-  if (!contextShown.value) return null;
+  if (!contextShown.value || !hv.context.hasMax) return null;
   const c = hv.context;
   return (
     <span class="cr" data-tip={c.title}>
@@ -1825,8 +1830,8 @@ function ContextStatus({ hv, look }: { hv: Hv; look: 'sl' | 'sh' }) {
   const c = hv.context;
   return (
     <span class="cr cs" data-tip={c.title}>
-      {look === 'sl' && 'ctx'} <ContextBar hv={hv} />{' '}
-      {look === 'sl' ? (
+      {look === 'sl' && 'ctx'} {c.hasMax && <ContextBar hv={hv} />}{' '}
+      {look === 'sl' || !c.hasMax ? (
         <b class={c.numCls}>{c.short}</b>
       ) : (
         <b class="pc" style={`color:${c.color}`}>
@@ -1847,7 +1852,7 @@ function ContextGauge({ hv }: { hv: Hv }) {
   const c = hv.context;
   return (
     <span class="cn gauge" data-tip={c.title}>
-      {ui.compose.context} <ContextBar hv={hv} /> <b class={c.numCls}>{c.short}</b>{' '}
+      {ui.compose.context} {c.hasMax && <ContextBar hv={hv} />} <b class={c.numCls}>{c.short}</b>{' '}
       {c.compacting && (
         <>
           <span class="spin" aria-hidden="true" /> {ui.log.compacting}{' '}

@@ -105,12 +105,14 @@ export function contextBlocks(
 }
 
 export function kilo(n: number): string {
-  return `${Math.round(n / 1000)}k`;
+  return n >= 1_000_000 ? `${Number((n / 1_000_000).toFixed(1))}M` : `${Math.round(n / 1000)}k`;
 }
 
 export interface ContextView {
   now: string;
   max: string;
+  /** Потолок окна известен (пороги, окно из `context.usage`/хода); иначе — только загруженное, без `/ окно`, % и шкалы. */
+  hasMax: boolean;
   /** Класс числа: `ok`, `zero`, пусто (жёлтый по умолчанию), `hot`, `full`. */
   numCls: string;
   zone: Zone;
@@ -134,15 +136,36 @@ export interface ContextView {
 
 export function contextView(s: HudState): ContextView {
   const used = s.context?.used ?? 0;
+  const hasMax = s.thresholds.length > 0 || s.context?.max !== undefined || s.contextWindow !== undefined;
+  if (!hasMax) {
+    // окно модели неизвестно: честно показываем только загруженное, без потолка, % и шкалы
+    return {
+      now: formatInt(used),
+      max: '',
+      hasMax,
+      numCls: used === 0 ? 'zero' : 'ok',
+      zone: 'ok',
+      percent: 0,
+      fill: 0,
+      marks: [],
+      color: ZONE_VAR.ok,
+      short: kilo(used),
+      blocks: [],
+      compacting: !!s.compacting,
+      title: ui.compose.ctxTitleOpen(kilo(used)),
+    };
+  }
   const max = contextMax(s);
   const fullAt = contextFullAt(s.context?.autoCompact, max);
   const zone = contextZone(used, s.thresholds, fullAt);
   const scale = contextScale(max, s.thresholds);
   const sorted = [...s.thresholds].sort((a, b) => a - b);
   const passed = [...sorted].reverse().find((t) => used >= t);
+  const left = Math.max(0, max - used);
   return {
     now: formatInt(used),
     max: formatInt(max),
+    hasMax,
     numCls: used === 0 ? 'zero' : zone === 'warn' ? '' : zone,
     zone,
     percent: fullAt > 0 ? Math.max(0, Math.min(100, Math.round((used / fullAt) * 100))) : 0,
@@ -158,7 +181,7 @@ export function contextView(s: HudState): ContextView {
     compacting: !!s.compacting,
     title:
       sorted.length === 0
-        ? ui.compose.ctxTitleOpen(kilo(max))
+        ? ui.compose.ctxTitleOpen(kilo(used), kilo(left), kilo(max))
         : ui.compose.ctxTitle(sorted.map(kilo), kilo(fullAt), scale < max ? kilo(scale) : undefined),
   };
 }

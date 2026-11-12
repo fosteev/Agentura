@@ -239,12 +239,16 @@ Supported features:
   via Agentura's index.
 - **Account quota**: 5-window usage from `agy -p "/usage"` (Gemini 5h/7d, Claude/GPT 5h/7d, Gemini 4 Argon 7d;
   polled at most once per 10 minutes) shows in the compact HUD by the input box and in the limits panel.
+- **Context window gauge and `/compact`**: tracks used and available context window tokens (`1M` for Gemini, `200k` for
+  Claude, `128k` for `gpt-oss-120b`; reading the `transcript.jsonl` tail with single-step ACP fallback), recalculates
+  the remaining window immediately on model switch in active chats without losing history, and supports manual context
+  compression via `/compact`.
 
 Remaining limits:
 
-- No token context window gauge or USD cost estimation (ACP reports turn token usage, but not window capacity or prices).
+- No USD cost estimation (ACP does not report token prices).
 - No native plan acceptance callback (plans stream as text).
-- No `/compact`, subagents, or document/PDF attachment blocks.
+- No subagents or document/PDF attachment blocks.
 
 ## Jira tasks
 

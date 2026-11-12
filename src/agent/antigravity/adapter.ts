@@ -19,7 +19,7 @@ import type {
   SessionInfo,
   SessionOptions,
 } from '../types';
-import { AgyAcpMapper, toolInput, toolName } from './acpMapper';
+import { AgyAcpMapper, toolInput, toolName, usageOf } from './acpMapper';
 import {
   AGY_CLIENT_CAPABILITIES,
   AGY_PROTOCOL_VERSION,
@@ -40,12 +40,20 @@ import {
   promptBlocks,
   record,
   sessionIdOf,
+  sessionUpdateKind,
+  stopReasonOf,
   tierNameOf,
   type AgyConfig,
   type ParsedElicitation,
 } from './acpProtocol';
+import {
+  buildAgyContextUsage,
+  readLastTranscriptUsage,
+  singleStepUsageTokens,
+} from './context';
 import { AGY_NOT_FOUND } from './executable';
 import { buildAgyHistory } from './history';
+import { agyContextWindow } from './models';
 import { AgySessionIndex, type AgySessionSettings, type AgyStateStore } from './sessionIndex';
 import { mapAgyTool } from './tools';
 
@@ -62,6 +70,8 @@ export interface AgySpawnOptions {
 export type LogFn = (level: 'debug' | 'info' | 'warn' | 'error', message: string) => void;
 
 export interface AntigravityAdapterConfig {
+  /** Каталог данных Antigravity (~/.gemini/antigravity-cli), где лежат brain/<sessionId>/... */
+  dataDir?: string;
   /** Путь к `agy` (`antigravityEngine.path()`); нет пути — `createSession` бросает «не найден». */
   executablePath?: string | (() => string | undefined | Promise<string | undefined>);
   log?: LogFn;
@@ -197,6 +207,11 @@ export class AntigravityAdapter implements AgentAdapter {
       const saved = this.index.settingsOf(sessionId);
       if (saved?.model) history.model = saved.model;
       if (saved) history.mode = saved.permissionMode;
+      const snap = await readLastTranscriptUsage(sessionId, this.config.dataDir);
+      if (snap) {
+        const ctxModel = history.model ?? parseConfig(loaded.result).model?.current;
+        history.events.push(buildAgyContextUsage(snap.usedTokens, ctxModel));
+      }
       return history;
     } catch (error) {
       this.config.log?.('warn', `agy: session/load failed: ${errorText(error)}`);
@@ -374,7 +389,11 @@ class AgySession implements AgentSession {
   private procExited = false;
   /** Растёт на каждый `interrupt()`: сообщение, взятое до него, в `session/prompt` не уходит. */
   private generation = 0;
-  private turn: { done: Deferred; startedAt: number } | undefined;
+  private usedTokens = 0;
+  private lastStepIndex = -1;
+  private transcriptCheckInProgress = false;
+  private compacting: { done: Deferred; startedAt: number } | undefined;
+  private turn: { done: Deferred; startedAt: number; prevStep: number; toolCalls: number } | undefined;
   /** `session/set_*` идут строго по очереди: ответ на смену модели нужен для решения про `thought_level`. */
   private settings: Promise<unknown> = Promise.resolve();
 
@@ -465,7 +484,73 @@ class AgySession implements AgentSession {
     return false;
   }
   compact(): boolean {
-    return false;
+    if (
+      this.closed ||
+      this.loading ||
+      !this.sessionId ||
+      this.turn ||
+      this.draining ||
+      this.queue.length > 0 ||
+      this.compacting ||
+      this.pendingPermissions.size > 0 ||
+      this.pendingQuestions.size > 0
+    ) {
+      return false;
+    }
+
+    const done = deferred();
+    const startedAt = Date.now();
+    this.compacting = { done, startedAt };
+    this.emit({ type: 'compaction.start' });
+    const preTokens = this.usedTokens > 0 ? this.usedTokens : undefined;
+
+    this.client
+      .request('session/prompt', { sessionId: this.sessionId, prompt: [{ type: 'text', text: '/compact' }] }, null)
+      .then(
+        (result) => {
+          if (this.closed) return;
+          if (stopReasonOf(result) === 'cancelled') {
+            this.emit({
+              type: 'compaction.end',
+              ok: false,
+              trigger: 'manual',
+              durationMs: Date.now() - startedAt,
+              error: 'cancelled',
+            });
+          } else {
+            this.emit({
+              type: 'compaction.end',
+              ok: true,
+              trigger: 'manual',
+              durationMs: Date.now() - startedAt,
+              ...(preTokens !== undefined ? { preTokens } : {}),
+            });
+          }
+        },
+        (error: unknown) => {
+          if (this.closed) return;
+          if (error instanceof AcpRpcError && typeof error.code === 'number') {
+            this.emit({
+              type: 'compaction.end',
+              ok: false,
+              trigger: 'manual',
+              durationMs: Date.now() - startedAt,
+              error: errorText(error),
+            });
+          } else {
+            this.fatal(error);
+          }
+        },
+      )
+      .finally(() => {
+        this.compacting = undefined;
+        done.resolve();
+        if (!this.closed && this.queue.length > 0) {
+          void this.drain();
+        }
+      });
+
+    return true;
   }
   async stopTask(): Promise<void> {}
 
@@ -510,10 +595,26 @@ class AgySession implements AgentSession {
     await this.serial(async () => {
       if (this.closed || !this.sessionId) return;
       const normalized = normalizeModel(model, this.config);
+      try {
+        await this.applyModel(normalized.model);
+      } catch (error) {
+        if (!this.closed) {
+          this.emit({
+            type: 'error',
+            fatal: false,
+            message: `session/set_config_option model failed: ${errorText(error)}`,
+          });
+          this.emit(this.buildSessionInit());
+        }
+        throw error;
+      }
       if (normalized.effort) this.effort = normalized.effort;
-      await this.applyModel(normalized.model);
       await this.syncEffort();
       await this.saveSettings();
+      if (!this.closed) {
+        this.emit(this.buildSessionInit());
+        this.emit(buildAgyContextUsage(this.usedTokens, this.config.model?.current));
+      }
     });
   }
 
@@ -543,6 +644,25 @@ class AgySession implements AgentSession {
   async interrupt(): Promise<void> {
     this.generation++;
     this.abortPending();
+    if (this.compacting && !this.compacting.done.settled && !this.closed) {
+      try {
+        this.client.notify('session/cancel', { sessionId: this.sessionId });
+      } catch (error) {
+        this.log('warn', `session/cancel failed: ${errorText(error)}`);
+      }
+      let timer: NodeJS.Timeout | undefined;
+      await Promise.race([
+        this.compacting.done.promise,
+        new Promise<void>((resolve) => (timer = setTimeout(resolve, this.interruptWaitMs))),
+      ]);
+      clearTimeout(timer);
+      if (this.compacting && !this.compacting.done.settled && !this.closed) {
+        this.log('warn', 'agy stopReason did not arrive after session/cancel');
+        this.abandonTurn();
+        this.fatal(new Error('Antigravity did not confirm cancellation; the connection was closed. Resume the session to continue.'));
+      }
+      return;
+    }
     const turn = this.turn;
     if (!turn || turn.done.settled || this.closed) return;
     try {
@@ -571,6 +691,21 @@ class AgySession implements AgentSession {
   }
 
   async contextUsage(): Promise<AgentEventOf<'context.usage'> | undefined> {
+    try {
+      await this.ready;
+    } catch {
+      return undefined;
+    }
+    if (this.closed || !this.sessionId) return undefined;
+    const snap = await readLastTranscriptUsage(this.sessionId, this.config0.dataDir);
+    if (snap && snap.stepIndex >= this.lastStepIndex) {
+      this.lastStepIndex = snap.stepIndex;
+      this.usedTokens = snap.usedTokens;
+    }
+    const model = this.config.model?.current;
+    if (this.usedTokens > 0 || (model && agyContextWindow(model) !== undefined)) {
+      return buildAgyContextUsage(this.usedTokens, model);
+    }
     return undefined;
   }
 
@@ -608,7 +743,11 @@ class AgySession implements AgentSession {
     if (requestedModel) {
       const normalized = normalizeModel(requestedModel, this.config);
       if (normalized.effort && !this.effort) this.effort = normalized.effort;
-      await this.applyModel(normalized.model);
+      try {
+        await this.applyModel(normalized.model);
+      } catch (error) {
+        if (!this.closed) this.log('warn', `agy: initial applyModel failed: ${errorText(error)}`);
+      }
     }
     if (this.closed) return;
     await this.syncEffort();
@@ -624,11 +763,25 @@ class AgySession implements AgentSession {
     await this.saveSettings();
     if (this.closed) return;
     this.loading = false;
+    this.emit(this.buildSessionInit());
+    const snap = await readLastTranscriptUsage(sessionId, this.config0.dataDir);
+    if (this.closed) return;
+    if (snap) {
+      this.lastStepIndex = snap.stepIndex;
+      this.usedTokens = snap.usedTokens;
+    }
+    const activeModel = this.config.model?.current ?? requestedModel;
+    if (this.usedTokens > 0 || (activeModel && agyContextWindow(activeModel) !== undefined)) {
+      this.emit(buildAgyContextUsage(this.usedTokens, activeModel));
+    }
+  }
+
+  private buildSessionInit(): AgentEventOf<'session.init'> {
     const effort = this.config.thoughtLevel?.current;
-    this.emit({
+    return {
       type: 'session.init',
-      sessionId,
-      model: this.config.model?.current ?? requestedModel ?? '',
+      sessionId: this.sessionId,
+      model: this.config.model?.current ?? '',
       cwd: this.cwd,
       permissionMode: this.permissionMode,
       tools: [],
@@ -638,7 +791,7 @@ class AgySession implements AgentSession {
       apiKeySource: 'none',
       engineVersion: this.engineVersion(),
       ...(effort && isEffort(effort) ? { effort } : {}),
-    });
+    };
   }
 
   private async saveSettings(): Promise<void> {
@@ -680,6 +833,7 @@ class AgySession implements AgentSession {
       );
     } catch (error) {
       if (!this.closed) this.log('warn', `session/set_config_option model failed: ${errorText(error)}`);
+      throw error;
     }
   }
 
@@ -713,6 +867,10 @@ class AgySession implements AgentSession {
     this.draining = true;
     try {
       while (!this.closed) {
+        if (this.compacting) {
+          await this.compacting.done.promise;
+          if (this.closed) break;
+        }
         const item = this.queue.shift();
         if (item === undefined) break;
         const generation = this.generation;
@@ -729,7 +887,8 @@ class AgySession implements AgentSession {
         }
         const startedAt = Date.now();
         const done = deferred();
-        this.turn = { done, startedAt };
+        const prevStep = this.lastStepIndex;
+        this.turn = { done, startedAt, prevStep, toolCalls: 0 };
         this.emitAll(this.mapper.startTurn(item.text, startedAt, item.images));
         try {
           // Ответ приходит после всего хода, включая ожидание разрешений на стороне сервера.
@@ -740,6 +899,32 @@ class AgySession implements AgentSession {
           );
           if (this.closed) break;
           if (this.turn === undefined || this.turn.done.settled) continue;
+
+          const toolCallsCount = this.turn.toolCalls;
+          let snap = await readLastTranscriptUsage(this.sessionId, this.config0.dataDir);
+          if (!snap || snap.stepIndex <= prevStep) {
+            for (let retry = 0; retry < 2 && !this.closed; retry++) {
+              await new Promise((r) => setTimeout(r, 80));
+              if (this.closed) break;
+              snap = await readLastTranscriptUsage(this.sessionId, this.config0.dataDir);
+              if (snap && snap.stepIndex > prevStep) break;
+            }
+          }
+          if (this.closed) break;
+          if (this.turn === undefined || this.turn.done.settled) continue;
+
+          if (snap && snap.stepIndex > prevStep) {
+            this.lastStepIndex = snap.stepIndex;
+            this.usedTokens = snap.usedTokens;
+            this.emit(buildAgyContextUsage(this.usedTokens, this.config.model?.current));
+          } else if (toolCallsCount === 0) {
+            const single = singleStepUsageTokens(usageOf(result));
+            if (single !== undefined) {
+              this.usedTokens = single;
+              this.emit(buildAgyContextUsage(this.usedTokens, this.config.model?.current));
+            }
+          }
+
           this.emitAll(this.mapper.finish(result, startedAt));
           done.resolve();
         } catch (error) {
@@ -764,11 +949,33 @@ class AgySession implements AgentSession {
     }
   }
 
+  private checkTranscriptDuringTurn(): void {
+    if (this.transcriptCheckInProgress || this.closed || !this.sessionId) return;
+    this.transcriptCheckInProgress = true;
+    readLastTranscriptUsage(this.sessionId, this.config0.dataDir)
+      .then((snap) => {
+        if (this.closed || !this.turn || this.turn.done.settled) return;
+        if (snap && snap.stepIndex > this.lastStepIndex) {
+          this.lastStepIndex = snap.stepIndex;
+          this.usedTokens = snap.usedTokens;
+          this.emit(buildAgyContextUsage(this.usedTokens, this.config.model?.current));
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        this.transcriptCheckInProgress = false;
+      });
+  }
+
   private onNotification(method: string, params: unknown): void {
     if (this.closed || this.loading || method !== 'session/update') return;
     const turn = this.turn;
     if (!turn || turn.done.settled) return;
     const update = record(params)?.update;
+    if (sessionUpdateKind(update) === 'tool_call') {
+      turn.toolCalls++;
+      this.checkTranscriptDuringTurn();
+    }
     this.emitAll(this.mapper.applyUpdate(update));
   }
 
@@ -884,6 +1091,10 @@ class AgySession implements AgentSession {
     const message = errorText(error);
     this.log('error', `agy session failed: ${message}`);
     this.abortPending();
+    if (this.compacting && !this.compacting.done.settled) {
+      this.compacting.done.resolve();
+      this.compacting = undefined;
+    }
     const turn = this.turn;
     if (turn && !turn.done.settled) {
       this.emitAll(this.mapper.failOpen(turn.startedAt));
@@ -897,6 +1108,10 @@ class AgySession implements AgentSession {
   }
 
   private abandonTurn(): void {
+    if (this.compacting) {
+      this.compacting.done.resolve();
+      this.compacting = undefined;
+    }
     const turn = this.turn;
     if (!turn || turn.done.settled) return;
     turn.done.resolve();
@@ -908,6 +1123,10 @@ class AgySession implements AgentSession {
     this.closed = true;
     this.queue.length = 0;
     this.turn?.done.resolve();
+    if (this.compacting) {
+      this.compacting.done.resolve();
+      this.compacting = undefined;
+    }
     this.events.emit({ type: 'session.closed', reason, ...(message ? { message } : {}) });
     this.events.close();
   }

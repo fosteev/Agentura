@@ -1017,10 +1017,24 @@ export class ChatController {
           if (this.lastInit)
             this.lastInit = { ...this.lastInit, permissionMode: m.mode as PermissionMode };
           return;
-        case 'model.set':
+        case 'model.set': {
+          // отвергнутая модель (исключение из setModel) не должна попасть в lastInit
+          const prevInit = this.lastInit;
+          const prevContext = this.lastContext;
           await session.setModel(m.model);
-          if (this.lastInit) this.lastInit = { ...this.lastInit, model: m.model };
+          // сессия могла сама прислать свежий session.init с нормализованной моделью и effort — его не затираем
+          if (this.lastInit && this.lastInit === prevInit)
+            this.lastInit = { ...this.lastInit, model: m.model };
+          // окно зависит от модели: если сессия не прислала новый context.usage — спрашиваем сами
+          if (this.lastContext === prevContext) {
+            const ctx = await session.contextUsage();
+            if (ctx && !this.disposed) {
+              this.lastContext = ctx;
+              this.forward(session.id, ctx);
+            }
+          }
           return;
+        }
         case 'effort.set':
           if (EFFORTS.includes(m.effort)) {
             await session.setEffort(m.effort as EffortLevel);
@@ -1439,9 +1453,10 @@ export class ChatController {
     const add: SessionAttach = { pdfPages: 0, chars: 0 };
     // окно знает только движок (после первого хода); до того — после resume окно сессии может быть 1M, а
     // счёт по умолчанию (200k) молча выбросил бы то, что webview по HUD истории пропустил: проверка — его
-    const budget = this.lastContext?.maxTokens
-      ? attachTokenBudget(this.lastContext.maxTokens, this.lastContext.usedTokens)
-      : Number.POSITIVE_INFINITY;
+    const budget =
+      this.lastContext?.maxTokens && this.lastContext.maxTokens > 0
+        ? attachTokenBudget(this.lastContext.maxTokens, this.lastContext.usedTokens)
+        : Number.POSITIVE_INFINITY;
     let tokens = 0;
     const take = (what: string, chars: number, pages: number, t: number): boolean => {
       const problem =
@@ -1779,7 +1794,7 @@ export class ChatController {
         this.log.info(`session.init: ${e.model}, режим ${e.permissionMode}`);
         break;
       case 'context.usage':
-        if (e.source === 'engine' && !e.agentId) this.lastContext = e;
+        if (!e.agentId) this.lastContext = e;
         break;
       case 'mcp.status':
         if (!e.agentId) this.lastMcp = e;

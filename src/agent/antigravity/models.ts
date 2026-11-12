@@ -78,3 +78,18 @@ export async function loadAntigravityCatalog(path: string, run: RunModels = defa
 export async function listAgyModels(path: string, run: RunModels = defaultRun): Promise<ModelOption[]> {
   return parseModels(await run(path));
 }
+
+/**
+ * Размер контекстного окна модели Antigravity по её идентификатору.
+ * Снимает суффикс `-(low|medium|high)` в конце строки (регистронезависимо, с `trim()`).
+ * Для `gemini-*` возвращает 1_000_000, для `claude-*` — 200_000, для `gpt-oss-120b*` — 128_000.
+ * Для любых прочих или пустых ID возвращает undefined.
+ */
+export function agyContextWindow(model: string): number | undefined {
+  const clean = model.trim().replace(/-(low|medium|high)$/i, '');
+  if (!clean) return undefined;
+  if (/^gemini-/i.test(clean)) return 1_000_000;
+  if (/^claude-/i.test(clean)) return 200_000;
+  if (/^gpt-oss-120b/i.test(clean)) return 128_000;
+  return undefined;
+}

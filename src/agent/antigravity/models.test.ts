@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { listAgyModels, loadAntigravityCatalog, parseAgyModels, parseModels } from './models';
+import { agyContextWindow, listAgyModels, loadAntigravityCatalog, parseAgyModels, parseModels } from './models';
+
 
 const out = readFileSync(new URL('../../../test/fixtures/antigravity/models.txt', import.meta.url), 'utf8');
 
@@ -35,5 +36,19 @@ describe('agy models', () => {
     expect(await listAgyModels('/x/agy', async (p) => `${p}\t`)).toEqual([]);
     expect(await listAgyModels('/x/agy', async () => out)).toHaveLength(14);
     expect(await loadAntigravityCatalog('/x/agy', async () => out)).toHaveLength(7);
+  });
+});
+
+describe('agyContextWindow', () => {
+  it('возвращает размер контекстного окна для известных моделей и суффиксов', () => {
+    expect(agyContextWindow('gemini-4-carbon')).toBe(1_000_000);
+    expect(agyContextWindow('gemini-4-argon-high')).toBe(1_000_000);
+    expect(agyContextWindow('gemini-3.8-flash-low')).toBe(1_000_000);
+    expect(agyContextWindow('claude-opus-5-5')).toBe(200_000);
+    expect(agyContextWindow('claude-sonnet-5-5-medium')).toBe(200_000);
+    expect(agyContextWindow('gpt-oss-120b-medium')).toBe(128_000);
+    expect(agyContextWindow('gpt-oss-120b')).toBe(128_000);
+    expect(agyContextWindow('unknown-model-xyz')).toBeUndefined();
+    expect(agyContextWindow('')).toBeUndefined();
   });
 });

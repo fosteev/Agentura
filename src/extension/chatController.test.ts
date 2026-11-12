@@ -3082,3 +3082,147 @@ describe('ChatController: MCP и скиллы (roadmap 21)', () => {
     expect(hist[0]).toMatchObject({ mcpReplay: true });
   });
 });
+
+describe('ChatController: контекст и смена модели (roadmap 37, этап 3)', () => {
+  const init = (model: string, extra: Record<string, unknown> = {}) =>
+    ({
+      type: 'session.init',
+      sessionId: 'sess-1',
+      model,
+      cwd: '/p',
+      tools: [],
+      permissionMode: 'default',
+      slashCommands: [],
+      skills: [],
+      agents: [],
+      apiKeySource: 'none',
+      ...extra,
+    }) as unknown as AgentEvent;
+  const usage = (usedTokens: number, maxTokens?: number, source: 'engine' | 'usage' = 'usage') =>
+    ({
+      type: 'context.usage',
+      usedTokens,
+      ...(maxTokens !== undefined ? { maxTokens } : {}),
+      source,
+    }) as AgentEvent;
+
+  async function boot() {
+    const t = setup();
+    (t.deps.adapter as { loadHistory: unknown }).loadHistory = async (): Promise<SessionHistory> => ({
+      events: [],
+      turns: 0,
+      skippedTurns: 0,
+    });
+    t.controller.start();
+    await tick();
+    return { ...t, s: t.sessions[0]! };
+  }
+  async function reseed(t: Awaited<ReturnType<typeof boot>>) {
+    t.posted.length = 0;
+    await t.controller.handle({ type: 'ready' });
+    await t.controller.handle({ type: 'ready' });
+    for (let i = 0; i < 5; i++) await tick();
+  }
+  const events = (posted: ToWebview[], type: AgentEvent['type']) =>
+    posted.flatMap((m) => (m.type === 'agent.event' && m.event.type === type ? [m.event] : []));
+
+  it('context.usage с source usage (Antigravity, Codex) сохраняется и возвращается при пересеве', async () => {
+    const t = await boot();
+    t.s.emit(init('gemini-3'));
+    t.s.emit(usage(81_000, 1_000_000, 'usage'));
+    await tick();
+    await reseed(t);
+    expect(events(t.posted, 'context.usage')).toEqual([usage(81_000, 1_000_000, 'usage')]);
+  });
+
+  it('context.usage субагента не затирает шкалу основного агента', async () => {
+    const t = await boot();
+    t.s.emit(init('gemini-3'));
+    t.s.emit(usage(81_000, 1_000_000));
+    t.s.emit({ ...usage(5, 200_000), agentId: 'a1' } as AgentEvent);
+    await tick();
+    await reseed(t);
+    expect(events(t.posted, 'context.usage')).toEqual([usage(81_000, 1_000_000)]);
+  });
+
+  it('maxTokens 0 (окно неизвестно) — бюджет вложений не ограничен', async () => {
+    const t = await boot();
+    t.s.emit(usage(160_000, 0));
+    const file = (path: string) => ({
+      kind: 'text' as const,
+      path,
+      data: 'x'.repeat(250_000),
+      size: 250_000,
+    });
+    await t.controller.handle({
+      type: 'send',
+      sessionId: '',
+      text: 'файлы',
+      files: [file('a.txt'), file('b.txt'), file('c.txt'), file('d.txt')],
+    });
+    expect(t.s.files[0]).toHaveLength(4);
+  });
+
+  it('model.set не затирает нормализованный session.init, который прислала сама сессия', async () => {
+    const t = await boot();
+    t.s.emit(init('gemini-3', { effort: 'low' }));
+    t.s.setModel = async () => {
+      t.s.emit(init('gemini-3.1-pro', { effort: 'high' }));
+    };
+    await t.controller.handle({ type: 'model.set', sessionId: 'sess-1', model: 'gemini-pro' });
+    await reseed(t);
+    expect(events(t.posted, 'session.init').at(-1)).toMatchObject({
+      model: 'gemini-3.1-pro',
+      effort: 'high',
+    });
+  });
+
+  it('model.set без нового session.init обновляет модель в снимке пересева', async () => {
+    const t = await boot();
+    t.s.emit(init('opus'));
+    await t.controller.handle({ type: 'model.set', sessionId: 'sess-1', model: 'sonnet' });
+    await reseed(t);
+    expect(events(t.posted, 'session.init').at(-1)).toMatchObject({ model: 'sonnet' });
+  });
+
+  it('model.set отвергнут (setModel бросил) — снимок остаётся на прежней модели, шкала не трогается', async () => {
+    const t = await boot();
+    t.s.emit(init('opus'));
+    t.s.contextUsage = vi.fn(async () => usage(1, 200_000, 'engine') as never);
+    t.s.setModel = async () => {
+      throw new Error('нет такой модели');
+    };
+    await t.controller.handle({ type: 'model.set', sessionId: 'sess-1', model: 'ghost' });
+    expect(t.s.contextUsage).not.toHaveBeenCalled();
+    await reseed(t);
+    expect(events(t.posted, 'session.init').at(-1)).toMatchObject({ model: 'opus' });
+  });
+
+  it('model.set: сессия не прислала context.usage — хост спрашивает contextUsage() и шлёт шкалу', async () => {
+    const t = await boot();
+    t.s.emit(init('opus'));
+    t.s.emit(usage(81_000, 200_000, 'engine'));
+    const fresh = usage(81_000, 1_000_000, 'engine');
+    t.s.contextUsage = vi.fn(async () => fresh as never);
+    t.posted.length = 0;
+    await t.controller.handle({ type: 'model.set', sessionId: 'sess-1', model: 'opus[1m]' });
+    expect(t.s.contextUsage).toHaveBeenCalledTimes(1);
+    expect(t.posted).toContainEqual({ type: 'agent.event', sessionId: 'sess-1', event: fresh });
+    // и он же возвращается при пересеве
+    await reseed(t);
+    expect(events(t.posted, 'context.usage')).toEqual([fresh]);
+  });
+
+  it('model.set: сессия сама прислала context.usage — contextUsage() не вызывается', async () => {
+    const t = await boot();
+    t.s.emit(init('gemini-3'));
+    t.s.contextUsage = vi.fn(async () => usage(1, 1, 'engine') as never);
+    t.s.setModel = async () => {
+      t.s.emit(usage(81_000, 0));
+    };
+    await t.controller.handle({ type: 'model.set', sessionId: 'sess-1', model: 'unknown-model' });
+    expect(t.s.contextUsage).not.toHaveBeenCalled();
+    await reseed(t);
+    expect(events(t.posted, 'context.usage')).toEqual([usage(81_000, 0)]);
+  });
+});

@@ -35,13 +35,13 @@ describe('providerFeatures', () => {
     });
   });
 
-  it('Antigravity: режимы, вопросы и картинки есть; compact, приборов, субагентов, плана и файлов нет', () => {
+  it('Antigravity: режимы, вопросы, картинки, compact и контекст есть; приборов, субагентов, плана и файлов нет', () => {
     expect(providerFeatures('antigravity')).toEqual({
       modes: true,
       nativeSettings: false,
-      compact: false,
+      compact: true,
       autoCompact: false,
-      context: false,
+      context: true,
       cost: false,
       subagents: false,
       agentStop: false,

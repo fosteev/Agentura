@@ -292,10 +292,14 @@ export function applyHud(s: HudState, e: AgentEvent, now = Date.now()): HudState
       return { ...s, subscription: e.apiKeySource === 'none' };
     case 'context.usage': {
       const prev = s.context;
-      const max = e.maxTokens ?? prev?.max;
       const autoCompact = e.autoCompactThreshold ?? prev?.autoCompact;
+      // 0 — окно модели неизвестно: прежний потолок (200k/1M прошлой модели) не должен залипать
+      const unknown = e.maxTokens === 0;
+      const max = unknown ? undefined : (e.maxTokens ?? prev?.max);
+      const { contextWindow: _cw, ...base } = s;
+      void _cw;
       return {
-        ...s,
+        ...(unknown ? base : s),
         context: {
           used: e.usedTokens,
           ...(max !== undefined ? { max } : {}),

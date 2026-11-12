@@ -857,7 +857,10 @@ const ru = {
     compact: 'сжать',
     ctxTitle: (thresholds: string[], fullAt: string, scale?: string) =>
       `Контекст: пороги ${thresholds.join(' ')}, автосжатие при ${fullAt}${scale ? ` · шкала до ${scale}` : ''}`,
-    ctxTitleOpen: (max: string) => `Окно контекста: ${max} (у этого движка нет порогов и автосжатия)`,
+    ctxTitleOpen: (used: string, left?: string, max?: string) =>
+      left !== undefined && max !== undefined
+        ? `Контекст: загружено ${used} · осталось ${left} из ${max}`
+        : `Контекст: загружено ${used}`,
     thresholdPassed: (k: string) => `порог ${k} пройден`,
     cache: 'кэш',
     cacheExpired: 'истёк',

@@ -314,13 +314,14 @@ const limitDismissed = signal<number | undefined>(undefined);
  * Рисовать ли контекст (кольцо, полоса, счётчик, блоки). У движка без порогов (Codex) окно известно только из
  * `context.usage`/`turn.result`: до первого хода (и в восстановленной ленте) не показывать выдуманные 200k.
  */
-export const contextShown = computed<boolean>(
-  () =>
-    features.value.context &&
-    (hudState.value.thresholds.length > 0 ||
-      hudState.value.context !== undefined ||
-      hudState.value.contextWindow !== undefined),
-);
+export const contextShown = computed<boolean>(() => {
+  if (!features.value.context) return false;
+  const h = hudState.value;
+  if (h.thresholds.length > 0) return true;
+  if (h.context?.max !== undefined || h.contextWindow !== undefined) return true;
+  // окно неизвестно (модель без известного потолка): показываем, только когда уже что-то загружено
+  return (h.context?.used ?? 0) > 0;
+});
 
 /**
  * Отправка заблокирована лимитом (этап 7): своя сессия упёрлась или окно подписки на 100 % со сбросом в
@@ -802,6 +803,9 @@ function draftAttach(skipImage?: number): SessionAttach & { tokens: number } {
 /** Сколько токенов окна вложения одного сообщения могут занять: 70 % свободного места. */
 function attachBudget(): number {
   const h = hudState.value;
+  // окно неизвестно — выдуманные 200k не должны отсекать вложения
+  if (h.thresholds.length === 0 && h.context?.max === undefined && h.contextWindow === undefined)
+    return Number.POSITIVE_INFINITY;
   return attachTokenBudget(contextMax(h), h.context?.used);
 }
 

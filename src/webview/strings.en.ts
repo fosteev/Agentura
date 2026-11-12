@@ -848,8 +848,10 @@ export const en: Ui = {
     compact: 'compact',
     ctxTitle: (thresholds: string[], fullAt: string, scale?: string) =>
       `Context: thresholds ${thresholds.join(' ')}, auto-compact at ${fullAt}${scale ? ` · scale up to ${scale}` : ''}`,
-    ctxTitleOpen: (max: string) =>
-      `Context window: ${max} (no thresholds or auto-compact for this engine)`,
+    ctxTitleOpen: (used: string, left?: string, max?: string) =>
+      left !== undefined && max !== undefined
+        ? `Context: ${used} loaded · ${left} left of ${max}`
+        : `Context: ${used} loaded`,
     thresholdPassed: (k: string) => `passed ${k}`,
     cache: 'cache',
     cacheExpired: 'expired',

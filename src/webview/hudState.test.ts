@@ -192,6 +192,24 @@ describe('итоги сессии и контекст', () => {
     expect(s.context).toEqual({ used: 6000, max: 1_000_000, autoCompact: 800_000 });
   });
 
+  it('context.usage: maxTokens 0 сбрасывает окно и contextWindow, undefined — сохраняет', () => {
+    const base: HudState = { ...initialHud([]), contextWindow: 200_000 };
+    let s = applyHud(
+      base,
+      ev({ type: 'context.usage', usedTokens: 10, maxTokens: 1_000_000, source: 'usage' }),
+    );
+    expect(s.context?.max).toBe(1_000_000);
+    // undefined — окно прежнее
+    s = applyHud(s, ev({ type: 'context.usage', usedTokens: 20, source: 'usage' }));
+    expect(s.context).toEqual({ used: 20, max: 1_000_000 });
+    expect(s.contextWindow).toBe(200_000);
+    // 0 — модель без известного окна: потолок не залипает
+    s = applyHud(s, ev({ type: 'context.usage', usedTokens: 30, maxTokens: 0, source: 'usage' }));
+    expect(s.context).toEqual({ used: 30 });
+    expect(s.context?.max).toBeUndefined();
+    expect(s.contextWindow).toBeUndefined();
+  });
+
   it('компакция: шкала прыгает на postTokens; неудачная не трогает', () => {
     let s = applyHud(
       initialHud(),

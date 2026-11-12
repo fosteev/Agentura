@@ -2,7 +2,7 @@
 
 Снято с `agy` 1.5.3 (сырые логи и спайк контракта — `docs/spikes/antigravity-acp/report.md`, эталонные кадры — `test/fixtures/antigravity/acp-pong.ndjson`).
 Минимальная поддерживаемая версия CLI — `agy >= 1.5.0` (проверяется в `src/agent/antigravity/executable.ts`).
-Взаимодействие строится через официальный протокол ACP (`agy acp`) по JSON-RPC 2.0 поверх stdio (один JSON на строку). Прямой доступ к диску `~/.gemini` (`node:sqlite`, `conversation_summaries.db`, `transcript_full.jsonl`) и устаревший режим `stream-json` полностью исключены.
+Взаимодействие строится через официальный протокол ACP (`agy acp`) по JSON-RPC 2.0 поверх stdio (один JSON на строку). `node:sqlite`, `conversation_summaries.db`, `transcript_full.jsonl` и устаревший режим `stream-json` полностью исключены, в `~/.gemini` ничего не пишется. Единственное узкое read-only исключение — изолированное чтение последних 64 КБ компактного `brain/<sessionId>/.system_generated/logs/transcript.jsonl` в `src/agent/antigravity/context.ts` для точного `usedTokens`.
 
 ## 1. Запуск и жизненный цикл процесса
 
@@ -48,6 +48,15 @@
 - Вызов `session/set_config_option` с `configId: "thought_level"` возвращает ошибку JSON-RPC `-32602` (`"Thinking level ... is not offered for model ..."`).
 - Адаптер сохраняет желаемый уровень `effort` локально и отправляет `thought_level` только когда селект присутствует в актуальных `configOptions`. При возврате на модель с поддержкой уровней (Gemini / Claude) адаптер повторно применяет сохранённый `effort`.
 - Переключение модели выполняется через `session/set_config_option` (`configId: "model"`), режим проверяет доступные опции.
+- **Таблица окон моделей (`agyContextWindow` в `src/agent/antigravity/models.ts`)**:
+  - `gemini-*` → `1 000 000` токенов.
+  - `claude-*` → `200 000` токенов.
+  - `gpt-oss-120b*` → `128 000` токенов.
+  - Неизвестные модели → `maxTokens: 0` (без подстановки ложных дефолтов `200k`, чтобы UI корректно скрывал шкалу заполнения).
+- **Поведение при смене модели**:
+  - Серверный контекст беседы сохраняется (сессия не перезапускается, история не теряется).
+  - Адаптер немедленно перевыпускает `session.init` и `context.usage` с окном новой модели и текущим `usedTokens`.
+  - При ошибке RPC `session/set_config_option` адаптер эмитит нефатальное событие `error`, откатывает селект в UI через перевыпуск `session.init` с фактической моделью сервера и пробрасывает исключение вызывающему коду.
 
 ### Режимы (`mode`)
 Переключение выполняется методом `session/set_mode` `{ sessionId, modeId }`:
@@ -76,7 +85,19 @@
   `{ inputTokens, outputTokens, cachedReadTokens, cachedWriteTokens, thoughtTokens, totalTokens }`.
   - `inputTokens` в ACP уже очищен от кэша: `totalTokens = inputTokens + cachedReadTokens + cachedWriteTokens + outputTokens`.
   - `thoughtTokens` включён в `outputTokens`.
-  - Маппится в `turn.result.usage` с `usageKnown: true`. Стоимость (`costUsd`) и размер окна контекста сервером не отдаются (`context: false`, `cost: false`).
+  - Маппится в `turn.result.usage` с `usageKnown: true`. Стоимость (`costUsd`) сервером не отдаётся (`cost: false`).
+- Расчёт использования контекста (`context.usage`, `context: true`):
+  - Суммарный `session/prompt.result.usage` суммирует токены всех промежуточных шагов хода. На многошаговых ходах с вызовами инструментов (например, последовательное чтение файлов или выполнение bash) эта сумма кратно завышает реальный объём занятого контекстного окна модели, так как повторно прибавляет входные токены на каждом шаге.
+  - Поэтому `src/agent/antigravity/context.ts` извлекает актуальный объём занятого контекста из последнего завершённого шага `PLANNER_RESPONSE` (`status: "DONE"`) из хвоста файла `brain/<sessionId>/.system_generated/logs/transcript.jsonl` (сумма `input_tokens + cache_read_tokens + cache_write_tokens + output_tokens`).
+  - Опрос хвоста выполняется:
+    * При инициализации сессии (`handshake`) и в `loadHistory` (восстановление накопленного контекста).
+    * В реальном времени при каждом `tool_call` (фоновый асинхронный опрос без блокировки хода).
+    * В конце хода с коротким ретраем (`2 × 80 мс`), чтобы дождаться сброса лога CLI на диск.
+  - Одношаговый фолбэк: если за ход не было вызовов инструментов (`toolCalls === 0`) и лог ещё не успел обновиться на диске, адаптер берёт точный `usedTokens` из `result.usage` первого шага (`input + cacheRead + cacheWrite + output`).
+- Нативное сжатие контекста (`/compact`, `compact: true`):
+  - Отправка `session/prompt` с текстом `"/compact"` инициирует серверное сжатие контекста беседы.
+  - В `transcript.jsonl` появляется серверный шаг `CHECKPOINT`, при этом сервер не присылает эхо `agent_message_chunk` в чат (лента остаётся чистой).
+  - Процесс сжатия сопровождается событиями `compaction.start` → `compaction.end` (с передачей `durationMs` и исходного объёма `preTokens`).
 - Квота аккаунта (`agy -p "/usage"`):
   - В `1.5.3` вывод состоит из 5 TSV-строк:
     1. `Gemini Models` — Five Hour Limit Remaining
@@ -150,6 +171,6 @@
 ## 7. Устранённые устаревшие механизмы
 
 С переходом на `agy acp` (`>= 1.5.0`):
-- Полностью удалены прямое чтение `~/.gemini/antigravity-cli`, `node:sqlite`, парсинг SQLite-базы `conversation_summaries.db` и JSONL-файлов `transcript_full.jsonl`.
+- Полностью исключены `node:sqlite`, SQLite-база `conversation_summaries.db` и тяжёлые `transcript_full.jsonl`; в `~/.gemini` ничего не пишется. Единственное узкое read-only исключение — изолированное чтение последних 64 КБ компактного `brain/<sessionId>/.system_generated/logs/transcript.jsonl` в `src/agent/antigravity/context.ts` для точного `usedTokens`.
 - Удалены механизм `stream-json` (`agy -p= --input-format stream-json --output-format stream-json`), карточки отказа `refusal` и сообщения протокола `agy.retry` / `agy.retryRejected`.
 - Разрешения и вопросы стали интерактивными в реальном времени, без перезапуска CLI-процесса.

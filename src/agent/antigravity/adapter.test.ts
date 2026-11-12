@@ -1,5 +1,8 @@
 import { readFileSync } from 'node:fs';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import * as os from 'node:os';
 import { join } from 'node:path';
+import { AcpRpcError } from '../acp/client';
 import { parseElicitation, formatElicitationAnswer } from './acpProtocol';
 import { describe, expect, it } from 'vitest';
 import type { AgentEvent, AgentEventOf, AgentSession, PromptImage } from '../types';
@@ -90,7 +93,7 @@ describe('AntigravityAdapter (ACP)', () => {
       permissionMode: 'bypassPermissions', allowBypassPermissions: true });
     await session.capabilities();
     s.handle('session/set_config_option', () => { throw new Error('model rejected'); });
-    await session.setModel('invalid');
+    await expect(session.setModel('invalid')).rejects.toThrow('model rejected');
     const id = session.id;
     session.dispose();
     const resumed = await setup(createFakeAgyServer(), { state }).adapter.resumeSession(id, { cwd: '/work' });
@@ -710,6 +713,470 @@ describe('AntigravityAdapter (ACP)', () => {
     await adapter.renameSession('sess_123', 'My Renamed Session');
     expect(state.get('agentura.antigravity.names', {})).toEqual({
       sess_123: 'My Renamed Session',
+    });
+  });
+
+  describe('Context usage and window tracking', () => {
+    async function writeTranscript(
+      dataDir: string,
+      sessionId: string,
+      lines: (string | Record<string, unknown>)[],
+    ): Promise<string> {
+      const dir = join(dataDir, 'brain', sessionId, '.system_generated', 'logs');
+      await mkdir(dir, { recursive: true });
+      const content = lines.map((l) => (typeof l === 'string' ? l : JSON.stringify(l))).join('\n') + '\n';
+      const filePath = join(dir, 'transcript.jsonl');
+      await writeFile(filePath, content, 'utf8');
+      return filePath;
+    }
+
+    it('emits initial context.usage on createSession and captures transcript usage on resumeSession and contextUsage()', async () => {
+      const tempDir = await mkdtemp(join(os.tmpdir(), 'agy-ctx-test-'));
+      try {
+        const s = createFakeAgyServer();
+        const { adapter } = setup(s, { dataDir: tempDir });
+        const session = await adapter.createSession({ cwd: '/work', model: 'gemini-4-argon' });
+        const events = collect(session);
+
+        await until(() => events.some((e) => e.type === 'context.usage'), 'initial context.usage');
+        const initialUsage = events.find((e) => e.type === 'context.usage');
+        expect(initialUsage).toMatchObject({
+          type: 'context.usage',
+          usedTokens: 0,
+          maxTokens: 1_000_000,
+          percentage: 0,
+          source: 'usage',
+        });
+
+        const directUsage = await session.contextUsage();
+        expect(directUsage).toMatchObject({
+          type: 'context.usage',
+          usedTokens: 0,
+          maxTokens: 1_000_000,
+          percentage: 0,
+          source: 'usage',
+        });
+        session.dispose();
+
+        // Write transcript for resumeSession
+        const resumeSessionId = DEFAULT_SESSION_ID;
+        await writeTranscript(tempDir, resumeSessionId, [
+          {
+            type: 'PLANNER_RESPONSE',
+            status: 'DONE',
+            step_index: 3,
+            input_tokens: 3000,
+            cache_read_tokens: 500,
+            cache_write_tokens: 200,
+            output_tokens: 300,
+          },
+        ]);
+
+        const sResume = createFakeAgyServer(resumeSessionId);
+        const { adapter: resumeAdapter } = setup(sResume, { dataDir: tempDir });
+        const resumed = await resumeAdapter.resumeSession(resumeSessionId, { cwd: '/work', model: 'gemini-4-argon' });
+        const resumeEvents = collect(resumed);
+
+        await until(() => resumeEvents.some((e) => e.type === 'context.usage'), 'resume context.usage');
+        const resumedUsage = resumeEvents.find((e) => e.type === 'context.usage');
+        expect(resumedUsage).toMatchObject({
+          type: 'context.usage',
+          usedTokens: 4000,
+          maxTokens: 1_000_000,
+          source: 'usage',
+        });
+
+        const directResumeUsage = await resumed.contextUsage();
+        expect(directResumeUsage).toMatchObject({
+          type: 'context.usage',
+          usedTokens: 4000,
+          maxTokens: 1_000_000,
+          source: 'usage',
+        });
+        resumed.dispose();
+      } finally {
+        await rm(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it('multi-step turn with tool_call uses transcript PLANNER_RESPONSE tokens instead of inflated result.usage', async () => {
+      const tempDir = await mkdtemp(join(os.tmpdir(), 'agy-ctx-test-'));
+      try {
+        const s = createFakeAgyServer();
+        s.handle('session/prompt', async (params) => {
+          // Tool call notification during turn
+          s.notify('session/update', {
+            sessionId: params.sessionId,
+            update: {
+              sessionUpdate: 'tool_call',
+              toolCallId: 'call_1',
+              title: 'Bash: ls',
+              rawName: 'Bash',
+              rawInput: { command: 'ls' },
+            },
+          });
+
+          // Write step 0 to transcript while tool call executes
+          await writeTranscript(tempDir, DEFAULT_SESSION_ID, [
+            {
+              type: 'PLANNER_RESPONSE',
+              status: 'DONE',
+              step_index: 0,
+              input_tokens: 1500,
+              cache_read_tokens: 0,
+              cache_write_tokens: 0,
+              output_tokens: 100,
+            },
+          ]);
+
+          await new Promise((r) => setTimeout(r, 20));
+
+          // Write step 1 to transcript for final planner response
+          await writeTranscript(tempDir, DEFAULT_SESSION_ID, [
+            {
+              type: 'PLANNER_RESPONSE',
+              status: 'DONE',
+              step_index: 0,
+              input_tokens: 1500,
+              cache_read_tokens: 0,
+              cache_write_tokens: 0,
+              output_tokens: 100,
+            },
+            {
+              type: 'PLANNER_RESPONSE',
+              status: 'DONE',
+              step_index: 1,
+              input_tokens: 2500,
+              cache_read_tokens: 0,
+              cache_write_tokens: 0,
+              output_tokens: 200,
+            },
+          ]);
+
+          return {
+            stopReason: 'end_turn',
+            // Inflated usage from server summing all steps
+            usage: { inputTokens: 50_000, outputTokens: 10_000, totalTokens: 60_000 },
+          };
+        });
+
+        const { adapter } = setup(s, { dataDir: tempDir });
+        const session = await adapter.createSession({ cwd: '/work', model: 'gemini-4-argon' });
+        const events = collect(session);
+        await until(() => events.some((e) => e.type === 'session.init'), 'session.init');
+
+        session.send('run multi-step');
+        await until(() => events.some((e) => e.type === 'turn.result'), 'turn.result');
+
+        const usages = events.filter((e) => e.type === 'context.usage');
+        // Initial usage (0 tokens) + tool call update (1600 tokens) + turn completion update (2700 tokens)
+        const finalUsage = usages.at(-1);
+        expect(finalUsage).toMatchObject({
+          type: 'context.usage',
+          usedTokens: 2700,
+          maxTokens: 1_000_000,
+        });
+        // Make sure inflated 60,000 tokens was never emitted
+        expect(usages.some((u) => (u as AgentEventOf<'context.usage'>).usedTokens === 60_000)).toBe(false);
+
+        session.dispose();
+      } finally {
+        await rm(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it('multi-step turn with tool_call but missing transcript does not overwrite usedTokens with inflated result.usage', async () => {
+      const tempDir = await mkdtemp(join(os.tmpdir(), 'agy-ctx-test-'));
+      try {
+        const s = createFakeAgyServer();
+        s.handle('session/prompt', (params) => {
+          s.notify('session/update', {
+            sessionId: params.sessionId,
+            update: {
+              sessionUpdate: 'tool_call',
+              toolCallId: 'call_x',
+              title: 'Read: file.ts',
+              rawName: 'Read',
+              rawInput: { file_path: 'file.ts' },
+            },
+          });
+          return {
+            stopReason: 'end_turn',
+            usage: { inputTokens: 40_000, outputTokens: 5_000, totalTokens: 45_000 },
+          };
+        });
+
+        const { adapter } = setup(s, { dataDir: tempDir });
+        const session = await adapter.createSession({ cwd: '/work', model: 'gemini-4-argon' });
+        const events = collect(session);
+        await until(() => events.some((e) => e.type === 'session.init'), 'session.init');
+
+        session.send('read something');
+        await until(() => events.some((e) => e.type === 'turn.result'), 'turn.result');
+
+        const usages = events.filter((e) => e.type === 'context.usage');
+        expect(usages).toHaveLength(1); // Only initial context.usage
+        expect((usages[0] as AgentEventOf<'context.usage'>).usedTokens).toBe(0);
+
+        session.dispose();
+      } finally {
+        await rm(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it('single-step turn without transcript falls back to result.usage', async () => {
+      const tempDir = await mkdtemp(join(os.tmpdir(), 'agy-ctx-test-'));
+      try {
+        const s = createFakeAgyServer();
+        s.handle('session/prompt', () => ({
+          stopReason: 'end_turn',
+          usage: {
+            inputTokens: 120,
+            outputTokens: 30,
+            cachedReadTokens: 50,
+            cachedWriteTokens: 0,
+            totalTokens: 200,
+          },
+        }));
+
+        const { adapter } = setup(s, { dataDir: tempDir });
+        const session = await adapter.createSession({ cwd: '/work', model: 'gemini-4-argon' });
+        const events = collect(session);
+        await until(() => events.some((e) => e.type === 'session.init'), 'session.init');
+
+        session.send('quick question');
+        await until(() => events.some((e) => e.type === 'turn.result'), 'turn.result');
+
+        const usages = events.filter((e) => e.type === 'context.usage');
+        expect(usages.at(-1)).toMatchObject({
+          type: 'context.usage',
+          usedTokens: 200, // 120 + 30 + 50
+          maxTokens: 1_000_000,
+        });
+
+        session.dispose();
+      } finally {
+        await rm(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it('loadHistory appends context.usage event to history.events when transcript exists', async () => {
+      const tempDir = await mkdtemp(join(os.tmpdir(), 'agy-ctx-test-'));
+      try {
+        const sessionId = '99999999-8888-7777-6666-555555555555';
+        await writeTranscript(tempDir, sessionId, [
+          {
+            type: 'PLANNER_RESPONSE',
+            status: 'DONE',
+            step_index: 5,
+            input_tokens: 12_000,
+            cache_read_tokens: 0,
+            cache_write_tokens: 0,
+            output_tokens: 800,
+          },
+        ]);
+
+        const s = createFakeAgyServer(sessionId);
+        s.handle('session/load', (params) => ({
+          sessionId: params.sessionId,
+          models: FAKE_MODELS,
+          modes: FAKE_MODES,
+          configOptions: makeConfigOptions('gemini-4-argon'),
+        }));
+
+        const { adapter } = setup(s, { dataDir: tempDir });
+        const historyWithTranscript = await adapter.loadHistory(sessionId, '/work');
+        const lastEvent = historyWithTranscript.events.at(-1);
+        expect(lastEvent).toMatchObject({
+          type: 'context.usage',
+          usedTokens: 12_800,
+          maxTokens: 1_000_000,
+        });
+
+        // History without transcript does not append context.usage
+        const sEmpty = createFakeAgyServer();
+        sEmpty.handle('session/load', (params) => ({
+          sessionId: params.sessionId,
+          models: FAKE_MODELS,
+          modes: FAKE_MODES,
+          configOptions: makeConfigOptions('gemini-4-argon'),
+        }));
+        const { adapter: emptyAdapter } = setup(sEmpty, { dataDir: tempDir });
+        const emptyHistory = await emptyAdapter.loadHistory('00000000-0000-0000-0000-000000000000', '/work');
+        expect(emptyHistory.events.some((e) => e.type === 'context.usage')).toBe(false);
+      } finally {
+        await rm(tempDir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe('setModel window recalculation and error handling', () => {
+    it('switches model window dynamically: gemini (1M) -> claude (200k) -> gpt-oss (128k) -> unknown (0)', async () => {
+      const s = createFakeAgyServer();
+      const { adapter } = setup(s);
+      const session = await adapter.createSession({ cwd: '/work', model: 'gemini-4-argon' });
+      const events = collect(session);
+      await until(() => events.some((e) => e.type === 'session.init'), 'session.init');
+
+      // Switch to Claude Sonnet
+      await session.setModel('claude-sonnet-5-5');
+      const claudeUsage = events.filter((e) => e.type === 'context.usage').at(-1);
+      expect(claudeUsage).toMatchObject({
+        type: 'context.usage',
+        maxTokens: 200_000,
+      });
+
+      // Switch to GPT-OSS 120B
+      await session.setModel('gpt-oss-120b-medium');
+      const gptUsage = events.filter((e) => e.type === 'context.usage').at(-1);
+      expect(gptUsage).toMatchObject({
+        type: 'context.usage',
+        maxTokens: 128_000,
+      });
+
+      // Switch to unknown custom model
+      await session.setModel('custom-model-x');
+      const unknownUsage = events.filter((e) => e.type === 'context.usage').at(-1);
+      expect(unknownUsage).toMatchObject({
+        type: 'context.usage',
+        maxTokens: 0,
+      });
+
+      session.dispose();
+    });
+
+    it('setModel failure emits non-fatal error, re-emits session.init with previous model, and rejects', async () => {
+      const s = createFakeAgyServer();
+      const { adapter } = setup(s);
+      const session = await adapter.createSession({ cwd: '/work', model: 'claude-sonnet-5-5' });
+      const events = collect(session);
+      await until(() => events.some((e) => e.type === 'session.init'), 'session.init');
+
+      s.handle('session/set_config_option', (params) => {
+        if (params.configId === 'model' && params.value === 'failing-model') {
+          throw new Error('quota exceeded');
+        }
+        return { configOptions: makeConfigOptions() };
+      });
+
+      await expect(session.setModel('failing-model')).rejects.toThrow('quota exceeded');
+
+      const errorEvent = events.find((e) => e.type === 'error');
+      expect(errorEvent).toMatchObject({
+        type: 'error',
+        fatal: false,
+        message: 'session/set_config_option model failed: quota exceeded',
+      });
+
+      const inits = events.filter((e) => e.type === 'session.init');
+      const lastInit = inits.at(-1);
+      expect(lastInit).toMatchObject({
+        type: 'session.init',
+        model: 'claude-sonnet-5-5',
+      });
+
+      session.dispose();
+    });
+  });
+
+  describe('compact()', () => {
+    it('returns false when not ready or during turn, and sends /compact and emits compaction events in idle', async () => {
+      const s = createFakeAgyServer();
+      let promptText = '';
+      s.handle('session/prompt', (params) => {
+        const blocks = params.prompt as { type: string; text?: string }[];
+        promptText = blocks?.[0]?.text ?? '';
+        return {
+          stopReason: 'end_turn',
+          usage: { inputTokens: 5, outputTokens: 5, totalTokens: 10 },
+        };
+      });
+
+      const { adapter } = setup(s);
+      const session = await adapter.createSession({ cwd: '/work' });
+      const events = collect(session);
+      await until(() => events.some((e) => e.type === 'session.init'), 'session.init');
+
+      // Idle compaction
+      const started = session.compact();
+      expect(started).toBe(true);
+      expect(promptText).toBe('/compact');
+
+      await until(() => events.some((e) => e.type === 'compaction.end'), 'compaction.end');
+      expect(events.some((e) => e.type === 'compaction.start')).toBe(true);
+      const endEvent = events.find((e) => e.type === 'compaction.end');
+      expect(endEvent).toMatchObject({
+        type: 'compaction.end',
+        ok: true,
+        trigger: 'manual',
+      });
+
+      session.dispose();
+    });
+
+    it('returns false during active turn', async () => {
+      const s = createFakeAgyServer();
+      let resolvePrompt!: () => void;
+      s.handle('session/prompt', () => new Promise((r) => {
+        resolvePrompt = () => r({ stopReason: 'end_turn', usage: { totalTokens: 10 } });
+      }));
+
+      const { adapter } = setup(s);
+      const session = await adapter.createSession({ cwd: '/work' });
+      const events = collect(session);
+      await until(() => events.some((e) => e.type === 'session.init'), 'session.init');
+
+      session.send('start long turn');
+      await until(() => events.some((e) => e.type === 'turn.start'), 'turn.start');
+
+      // compact during active turn should return false
+      expect(session.compact()).toBe(false);
+
+      resolvePrompt();
+      await until(() => events.some((e) => e.type === 'turn.result'), 'turn.result');
+      session.dispose();
+    });
+
+    it('emits compaction.end with ok: false on RPC error or cancellation', async () => {
+      const s = createFakeAgyServer();
+      s.handle('session/prompt', () => {
+        throw new AcpRpcError('compaction failed', -32001, undefined, 'Antigravity');
+      });
+
+      const { adapter } = setup(s);
+      const session = await adapter.createSession({ cwd: '/work' });
+      const events = collect(session);
+      await until(() => events.some((e) => e.type === 'session.init'), 'session.init');
+
+      const started = session.compact();
+      expect(started).toBe(true);
+
+      await until(() => events.some((e) => e.type === 'compaction.end'), 'compaction.end');
+      const errorEnd = events.find((e) => e.type === 'compaction.end');
+      expect(errorEnd).toMatchObject({
+        type: 'compaction.end',
+        ok: false,
+        trigger: 'manual',
+        error: 'compaction failed',
+      });
+
+      // Cancellation case
+      s.handle('session/prompt', () => ({
+        stopReason: 'cancelled',
+      }));
+
+      events.length = 0;
+      session.compact();
+      await until(() => events.some((e) => e.type === 'compaction.end'), 'compaction.end cancelled');
+      const cancelEnd = events.find((e) => e.type === 'compaction.end');
+      expect(cancelEnd).toMatchObject({
+        type: 'compaction.end',
+        ok: false,
+        trigger: 'manual',
+        error: 'cancelled',
+      });
+
+      session.dispose();
     });
   });
 });
