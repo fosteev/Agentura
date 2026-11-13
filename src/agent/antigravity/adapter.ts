@@ -116,12 +116,14 @@ export interface AntigravityAdapterConfig {
   subagentPollMs?: number;
   /** Порог ожидания (мс) незакрытого вызова в субагенте до пометки `waiting_for_input`; по умолчанию 2500. */
   subagentWaitingMs?: number;
+  /** Окно ожидания тихого реактивного ответа родителя в `transcript.jsonl` после `agent.end` / `task-N` (мс); по умолчанию 180_000. */
+  silentWakeupWatchMs?: number;
 }
 
 const DEFAULT_GRACE_MS = 2000;
 const INTERRUPT_WAIT_MS = 10_000;
 const DEFAULT_WAKEUP_IDLE_MS = 800;
-const SILENT_WAKEUP_WATCH_MS = 15_000;
+const SILENT_WAKEUP_WATCH_MS = 180_000;
 const PARENT_TOOL_RESOLVE_TTL_MS = 3_000;
 const PARENT_TOOL_FAST_RETRY_MS = 50;
 /** Тариф аккаунта меняется редко; `session/new` ради него — отдельный процесс `agy acp`. */
@@ -533,6 +535,7 @@ class AgySession implements AgentSession {
   private readonly wakeupIdleMs: number;
   private readonly subagentPollMs: number;
   private readonly subagentWaitingMs: number;
+  private readonly silentWakeupWatchMs: number;
   /** Режим, который сейчас принял сервер (`current_mode_update` отстаёт от запросов — ему не верим). */
   private serverMode = 'default';
   private config: AgyConfig = { combinedIds: [] };
@@ -583,6 +586,7 @@ class AgySession implements AgentSession {
   private subagentTimer: NodeJS.Timeout | undefined;
   private subagentPollInFlight = false;
   private subagentPollQueued = false;
+  private subagentPollPromise: Promise<void> | undefined;
   private silentWatchUntil = 0;
 
   constructor(
@@ -611,6 +615,7 @@ class AgySession implements AgentSession {
     this.wakeupIdleMs = config0.wakeupIdleMs ?? DEFAULT_WAKEUP_IDLE_MS;
     this.subagentPollMs = config0.subagentPollMs ?? DEFAULT_SUBAGENT_POLL_MS;
     this.subagentWaitingMs = config0.subagentWaitingMs ?? DEFAULT_WAITING_THRESHOLD_MS;
+    this.silentWakeupWatchMs = config0.silentWakeupWatchMs ?? SILENT_WAKEUP_WATCH_MS;
     this.events = new EventHub<AgentEvent>((error) => this.log('error', `event subscriber failed: ${String(error)}`));
     this.spawnTransport(this.permissionMode);
     this.ready = this.handshake(options.model);
@@ -1150,7 +1155,7 @@ class AgySession implements AgentSession {
       this.config0.dataDir,
       this.mcpServers,
     );
-    const tailSnap = await this.parentTailer.syncToEnd();
+    const tailSnap = await this.parentTailer.syncToEnd({ resetPending: true });
     if (this.closed) return;
     if (tailSnap.maxStepIndex > this.lastStepIndex) {
       this.lastStepIndex = tailSnap.maxStepIndex;
@@ -1280,6 +1285,12 @@ class AgySession implements AgentSession {
           continue;
         }
         this.finishWakeupTurn();
+        await this.catchUpSilentTurns();
+        if (this.closed) break;
+        if (generation !== this.generation) {
+          this.emitAll(this.mapper.interruptBeforeStart(item.text));
+          continue;
+        }
         this.finishSilentTurn(false);
         const startedAt = Date.now();
         const done = deferred();
@@ -1674,6 +1685,27 @@ class AgySession implements AgentSession {
     }
   }
 
+  private async catchUpSilentTurns(): Promise<void> {
+    if (this.subagentPollPromise) {
+      await this.subagentPollPromise;
+    }
+    if (!this.parentTailer || this.closed) return;
+    const res = await this.parentTailer.pollSilentTurn(
+      this.lastStepIndex,
+      this.config.model?.current,
+    );
+    if (this.closed) return;
+    if (res.lastStepIndex > this.lastStepIndex) {
+      this.lastStepIndex = res.lastStepIndex;
+    }
+    if (res.usedTokens !== undefined) {
+      this.usedTokens = res.usedTokens;
+    }
+    if (res.events.length > 0) {
+      this.emitAll(res.events);
+    }
+  }
+
   private finishSilentTurn(interrupted: boolean): void {
     if (!this.parentTailer?.hasOpenTurn()) return;
     this.emitAll(this.parentTailer.flushOpenTurn(interrupted));
@@ -1690,7 +1722,7 @@ class AgySession implements AgentSession {
     if (this.closed) return false;
     if (this.pendingParentToolResolutions.length > 0) return true;
     if (this.hasActiveSubagents()) return true;
-    if (this.parentTailer?.hasOpenTurn()) return true;
+    if (this.parentTailer?.hasPendingReactiveWork()) return true;
     if (Date.now() < this.silentWatchUntil) return true;
     return false;
   }
@@ -1918,88 +1950,112 @@ class AgySession implements AgentSession {
     this.pendingParentToolResolutions.push(...remaining);
   }
 
-  private async pollSubagentsOnce(): Promise<void> {
+  private pollSubagentsOnce(): Promise<void> {
     if (this.closed) {
       this.stopSubagentPoller();
-      return;
+      return Promise.resolve();
     }
     if (this.subagentPollInFlight) {
       this.subagentPollQueued = true;
-      return;
+      return this.subagentPollPromise ?? Promise.resolve();
     }
+    const run = this.runSubagentPollLoop();
+    this.subagentPollPromise = run;
+    return run;
+  }
+
+  private async runSubagentPollLoop(): Promise<void> {
     this.subagentPollInFlight = true;
     try {
-      await this.pollParentToolOutputs();
-      if (this.closed) return;
+      do {
+        this.subagentPollQueued = false;
+        try {
+          await this.pollParentToolOutputs();
+          if (this.closed) return;
 
-      let sawAgentEnd = false;
-      for (const reader of this.subagentReaders.values()) {
-        if (this.closed) break;
-        if (reader.isStopped()) continue;
-        const evs = await reader.poll();
-        if (this.closed) break;
-        for (const ev of evs) {
-          if (ev.type === 'agent.end' && !reader.isStopped()) {
-            sawAgentEnd = true;
+          let sawAgentEnd = false;
+          for (const reader of this.subagentReaders.values()) {
+            if (this.closed) break;
+            if (reader.isStopped()) continue;
+            const evs = await reader.poll();
+            if (this.closed) break;
+            for (const ev of evs) {
+              if (ev.type === 'agent.end' && !reader.isStopped()) {
+                sawAgentEnd = true;
+              }
+              this.emit(ev);
+            }
           }
-          this.emit(ev);
+          if (sawAgentEnd) {
+            this.silentWatchUntil = Math.max(
+              this.silentWatchUntil,
+              Date.now() + this.silentWakeupWatchMs,
+            );
+          }
+
+          const anyActive = this.hasActiveSubagents();
+          const shouldWatchParent =
+            anyActive ||
+            Boolean(this.parentTailer?.hasPendingReactiveWork()) ||
+            Date.now() < this.silentWatchUntil;
+          const parentIdle =
+            !this.closed &&
+            !this.loading &&
+            !this.draining &&
+            !this.turn &&
+            !this.wakeupTurn &&
+            !this.compacting &&
+            this.queue.length === 0;
+
+          if (shouldWatchParent && parentIdle && this.parentTailer) {
+            const res = await this.parentTailer.pollSilentTurn(
+              this.lastStepIndex,
+              this.config.model?.current,
+            );
+            if (
+              !this.closed &&
+              !this.loading &&
+              !this.turn &&
+              !this.wakeupTurn &&
+              !this.compacting
+            ) {
+              if (res.lastStepIndex > this.lastStepIndex) {
+                this.lastStepIndex = res.lastStepIndex;
+              }
+              if (res.usedTokens !== undefined) {
+                this.usedTokens = res.usedTokens;
+              }
+              if (res.events.length > 0) {
+                this.emitAll(res.events);
+              }
+              if (res.bgTaskTriggered) {
+                this.silentWatchUntil = Math.max(
+                  this.silentWatchUntil,
+                  Date.now() + this.silentWakeupWatchMs,
+                );
+              }
+              if (
+                res.completedTurn &&
+                !this.hasActiveSubagents() &&
+                !this.parentTailer.hasPendingReactiveWork()
+              ) {
+                this.silentWatchUntil = 0;
+              }
+            } else if (this.parentTailer.hasOpenTurn()) {
+              this.parentTailer.discardOpenTurn();
+            }
+          }
+        } catch (error) {
+          if (!this.closed) {
+            this.log('debug', `agy: subagent poll failed: ${errorText(error)}`);
+          }
         }
-      }
-      if (sawAgentEnd) {
-        this.silentWatchUntil = Math.max(this.silentWatchUntil, Date.now() + SILENT_WAKEUP_WATCH_MS);
-      }
-
-      const anyActive = this.hasActiveSubagents();
-      const shouldWatchParent =
-        anyActive || Boolean(this.parentTailer?.hasOpenTurn()) || Date.now() < this.silentWatchUntil;
-      const parentIdle =
-        !this.closed &&
-        !this.loading &&
-        !this.turn &&
-        !this.wakeupTurn &&
-        !this.compacting &&
-        this.queue.length === 0;
-
-      if (shouldWatchParent && parentIdle && this.parentTailer) {
-        const res = await this.parentTailer.pollSilentTurn(
-          this.lastStepIndex,
-          this.config.model?.current,
-        );
-        if (
-          !this.closed &&
-          !this.loading &&
-          !this.turn &&
-          !this.wakeupTurn &&
-          !this.compacting &&
-          this.queue.length === 0
-        ) {
-          if (res.lastStepIndex > this.lastStepIndex) {
-            this.lastStepIndex = res.lastStepIndex;
-          }
-          if (res.usedTokens !== undefined) {
-            this.usedTokens = res.usedTokens;
-          }
-          if (res.events.length > 0) {
-            this.emitAll(res.events);
-          }
-          if (res.completedTurn && !this.hasActiveSubagents()) {
-            this.silentWatchUntil = 0;
-          }
-        } else if (this.parentTailer.hasOpenTurn()) {
-          this.parentTailer.discardOpenTurn();
-        }
-      }
-    } catch (error) {
-      if (!this.closed) {
-        this.log('debug', `agy: subagent poll failed: ${errorText(error)}`);
-      }
+      } while (this.subagentPollQueued && !this.closed);
     } finally {
       this.subagentPollInFlight = false;
+      this.subagentPollPromise = undefined;
       if (this.closed) {
         this.stopSubagentPoller();
-      } else if (this.subagentPollQueued) {
-        this.subagentPollQueued = false;
-        void this.pollSubagentsOnce();
       } else {
         this.refreshSubagentPoller();
       }
@@ -2070,12 +2126,25 @@ class AgySession implements AgentSession {
             this.emitAll(reopened);
             this.silentWatchUntil = Math.max(
               this.silentWatchUntil,
-              Date.now() + SILENT_WAKEUP_WATCH_MS,
+              Date.now() + this.silentWakeupWatchMs,
             );
             this.ensureSubagentPoller(true);
             break;
           }
         }
+      }
+      return;
+    }
+
+    if (
+      name === 'Bash' ||
+      name === 'run_command' ||
+      name === 'schedule' ||
+      name === 'manage_task'
+    ) {
+      this.parentTailer?.noteAcpToolResult(name, input, event.content, event.isError);
+      if (this.parentTailer?.hasPendingReactiveWork()) {
+        this.ensureSubagentPoller(false);
       }
       return;
     }

@@ -23,6 +23,7 @@ export const DEFAULT_SUBAGENT_POLL_MS = 400;
 export const MAX_SUBAGENT_TIMELINES = 30;
 export const MAX_SUBAGENT_EVENTS = 400;
 const MAX_NESTED_DEPTH = 2;
+const BG_TASK_MAX_WATCH_MS = 30 * 60_000;
 const RESULT_LINES = 30;
 const RESULT_CHARS = 3000;
 
@@ -137,6 +138,10 @@ const RAW_TEXT_ARG_KEYS = new Set([
   'Workspace',
   'Recipient',
   'Action',
+  'TaskId',
+  'taskId',
+  'CronExpression',
+  'cronExpression',
   'ServerName',
   'ToolName',
   'Uri',
@@ -454,25 +459,49 @@ export function parseManagedSubagents(
  * Аккуратно извлекает тело сообщения из обёртки `<SYSTEM_MESSAGE>\n[Message] ... content=...`.
  */
 export function unwrapAgySystemMessage(raw: string): string {
-  if (!raw) return '';
-  const blocks: string[] = [];
+  const messages = extractSystemMessages(raw);
+  if (messages.length === 0) return '';
+  return messages
+    .map((m) => m.body)
+    .filter(Boolean)
+    .join('\n\n');
+}
+
+function extractSystemMessages(raw: string): { sender: string | undefined; body: string }[] {
+  if (!raw) return [];
+  const out: { sender: string | undefined; body: string }[] = [];
   SYSTEM_MSG_BLOCK_RE.lastIndex = 0;
   let m: RegExpExecArray | null;
   while ((m = SYSTEM_MSG_BLOCK_RE.exec(raw)) !== null) {
     const inner = m[1]!.trim();
+    const sender = SENDER_RE.exec(inner)?.[1]?.trim();
     const msgMatch = MESSAGE_PREFIX_RE.exec(inner);
-    blocks.push((msgMatch ? msgMatch[1]! : inner).trim());
+    out.push({ sender, body: (msgMatch ? msgMatch[1]! : inner).trim() });
   }
-  if (blocks.length > 0) {
-    return blocks.filter(Boolean).join('\n\n');
-  }
-  const msgMatch = MESSAGE_PREFIX_RE.exec(raw.trim());
-  return (msgMatch ? msgMatch[1]! : raw).trim();
+  if (out.length > 0) return out;
+  const trimmed = raw.trim();
+  if (!trimmed) return [];
+  const sender = SENDER_RE.exec(trimmed)?.[1]?.trim();
+  const msgMatch = MESSAGE_PREFIX_RE.exec(trimmed);
+  return [{ sender, body: (msgMatch ? msgMatch[1]! : trimmed).trim() }];
 }
 
-function extractSystemSender(raw: string): string | undefined {
-  const m = SENDER_RE.exec(raw);
-  return m?.[1]?.trim();
+function isAcceptedGenericStep(
+  status: string,
+  content: string,
+): { accepted: boolean; isBgRunning: boolean } {
+  if (
+    status === 'DONE' ||
+    status === 'ERROR' ||
+    status === 'CANCELED' ||
+    status === 'CANCELLED'
+  ) {
+    return { accepted: true, isBgRunning: false };
+  }
+  if (status === 'RUNNING' && BG_TASK_RE.test(content)) {
+    return { accepted: true, isBgRunning: true };
+  }
+  return { accepted: false, isBgRunning: false };
 }
 
 function stepTokensOf(record: Record<string, unknown>): { total: number; usage: TokenUsage } | undefined {
@@ -587,31 +616,6 @@ class ByteLineTailer {
     } finally {
       await fh?.close().catch(() => {});
     }
-  }
-
-  /** Сдвигает курсор в конец текущего файла (используется для синхронизации родительского транскрипта после ACP-хода). */
-  async skipToEnd(): Promise<{ maxStepIndex: number; usedTokens?: number }> {
-    const lines = await this.readNewLines();
-    let maxStepIndex = -1;
-    let usedTokens: number | undefined;
-    for (const rawLine of lines) {
-      const line = rawLine.trim();
-      if (!line) continue;
-      try {
-        const rec: unknown = JSON.parse(line);
-        if (!isPlainObject(rec)) continue;
-        if (typeof rec['step_index'] === 'number' && Number.isFinite(rec['step_index'])) {
-          maxStepIndex = Math.max(maxStepIndex, rec['step_index']);
-        }
-        if (rec['type'] === 'PLANNER_RESPONSE' && rec['status'] === 'DONE') {
-          const tok = stepTokensOf(rec);
-          if (tok) usedTokens = tok.total;
-        }
-      } catch {
-        // ignore malformed line
-      }
-    }
-    return { maxStepIndex, ...(usedTokens !== undefined ? { usedTokens } : {}) };
   }
 }
 
@@ -920,29 +924,28 @@ export class AgySubagentReader {
       this.lastProcessedStep = stepIndex;
       const out: AgentEvent[] = [];
       const rawContent = typeof row['content'] === 'string' ? row['content'] : '';
-      const sender = extractSystemSender(rawContent);
-      if (sender && this.activeBgTasks.has(sender)) {
-        const bg = this.activeBgTasks.get(sender)!;
-        this.activeBgTasks.delete(sender);
-        const body = unwrapAgySystemMessage(rawContent);
-        const bgStatus: 'completed' | 'failed' | 'stopped' = /was cancel+ed/i.test(body)
-          ? 'stopped'
-          : nonZeroExitCode(body)
-            ? 'failed'
-            : 'completed';
-        out.push({
-          type: 'agent.end',
-          agentId: bg.agentId,
-          taskId: bg.taskId,
-          status: bgStatus,
-          durationMs: Math.max(0, at - bg.startedAt),
-          at,
-        });
-      }
-
-      if (sender && this.nestedReaders.has(sender.toLowerCase())) {
-        const body = unwrapAgySystemMessage(rawContent);
-        if (body) this.nestedReaders.get(sender.toLowerCase())!.noteParentReport(body);
+      for (const msg of extractSystemMessages(rawContent)) {
+        const normSender = msg.sender?.toLowerCase();
+        if (normSender && this.activeBgTasks.has(normSender)) {
+          const bg = this.activeBgTasks.get(normSender)!;
+          this.activeBgTasks.delete(normSender);
+          const bgStatus: 'completed' | 'failed' | 'stopped' = /was cancel+ed/i.test(msg.body)
+            ? 'stopped'
+            : nonZeroExitCode(msg.body)
+              ? 'failed'
+              : 'completed';
+          out.push({
+            type: 'agent.end',
+            agentId: bg.agentId,
+            taskId: bg.taskId,
+            status: bgStatus,
+            durationMs: Math.max(0, at - bg.startedAt),
+            at,
+          });
+        }
+        if (normSender && this.nestedReaders.has(normSender) && msg.body) {
+          this.nestedReaders.get(normSender)!.noteParentReport(msg.body);
+        }
       }
 
       const cleanPrompt = unwrapAgySystemMessage(rawContent);
@@ -1083,19 +1086,6 @@ export class AgySubagentReader {
     }
 
     if (rowType === 'GENERIC') {
-      if (
-        status !== 'DONE' &&
-        status !== 'ERROR' &&
-        status !== 'CANCELED' &&
-        status !== 'CANCELLED'
-      ) {
-        return [];
-      }
-      this.lastProcessedStep = stepIndex;
-      this.waitingEmitted = false;
-      const pending = this.openTools.shift();
-      if (!pending) return [];
-
       const content =
         typeof row['content'] === 'string'
           ? row['content']
@@ -1104,8 +1094,19 @@ export class AgySubagentReader {
               ? row['error']
               : JSON.stringify(row['error'])
             : '';
+      const gen = isAcceptedGenericStep(status, content);
+      if (!gen.accepted) {
+        return [];
+      }
+      this.lastProcessedStep = stepIndex;
+      this.waitingEmitted = false;
+      const pending = this.openTools.shift();
+      if (!pending) return [];
+
       const isError =
-        status !== 'DONE' || hasErrorField(row['error']) || nonZeroExitCode(content);
+        (!gen.isBgRunning && status !== 'DONE') ||
+        hasErrorField(row['error']) ||
+        nonZeroExitCode(content);
       const out: AgentEvent[] = [
         {
           type: 'tool.result',
@@ -1123,11 +1124,12 @@ export class AgySubagentReader {
         const bgMatch = BG_TASK_RE.exec(content);
         if (bgMatch) {
           const fullTaskId = bgMatch[1]!;
+          const normTaskId = fullTaskId.toLowerCase();
           const taskSuffix = bgMatch[3]!.toLowerCase();
           const bgAgentId = `agy-task:${this.childUuid}:${taskSuffix}`;
           const desc =
             pickStr(pending.rawArgs, 'toolSummary', 'CommandLine', 'command') ?? taskSuffix;
-          this.activeBgTasks.set(fullTaskId, {
+          this.activeBgTasks.set(normTaskId, {
             agentId: bgAgentId,
             taskId: fullTaskId,
             startedAt: at,
@@ -1148,7 +1150,7 @@ export class AgySubagentReader {
       // 2) Остановка фоновой команды через manage_task(kill)
       if (pending.rawName === 'manage_task' && !isError) {
         const action = pickStr(pending.rawArgs, 'Action', 'action')?.toLowerCase();
-        const taskId = pickStr(pending.rawArgs, 'TaskId', 'taskId');
+        const taskId = pickStr(pending.rawArgs, 'TaskId', 'taskId')?.toLowerCase();
         if (action === 'kill' && taskId && this.activeBgTasks.has(taskId)) {
           const bg = this.activeBgTasks.get(taskId)!;
           this.activeBgTasks.delete(taskId);
@@ -1265,6 +1267,13 @@ export class AgyParentTranscriptTailer {
     | undefined;
   /** Признак входящего SYSTEM_MESSAGE, открывающего реактивный ход родителя. */
   private reactiveTriggerSeen = false;
+  /** Активные фоновые задачи родителя (`<sessionUuid>/task-N` из `run_command` / `schedule`). */
+  private readonly activeBgTasks = new Map<string, { isCron: boolean; expiresAt: number }>();
+  private readonly syncOpenCalls: {
+    stepIndex: number;
+    rawName: string;
+    rawArgs: Record<string, unknown>;
+  }[] = [];
 
   constructor(
     sessionId: string,
@@ -1279,15 +1288,188 @@ export class AgyParentTranscriptTailer {
     return this.silentTurn !== undefined;
   }
 
+  hasActiveBgTasks(now = Date.now()): boolean {
+    this.pruneExpiredBgTasks(now);
+    return this.activeBgTasks.size > 0;
+  }
+
+  hasPendingReactiveWork(now = Date.now()): boolean {
+    this.pruneExpiredBgTasks(now);
+    return this.silentTurn !== undefined || this.reactiveTriggerSeen || this.activeBgTasks.size > 0;
+  }
+
   discardOpenTurn(): void {
     this.silentTurn = undefined;
     this.reactiveTriggerSeen = false;
   }
 
-  async syncToEnd(): Promise<{ maxStepIndex: number; usedTokens?: number }> {
-    if (!this.silentTurn) this.reactiveTriggerSeen = false;
-    if (!this.tailer) return { maxStepIndex: -1 };
-    return this.tailer.skipToEnd();
+  noteAcpToolResult(
+    toolName: string,
+    input: Record<string, unknown>,
+    content: string,
+    isError: boolean,
+    now = Date.now(),
+  ): void {
+    if (isError) return;
+    if (toolName === 'Bash' || toolName === 'run_command' || toolName === 'schedule') {
+      if (input['IsDaemon'] === true || input['isDaemon'] === true) return;
+      const bgMatch = BG_TASK_RE.exec(content);
+      if (bgMatch) {
+        const normId = bgMatch[1]!.toLowerCase();
+        const isCron =
+          toolName === 'schedule' && Boolean(pickStr(input, 'CronExpression', 'cronExpression'));
+        this.activeBgTasks.set(normId, { isCron, expiresAt: now + BG_TASK_MAX_WATCH_MS });
+      }
+      return;
+    }
+    if (toolName === 'manage_task') {
+      const action = pickStr(input, 'Action', 'action')?.toLowerCase();
+      const taskId = pickStr(input, 'TaskId', 'taskId')?.toLowerCase();
+      if (action === 'kill' && taskId) {
+        this.activeBgTasks.delete(taskId);
+      }
+    }
+  }
+
+  async syncToEnd(options?: {
+    resetPending?: boolean;
+    now?: number;
+  }): Promise<{ maxStepIndex: number; usedTokens?: number }> {
+    const now = options?.now ?? Date.now();
+    if (!this.tailer) {
+      if (options?.resetPending) {
+        this.activeBgTasks.clear();
+        this.syncOpenCalls.length = 0;
+        this.reactiveTriggerSeen = false;
+      } else if (!this.silentTurn) {
+        this.reactiveTriggerSeen = false;
+      }
+      return { maxStepIndex: -1 };
+    }
+
+    const lines = await this.tailer.readNewLines();
+    let maxStepIndex = -1;
+    let usedTokens: number | undefined;
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line) continue;
+      try {
+        const rec: unknown = JSON.parse(line);
+        if (!isPlainObject(rec)) continue;
+        if (typeof rec['step_index'] === 'number' && Number.isFinite(rec['step_index'])) {
+          maxStepIndex = Math.max(maxStepIndex, rec['step_index']);
+        }
+        if (rec['type'] === 'PLANNER_RESPONSE' && rec['status'] === 'DONE') {
+          const tok = stepTokensOf(rec);
+          if (tok) usedTokens = tok.total;
+        }
+        if (!options?.resetPending) {
+          this.trackParentBgRecord(rec, now);
+        }
+      } catch {
+        // ignore malformed line
+      }
+    }
+
+    if (options?.resetPending) {
+      this.activeBgTasks.clear();
+      this.syncOpenCalls.length = 0;
+      this.reactiveTriggerSeen = false;
+    } else if (!this.silentTurn) {
+      this.reactiveTriggerSeen = false;
+    }
+    return { maxStepIndex, ...(usedTokens !== undefined ? { usedTokens } : {}) };
+  }
+
+  private pruneExpiredBgTasks(now: number): void {
+    for (const [id, entry] of this.activeBgTasks) {
+      if (now >= entry.expiresAt) {
+        this.activeBgTasks.delete(id);
+      }
+    }
+  }
+
+  private trackParentBgRecord(row: Record<string, unknown>, now: number): boolean {
+    const stepIndex =
+      typeof row['step_index'] === 'number' && Number.isFinite(row['step_index'])
+        ? row['step_index']
+        : -1;
+    const rowType = typeof row['type'] === 'string' ? row['type'] : '';
+    const status = typeof row['status'] === 'string' ? row['status'] : 'DONE';
+
+    if (rowType === 'USER_INPUT' || rowType === 'SYSTEM_MESSAGE') {
+      const rawContent = typeof row['content'] === 'string' ? row['content'] : '';
+      let triggered = false;
+      for (const msg of extractSystemMessages(rawContent)) {
+        const normSender = msg.sender?.toLowerCase();
+        if (!normSender || !this.activeBgTasks.has(normSender)) continue;
+        triggered = true;
+        const entry = this.activeBgTasks.get(normSender)!;
+        if (!entry.isCron || /finished with result|was cancel+ed|stopped/i.test(msg.body)) {
+          this.activeBgTasks.delete(normSender);
+        } else {
+          entry.expiresAt = now + BG_TASK_MAX_WATCH_MS;
+        }
+      }
+      return triggered;
+    }
+
+    if (rowType === 'PLANNER_RESPONSE') {
+      if (status !== 'DONE') return false;
+      while (this.syncOpenCalls.length > 0 && this.syncOpenCalls[0]!.stepIndex < stepIndex) {
+        this.syncOpenCalls.shift();
+      }
+      const rawCalls = Array.isArray(row['tool_calls']) ? row['tool_calls'] : [];
+      rawCalls.filter(isPlainObject).forEach((call) => {
+        const rawName =
+          typeof call['name'] === 'string' && call['name'].trim() ? call['name'].trim() : 'tool';
+        const rawArgs = normalizeTranscriptArgs(call['args']);
+        this.syncOpenCalls.push({ stepIndex, rawName, rawArgs });
+      });
+      return false;
+    }
+
+    if (rowType === 'GENERIC') {
+      const content =
+        typeof row['content'] === 'string'
+          ? row['content']
+          : hasErrorField(row['error'])
+            ? typeof row['error'] === 'string'
+              ? row['error']
+              : JSON.stringify(row['error'])
+            : '';
+      const gen = isAcceptedGenericStep(status, content);
+      if (!gen.accepted) return false;
+      const pending = this.syncOpenCalls.shift();
+      if (!pending) return false;
+      const isError =
+        (!gen.isBgRunning && status !== 'DONE') ||
+        hasErrorField(row['error']) ||
+        nonZeroExitCode(content);
+      if (isError) return false;
+
+      if (pending.rawName === 'run_command' || pending.rawName === 'schedule') {
+        const bgMatch = BG_TASK_RE.exec(content);
+        if (bgMatch) {
+          const normId = bgMatch[1]!.toLowerCase();
+          if (pending.rawName === 'run_command' && pending.rawArgs['IsDaemon'] === true) {
+            this.activeBgTasks.delete(normId);
+          } else {
+            const isCron =
+              pending.rawName === 'schedule' &&
+              Boolean(pickStr(pending.rawArgs, 'CronExpression', 'cronExpression'));
+            this.activeBgTasks.set(normId, { isCron, expiresAt: now + BG_TASK_MAX_WATCH_MS });
+          }
+        }
+      } else if (pending.rawName === 'manage_task') {
+        const action = pickStr(pending.rawArgs, 'Action', 'action')?.toLowerCase();
+        const taskId = pickStr(pending.rawArgs, 'TaskId', 'taskId')?.toLowerCase();
+        if (action === 'kill' && taskId) {
+          this.activeBgTasks.delete(taskId);
+        }
+      }
+    }
+    return false;
   }
 
   flushOpenTurn(interrupted = false, now = Date.now()): AgentEvent[] {
@@ -1333,19 +1515,21 @@ export class AgyParentTranscriptTailer {
     lastStepIndex: number;
     usedTokens?: number;
     completedTurn: boolean;
+    bgTaskTriggered: boolean;
   }> {
     if (!this.tailer) {
-      return { events: [], lastStepIndex, completedTurn: false };
+      return { events: [], lastStepIndex, completedTurn: false, bgTaskTriggered: false };
     }
     const lines = await this.tailer.readNewLines();
     if (lines.length === 0) {
-      return { events: [], lastStepIndex, completedTurn: false };
+      return { events: [], lastStepIndex, completedTurn: false, bgTaskTriggered: false };
     }
 
     const events: AgentEvent[] = [];
     let maxStep = lastStepIndex;
     let latestTokens: number | undefined;
     let completedTurn = false;
+    let bgTaskTriggered = false;
 
     for (const rawLine of lines) {
       const line = rawLine.trim();
@@ -1363,11 +1547,19 @@ export class AgyParentTranscriptTailer {
           : -1;
       if (stepIndex <= maxStep) continue;
 
+      if (this.trackParentBgRecord(row, now)) {
+        bgTaskTriggered = true;
+      }
+
       const rowType = typeof row['type'] === 'string' ? row['type'] : '';
       const status = typeof row['status'] === 'string' ? row['status'] : 'DONE';
       const at = parseTimestamp(row['created_at']) ?? now;
 
       if (rowType === 'USER_INPUT') {
+        if (this.silentTurn) {
+          events.push(...this.flushOpenTurn(false, at));
+          completedTurn = true;
+        }
         maxStep = stepIndex;
         this.reactiveTriggerSeen = false;
         continue;
@@ -1471,17 +1663,6 @@ export class AgyParentTranscriptTailer {
       }
 
       if (rowType === 'GENERIC' && this.silentTurn) {
-        if (
-          status !== 'DONE' &&
-          status !== 'ERROR' &&
-          status !== 'CANCELED' &&
-          status !== 'CANCELLED'
-        ) {
-          continue;
-        }
-        maxStep = stepIndex;
-        const pending = this.silentTurn.openTools.shift();
-        if (!pending) continue;
         const content =
           typeof row['content'] === 'string'
             ? row['content']
@@ -1490,8 +1671,17 @@ export class AgyParentTranscriptTailer {
                 ? row['error']
                 : JSON.stringify(row['error'])
               : '';
+        const gen = isAcceptedGenericStep(status, content);
+        if (!gen.accepted) {
+          continue;
+        }
+        maxStep = stepIndex;
+        const pending = this.silentTurn.openTools.shift();
+        if (!pending) continue;
         const isError =
-          status !== 'DONE' || hasErrorField(row['error']) || nonZeroExitCode(content);
+          (!gen.isBgRunning && status !== 'DONE') ||
+          hasErrorField(row['error']) ||
+          nonZeroExitCode(content);
         events.push({
           type: 'tool.result',
           toolUseId: pending.toolUseId,
@@ -1508,6 +1698,7 @@ export class AgyParentTranscriptTailer {
       lastStepIndex: maxStep,
       ...(latestTokens !== undefined ? { usedTokens: latestTokens } : {}),
       completedTurn,
+      bgTaskTriggered,
     };
   }
 }
@@ -1572,13 +1763,11 @@ function feedParentTranscriptRecord(
     if (parsedModel) {
       state.modelSettings = parsedModel;
     }
-    const sender = extractSystemSender(rawContent);
-    if (sender && isValidAgyUuid(sender)) {
-      const body = unwrapAgySystemMessage(rawContent);
-      if (body) {
-        const norm = sender.toLowerCase();
-        state.childReports.set(norm, body);
-        state.freshReports?.push({ childUuid: norm, summary: body });
+    for (const msg of extractSystemMessages(rawContent)) {
+      if (msg.sender && isValidAgyUuid(msg.sender) && msg.body) {
+        const norm = msg.sender.toLowerCase();
+        state.childReports.set(norm, msg.body);
+        state.freshReports?.push({ childUuid: norm, summary: msg.body });
       }
     }
     return;
@@ -1606,20 +1795,6 @@ function feedParentTranscriptRecord(
   }
 
   if (rowType === 'GENERIC') {
-    if (
-      status !== 'DONE' &&
-      status !== 'ERROR' &&
-      status !== 'CANCELED' &&
-      status !== 'CANCELLED'
-    ) {
-      return;
-    }
-    state.lastStep = stepIndex;
-    const pending = state.openCalls.shift();
-    if (!pending) return;
-    if (pending.rawName !== 'invoke_subagent' && pending.rawName !== 'manage_subagents') {
-      return;
-    }
     const content =
       typeof row['content'] === 'string'
         ? row['content']
@@ -1628,7 +1803,17 @@ function feedParentTranscriptRecord(
             ? row['error']
             : JSON.stringify(row['error'])
           : '';
-    const isError = status !== 'DONE' || hasErrorField(row['error']);
+    const gen = isAcceptedGenericStep(status, content);
+    if (!gen.accepted) {
+      return;
+    }
+    state.lastStep = stepIndex;
+    const pending = state.openCalls.shift();
+    if (!pending) return;
+    if (pending.rawName !== 'invoke_subagent' && pending.rawName !== 'manage_subagents') {
+      return;
+    }
+    const isError = (!gen.isBgRunning && status !== 'DONE') || hasErrorField(row['error']);
     if (pending.rawName === 'invoke_subagent') {
       const subType = pickStr(pending.args, 'TypeName', 'subagent_type');
       const desc = pickStr(pending.args, 'Role', 'TypeName', 'description');
@@ -1963,14 +2148,6 @@ export async function agySubagentMarkdown(
     }
 
     if (rowType === 'GENERIC') {
-      if (
-        status !== 'DONE' &&
-        status !== 'ERROR' &&
-        status !== 'CANCELED' &&
-        status !== 'CANCELLED'
-      ) {
-        continue;
-      }
       const text =
         typeof rec['content'] === 'string'
           ? rec['content']
@@ -1979,7 +2156,14 @@ export async function agySubagentMarkdown(
               ? rec['error']
               : JSON.stringify(rec['error'])
             : '';
-      const isErr = status !== 'DONE' || hasErrorField(rec['error']) || nonZeroExitCode(text);
+      const gen = isAcceptedGenericStep(status, text);
+      if (!gen.accepted) {
+        continue;
+      }
+      const isErr =
+        (!gen.isBgRunning && status !== 'DONE') ||
+        hasErrorField(rec['error']) ||
+        nonZeroExitCode(text);
       parts.push(isErr ? t.agentError : t.agentResult, '', fence(clipText(text, t)), '');
     }
   }

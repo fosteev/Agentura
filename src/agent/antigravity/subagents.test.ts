@@ -16,6 +16,7 @@ import {
   parseAgyUserSettingsModel,
   parseCreatedSubagent,
   parseManagedSubagents,
+  readParentTranscriptSummary,
   resolveAgySubagentModelEffort,
   unwrapAgySystemMessage,
   withAgySubagentTimelines,
@@ -980,5 +981,222 @@ describe('antigravity subagents: AgySubagentReader & agySubagentMarkdown', () =>
     });
     expect(md).toContain('`gemini-4-carbon · effort: medium`');
     expect(md).toContain('/work/package.json');
+  });
+
+  it('accepts real agy GENERIC status=RUNNING background tasks and tracks parent task-N wakeups', async () => {
+    // 1) Subagent background command with status=RUNNING + parent openCalls alignment with invoke_subagent
+    await ensureBrainTranscript(tmpDir, CHILD_UUID, [
+      { step_index: 0, type: 'SYSTEM_MESSAGE', status: 'DONE', content: 'run tests in bg' },
+      {
+        step_index: 1,
+        type: 'PLANNER_RESPONSE',
+        status: 'DONE',
+        tool_calls: [
+          {
+            name: 'run_command',
+            args: { CommandLine: '"npm test"', toolSummary: '"Suite run"', WaitMsBeforeAsync: '500' },
+          },
+        ],
+      },
+      {
+        step_index: 2,
+        type: 'GENERIC',
+        status: 'RUNNING',
+        content: `Created At: 2026-11-13T09:24:20+03:00\nTool is running as a background task with task id: ${CHILD_UUID}/task-12\nOnce it finishes, you will receive a message.`,
+      },
+      {
+        step_index: 3,
+        type: 'PLANNER_RESPONSE',
+        status: 'DONE',
+        content: 'Жду фоновый прогон.',
+      },
+      {
+        step_index: 4,
+        type: 'SYSTEM_MESSAGE',
+        status: 'DONE',
+        content: `<SYSTEM_MESSAGE>\n[Message] sender=${CHILD_UUID}/task-12 content=Background task finished with result:\nCommand exited with code 0\n</SYSTEM_MESSAGE>`,
+      },
+      {
+        step_index: 5,
+        type: 'PLANNER_RESPONSE',
+        status: 'DONE',
+        input_tokens: 1000,
+        output_tokens: 25,
+        content: 'Все тесты зелёные.',
+      },
+    ]);
+
+    const subReader = new AgySubagentReader({
+      agentId: 'sub_bg',
+      childUuid: CHILD_UUID,
+      dataDir: tmpDir,
+    });
+    const subEvents = await subReader.poll();
+    const bgToolResult = subEvents.find(
+      (e) => e.type === 'tool.result' && e.agentId === 'sub_bg',
+    ) as AgentEventOf<'tool.result'> | undefined;
+    expect(bgToolResult?.isError).toBe(false);
+    expect(
+      subEvents.find(
+        (e) => e.type === 'agent.start' && e.agentId === `agy-task:${CHILD_UUID}:task-12`,
+      ),
+    ).toMatchObject({
+      taskType: 'local_bash',
+      description: 'Suite run',
+      parentAgentId: 'sub_bg',
+    });
+    expect(
+      subEvents.find(
+        (e) => e.type === 'agent.end' && e.agentId === `agy-task:${CHILD_UUID}:task-12`,
+      ),
+    ).toMatchObject({
+      status: 'completed',
+    });
+
+    const md = await agySubagentMarkdown(CHILD_UUID, tmpDir, { lang: 'en' });
+    expect(md).toContain(`${CHILD_UUID}/task-12`);
+    expect(md).not.toContain('Error:');
+
+    // 2) Parent transcript mixing RUNNING run_command + invoke_subagent in one PLANNER_RESPONSE,
+    //    plus AgyParentTranscriptTailer tracking task-84 across silent reactive turns
+    const parentFile = await ensureBrainTranscript(tmpDir, PARENT_UUID, [
+      { step_index: 0, type: 'USER_INPUT', status: 'DONE', content: 'start' },
+      {
+        step_index: 1,
+        type: 'PLANNER_RESPONSE',
+        status: 'DONE',
+        tool_calls: [
+          { name: 'run_command', args: { CommandLine: '"sleep 5"' } },
+          {
+            name: 'invoke_subagent',
+            args: { TypeName: '"self"', Role: '"Worker"', Prompt: '"Do stage"' },
+          },
+        ],
+      },
+      {
+        step_index: 2,
+        type: 'GENERIC',
+        status: 'RUNNING',
+        content: `Tool is running as a background task with task id: ${PARENT_UUID}/task-2`,
+      },
+      {
+        step_index: 3,
+        type: 'GENERIC',
+        status: 'DONE',
+        content: `Created the following subagent:\n{"conversationId":"${CHILD_UUID}"}`,
+      },
+    ]);
+
+    const summary = await readParentTranscriptSummary(PARENT_UUID, tmpDir);
+    expect(summary?.invokeOutputs).toHaveLength(1);
+    expect(summary?.invokeOutputs[0]?.childUuid).toBe(CHILD_UUID);
+
+    // Historical sync with resetPending ignores old task-2 on session resume
+    const tailer = new AgyParentTranscriptTailer(PARENT_UUID, tmpDir);
+    const initSync = await tailer.syncToEnd({ resetPending: true });
+    expect(initSync.maxStepIndex).toBe(3);
+    expect(tailer.hasPendingReactiveWork()).toBe(false);
+
+    // Silent reactive turn #1: subagent wakes parent -> parent starts background verification task-84 -> ends turn #1
+    await appendFile(
+      parentFile,
+      [
+        {
+          step_index: 4,
+          type: 'SYSTEM_MESSAGE',
+          status: 'DONE',
+          created_at: '2026-11-13T06:23:47Z',
+          content: `<SYSTEM_MESSAGE>\n[Message] sender=${CHILD_UUID} content=Stage done\n</SYSTEM_MESSAGE>`,
+        },
+        {
+          step_index: 5,
+          type: 'PLANNER_RESPONSE',
+          status: 'DONE',
+          created_at: '2026-11-13T06:24:20Z',
+          tool_calls: [
+            {
+              name: 'run_command',
+              args: { CommandLine: '"TZ=UTC npm run check"', toolSummary: '"Full check"' },
+            },
+          ],
+        },
+        {
+          step_index: 6,
+          type: 'GENERIC',
+          status: 'RUNNING',
+          created_at: '2026-11-13T06:24:32Z',
+          content: `Tool is running as a background task with task id: ${PARENT_UUID}/task-84`,
+        },
+        {
+          step_index: 7,
+          type: 'PLANNER_RESPONSE',
+          status: 'DONE',
+          created_at: '2026-11-13T06:24:34Z',
+          input_tokens: 3000,
+          output_tokens: 30,
+          content: 'Запустил финальную проверку в фоне.',
+        },
+      ]
+        .map((r) => JSON.stringify(r))
+        .join('\n') + '\n',
+    );
+
+    const turn1 = await tailer.pollSilentTurn(initSync.maxStepIndex, 'gemini-4-argon');
+    expect(turn1.completedTurn).toBe(true);
+    expect(turn1.bgTaskTriggered).toBe(false);
+    const bashResult = turn1.events.find(
+      (e) => e.type === 'tool.result',
+    ) as AgentEventOf<'tool.result'> | undefined;
+    expect(bashResult?.isError).toBe(false);
+    // Turn #1 ended, but task-84 is still running so parent must keep watching!
+    expect(tailer.hasActiveBgTasks()).toBe(true);
+    expect(tailer.hasPendingReactiveWork()).toBe(true);
+
+    // 97 seconds later: task-84 finishes and wakes parent for silent reactive turn #2
+    await appendFile(
+      parentFile,
+      [
+        {
+          step_index: 8,
+          type: 'SYSTEM_MESSAGE',
+          status: 'DONE',
+          created_at: '2026-11-13T06:26:09Z',
+          content: `<SYSTEM_MESSAGE>\n[Message] sender=${PARENT_UUID}/task-84 content=Background task finished with result:\nCommand exited with code 0\n</SYSTEM_MESSAGE>`,
+        },
+        {
+          step_index: 9,
+          type: 'PLANNER_RESPONSE',
+          status: 'DONE',
+          created_at: '2026-11-13T06:26:12Z',
+          input_tokens: 3400,
+          output_tokens: 45,
+          content: 'Все этапы приняты, проверки зелёные.',
+        },
+      ]
+        .map((r) => JSON.stringify(r))
+        .join('\n') + '\n',
+    );
+
+    const turn2 = await tailer.pollSilentTurn(turn1.lastStepIndex, 'gemini-4-argon');
+    expect(turn2.completedTurn).toBe(true);
+    expect(turn2.bgTaskTriggered).toBe(true);
+    expect(turn2.events.at(-1)).toMatchObject({
+      type: 'turn.result',
+      ok: true,
+      text: 'Все этапы приняты, проверки зелёные.',
+    });
+    expect(tailer.hasActiveBgTasks()).toBe(false);
+    expect(tailer.hasPendingReactiveWork()).toBe(false);
+
+    // Direct ACP tool results (Bash + manage_task kill) also register and clear activeBgTasks
+    tailer.noteAcpToolResult(
+      'Bash',
+      { command: 'sleep 30' },
+      `Tool is running as a background task with task id: ${PARENT_UUID}/task-99`,
+      false,
+    );
+    expect(tailer.hasActiveBgTasks()).toBe(true);
+    tailer.noteAcpToolResult('manage_task', { Action: 'kill', TaskId: `${PARENT_UUID}/task-99` }, 'Killed', false);
+    expect(tailer.hasActiveBgTasks()).toBe(false);
   });
 });

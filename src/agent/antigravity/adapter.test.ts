@@ -2678,5 +2678,196 @@ describe('AntigravityAdapter (ACP)', () => {
         await rm(tempDir, { recursive: true, force: true });
       }
     });
+
+    it('keeps polling for parent background task-N beyond silentWakeupWatchMs and catches up missed silent turns before next prompt', async () => {
+      const tempDir = await mkdtemp(join(os.tmpdir(), 'agy-bg-wakeup-'));
+      try {
+        const parentPath = await brainFile(tempDir, DEFAULT_SESSION_ID, []);
+        const server = createFakeAgyServer();
+        let promptTurn = 0;
+        server.handle('session/prompt', async (params) => {
+          promptTurn++;
+          const sid = String(params.sessionId);
+          if (promptTurn === 1) {
+            await appendFile(
+              parentPath,
+              [
+                { step_index: 0, type: 'USER_INPUT', status: 'DONE', content: 'run full check' },
+                {
+                  step_index: 1,
+                  type: 'PLANNER_RESPONSE',
+                  status: 'DONE',
+                  input_tokens: 600,
+                  output_tokens: 20,
+                  tool_calls: [{ name: 'run_command', args: { CommandLine: '"npm run check"' } }],
+                },
+                {
+                  step_index: 2,
+                  type: 'GENERIC',
+                  status: 'RUNNING',
+                  content: `Tool is running as a background task with task id: ${DEFAULT_SESSION_ID}/task-84`,
+                },
+                {
+                  step_index: 3,
+                  type: 'PLANNER_RESPONSE',
+                  status: 'DONE',
+                  input_tokens: 700,
+                  output_tokens: 15,
+                  content: 'Запустил проверку.',
+                },
+              ]
+                .map((r) => JSON.stringify(r))
+                .join('\n') + '\n',
+              'utf8',
+            );
+            server.notify('session/update', {
+              sessionId: sid,
+              update: {
+                sessionUpdate: 'tool_call',
+                toolCallId: 'bg_cmd_1',
+                name: 'run_command',
+                rawInput: { CommandLine: 'npm run check' },
+                status: 'completed',
+                rawOutput: {
+                  output: `Tool is running as a background task with task id: ${DEFAULT_SESSION_ID}/task-84`,
+                },
+              },
+            });
+            server.notify('session/update', {
+              sessionId: sid,
+              update: {
+                sessionUpdate: 'agent_message_chunk',
+                content: { type: 'text', text: 'Запустил проверку.' },
+              },
+            });
+            return { stopReason: 'end_turn', usage: { inputTokens: 700, outputTokens: 15 } };
+          }
+
+          await appendFile(
+            parentPath,
+            [
+              { step_index: 8, type: 'USER_INPUT', status: 'DONE', content: 'что дальше?' },
+              {
+                step_index: 9,
+                type: 'PLANNER_RESPONSE',
+                status: 'DONE',
+                input_tokens: 1200,
+                output_tokens: 20,
+                content: 'Ответ на новый вопрос.',
+              },
+            ]
+              .map((r) => JSON.stringify(r))
+              .join('\n') + '\n',
+            'utf8',
+          );
+          server.notify('session/update', {
+            sessionId: sid,
+            update: {
+              sessionUpdate: 'agent_message_chunk',
+              content: { type: 'text', text: 'Ответ на новый вопрос.' },
+            },
+          });
+          return { stopReason: 'end_turn', usage: { inputTokens: 1200, outputTokens: 20 } };
+        });
+
+        const { adapter } = setup(server, {
+          dataDir: tempDir,
+          subagentPollMs: 15,
+          silentWakeupWatchMs: 40,
+        });
+        const session = await adapter.createSession({ cwd: '/work' });
+        const events = collect(session);
+        await until(() => events.some((e) => e.type === 'session.init'), 'session.init');
+
+        session.send('run full check');
+        await until(
+          () => events.filter((e) => e.type === 'turn.result').length === 1,
+          'first prompt turn finished',
+        );
+
+        // Wait longer than silentWakeupWatchMs (40ms): poller must STAY alive because task-84 is pending
+        await new Promise((r) => setTimeout(r, 80));
+
+        await appendFile(
+          parentPath,
+          [
+            {
+              step_index: 4,
+              type: 'SYSTEM_MESSAGE',
+              status: 'DONE',
+              created_at: '2026-11-13T06:26:09Z',
+              content: `<SYSTEM_MESSAGE>\n[Message] sender=${DEFAULT_SESSION_ID}/task-84 content=Background task finished with result:\nCommand exited with code 0\n</SYSTEM_MESSAGE>`,
+            },
+            {
+              step_index: 5,
+              type: 'PLANNER_RESPONSE',
+              status: 'DONE',
+              created_at: '2026-11-13T06:26:11Z',
+              input_tokens: 950,
+              output_tokens: 30,
+              content: 'Проверка завершена успешно.',
+            },
+          ]
+            .map((r) => JSON.stringify(r))
+            .join('\n') + '\n',
+          'utf8',
+        );
+
+        await until(
+          () =>
+            events.some(
+              (e) => e.type === 'turn.result' && e.text === 'Проверка завершена успешно.',
+            ),
+          'live silent wakeup turn from task-84 delivered without user message',
+        );
+
+        // Wait for poller to stop after all tasks completed, then write an out-of-band silent turn
+        // and verify drain() catches it up BEFORE sending the next user prompt
+        await new Promise((r) => setTimeout(r, 80));
+        await appendFile(
+          parentPath,
+          [
+            {
+              step_index: 6,
+              type: 'SYSTEM_MESSAGE',
+              status: 'DONE',
+              created_at: '2026-11-13T06:30:00Z',
+              content: `<SYSTEM_MESSAGE>\n[Message] sender=external-trigger content=Ping\n</SYSTEM_MESSAGE>`,
+            },
+            {
+              step_index: 7,
+              type: 'PLANNER_RESPONSE',
+              status: 'DONE',
+              created_at: '2026-11-13T06:30:01Z',
+              input_tokens: 1050,
+              output_tokens: 15,
+              content: 'Догоняющий тихий ответ.',
+            },
+          ]
+            .map((r) => JSON.stringify(r))
+            .join('\n') + '\n',
+          'utf8',
+        );
+
+        session.send('что дальше?');
+        await until(
+          () => events.some((e) => e.type === 'turn.result' && e.text === 'Ответ на новый вопрос.'),
+          'second user prompt turn finished',
+        );
+
+        const catchUpIdx = events.findIndex(
+          (e) => e.type === 'turn.result' && e.text === 'Догоняющий тихий ответ.',
+        );
+        const secondPromptStartIdx = events.findIndex(
+          (e) => e.type === 'turn.start' && e.prompt === 'что дальше?',
+        );
+        expect(catchUpIdx).toBeGreaterThan(-1);
+        expect(secondPromptStartIdx).toBeGreaterThan(catchUpIdx);
+
+        session.dispose();
+      } finally {
+        await rm(tempDir, { recursive: true, force: true });
+      }
+    });
   });
 });
