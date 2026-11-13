@@ -10,6 +10,7 @@ const msg = (
     fontCode: string;
     feedFontSize: number;
     uiFontSize: number;
+    animations: boolean;
     diffHighlight: boolean;
     diffTheme: 'simple' | 'github' | 'one';
     diffFontSize: number;
@@ -109,6 +110,18 @@ describe('дифф вкладки «код»', () => {
     expect(root.style.getPropertyValue('--diff-size')).toBe('15px');
     applyAppearance(msg({ diffHighlight: false }), root);
     expect(document.body.dataset.hlTheme).toBe('off');
+  });
+});
+
+describe('микроанимации (data-motion)', () => {
+  it('по умолчанию (поле не передано) и при true — on, при false — off', () => {
+    const root = document.createElement('div');
+    applyAppearance(msg(), root);
+    expect(document.body.dataset.motion).toBe('on');
+    applyAppearance(msg({ animations: false }), root);
+    expect(document.body.dataset.motion).toBe('off');
+    applyAppearance(msg({ animations: true }), root);
+    expect(document.body.dataset.motion).toBe('on');
   });
 });
 

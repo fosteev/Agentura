@@ -671,6 +671,11 @@
           "maximum": 20,
           "description": "%config.ui.fontSize.description%"
         },
+        "agentura.ui.animations": {
+          "type": "boolean",
+          "default": true,
+          "description": "%config.ui.animations.description%"
+        },
         "agentura.diff.syntaxHighlighting": {
           "type": "boolean",
           "default": true,

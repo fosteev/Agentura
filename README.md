@@ -108,7 +108,8 @@ The ✦ button asks Sonnet to write the commit message from the staged diff.
 `agentura.sessionList.view`: `detailed`, `compact`, `dense`. With more than one engine installed,
 `agentura.sidebar.limits` lays out their limits: `active` (default — the current tab's engine expanded), `stack`,
 `switch`, `table`, `header`. `agentura.sidebar.limitsHidden` lists engines whose limits the sidebar hides (and stops
-polling). All settings are also on a settings tab (⚙ in the sidebar),
+polling). `agentura.ui.animations` turns subtle interface transitions and micro-animations on or off (`prefers-reduced-motion`
+always disables them). All settings are also on a settings tab (⚙ in the sidebar),
 with live previews.
 
 ![Session list views](docs/images/session-list.png)

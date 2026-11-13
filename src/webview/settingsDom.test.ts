@@ -85,6 +85,7 @@ const values: SettingsValues = {
   'browser.enabled': false,
   'feed.fontSize': 13,
   'ui.fontSize': 13,
+  'ui.animations': true,
   'diff.syntaxHighlighting': true,
   'diff.highlightTheme': 'github',
   'diff.fontSize': 0,
@@ -368,6 +369,7 @@ describe('вкладка настроек', () => {
       'agentura.tasks.tab',
       'agentura.feed.fontSize',
       'agentura.ui.fontSize',
+      'agentura.ui.animations',
       'agentura.diff.syntaxHighlighting',
       'agentura.diff.highlightTheme',
       'agentura.diff.fontSize',
@@ -926,6 +928,16 @@ describe('вкладка настроек', () => {
     await flush();
     expect(host.querySelector('.set[data-key$="defaultModel"] .note')).not.toBeNull();
     expect(host.querySelector('.set[data-key$="defaultEffort"] .note')).toBeNull();
+  });
+
+  it('тумблер ui.animations на странице «Внешний вид» пишет настройку', async () => {
+    const host = mount(Settings);
+    state();
+    await flush();
+    const tg = host.querySelector<HTMLButtonElement>('#look button[aria-label="ui.animations"]')!;
+    expect(tg.getAttribute('aria-checked')).toBe('true');
+    tg.click();
+    expect(sets()).toEqual([{ type: 'settings.set', key: 'ui.animations', value: false }]);
   });
 });
 

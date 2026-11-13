@@ -4,6 +4,8 @@
  * (`agentsGraph/store` + `GraphApp`), узлы, выбор, детали, действия; отправка снимков только пока граф открыт.
  * Данные — живой прогон `agents-parallel` через `dispatchEvent`.
  */
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { h, render } from 'preact';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgentEvent } from '../agent/types';
@@ -266,5 +268,99 @@ describe('превью в ⚙ → «Вид»', () => {
       expect(q(host, '.pv-agents .pane.side').dataset['active']).toBe('agents');
       expect(q<HTMLElement>(host, '#pane-agents').hidden).toBe(false);
     }
+  });
+});
+
+describe('микроанимации графа, всплывающих слоёв и ленты (roadmap 40, этап 3)', () => {
+  const readCss = (name: string) => readFileSync(join(__dirname, '..', '..', 'media', name), 'utf8');
+
+  it('agents-graph.css оживляет path.busy, полосу контекста .ctxb i и узлы .gmap .n', async () => {
+    const css = readCss('agents-graph.css');
+    expect(css).toMatch(
+      /@keyframes\s+gmap-flow\s*\{\s*from\s*\{\s*stroke-dashoffset:\s*0;\s*\}\s*to\s*\{\s*stroke-dashoffset:\s*-9;\s*\}\s*\}/,
+    );
+    expect(css).toMatch(
+      /\.gmap\s+svg\.edges\s+path\.busy\s*\{(?=[^}]*stroke-dasharray:\s*5\s+4;)(?=[^}]*animation:\s*gmap-flow\s+0\.75s\s+linear\s+infinite;)[^}]*\}/,
+    );
+    expect(css).toMatch(
+      /@keyframes\s+gmap-node-in\s*\{\s*from\s*\{\s*opacity:\s*0;\s*\}\s*to\s*\{\s*opacity:\s*1;\s*\}\s*\}/,
+    );
+    expect(css).toMatch(
+      /\.gmap\s+\.n\s*\{(?=[^}]*animation:\s*gmap-node-in\s+var\(--dur-fast\)\s+var\(--ease-out\);)(?=[^}]*transition:\s*border-color\s+var\(--dur-fast\)\s+ease,\s*box-shadow\s+var\(--dur-fast\)\s+ease;)[^}]*\}/,
+    );
+    expect(css).toMatch(
+      /\.gmap\s+\.n\.main\s+\.ctxb\s+i\s*\{[^}]*transition:\s*width\s+var\(--dur\)\s+var\(--ease-out\),\s*background-color\s+var\(--dur\)\s+ease;/,
+    );
+
+    await play();
+    handleGraphMessage(graphSnapshot());
+    const host = mountGraph();
+    await flush();
+    expect(qa(host, '.gmap svg.edges path.busy')).toHaveLength(1);
+    expect(qa(host, '.gmap .n.main .ctxb i')).toHaveLength(1);
+  });
+
+  it('всплывающие меню, попапы и дискретные карточки ленты имеют короткий вход без остаточного transform на .ncp', () => {
+    const hud = readCss('hud.css');
+    const webview = readCss('webview.css');
+    const tasks = readCss('tasks.css');
+
+    expect(hud).toMatch(
+      /@keyframes\s+pop-up\s*\{\s*from\s*\{\s*opacity:\s*0;\s*transform:\s*translateY\(4px\);\s*\}\s*to\s*\{\s*opacity:\s*1;\s*transform:\s*translateY\(0\);\s*\}\s*\}/,
+    );
+    expect(hud).toMatch(
+      /@keyframes\s+pop-down\s*\{\s*from\s*\{\s*opacity:\s*0;\s*transform:\s*translateY\(-4px\);\s*\}\s*to\s*\{\s*opacity:\s*1;\s*transform:\s*translateY\(0\);\s*\}\s*\}/,
+    );
+    expect(hud).toMatch(/\.menu\.up\s*\{[^}]*animation:\s*pop-up\s+var\(--dur-fast\)\s+var\(--ease-out\);/);
+    expect(hud).toMatch(/\.menu\.down\s*\{[^}]*animation:\s*pop-down\s+var\(--dur-fast\)\s+var\(--ease-out\);/);
+    expect(hud).toMatch(/\.sidebar\s*>\s*\.pop\s*\{[^}]*animation:\s*pop-down\s+var\(--dur-fast\)\s+var\(--ease-out\);/);
+
+    expect(tasks).toMatch(
+      /@keyframes\s+ncp-in\s*\{\s*from\s*\{\s*opacity:\s*0;\s*transform:\s*translateY\(-4px\);\s*\}\s*to\s*\{\s*opacity:\s*1;\s*transform:\s*translateY\(0\);\s*\}\s*\}/,
+    );
+    expect(tasks).toMatch(
+      /\.ncp\s*\{(?=[^}]*animation:\s*ncp-in\s+var\(--dur-fast\)\s+var\(--ease-out\);)(?![^}]*\bforwards\b)(?![^}]*\btransform:)[^}]*\}/,
+    );
+
+    expect(hud).toMatch(
+      /@keyframes\s+card-in\s*\{\s*from\s*\{\s*opacity:\s*0;\s*transform:\s*translateY\(3px\);\s*\}\s*to\s*\{\s*opacity:\s*1;\s*transform:\s*translateY\(0\);\s*\}\s*\}/,
+    );
+    expect(hud).toMatch(/\.ask\s*\{[^}]*animation:\s*card-in\s+var\(--dur\)\s+var\(--ease-out\);/);
+    expect(hud).toMatch(/\.banner\s*\{[^}]*animation:\s*card-in\s+var\(--dur\)\s+var\(--ease-out\);/);
+    expect(webview).toMatch(/\.log\s+\.tool-full\s*\{[^}]*animation:\s*card-in\s+var\(--dur\)\s+var\(--ease-out\);/);
+    expect(webview).toMatch(
+      /\.log\s+\.txt\.think-full\s*\{[^}]*animation:\s*card-in\s+var\(--dur\)\s+var\(--ease-out\);/,
+    );
+  });
+
+  it('стримящийся .log .txt (без .think-full) и строки .log .e не имеют animation или transition', () => {
+    let txtRules = 0;
+    let entryRules = 0;
+    for (const file of ['hud.css', 'webview.css', 'feed.css']) {
+      const clean = readCss(file)
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/@keyframes\s+[\w-]+\s*\{(?:\{[^{}]*\}|[^{}])*\}/g, '');
+      for (const m of clean.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+        const selectors = m[1]!
+          .split(',')
+          .map((s) => s.trim())
+          .filter((s) => s && !s.startsWith('@'));
+        const body = m[2]!;
+        for (const sel of selectors) {
+          const isStreamingTxt =
+            /\.log\b[\s\S]*\.txt(?![\w-])/.test(sel) &&
+            !sel.includes('.think-full') &&
+            /\.txt(?::[\w-]+)?$/.test(sel);
+          const isLogEntry = /\.log\b[\s\S]*\.e(?:[.[#:][\w:="[\]-]*)*$/.test(sel);
+          if (isStreamingTxt) txtRules++;
+          if (isLogEntry) entryRules++;
+          if (isStreamingTxt || isLogEntry) {
+            expect(body, `${file}: ${sel}`).not.toMatch(/\b(?:animation|transition)\s*:/);
+          }
+        }
+      }
+    }
+    expect(txtRules).toBeGreaterThanOrEqual(2);
+    expect(entryRules).toBeGreaterThanOrEqual(5);
   });
 });

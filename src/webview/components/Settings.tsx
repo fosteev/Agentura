@@ -1304,6 +1304,9 @@ export function Settings() {
               <Row name={T.uiFontSize.name} isNew desc={T.uiFontSize.desc} k="ui.fontSize">
                 <FontSizeSelect value={v['ui.fontSize']} k="ui.fontSize" />
               </Row>
+              <Row name={T.uiAnimations.name} isNew desc={T.uiAnimations.desc} k="ui.animations">
+                <Toggle k="ui.animations" value={v['ui.animations']} />
+              </Row>
               <Row name={T.diffHighlight.name} isNew desc={T.diffHighlight.desc} k="diff.syntaxHighlighting">
                 <Toggle k="diff.syntaxHighlighting" value={v['diff.syntaxHighlighting']} />
               </Row>

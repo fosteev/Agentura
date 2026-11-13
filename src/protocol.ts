@@ -181,6 +181,8 @@ export type ToWebview =
       fontCode: string;
       feedFontSize: number;
       uiFontSize: number;
+      /** Микроанимации интерфейса (`agentura.ui.animations`); нет поля или `true` — включены. */
+      animations?: boolean;
       /** Дифф вкладки «код» (`agentura.diff.*`): подсветка, палитра, размер в px (0 — как лента). */
       diffHighlight: boolean;
       diffTheme: HighlightTheme;

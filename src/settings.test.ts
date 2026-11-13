@@ -228,6 +228,14 @@ describe('шрифты и размер ленты', () => {
     expect(validateSetting('ui.fontSize', 16)).toEqual({ ok: true, value: 16 });
     expect(validateSetting('ui.fontSize', 21).ok).toBe(false);
   });
+  it('анимации интерфейса (ui.animations): boolean, по умолчанию true', () => {
+    expect(validateSetting('ui.animations', true)).toEqual({ ok: true, value: true });
+    expect(validateSetting('ui.animations', false)).toEqual({ ok: true, value: false });
+    expect(validateSetting('ui.animations', 'no').ok).toBe(false);
+    expect(readSettings(cfgOf({}))['ui.animations']).toBe(true);
+    expect(readSettings(cfgOf({ 'ui.animations': false }))['ui.animations']).toBe(false);
+    expect(readSettings(cfgOf({ 'ui.animations': 'off' }))['ui.animations']).toBe(true);
+  });
   it('дифф вкладки «код»: проверка и чтение', () => {
     expect(validateSetting('diff.syntaxHighlighting', false)).toEqual({ ok: true, value: false });
     expect(validateSetting('diff.syntaxHighlighting', 'no').ok).toBe(false);

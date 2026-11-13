@@ -41,6 +41,11 @@
   --agent: var(--vscode-charts-purple, #b180d7);
   --add: var(--vscode-gitDecoration-addedResourceForeground, #81b88b);
   --del: var(--vscode-gitDecoration-deletedResourceForeground, #c74e39);
+
+  /* движение: короткие переходы и кривая выхода */
+  --dur-fast: 120ms;
+  --dur: 180ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 :root[data-theme="light"] {
@@ -90,6 +95,7 @@ button { background: none; border: 0; padding: 0; cursor: pointer; }
 :focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
 code, kbd, .num { font-family: var(--mono); }
 .num { font-variant-numeric: tabular-nums; }
+body[data-motion="off"] *, body[data-motion="off"] *::before, body[data-motion="off"] *::after { animation: none !important; transition: none !important; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }

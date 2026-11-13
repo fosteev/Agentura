@@ -1489,6 +1489,10 @@ export const en: Ui = {
       name: 'Interface size',
       desc: 'Everything except the feed: header, input box, panels, sidebar, this tab. The feed has its own size above. Open tabs update immediately.',
     },
+    uiAnimations: {
+      name: 'UI micro-animations',
+      desc: 'Subtle transitions for context and limit gauges, menus, discrete cards and active edges in the agents graph. System reduced-motion always disables animations. Open tabs update immediately.',
+    },
     feedFontSize: {
       name: 'Feed text size',
       desc: 'The whole chat feed scales: replies, actions, code, cards. Open tabs update immediately.',

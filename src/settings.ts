@@ -221,6 +221,7 @@ export type SettingKey =
   | 'browser.enabled'
   | 'feed.fontSize'
   | 'ui.fontSize'
+  | 'ui.animations'
   | 'diff.syntaxHighlighting'
   | 'diff.highlightTheme'
   | 'diff.fontSize'
@@ -278,6 +279,7 @@ export const SETTING_KEYS: readonly SettingKey[] = [
   'browser.enabled',
   'feed.fontSize',
   'ui.fontSize',
+  'ui.animations',
   'diff.syntaxHighlighting',
   'diff.highlightTheme',
   'diff.fontSize',
@@ -366,6 +368,8 @@ export interface SettingsValues {
   'feed.fontSize': number;
   /** Размер интерфейса (всё, кроме ленты), px; 13 — как есть, иначе всё масштабируется (`--ui-zoom`). */
   'ui.fontSize': number;
+  /** Микроанимации интерфейса (`body[data-motion]`); по умолчанию включены. */
+  'ui.animations': boolean;
   /** Дифф вкладки «код»: подсвечивать синтаксис. */
   'diff.syntaxHighlighting': boolean;
   /** Дифф вкладки «код»: палитра подсветки. */
@@ -609,6 +613,7 @@ export function validateSetting(key: SettingKey, value: unknown, lang: ErrLang =
     case 'tasks.code.matchMessage':
     case 'tasks.code.matchBranch':
     case 'git.hideClean':
+    case 'ui.animations':
     case 'diff.syntaxHighlighting':
     case 'mcp.feedLabels':
     case 'mcp.composerButton':
@@ -795,6 +800,7 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
     'browser.enabled': cfg.get<unknown>('browser.enabled') === true,
     'feed.fontSize': isFeedFontSize(fz) ? fz : DEFAULT_FEED_FONT_SIZE,
     'ui.fontSize': isFeedFontSize(uz) ? uz : DEFAULT_FEED_FONT_SIZE,
+    'ui.animations': cfg.get<unknown>('ui.animations') !== false,
     'diff.syntaxHighlighting': cfg.get<unknown>('diff.syntaxHighlighting') !== false,
     'diff.highlightTheme': isHighlightTheme(hlTheme) ? hlTheme : DEFAULT_HIGHLIGHT_THEME,
     'diff.fontSize': isDiffFontSize(diffSize) ? diffSize : 0,

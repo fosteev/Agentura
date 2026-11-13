@@ -88,7 +88,10 @@ export function applyAppearance(m: Appearance, root: HTMLElement = document.docu
     else root.style.setProperty(prop, value);
   }
   const body = root.ownerDocument.body;
-  if (body) body.dataset.hlTheme = highlightThemeAttr(m);
+  if (body) {
+    body.dataset.hlTheme = highlightThemeAttr(m);
+    body.dataset.motion = m.animations === false ? 'off' : 'on';
+  }
   // пороги ширины (узкий режим, панель) пересчитываются по resize — масштаб меняет «ширину» так же
   if (uiZoom(root) !== zoomBefore) root.ownerDocument.defaultView?.dispatchEvent(new Event('resize'));
 }

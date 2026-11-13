@@ -384,4 +384,35 @@ describe('лимиты нескольких движков в боковой п�
       /\.sidebar\s+\.wait\s*\{(?=[^}]*min-width:\s*0)(?=[^}]*overflow:\s*hidden)(?=[^}]*text-overflow:\s*ellipsis)(?=[^}]*white-space:\s*nowrap)[^}]*\}/,
     );
   });
+
+  it('hud.css задаёт плавные переходы для всех полос лимитов, шевронов и сегментов сайдбара', () => {
+    const css = readFileSync(join(__dirname, '..', '..', 'media', 'hud.css'), 'utf8');
+    const barSelectors = [
+      String.raw`\.sidebar\s+\.lim\s+\.row\s+\.bar\s+i`,
+      String.raw`\.sidebar\s+\.head\s+\.hl\s+\.m\s+i\s+b`,
+      String.raw`\.sidebar\s+\.L\s+\.bar\s+i`,
+      String.raw`\.sidebar\s+\.grid\s+\.c\s+\.bar\s+i`,
+      String.raw`\.sidebar\s+\.one\s+\.bar\s+i`,
+      String.raw`\.sidebar\s+\.hx\s+\.m\s+i\.b\s+b`,
+    ];
+    for (const sel of barSelectors) {
+      expect(css, sel).toMatch(
+        new RegExp(
+          `${sel}\\s*\\{[^}]*transition:\\s*width\\s+var\\(--dur\\)\\s+var\\(--ease-out\\),\\s*background-color\\s+var\\(--dur\\)\\s+ease;`,
+        ),
+      );
+    }
+    expect(css).toMatch(
+      /\.sidebar\s+\.sec\s+h3\s+\.tri\s*\{[^}]*transition:\s*transform\s+var\(--dur-fast\)\s+var\(--ease-out\);/,
+    );
+    expect(css).toMatch(
+      /\.sidebar\s+\.one\s+\.tw\s*\{(?=[^}]*border-left:\s*5px\s+solid\s+var\(--fg-mute\);)(?=[^}]*transform-origin:\s*25%\s+50%;)(?=[^}]*transition:\s*transform\s+var\(--dur-fast\)\s+var\(--ease-out\);)[^}]*\}/,
+    );
+    expect(css).toMatch(
+      /\.sidebar\s+\.one\s+\.tw\.open\s*\{(?=[^}]*border-left:\s*5px\s+solid\s+var\(--fg-mute\);)(?=[^}]*transform:\s*rotate\(90deg\);)(?![^}]*border-top:)[^}]*\}/,
+    );
+    expect(css).toMatch(
+      /\.sidebar\s+\.seg\s+button\s*\{[^}]*transition:\s*background-color\s+var\(--dur-fast\)\s+ease,\s*color\s+var\(--dur-fast\)\s+ease,\s*box-shadow\s+var\(--dur-fast\)\s+ease;/,
+    );
+  });
 });
