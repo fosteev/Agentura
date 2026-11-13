@@ -165,7 +165,11 @@ function Switch({ engines, current }: { engines: EngineView[]; current: EngineId
               class={lv(w?.percent)}
               data-engine={x.engine}
               data-tip={
-                w ? ui.sidebar.engineWorst(engineName(x.engine), w.percent) : engineName(x.engine)
+                w
+                  ? ui.sidebar.engineWorst(engineName(x.engine), w.percent)
+                  : [engineName(x.engine), x.state === 'error' && x.error ? ui.sidebar.engineError(x.error) : '']
+                      .filter(Boolean)
+                      .join('\n')
               }
               onClick={() => (picked.value = { engine: x.engine, base: current })}
             >
@@ -205,7 +209,7 @@ function Table({ engines }: { engines: EngineView[] }) {
                 <Mark engine={e.engine} />
                 {ui.sidebar.tableShort[e.engine] ?? engineName(e.engine)}
               </span>
-              <span class="off">
+              <span class="off" data-tip={e.state === 'error' ? engineTip(e) : undefined}>
                 <Status e={e} />
               </span>
             </Fragment>
@@ -368,7 +372,12 @@ export function EngineHeaderLimits({
               class={`m ${lv(w?.percent)}`.trim()}
               key={e.engine}
               data-engine={e.engine}
-              data-tip={[engineName(e.engine), w?.note].filter(Boolean).join(' · ')}
+              data-tip={[
+                engineName(e.engine),
+                w?.note ?? (e.state === 'error' && e.error ? ui.sidebar.engineError(e.error) : ''),
+              ]
+                .filter(Boolean)
+                .join(' · ')}
             >
               <Mark engine={e.engine} />
               {w ? (
