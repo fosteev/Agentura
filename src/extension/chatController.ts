@@ -167,7 +167,13 @@ export interface ChatDeps {
   /** SKILL.md скилла по имени (roadmap 21, решение 6; `findSkillFile`): абсолютный путь или `undefined`. */
   findSkill?(name: string): Promise<string | undefined>;
   /** Открыть файл в редакторе; строка и колонка начинаются с 1. */
-  openPath?(path: string, line?: number, column?: number): Promise<void>;
+  openPath?(
+    path: string,
+    line?: number,
+    column?: number,
+    endLine?: number,
+    endColumn?: number,
+  ): Promise<void>;
   /** Открыть внешнюю ссылку (http/https/mailto). */
   openExternal?(url: string): void;
   /** Возобновить эту сессию сразу (вкладка восстановлена сериализатором или открыта из списка). */
@@ -226,6 +232,53 @@ export const PLAN_REFINE_PREFIX = 'The user wants the plan revised before execut
 /** «Доработать план» с пустым полем. */
 export const PLAN_REFINE_MESSAGE =
   'The user wants to refine the plan before execution. Ask what should change, then present an updated plan.';
+
+const FRAG_LOCATION_RE = /^#?(?:L(\d+)(?:C(\d+))?(?:-L?(\d+)(?:C(\d+))?)?|:?(\d+)(?::(\d+))?(?:-(\d+)(?::(\d+))?)?)$/i;
+const PATH_LOCATION_RE = /(?:#L(\d+)(?:C(\d+))?(?:-L?(\d+)(?:C(\d+))?)?|:(\d+)(?::(\d+))?(?:-(\d+)(?::(\d+))?)?)$/i;
+
+interface LinkCoords {
+  line?: number;
+  column?: number;
+  endLine?: number;
+  endColumn?: number;
+  invalid?: boolean;
+}
+
+function parseLocationCoords(
+  rawLine?: string,
+  rawCol?: string,
+  rawEndLine?: string,
+  rawEndCol?: string,
+): LinkCoords {
+  if (rawLine === undefined) return {};
+  const line = Number(rawLine);
+  if (!Number.isSafeInteger(line) || line < 1) return { invalid: true };
+  let column = 1;
+  if (rawCol !== undefined) {
+    column = Number(rawCol);
+    if (!Number.isSafeInteger(column) || column < 1) return { invalid: true };
+  }
+  let endLine: number | undefined;
+  let endColumn: number | undefined;
+  if (rawEndLine !== undefined) {
+    const el = Number(rawEndLine);
+    if (Number.isSafeInteger(el) && el >= 1) {
+      if (rawEndCol !== undefined) {
+        const ec = Number(rawEndCol);
+        if (Number.isSafeInteger(ec) && ec >= 1) {
+          endColumn = ec;
+        }
+      }
+      if (el >= line) {
+        endLine = el;
+      } else {
+        endLine = undefined;
+        endColumn = undefined;
+      }
+    }
+  }
+  return { line, column, endLine, endColumn };
+}
 
 /**
  * Владелец сессии агента для одной вкладки чата: создаёт сессию, гонит события в webview,
@@ -822,6 +875,99 @@ export class ChatController {
           await deps.openSession?.(conv[1]!.toLowerCase(), 'antigravity');
           return;
         }
+        if (/^file:/i.test(m.url)) {
+          if (!/^file:\/\//i.test(m.url)) {
+            this.log.warn(`ссылка не открыта: ${m.url}`);
+            return;
+          }
+          const qIdx = m.url.indexOf('?');
+          const hIdx = m.url.indexOf('#');
+          if (qIdx !== -1 && (hIdx === -1 || qIdx < hIdx)) {
+            this.log.warn(`ссылка не открыта: ${m.url}`);
+            return;
+          }
+          const mFile = /^file:\/\/([^/?#]*)(\/[^#]*)?(?:#(.*))?$/i.exec(m.url);
+          if (!mFile) {
+            this.log.warn(`ссылка не открыта: ${m.url}`);
+            return;
+          }
+          const auth = (mFile[1] ?? '').toLowerCase();
+          if (auth !== '' && auth !== 'localhost') {
+            this.log.warn(`ссылка не открыта: ${m.url}`);
+            return;
+          }
+          const rawPath = mFile[2];
+          if (!rawPath) {
+            this.log.warn(`ссылка не открыта: ${m.url}`);
+            return;
+          }
+          if (rawPath.startsWith('//')) {
+            this.log.warn(`ссылка не открыта: ${m.url}`);
+            return;
+          }
+          let decodedPath: string;
+          let decodedFragment = mFile[3];
+          try {
+            decodedPath = decodeURIComponent(rawPath);
+            if (decodedFragment !== undefined) {
+              decodedFragment = decodeURIComponent(decodedFragment);
+            }
+          } catch {
+            this.log.warn(`ссылка не открыта: ${m.url}`);
+            return;
+          }
+          if (
+            /\p{Cc}/u.test(decodedPath) ||
+            (decodedFragment !== undefined && /\p{Cc}/u.test(decodedFragment))
+          ) {
+            this.log.warn(`ссылка не открыта: ${m.url}`);
+            return;
+          }
+          if (
+            decodedPath.startsWith('//') ||
+            decodedPath.startsWith('\\\\') ||
+            decodedPath.startsWith('/\\\\')
+          ) {
+            this.log.warn(`ссылка не открыта: ${m.url}`);
+            return;
+          }
+          if (/^\/[a-zA-Z]:$/.test(decodedPath)) {
+            this.log.warn(`ссылка не открыта: ${m.url}`);
+            return;
+          }
+          if (/^\/[a-zA-Z]:[\\/]/.test(decodedPath)) {
+            decodedPath = decodedPath.slice(1);
+          }
+          let targetPath = decodedPath;
+          let coords: LinkCoords = {};
+          if (decodedFragment !== undefined) {
+            const fragMatch = FRAG_LOCATION_RE.exec(decodedFragment);
+            if (fragMatch) {
+              coords = fragMatch[1] !== undefined
+                ? parseLocationCoords(fragMatch[1], fragMatch[2], fragMatch[3], fragMatch[4])
+                : parseLocationCoords(fragMatch[5], fragMatch[6], fragMatch[7], fragMatch[8]);
+            }
+          }
+          if (coords.line === undefined) {
+            const locMatch = PATH_LOCATION_RE.exec(targetPath);
+            if (locMatch && !(locMatch[5] !== undefined && locMatch.index === 1 && /^[a-zA-Z]$/.test(targetPath[0] ?? ''))) {
+              targetPath = targetPath.slice(0, locMatch.index);
+              coords = locMatch[1] !== undefined
+                ? parseLocationCoords(locMatch[1], locMatch[2], locMatch[3], locMatch[4])
+                : parseLocationCoords(locMatch[5], locMatch[6], locMatch[7], locMatch[8]);
+            }
+          }
+          if (coords.invalid) return;
+          if (!targetPath) return;
+          await deps.openPath?.(
+            resolveFrom(deps.cwd, targetPath),
+            coords.line,
+            coords.column,
+            coords.endLine,
+            coords.endColumn,
+          );
+          return;
+        }
         let path: string;
         try {
           path = decodeURIComponent(m.url);
@@ -829,24 +975,31 @@ export class ChatController {
           return;
         }
         if (/\p{Cc}/u.test(path)) return;
-        const location = /(?::(\d+)(?::(\d+))?|#L(\d+)(?:C(\d+))?)$/.exec(path);
-        const line = location ? Number(location[1] ?? location[3]) : undefined;
-        const column = location ? Number(location[2] ?? location[4] ?? 1) : undefined;
-        if (location) path = path.slice(0, location.index);
+        let coords: LinkCoords = {};
+        const locMatch = PATH_LOCATION_RE.exec(path);
+        if (locMatch && !(locMatch[5] !== undefined && locMatch.index === 1 && /^[a-zA-Z]$/.test(path[0] ?? ''))) {
+          path = path.slice(0, locMatch.index);
+          coords = locMatch[1] !== undefined
+            ? parseLocationCoords(locMatch[1], locMatch[2], locMatch[3], locMatch[4])
+            : parseLocationCoords(locMatch[5], locMatch[6], locMatch[7], locMatch[8]);
+        }
         // Не передаём command:/javascript:/vscode: в редактор.
         if (
           (/^[a-z][a-z\d+.-]*:/i.test(path) && !/^[a-z]:[\\/]/i.test(path)) ||
-          path.startsWith('//') || path.startsWith('#')
+          path.startsWith('//') || path.startsWith('\\\\') || path.startsWith('#')
         ) {
           this.log.warn(`ссылка не открыта: ${m.url}`);
           return;
         }
-        if (
-          line !== undefined &&
-          (!Number.isSafeInteger(line) || line < 1 || !Number.isSafeInteger(column) || column! < 1)
-        ) return;
+        if (coords.invalid) return;
         if (!path) return;
-        await deps.openPath?.(resolveFrom(deps.cwd, path), line, column);
+        await deps.openPath?.(
+          resolveFrom(deps.cwd, path),
+          coords.line,
+          coords.column,
+          coords.endLine,
+          coords.endColumn,
+        );
         return;
       }
       case 'files.find':

@@ -32,9 +32,9 @@ marked.use({
 
 export type Sanitizer = (html: string) => string;
 
-// Стандартные безопасные URI DOMPurify + ссылки на дочерние сессии Antigravity (`conversation://<uuid>`).
+// Стандартные безопасные URI DOMPurify + ссылки на дочерние сессии Antigravity (`conversation://<uuid>`) и локальные файлы (`file:///...`).
 const ALLOWED_URI_REGEXP =
-  /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|matrix):|conversation:\/\/|[^a-z]|[a-z+.-]+(?:[^a-z+.\-:]|$))/i;
+  /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|matrix):|(?:conversation|file):\/\/|[^a-z]|[a-z+.-]+(?:[^a-z+.\-:]|$))/i;
 
 const purify: Sanitizer = (html) =>
   DOMPurify.sanitize(html, {

@@ -76,6 +76,8 @@ body {
 .log .txt li + li { margin-top: 2px; }
 .log .txt h1, .log .txt h2, .log .txt h3, .log .txt h4 { margin: 10px 0 4px; font-size: 13px; font-weight: 600; }
 .log .txt a { color: var(--link); }
+.log .txt a[href], .ask .md a[href] { cursor: pointer; }
+.log .txt a:not([href]), .ask .md a:not([href]) { color: inherit; text-decoration: none; cursor: default; }
 .log .txt blockquote { margin: 6px 0; padding-left: 10px; border-left: 2px solid var(--line-strong); color: var(--fg-mute); }
 .log .txt table { border-collapse: collapse; margin: 6px 0; font-size: 12px; }
 .log .txt th, .log .txt td { border: 1px solid var(--line); padding: 2px 8px; text-align: left; }

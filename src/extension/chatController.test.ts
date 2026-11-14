@@ -637,8 +637,8 @@ describe('ChatController', () => {
     await controller.handle({ type: 'link.open', url: 'https://claude.ai/artifact/abc' });
     await controller.handle({ type: 'link.open', url: 'https://evil.example/https://claude.ai/' });
     await controller.handle({ type: 'link.open', url: 'http://claude.ai/x' });
-    await controller.handle({ type: 'link.open', url: 'file:///etc/passwd' });
     await controller.handle({ type: 'link.open', url: 'mailto:a@example.com' });
+    await controller.handle({ type: 'link.open', url: 'vscode://file/etc/passwd' });
     await controller.handle({ type: 'link.open', url: 'command:workbench.action.terminal.new' });
     await controller.handle({ type: 'link.open', url: 'javascript:alert(1)' });
     expect(urls).toEqual(['https://claude.ai/artifact/abc', 'https://evil.example/https://claude.ai/', 'http://claude.ai/x', 'mailto:a@example.com']);
@@ -652,14 +652,90 @@ describe('ChatController', () => {
     await controller.handle({ type: 'link.open', url: 'src/main.ts:35:4' });
     await controller.handle({ type: 'link.open', url: 'main.ts:12' });
     await controller.handle({ type: 'link.open', url: '/tmp/my%20report.md#L9' });
-    expect(deps.openPath).toHaveBeenNthCalledWith(1, '/tmp/agentura-subagents-live-result.json', undefined, undefined);
-    expect(deps.openPath).toHaveBeenNthCalledWith(2, `${deps.cwd}/src/main.ts`, 35, 4);
-    expect(deps.openPath).toHaveBeenNthCalledWith(3, `${deps.cwd}/main.ts`, 12, 1);
-    expect(deps.openPath).toHaveBeenNthCalledWith(4, '/tmp/my report.md', 9, 1);
-    for (const url of ['#section', '//remote/file', '%63ommand:workbench.action.terminal.new', '/tmp/%00x', '/tmp/%ZZ', '/tmp/x:0']) {
+    expect(deps.openPath).toHaveBeenNthCalledWith(1, '/tmp/agentura-subagents-live-result.json', undefined, undefined, undefined, undefined);
+    expect(deps.openPath).toHaveBeenNthCalledWith(2, `${deps.cwd}/src/main.ts`, 35, 4, undefined, undefined);
+    expect(deps.openPath).toHaveBeenNthCalledWith(3, `${deps.cwd}/main.ts`, 12, 1, undefined, undefined);
+    expect(deps.openPath).toHaveBeenNthCalledWith(4, '/tmp/my report.md', 9, 1, undefined, undefined);
+    for (const url of ['#section', '//remote/file', '\\\\remote\\file', '%63ommand:workbench.action.terminal.new', '/tmp/%00x', '/tmp/%ZZ', '/tmp/x:0']) {
       await controller.handle({ type: 'link.open', url });
     }
     expect(deps.openPath).toHaveBeenCalledTimes(4);
+  });
+
+  it('link.open: file:// URI, Windows-пути, диапазоны строк и колонок', async () => {
+    const { controller, deps } = setup();
+    deps.openPath = vi.fn(async () => {});
+    deps.openExternal = vi.fn();
+
+    // 1. file:///abs/path.md без координат
+    await controller.handle({ type: 'link.open', url: 'file:///abs/path.md' });
+    expect(deps.openPath).toHaveBeenNthCalledWith(1, '/abs/path.md', undefined, undefined, undefined, undefined);
+
+    // 2. file:///abs/my%20file.php#L793-L801 (пробел в пути, фрагмент с диапазоном строк)
+    await controller.handle({ type: 'link.open', url: 'file:///abs/my%20file.php#L793-L801' });
+    expect(deps.openPath).toHaveBeenNthCalledWith(2, '/abs/my file.php', 793, 1, 801, undefined);
+
+    // 3. file://localhost/tmp/a.ts#L10C3-L12C9 (хост localhost, строки и колонки)
+    await controller.handle({ type: 'link.open', url: 'file://localhost/tmp/a.ts#L10C3-L12C9' });
+    expect(deps.openPath).toHaveBeenNthCalledWith(3, '/tmp/a.ts', 10, 3, 12, 9);
+
+    // 4. file:///C:/dir/a.ts#L5-10 (Windows диск C:/, без склейки с cwd)
+    await controller.handle({ type: 'link.open', url: 'file:///C:/dir/a.ts#L5-10' });
+    expect(deps.openPath).toHaveBeenNthCalledWith(4, 'C:/dir/a.ts', 5, 1, 10, undefined);
+
+    // 5. file://localhost/C:/dir/b.ts#L10 (Windows диск с localhost)
+    await controller.handle({ type: 'link.open', url: 'file://localhost/C:/dir/b.ts#L10' });
+    expect(deps.openPath).toHaveBeenNthCalledWith(5, 'C:/dir/b.ts', 10, 1, undefined, undefined);
+
+    // 6. бесcхемный /abs/a.ts:10-20
+    await controller.handle({ type: 'link.open', url: '/abs/a.ts:10-20' });
+    expect(deps.openPath).toHaveBeenNthCalledWith(6, '/abs/a.ts', 10, 1, 20, undefined);
+
+    // 7. бесcхемный с колонками :10:2-20:8
+    await controller.handle({ type: 'link.open', url: 'src/file.ts:10:2-20:8' });
+    expect(deps.openPath).toHaveBeenNthCalledWith(7, `${deps.cwd}/src/file.ts`, 10, 2, 20, 8);
+
+    // 8. диапазон с перевёрнутыми строками (endLine < line) — endLine/endColumn игнорируются
+    await controller.handle({ type: 'link.open', url: 'file:///abs/rev.ts#L20-L10' });
+    expect(deps.openPath).toHaveBeenNthCalledWith(8, '/abs/rev.ts', 20, 1, undefined, undefined);
+
+    // 9. одиночная строка с колонкой #L15C4
+    await controller.handle({ type: 'link.open', url: 'file:///abs/single.ts#L15C4' });
+    expect(deps.openPath).toHaveBeenNthCalledWith(9, '/abs/single.ts', 15, 4, undefined, undefined);
+
+    expect(deps.openExternal).not.toHaveBeenCalled();
+    expect(deps.openPath).toHaveBeenCalledTimes(9);
+  });
+
+  it('link.open: блокировка некорректных и небезопасных file:// ссылок', async () => {
+    const { controller, deps } = setup();
+    deps.openPath = vi.fn(async () => {});
+    deps.openExternal = vi.fn();
+
+    const badUrls = [
+      'file://remote-host/share/a.txt', // чужой хост
+      'file:relative.txt',              // нет //
+      'file:///tmp/a.txt?x=1',          // query до #
+      'file:///tmp/%00a',               // NUL байт после decode
+      'file:////remote/share',          // ведущий //
+      'file:///%2fremote/share/a.txt',  // обход UNC через %2f
+      'file:///%5c%5cremote/share/a.txt', // обход UNC через %5c
+      'file:///C:',                     // диск без слеша
+      'file://',                        // пустой путь
+      'file://localhost',               // пустой путь с localhost
+      'file:///%zz',                    // невалидный %-encoding
+      'vscode://file/etc/passwd',       // опасная схема
+      'command:workbench.action.terminal.new',
+      'javascript:alert(1)',
+    ];
+
+    for (const url of badUrls) {
+      await controller.handle({ type: 'link.open', url });
+    }
+
+    expect(deps.openPath).not.toHaveBeenCalled();
+    expect(deps.openExternal).not.toHaveBeenCalled();
+    expect(deps.log.warn).toHaveBeenCalledTimes(badUrls.length);
   });
 
   it('link.open: conversation://<uuid> открывает вкладку Antigravity, кривые conversation:// блокируются', async () => {
