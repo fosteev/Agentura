@@ -42,6 +42,7 @@ import {
   antigravityModels,
   engineCheck,
   errors,
+  extensionVersion,
   integrations,
   integrationsAction,
   overridden,
@@ -872,11 +873,14 @@ export function Settings() {
     </section>
   );
 
+  const ver = extensionVersion.value?.trim();
+
   return (
     <div class="webview settings">
       <header class="hud" aria-label={T.aria}>
         <span class="sess" style="display:block;padding-left:8px">
           Agentura · <b>{T.title.toLowerCase()}</b>
+          {ver ? <span class="st-ver">v{ver}</span> : null}
         </span>
         <span class="acts">
           <button type="button" data-tip={T.openUiTitle} onClick={() => reveal('ui')}>

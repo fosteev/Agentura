@@ -15,6 +15,7 @@ import {
   codexModels,
   engineCheck,
   errors,
+  extensionVersion,
   handleSettingsMessage,
   integrations,
   overridden,
@@ -116,6 +117,7 @@ beforeEach(() => {
     (m) => void posted.push(m as Record<string, unknown>),
   );
   settingsValues.value = undefined;
+  extensionVersion.value = undefined;
   requestedSection.value = undefined;
   integrations.value = undefined;
   overridden.value = [];
@@ -419,6 +421,19 @@ describe('вкладка настроек', () => {
     expect(host.querySelector('.st-wrap > .st-nav')).not.toBeNull();
     expect(host.querySelector('.ns-advanced .tg.on.danger')).not.toBeNull();
     expect(host.querySelector('.ns-advanced .warn')).not.toBeNull();
+  });
+
+  it('шапка настроек выводит версию расширения из сообщения init', async () => {
+    const host = mount(Settings);
+    state();
+    await flush();
+    expect(host.querySelector('.hud .st-ver')).toBeNull();
+
+    act(() => {
+      handleSettingsMessage({ type: 'init', surface: 'settings', version: '0.23.1' });
+    });
+    await flush();
+    expect(host.querySelector('.hud .st-ver')?.textContent).toBe('v0.23.1');
   });
 
   it('Remote Control: переключатель и префикс пишут через settings.set', async () => {

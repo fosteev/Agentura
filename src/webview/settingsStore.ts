@@ -7,6 +7,7 @@ import type { ModelOption } from '../agent/types';
 import { send } from './vscode';
 
 export const settingsValues = signal<SettingsValues | undefined>(undefined);
+export const extensionVersion = signal<string | undefined>(undefined);
 export const codexModels = signal<{ models: ModelOption[]; loading: boolean; error?: string }>({ models: [], loading: true });
 export const antigravityModels = signal<{ models: ModelOption[]; loading: boolean; error?: string }>({ models: [], loading: true });
 /** Jiraffe и свои подключения Jira (страница «Интеграции»); до ответа хоста — `undefined`. */
@@ -31,6 +32,9 @@ function checkSignal(engine: 'claude' | 'codex' | 'antigravity' | 'cursor') {
 
 export function handleSettingsMessage(m: ToWebview): void {
   switch (m.type) {
+    case 'init':
+      extensionVersion.value = m.version;
+      break;
     case 'settings.codexModels':
       codexModels.value = { models: m.models, loading: m.loading, ...(m.error ? { error: m.error } : {}) };
       break;
