@@ -42,11 +42,12 @@ export function panelSurface(
   panel: vscode.WebviewPanel,
   context: vscode.ExtensionContext,
   log: Logger,
+  bootResume = false,
 ): ChatSurface {
   const version = String(context.extension.packageJSON.version);
   panel.webview.options = webviewOptions(context.extensionUri, userFontsDir(context));
   panel.iconPath = chatIcon(context);
-  panel.webview.html = renderWebview(panel.webview, context.extensionUri, 'chat', 'Agentura', currentLanguage());
+  panel.webview.html = renderWebview(panel.webview, context.extensionUri, 'chat', 'Agentura', currentLanguage(), bootResume);
   return {
     post: (m) => postToWebview(panel.webview, m),
     setTitle: (t) => (panel.title = t),

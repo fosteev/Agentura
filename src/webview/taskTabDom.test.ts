@@ -10,7 +10,7 @@ import type { TabChatRow, TabChatsMessage } from '../shared/taskTab';
 import { initialState } from './chatState';
 import { Chat } from './components/Chat';
 import { initialHud } from './hudState';
-import { chat, extra, handleHostMessage, hudState, tabChats, taskChats, taskState } from './store';
+import { chat, extra, handleHostMessage, hudState, sessionLoading, tabChats, taskChats, taskState } from './store';
 import * as vscode from './vscode';
 
 let stored: unknown;
@@ -67,6 +67,7 @@ beforeEach(() => {
   vi.spyOn(vscode, 'send').mockImplementation((m) => void sent.push(m as unknown as Record<string, unknown>));
   chat.value = initialState();
   hudState.value = initialHud();
+  sessionLoading.value = undefined;
   taskState.value = undefined;
   taskChats.value = [];
   tabChats.value = undefined;
@@ -161,6 +162,8 @@ describe('внутренние вкладки чатов', () => {
     await flush();
     expect(chat.value.sessionId).toBe('');
     expect(chat.value.rows).toEqual([]);
+    expect(host.querySelector('.chat-loading')?.textContent).toContain('чат c2');
+    expect(host.querySelector('#pane-chat .empty')).toBeNull();
     expect(host.querySelector('.typed')!.textContent).toBe('');
     expect(extra.value).toEqual([]);
     handleHostMessage(tabs([row('c1', { active: true }), row('c2')]));
@@ -169,6 +172,8 @@ describe('внутренние вкладки чатов', () => {
     expect(extra.value).toHaveLength(1);
     // пересев вернувшегося чата (`ready` → `reseed` → `session.history`) чипы черновика не стирает
     handleHostMessage({ type: 'session.history', sessionId: 's-c1', events: [], skippedTurns: 0 });
+    await flush();
+    expect(host.querySelector('.chat-loading')).toBeNull();
     expect(extra.value).toHaveLength(1);
     // а следующая история (возобновление другой сессии в этом чате) — как обычно
     handleHostMessage({ type: 'session.history', sessionId: 's-x', events: [], skippedTurns: 0 });

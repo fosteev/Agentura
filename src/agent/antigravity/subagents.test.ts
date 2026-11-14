@@ -1199,4 +1199,176 @@ describe('antigravity subagents: AgySubagentReader & agySubagentMarkdown', () =>
     tailer.noteAcpToolResult('manage_task', { Action: 'kill', TaskId: `${PARENT_UUID}/task-99` }, 'Killed', false);
     expect(tailer.hasActiveBgTasks()).toBe(false);
   });
+
+  it('keeps reactiveSession across stream-interrupted empty PLANNER_RESPONSE, ERROR_MESSAGE, and CHECKPOINT without duplicating user turns', async () => {
+    const NEXT_CHILD = 'b67dec17-7580-49f1-82bc-53a60e2a4180';
+    const parentFile = await ensureBrainTranscript(tmpDir, PARENT_UUID, [
+      { step_index: 0, type: 'USER_INPUT', status: 'DONE', content: '/roadmap-run-agy' },
+      {
+        step_index: 1,
+        type: 'PLANNER_RESPONSE',
+        status: 'DONE',
+        input_tokens: 1800,
+        output_tokens: 40,
+        content: 'Запустил этап 1.',
+      },
+    ]);
+
+    const tailer = new AgyParentTranscriptTailer(PARENT_UUID, tmpDir, undefined, () => 'ru');
+    const sync0 = await tailer.syncToEnd({ resetPending: true });
+    expect(sync0.maxStepIndex).toBe(1);
+
+    // Subagent finishes -> parent runs tool -> upstream stream drops mid-thought (empty content, tool_calls: null)
+    await appendFile(
+      parentFile,
+      [
+        {
+          step_index: 2,
+          type: 'SYSTEM_MESSAGE',
+          status: 'DONE',
+          created_at: '2026-11-14T10:00:41Z',
+          content: `<SYSTEM_MESSAGE>\n[Message] sender=${CHILD_UUID} content=Stage 1 ready\n</SYSTEM_MESSAGE>`,
+        },
+        {
+          step_index: 3,
+          type: 'PLANNER_RESPONSE',
+          status: 'DONE',
+          created_at: '2026-11-14T10:00:50Z',
+          input_tokens: 4200,
+          output_tokens: 30,
+          tool_calls: [{ name: 'read_file', args: { Path: '"/work/src/index.ts"' } }],
+        },
+        {
+          step_index: 4,
+          type: 'GENERIC',
+          status: 'DONE',
+          created_at: '2026-11-14T10:00:52Z',
+          content: '1: export const ok = true;',
+        },
+        {
+          step_index: 5,
+          type: 'PLANNER_RESPONSE',
+          status: 'DONE',
+          created_at: '2026-11-14T10:01:30Z',
+          input_tokens: 4800,
+          output_tokens: 90,
+          thinking: 'Initial assessment of Stage 1 diff...',
+          content: '',
+        },
+      ]
+        .map((r) => JSON.stringify(r))
+        .join('\n') + '\n',
+    );
+
+    const interruptedPoll = await tailer.pollSilentTurn(sync0.maxStepIndex, 'gemini-4-argon');
+    expect(interruptedPoll.completedTurn).toBe(true);
+    expect(interruptedPoll.interruptedTurn).toBe(true);
+    expect(tailer.hasOpenTurn()).toBe(false);
+
+    // 18 minutes later: ERROR_MESSAGE ("The stream was interrupted...") + invoke_subagent Stage 2 + CHECKPOINT + final report
+    await appendFile(
+      parentFile,
+      [
+        {
+          step_index: 6,
+          type: 'ERROR_MESSAGE',
+          status: 'DONE',
+          created_at: '2026-11-14T10:19:54Z',
+          error: 'Error: The stream was interrupted. Please continue the task you were working on.',
+        },
+        {
+          step_index: 7,
+          type: 'PLANNER_RESPONSE',
+          status: 'DONE',
+          created_at: '2026-11-14T10:21:10Z',
+          input_tokens: 5100,
+          output_tokens: 60,
+          tool_calls: [
+            {
+              name: 'invoke_subagent',
+              args: { TypeName: '"self"', Role: '"Stage 2 Executor"', Prompt: '"Run stage 2"' },
+            },
+          ],
+        },
+        {
+          step_index: 8,
+          type: 'GENERIC',
+          status: 'DONE',
+          created_at: '2026-11-14T10:21:12Z',
+          content: `Created the following subagent:\n{"conversationId":"${NEXT_CHILD}"}`,
+        },
+        {
+          step_index: 9,
+          type: 'CHECKPOINT',
+          status: 'DONE',
+          created_at: '2026-11-14T11:05:02Z',
+          input_tokens: 256_935,
+          output_tokens: 5_604,
+          content: '# Resuming from a compaction\n...',
+        },
+        {
+          step_index: 10,
+          type: 'PLANNER_RESPONSE',
+          status: 'DONE',
+          created_at: '2026-11-14T11:37:44Z',
+          input_tokens: 42_000,
+          output_tokens: 55,
+          content: '**Этап 1 принят**, запущен этап 2.',
+        },
+      ]
+        .map((r) => JSON.stringify(r))
+        .join('\n') + '\n',
+    );
+
+    const resumedPoll = await tailer.pollSilentTurn(interruptedPoll.lastStepIndex, 'gemini-4-argon');
+    expect(resumedPoll.completedTurn).toBe(true);
+    expect(resumedPoll.interruptedTurn).toBe(false);
+    expect(resumedPoll.events.some((e) => e.type === 'error' && e.code === 'api_retry')).toBe(true);
+    expect(
+      resumedPoll.events.some(
+        (e) =>
+          e.type === 'tool.start' &&
+          e.name === 'Agent' &&
+          e.input['description'] === 'Stage 2 Executor',
+      ),
+    ).toBe(true);
+    expect(
+      resumedPoll.events.some(
+        (e) =>
+          e.type === 'compaction.end' &&
+          e.ok &&
+          e.trigger === 'auto' &&
+          e.preTokens === 262_539,
+      ),
+    ).toBe(true);
+    expect(resumedPoll.events.at(-1)).toMatchObject({
+      type: 'turn.result',
+      ok: true,
+      text: '**Этап 1 принят**, запущен этап 2.',
+    });
+
+    // User turn ends via syncToEnd({ resetReactive: true }): late user-turn PLANNER_RESPONSE without SYSTEM_MESSAGE is ignored
+    await appendFile(
+      parentFile,
+      JSON.stringify({ step_index: 11, type: 'USER_INPUT', status: 'DONE', content: 'статус?' }) + '\n',
+    );
+    const userSync = await tailer.syncToEnd({ resetReactive: true });
+    expect(userSync.maxStepIndex).toBe(11);
+
+    await appendFile(
+      parentFile,
+      JSON.stringify({
+        step_index: 12,
+        type: 'PLANNER_RESPONSE',
+        status: 'DONE',
+        input_tokens: 43_000,
+        output_tokens: 20,
+        content: 'Ответ уже пришёл по ACP.',
+      }) + '\n',
+    );
+    const afterUser = await tailer.pollSilentTurn(userSync.maxStepIndex, 'gemini-4-argon');
+    expect(afterUser.events).toEqual([]);
+    expect(afterUser.lastStepIndex).toBe(12);
+    expect(afterUser.usedTokens).toBe(43_020);
+  });
 });

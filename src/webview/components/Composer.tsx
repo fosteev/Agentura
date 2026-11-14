@@ -51,6 +51,7 @@ import {
   removeImage,
   rejectFiles,
   replyTarget,
+  sessionLoading,
   sendMessage,
   submitReply,
   type DraftFile,
@@ -305,6 +306,7 @@ export function Composer() {
   const [menu, setMenu] = useState<MenuName | undefined>();
   const [histIdx, setHistIdx] = useState<number | undefined>();
   const closed = !!s.closed;
+  const loading = sessionLoading.value !== undefined;
   const target = replyTarget.value;
   // лимит исчерпан: текст набирать можно (сообщение не теряется), отправка — после сброса
   const blocked = limitBlocked.value;
@@ -337,10 +339,10 @@ export function Composer() {
     sendPrefill.current = !!pre.send && !!pre.text.trim();
   }, [pre]);
   useEffect(() => {
-    if (!sendPrefill.current || !text.trim()) return;
+    if (!sendPrefill.current || loading || !text.trim()) return;
     sendPrefill.current = false;
     submitPrefill();
-  }, [text]);
+  }, [text, loading]);
 
   // каретка: selectionchange ловит и клавиши, и мышь
   useEffect(() => {
@@ -454,7 +456,7 @@ export function Composer() {
     const t = text.trim();
     const withImages =
       draftImages.value.some((d) => d.image || d.busy) || draftFiles.value.some((d) => d.file);
-    if ((!t && !withImages) || closed) return;
+    if ((!t && !withImages) || closed || loading) return;
     // картинка ещё уменьшается — Enter подождёт (текст и картинки уйдут вместе)
     if (imagesBusy.value) return;
     setHistIdx(undefined);
@@ -740,7 +742,7 @@ export function Composer() {
     <SendControl
       look={look}
       working={working}
-      disabled={closed || (!!blocked && !target)}
+      disabled={closed || loading || (!!blocked && !target)}
       onSend={submit}
       onStop={() => {
         interrupt();

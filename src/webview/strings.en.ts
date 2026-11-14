@@ -601,6 +601,7 @@ export const en: Ui = {
     newSession: 'new session',
     turns: (n: number) => `${n} ${pl(n, 'turn', 'turns')}`,
     waiting: 'waiting for a reply',
+    loading: 'Loading chat…',
   },
   agents: {
     heading: 'agents',

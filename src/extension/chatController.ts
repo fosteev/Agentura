@@ -356,6 +356,10 @@ export class ChatController {
   private readyCount = 0;
   /** История ждёт `ready` (вкладка восстановлена до готовности webview). */
   private seedPending = false;
+  /** `doResume` не нашёл транскрипт до первого `ready`: повторить `session.reset`, когда webview подключится. */
+  private resetPending = false;
+  /** С момента последнего чтения транскрипта были события ленты или отправка — при пересеве читать заново. */
+  private historyDirty = false;
   /** Пересев читает транскрипт: события движка копятся здесь и доигрываются после `session.history`. */
   private reseedBuffer: { sessionId: string; event: AgentEvent }[] | undefined;
   /** Дельты ответа, который ещё пишется (его нет в транскрипте) — для пересева. */
@@ -518,6 +522,7 @@ export class ChatController {
     const token = ++this.resumeToken;
     this.resumeId = id;
     this.lastSessionId = id;
+    this.resetPending = false;
     // другая сессия во вкладке — её неотвеченный промпт сюда не относится (кроме «Повторить ход»)
     if (!this.retrying) {
       this.inflight = [];
@@ -527,6 +532,13 @@ export class ChatController {
     this.resumed = undefined;
     this.status = 'idle';
     this.touched = true;
+    if (!this.retrying) this.title = undefined;
+    if (!this.retrying && this.readyCount > 0) {
+      deps.post({ type: 'session.loading', sessionId: id });
+    }
+    const titleP = (deps.titleOf?.(id, this.engineProvider) ?? Promise.resolve(undefined)).catch(
+      () => undefined,
+    );
     let history: SessionHistory;
     try {
       // оборванный ход «Повторить» отбросит — в ленте его промпта до повтора быть не должно
@@ -542,6 +554,7 @@ export class ChatController {
       this.title = undefined;
       deps.setTitle(this.tabLabel());
       deps.post({ type: 'session.reset' });
+      if (this.readyCount === 0) this.resetPending = true;
       deps.onSession?.(undefined);
       this.loading = undefined;
       void this.ensureSession()
@@ -549,12 +562,11 @@ export class ChatController {
         .catch(() => undefined);
       return;
     }
-    const title = await (deps.titleOf?.(id, this.engineProvider) ?? Promise.resolve(undefined)).catch(
-      () => undefined,
-    );
+    const title = await titleP;
     // пока читали, вкладку успели переключить (другой resume, /clear) — эта история уже не нужна
     if (token !== this.resumeToken) return;
     this.resumed = { history, ...(title ? { title } : {}) };
+    this.historyDirty = false;
     this.attached = history.attach ?? { pdfPages: 0, chars: 0 };
     this.title = title;
     deps.setTitle(this.tabLabel());
@@ -622,7 +634,14 @@ export class ChatController {
     this.reseedBuffer = buffer;
     const teardowns = this.teardowns;
     const seq = ++this.reseedSeq;
-    if (!this.seedPending || !history) {
+    const needReload = !history || this.historyDirty || this.inTurn;
+    if (needReload) {
+      const loadingTitle = this.title ?? this.resumed?.title;
+      this.deps.post({
+        type: 'session.loading',
+        sessionId: id,
+        ...(loadingTitle ? { title: loadingTitle } : {}),
+      });
       try {
         // сессия зарегистрирована живой — процесс движка жив, его фоновые задачи ещё идут
         history = await this.adapter.loadHistory(id, this.deps.cwd, {
@@ -645,8 +664,16 @@ export class ChatController {
       buffer.map((b) => b.event),
     );
     if (history) {
+      const resolvedTitle = this.resumed?.title ?? this.title;
+      if (needReload && !this.inTurn && buffer.length === 0) {
+        this.resumed = {
+          history: { ...history, events: merged.history },
+          ...(resolvedTitle ? { title: resolvedTitle } : {}),
+        };
+        this.historyDirty = false;
+      }
       this.tokenTally.reset(merged.history);
-      this.postHistory({ ...history, events: merged.history }, this.resumed?.title ?? this.title, !!this.lastMcp);
+      this.postHistory({ ...history, events: merged.history }, resolvedTitle, !!this.lastMcp);
     } else this.deps.post({ type: 'session.reset' });
     this.postAttach();
     if (this.lastInit) this.forward(id, this.lastInit);
@@ -740,6 +767,16 @@ export class ChatController {
     this.readyCount++;
     const reseed = this.seedPending || this.readyCount > 1;
     this.pushInfo();
+    if (this.resetPending) {
+      this.resetPending = false;
+      deps.post({ type: 'session.reset' });
+    } else if (this.loading && this.resumeId && !reseed && !this.retrying) {
+      deps.post({
+        type: 'session.loading',
+        sessionId: this.resumeId,
+        ...(this.title ? { title: this.title } : {}),
+      });
+    }
     // сессия создана до готовности webview (`start()`), `session.init` ещё не было — меню режима из настроек;
     // ACP (`agy`, `cursor`) мог прислать `session.init` раньше первого `ready` — отдать его (без `sessionId`, пока вкладка пуста)
     if (this.defaults && !this.lastInit) deps.post(this.defaults);
@@ -789,6 +826,8 @@ export class ChatController {
     }
     this.resumed = undefined;
     this.seedPending = false;
+    this.resetPending = false;
+    this.historyDirty = false;
     this.touched = false;
     this.turnLog.clear();
     this.tokenTally.reset();
@@ -1161,6 +1200,7 @@ export class ChatController {
       switch (m.type) {
         case 'send': {
           this.touched = true;
+          this.historyDirty = true;
           this.activateInit(session);
           this.noteSent(m);
           // по очереди: сообщение с выделением (ждёт чтения файла) не обгоняется следующим
@@ -1214,6 +1254,7 @@ export class ChatController {
         case 'compact':
           if (!session.compact()) this.deps.post({ type: 'agent.event', sessionId: session.id,
             event: { type: 'error', fatal: false, message: 'Compaction requires an idle session with an existing thread.' } });
+          else this.historyDirty = true;
           return;
         // Remote Control (roadmap 17): только Claude — у других движков `setRemote` нет
         case 'remote.set':
@@ -1899,6 +1940,18 @@ export class ChatController {
       (this.engineProvider === 'antigravity' || this.engineProvider === 'cursor' || this.engineProvider === 'kimi');
     if (e.type === 'session.init' && session.id && !deferInit) this.lastSessionId = session.id;
     this.log.debug(`← ${describeEvent(e)}`);
+    if (
+      e.type !== 'session.init' &&
+      e.type !== 'context.usage' &&
+      e.type !== 'mcp.status' &&
+      e.type !== 'remote.state' &&
+      e.type !== 'session.settings' &&
+      e.type !== 'mode.changed' &&
+      e.type !== 'limit.update' &&
+      e.type !== 'session.title'
+    ) {
+      this.historyDirty = true;
+    }
     const out = deferInit ? { ...e, sessionId: '' } : e;
     const sid = deferInit ? '' : session.id;
     this.streamTail.note(out);
@@ -2173,6 +2226,7 @@ export class ChatController {
     this.pendingRequests.clear();
     this.previews.clear();
     this.reseedBuffer = undefined;
+    this.historyDirty = false;
     this.streamTail.clear();
     this.teardowns++;
   }

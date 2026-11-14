@@ -21,4 +21,15 @@ describe('buildWebviewHtml', () => {
     expect(buildWebviewHtml({ ...o, lang: 'en' })).toContain('<html lang="en">');
     expect(buildWebviewHtml({ ...o, lang: 'ru' })).toContain('<html lang="ru">');
   });
+  it('bootShell и bootResume: статичная заглушка загрузки без inline style и атрибут холодного resume', () => {
+    const o = { title: 'A', cspSource: 'x', nonce: 'n', scriptUri: 's', styleUris: [] };
+    const ruHtml = buildWebviewHtml({ ...o, lang: 'ru', bootShell: true, bootResume: true });
+    expect(ruHtml).toContain('<html lang="ru" data-boot-resume="1">');
+    expect(ruHtml).toContain('class="boot-load" role="status" aria-live="polite" aria-busy="true"');
+    expect(ruHtml).toContain('Загружаю чат…');
+    expect(ruHtml).not.toContain('style=');
+    const enHtml = buildWebviewHtml({ ...o, lang: 'en', bootShell: true });
+    expect(enHtml).not.toContain('data-boot-resume');
+    expect(enHtml).toContain('Loading chat…');
+  });
 });

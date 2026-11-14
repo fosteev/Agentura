@@ -108,6 +108,10 @@ export const editor = signal<EditorContext>({});
 export const recent = signal<SessionSummary[]>([]);
 /** Сессия активной вкладки (`sessions.update.current`) — строка `cur` в списках. */
 export const currentSession = signal<string | undefined>(undefined);
+/** Читается история сессии (`session.loading`, переключение вкладки задачи или холодный старт `boot`). */
+export const sessionLoading = signal<
+  { sessionId: string; title?: string; boot?: boolean } | undefined
+>(undefined);
 /** Ключи автоконтекста, снятые крестиком. */
 export const dismissed = signal<ReadonlySet<string>>(new Set());
 /** Чипы, добавленные через «@»/«+». */
@@ -385,13 +389,33 @@ export function handleHostMessage(m: ToWebview): void {
       // `session.history` (иначе её `init` отфильтровался бы как событие брошенной)
       if (m.event.type === 'session.init') {
         abandonedSessionId = undefined;
+        if (sessionLoading.value?.boot) sessionLoading.value = undefined;
         if (m.event.sessionId) persistSession(m.event.sessionId, provider.value);
+      } else if (
+        (m.event.type === 'turn.start' && sessionLoading.value?.boot) ||
+        (m.event.type === 'error' && m.event.fatal)
+      ) {
+        sessionLoading.value = undefined;
       }
       dispatchEvent(m.event);
       break;
+    case 'session.loading': {
+      if (chat.value.sessionId && chat.value.sessionId !== m.sessionId) {
+        replyTarget.value = undefined;
+        chat.value = resetSession(chat.value);
+        hudState.value = resetHud(hudState.value);
+        selectedAgent.value = undefined;
+      }
+      sessionLoading.value = {
+        sessionId: m.sessionId,
+        ...(m.title ? { title: m.title } : {}),
+      };
+      break;
+    }
     case 'session.history': {
       // хост шлёт историю строго после всех событий прежней сессии: брошенных «хвостов» больше не будет
       abandonedSessionId = undefined;
+      sessionLoading.value = undefined;
       replyTarget.value = undefined;
       extra.value = restoreExtra ?? [];
       restoreExtra = undefined;
@@ -409,6 +433,7 @@ export function handleHostMessage(m: ToWebview): void {
       break;
     case 'session.defaults': {
       // новая сессия: режим и effort из настроек (до `session.init`, который придёт после первого хода)
+      if (sessionLoading.value?.boot) sessionLoading.value = undefined;
       const next = { ...chat.value, mode: m.mode };
       if (m.effort) next.effort = m.effort;
       else delete next.effort;
@@ -505,6 +530,7 @@ export function handleHostMessage(m: ToWebview): void {
     case 'sessions.update':
       recent.value = m.sessions;
       currentSession.value = m.current;
+      if (!m.current && sessionLoading.value?.boot) sessionLoading.value = undefined;
       break;
     case 'diff.preview':
       if (abandonedSessionId !== undefined && m.sessionId === abandonedSessionId) break;
@@ -517,12 +543,13 @@ export function handleHostMessage(m: ToWebview): void {
       skillFiles.value = new Set(m.names);
       break;
     case 'session.reset':
+      sessionLoading.value = undefined;
       skillFiles.value = new Set();
       sessionAttach.value = { pdfPages: 0, chars: 0 };
       abandonSession();
       replyTarget.value = undefined;
       codexSettingsPending.value = false;
-  chat.value = resetSession(chat.value);
+      chat.value = resetSession(chat.value);
       hudState.value = resetHud(hudState.value);
       selectedAgent.value = undefined;
       extra.value = restoreExtra ?? [];
@@ -530,9 +557,20 @@ export function handleHostMessage(m: ToWebview): void {
       break;
     case 'tab.chats': {
       const prev = activeTabChat.value;
-      const next = m.chats.find((c) => c.active)?.id;
+      const nextRow = m.chats.find((c) => c.active);
+      const next = nextRow?.id;
       // `persist.active` — только у показанного чата с сессией: ему хост пересеет историю (`session.history`)
-      if (prev !== undefined && next !== prev) switchTabChat(prev, next, m.persist.active !== undefined);
+      if (prev !== undefined && next !== prev) {
+        switchTabChat(
+          prev,
+          next,
+          m.persist.active !== undefined
+            ? { sessionId: m.persist.active, ...(nextRow?.title ? { title: nextRow.title } : {}) }
+            : undefined,
+        );
+      } else if (prev === undefined && m.persist.active === undefined && sessionLoading.value?.boot) {
+        sessionLoading.value = undefined;
+      }
       setTabChat(next);
       // черновики закрытых чатов больше не нужны
       for (const id of chatDrafts.keys()) if (!m.chats.some((c) => c.id === id)) chatDrafts.delete(id);
@@ -629,7 +667,11 @@ export function handleHostMessage(m: ToWebview): void {
  * `chatDrafts`), ленту, приборы и возможности движка нового хост пересеет следом (`ready` → `reseed`). Состояние
  * вкладки (панель, git, задача, лимиты, контекст редактора) остаётся — оно общее у чатов вкладки.
  */
-function switchTabChat(prev: string, next: string | undefined, seeded: boolean): void {
+function switchTabChat(
+  prev: string,
+  next: string | undefined,
+  seeded: { sessionId: string; title?: string } | undefined,
+): void {
   const old = chatDrafts.get(prev);
   chatDrafts.set(prev, {
     ...(old?.text !== undefined ? { text: old.text } : {}),
@@ -645,6 +687,7 @@ function switchTabChat(prev: string, next: string | undefined, seeded: boolean):
   dismissed.value = d?.dismissed ?? new Set();
   // пересев (`session.history` / `session.reset`) сбрасывает чипы — черновик чата вернётся после него
   restoreExtra = seeded && extra.value.length ? extra.value : undefined;
+  sessionLoading.value = seeded;
   // полоска и блок «Чаты по задаче» — от показанного чата (у чата без задачи хост их не пришлёт)
   taskState.value = undefined;
   taskChats.value = [];
@@ -992,7 +1035,7 @@ export function openImage(i: ImageRef): void {
 
 export function sendMessage(text: string, withContext = true, plain = false, skill?: { name: string; path: string }): boolean {
   const s = chat.value;
-  if (s.closed || imagesBusy.value) return false;
+  if (s.closed || sessionLoading.value !== undefined || imagesBusy.value) return false;
   const attachments = withContext ? currentAttachments() : [];
   // `/команда` картинки и файлы не забирает: с content-массивом CLI не распознал бы команду; `plain` (первое
   // сообщение нового чата задачи, Д5) — текст, а не команда: вложения уходят с ним
@@ -1187,6 +1230,7 @@ export function releaseLimit(): void {
 }
 
 export function newSession(): void {
+  sessionLoading.value = undefined;
   replyTarget.value = undefined;
   sessionAttach.value = { pdfPages: 0, chars: 0 };
   abandonSession();

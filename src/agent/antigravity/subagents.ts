@@ -581,10 +581,17 @@ class ByteLineTailer {
   async readNewLines(): Promise<string[]> {
     let fh: fs.FileHandle | undefined;
     try {
+      const { size: initialSize } = await fs.stat(this.filePath);
+      if (initialSize < this.byteOffset) {
+        // Файл пересоздан с меньшим размером — сбрасываем курсор.
+        this.byteOffset = 0;
+        this.remainder = Buffer.alloc(0);
+      }
+      if (initialSize <= this.byteOffset) return [];
+
       fh = await fs.open(this.filePath, 'r');
       const { size } = await fh.stat();
       if (size < this.byteOffset) {
-        // Файл пересоздан с меньшим размером — сбрасываем курсор.
         this.byteOffset = 0;
         this.remainder = Buffer.alloc(0);
       }
@@ -1267,6 +1274,10 @@ export class AgyParentTranscriptTailer {
     | undefined;
   /** Признак входящего SYSTEM_MESSAGE, открывающего реактивный ход родителя. */
   private reactiveTriggerSeen = false;
+  /** Признак реактивной цепочки после SYSTEM_MESSAGE (переживает оборванный пустой PLANNER_RESPONSE до USER_INPUT). */
+  private reactiveSession = false;
+  private lastKnownTokens: number | undefined;
+  private retryAttempt = 0;
   /** Активные фоновые задачи родителя (`<sessionUuid>/task-N` из `run_command` / `schedule`). */
   private readonly activeBgTasks = new Map<string, { isCron: boolean; expiresAt: number }>();
   private readonly syncOpenCalls: {
@@ -1279,6 +1290,7 @@ export class AgyParentTranscriptTailer {
     sessionId: string,
     dataDir: string = DEFAULT_AGY_DATA_DIR,
     private readonly mcpServers?: readonly string[],
+    private readonly lang: () => Lang = () => 'ru',
   ) {
     const filePath = agyTranscriptPath(sessionId, dataDir);
     this.tailer = filePath ? new ByteLineTailer(filePath) : undefined;
@@ -1301,6 +1313,8 @@ export class AgyParentTranscriptTailer {
   discardOpenTurn(): void {
     this.silentTurn = undefined;
     this.reactiveTriggerSeen = false;
+    this.reactiveSession = false;
+    this.retryAttempt = 0;
   }
 
   noteAcpToolResult(
@@ -1333,6 +1347,7 @@ export class AgyParentTranscriptTailer {
 
   async syncToEnd(options?: {
     resetPending?: boolean;
+    resetReactive?: boolean;
     now?: number;
   }): Promise<{ maxStepIndex: number; usedTokens?: number }> {
     const now = options?.now ?? Date.now();
@@ -1341,6 +1356,12 @@ export class AgyParentTranscriptTailer {
         this.activeBgTasks.clear();
         this.syncOpenCalls.length = 0;
         this.reactiveTriggerSeen = false;
+        this.reactiveSession = false;
+        this.retryAttempt = 0;
+      } else if (options?.resetReactive) {
+        this.reactiveTriggerSeen = false;
+        this.reactiveSession = false;
+        this.retryAttempt = 0;
       } else if (!this.silentTurn) {
         this.reactiveTriggerSeen = false;
       }
@@ -1350,6 +1371,7 @@ export class AgyParentTranscriptTailer {
     const lines = await this.tailer.readNewLines();
     let maxStepIndex = -1;
     let usedTokens: number | undefined;
+    let lastBoundary: 'user' | 'system' | undefined;
     for (const rawLine of lines) {
       const line = rawLine.trim();
       if (!line) continue;
@@ -1359,9 +1381,16 @@ export class AgyParentTranscriptTailer {
         if (typeof rec['step_index'] === 'number' && Number.isFinite(rec['step_index'])) {
           maxStepIndex = Math.max(maxStepIndex, rec['step_index']);
         }
-        if (rec['type'] === 'PLANNER_RESPONSE' && rec['status'] === 'DONE') {
+        if (rec['type'] === 'USER_INPUT') {
+          lastBoundary = 'user';
+        } else if (rec['type'] === 'SYSTEM_MESSAGE') {
+          lastBoundary = 'system';
+        } else if (rec['type'] === 'PLANNER_RESPONSE' && rec['status'] === 'DONE') {
           const tok = stepTokensOf(rec);
-          if (tok) usedTokens = tok.total;
+          if (tok) {
+            usedTokens = tok.total;
+            this.lastKnownTokens = tok.total;
+          }
         }
         if (!options?.resetPending) {
           this.trackParentBgRecord(rec, now);
@@ -1375,6 +1404,16 @@ export class AgyParentTranscriptTailer {
       this.activeBgTasks.clear();
       this.syncOpenCalls.length = 0;
       this.reactiveTriggerSeen = false;
+      this.retryAttempt = 0;
+      this.reactiveSession = lastBoundary === 'system';
+    } else if (options?.resetReactive || lastBoundary === 'user') {
+      this.reactiveTriggerSeen = false;
+      this.reactiveSession = false;
+      this.retryAttempt = 0;
+    } else if (lastBoundary === 'system') {
+      this.reactiveTriggerSeen = false;
+      this.reactiveSession = true;
+      this.retryAttempt = 0;
     } else if (!this.silentTurn) {
       this.reactiveTriggerSeen = false;
     }
@@ -1477,6 +1516,10 @@ export class AgyParentTranscriptTailer {
     if (!st) return [];
     this.silentTurn = undefined;
     this.reactiveTriggerSeen = false;
+    if (interrupted) {
+      this.reactiveSession = false;
+      this.retryAttempt = 0;
+    }
     const out: AgentEvent[] = [];
     for (const pending of st.openTools) {
       out.push({
@@ -1516,13 +1559,26 @@ export class AgyParentTranscriptTailer {
     usedTokens?: number;
     completedTurn: boolean;
     bgTaskTriggered: boolean;
+    interruptedTurn: boolean;
   }> {
     if (!this.tailer) {
-      return { events: [], lastStepIndex, completedTurn: false, bgTaskTriggered: false };
+      return {
+        events: [],
+        lastStepIndex,
+        completedTurn: false,
+        bgTaskTriggered: false,
+        interruptedTurn: false,
+      };
     }
     const lines = await this.tailer.readNewLines();
     if (lines.length === 0) {
-      return { events: [], lastStepIndex, completedTurn: false, bgTaskTriggered: false };
+      return {
+        events: [],
+        lastStepIndex,
+        completedTurn: false,
+        bgTaskTriggered: false,
+        interruptedTurn: false,
+      };
     }
 
     const events: AgentEvent[] = [];
@@ -1530,6 +1586,7 @@ export class AgyParentTranscriptTailer {
     let latestTokens: number | undefined;
     let completedTurn = false;
     let bgTaskTriggered = false;
+    let interruptedTurn = false;
 
     for (const rawLine of lines) {
       const line = rawLine.trim();
@@ -1562,27 +1619,76 @@ export class AgyParentTranscriptTailer {
         }
         maxStep = stepIndex;
         this.reactiveTriggerSeen = false;
+        this.reactiveSession = false;
+        this.retryAttempt = 0;
         continue;
       }
 
       if (rowType === 'SYSTEM_MESSAGE') {
         maxStep = stepIndex;
         this.reactiveTriggerSeen = true;
+        this.reactiveSession = true;
+        this.retryAttempt = 0;
         continue;
       }
 
-      if (!this.reactiveTriggerSeen && !this.silentTurn) {
+      if (!this.reactiveTriggerSeen && !this.reactiveSession && !this.silentTurn) {
         maxStep = stepIndex;
         const tok = stepTokensOf(row);
-        if (tok) latestTokens = tok.total;
+        if (tok) {
+          latestTokens = tok.total;
+          this.lastKnownTokens = tok.total;
+        }
+        continue;
+      }
+
+      if (rowType === 'ERROR_MESSAGE') {
+        maxStep = stepIndex;
+        this.reactiveTriggerSeen = true;
+        const rawErr =
+          pickStr(row, 'error', 'content') ??
+          (hasErrorField(row['error']) ? JSON.stringify(row['error']) : '');
+        if (rawErr.trim()) {
+          const apiMatch = /^(?:⚠\s*)?API error \(attempt (\d+)\):\s*([\s\S]*)$/i.exec(
+            rawErr.trim(),
+          );
+          const attempt = apiMatch ? Number.parseInt(apiMatch[1]!, 10) : ++this.retryAttempt;
+          if (apiMatch) this.retryAttempt = Math.max(this.retryAttempt, attempt);
+          const detail = (apiMatch ? apiMatch[2]! : rawErr.replace(/^Error:\s*/i, '')).trim();
+          events.push({
+            type: 'error',
+            fatal: false,
+            code: 'api_retry',
+            message: hostStrings(this.lang()).agyApiRetry(attempt, detail),
+          });
+        }
+        continue;
+      }
+
+      if (rowType === 'CHECKPOINT') {
+        maxStep = stepIndex;
+        this.reactiveTriggerSeen = true;
+        const cpTok = stepTokensOf(row);
+        const preTokens = cpTok?.total ?? latestTokens ?? this.lastKnownTokens;
+        events.push({
+          type: 'compaction.end',
+          ok: true,
+          trigger: 'auto',
+          ...(preTokens !== undefined && preTokens > 0 ? { preTokens } : {}),
+        });
         continue;
       }
 
       if (rowType === 'PLANNER_RESPONSE') {
         if (status !== 'DONE') continue;
         maxStep = stepIndex;
+        this.reactiveTriggerSeen = false;
+        this.retryAttempt = 0;
         const tok = stepTokensOf(row);
-        if (tok) latestTokens = tok.total;
+        if (tok) {
+          latestTokens = tok.total;
+          this.lastKnownTokens = tok.total;
+        }
 
         if (!this.silentTurn) {
           this.silentTurn = {
@@ -1653,6 +1759,11 @@ export class AgyParentTranscriptTailer {
         }
 
         if (calls.length === 0 && this.silentTurn.openTools.length === 0) {
+          const looksInterrupted =
+            !content.trim() && !this.silentTurn.text.trim() && Boolean(thinking.trim());
+          if (looksInterrupted) {
+            interruptedTurn = true;
+          }
           if (latestTokens !== undefined) {
             events.push(buildAgyContextUsage(latestTokens, model));
           }
@@ -1699,6 +1810,7 @@ export class AgyParentTranscriptTailer {
       ...(latestTokens !== undefined ? { usedTokens: latestTokens } : {}),
       completedTurn,
       bgTaskTriggered,
+      interruptedTurn,
     };
   }
 }

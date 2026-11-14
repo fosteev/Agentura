@@ -112,17 +112,20 @@ export interface AntigravityAdapterConfig {
   interruptWaitMs?: number;
   /** Пауза тишины потока (мс) перед закрытием внеходового реактивного хода пробуждения (`wakeupTurn`). */
   wakeupIdleMs?: number;
-  /** Интервал опроса дочерних `transcript.jsonl` субагентов (мс); по умолчанию 400. */
+  /** Интервал опроса дочерних `transcript.jsonl` субагентов и активного реактивного хода (мс); по умолчанию 400. */
   subagentPollMs?: number;
+  /** Интервал лёгкой фоновой проверки родительского `transcript.jsonl` (`stat`) в простое (мс); по умолчанию 1000 (`0` — выключить). */
+  idleParentPollMs?: number;
   /** Порог ожидания (мс) незакрытого вызова в субагенте до пометки `waiting_for_input`; по умолчанию 2500. */
   subagentWaitingMs?: number;
-  /** Окно ожидания тихого реактивного ответа родителя в `transcript.jsonl` после `agent.end` / `task-N` (мс); по умолчанию 180_000. */
+  /** Окно быстрого опроса после `agent.end` / `task-N` / обрыва стрима (мс); по умолчанию 180_000. */
   silentWakeupWatchMs?: number;
 }
 
 const DEFAULT_GRACE_MS = 2000;
 const INTERRUPT_WAIT_MS = 10_000;
 const DEFAULT_WAKEUP_IDLE_MS = 800;
+const DEFAULT_IDLE_PARENT_POLL_MS = 1_000;
 const SILENT_WAKEUP_WATCH_MS = 180_000;
 const PARENT_TOOL_RESOLVE_TTL_MS = 3_000;
 const PARENT_TOOL_FAST_RETRY_MS = 50;
@@ -534,6 +537,7 @@ class AgySession implements AgentSession {
   private readonly interruptWaitMs: number;
   private readonly wakeupIdleMs: number;
   private readonly subagentPollMs: number;
+  private readonly idleParentPollMs: number;
   private readonly subagentWaitingMs: number;
   private readonly silentWakeupWatchMs: number;
   /** Режим, который сейчас принял сервер (`current_mode_update` отстаёт от запросов — ему не верим). */
@@ -584,6 +588,7 @@ class AgySession implements AgentSession {
   private parentToolRetryTimer: NodeJS.Timeout | undefined;
   private transcriptModelFallback: { model: string; effort?: EffortLevel } | undefined;
   private subagentTimer: NodeJS.Timeout | undefined;
+  private subagentTimerMs: number | undefined;
   private subagentPollInFlight = false;
   private subagentPollQueued = false;
   private subagentPollPromise: Promise<void> | undefined;
@@ -614,6 +619,7 @@ class AgySession implements AgentSession {
     this.interruptWaitMs = config0.interruptWaitMs ?? INTERRUPT_WAIT_MS;
     this.wakeupIdleMs = config0.wakeupIdleMs ?? DEFAULT_WAKEUP_IDLE_MS;
     this.subagentPollMs = config0.subagentPollMs ?? DEFAULT_SUBAGENT_POLL_MS;
+    this.idleParentPollMs = config0.idleParentPollMs ?? DEFAULT_IDLE_PARENT_POLL_MS;
     this.subagentWaitingMs = config0.subagentWaitingMs ?? DEFAULT_WAITING_THRESHOLD_MS;
     this.silentWakeupWatchMs = config0.silentWakeupWatchMs ?? SILENT_WAKEUP_WATCH_MS;
     this.events = new EventHub<AgentEvent>((error) => this.log('error', `event subscriber failed: ${String(error)}`));
@@ -737,7 +743,7 @@ class AgySession implements AgentSession {
         },
       )
       .finally(async () => {
-        await this.syncParentTailer();
+        await this.syncParentTailer(true);
         this.compacting = undefined;
         done.resolve();
         if (this.pendingRespawn && !this.closed) {
@@ -749,6 +755,8 @@ class AgySession implements AgentSession {
         }
         if (!this.closed && this.queue.length > 0) {
           void this.drain();
+        } else if (!this.closed) {
+          this.refreshSubagentPoller();
         }
       });
 
@@ -903,6 +911,7 @@ class AgySession implements AgentSession {
         if (wt.timer) clearTimeout(wt.timer);
         this.wakeupTurn = undefined;
         this.emitAll(this.mapper.abandon(wt.startedAt));
+        this.refreshSubagentPoller();
       } else if (this.parentTailer?.hasOpenTurn() && !this.closed) {
         try {
           this.client.notify('session/cancel', { sessionId: this.sessionId });
@@ -910,6 +919,7 @@ class AgySession implements AgentSession {
           this.log('warn', `session/cancel failed: ${errorText(error)}`);
         }
         this.finishSilentTurn(true);
+        this.refreshSubagentPoller();
       }
       return;
     }
@@ -947,7 +957,6 @@ class AgySession implements AgentSession {
     if (this.closed || !this.sessionId) return undefined;
     const snap = await readLastTranscriptUsage(this.sessionId, this.config0.dataDir);
     if (snap && snap.stepIndex >= this.lastStepIndex) {
-      this.lastStepIndex = snap.stepIndex;
       this.usedTokens = snap.usedTokens;
     }
     const model = this.config.model?.current;
@@ -1013,6 +1022,8 @@ class AgySession implements AgentSession {
   private async respawnTransport(): Promise<void> {
     if (this.closed || !this.sessionId) return;
     this.finishWakeupTurn();
+    await this.catchUpSilentTurns();
+    if (this.closed || !this.sessionId) return;
     this.finishSilentTurn(false);
     const targetMode = this.permissionMode;
     const desiredModel = this.config.model?.current;
@@ -1089,6 +1100,7 @@ class AgySession implements AgentSession {
       }
       this.loading = false;
       readyDeferred.resolve();
+      this.refreshSubagentPoller();
     } catch (error) {
       this.loading = false;
       readyDeferred.resolve();
@@ -1154,6 +1166,7 @@ class AgySession implements AgentSession {
       sessionId,
       this.config0.dataDir,
       this.mcpServers,
+      this.config0.lang,
     );
     const tailSnap = await this.parentTailer.syncToEnd({ resetPending: true });
     if (this.closed) return;
@@ -1171,6 +1184,7 @@ class AgySession implements AgentSession {
     if (this.usedTokens > 0 || (activeModel && agyContextWindow(activeModel) !== undefined)) {
       this.emit(buildAgyContextUsage(this.usedTokens, activeModel));
     }
+    this.refreshSubagentPoller();
   }
 
   private buildSessionInit(): AgentEventOf<'session.init'> {
@@ -1264,6 +1278,7 @@ class AgySession implements AgentSession {
   private async drain(): Promise<void> {
     if (this.draining) return;
     this.draining = true;
+    this.refreshSubagentPoller();
     try {
       while (!this.closed) {
         if (this.compacting) {
@@ -1292,6 +1307,9 @@ class AgySession implements AgentSession {
           continue;
         }
         this.finishSilentTurn(false);
+        if (this.pendingParentToolResolutions.length === 0) {
+          this.parentToolReader?.clearUnclaimed();
+        }
         const startedAt = Date.now();
         const done = deferred();
         const prevStep = this.lastStepIndex;
@@ -1333,7 +1351,7 @@ class AgySession implements AgentSession {
             }
           }
 
-          await this.syncParentTailer();
+          await this.syncParentTailer(true);
           if (this.closed) break;
           if (this.turn === undefined || this.turn.done.settled) continue;
 
@@ -1343,7 +1361,7 @@ class AgySession implements AgentSession {
           if (this.closed || done.settled) break;
           // сервер ответил ошибкой на ход (квота, модель отказала): ход закрыт, процесс и очередь живы
           if (error instanceof AcpRpcError && typeof error.code === 'number') {
-            await this.syncParentTailer();
+            await this.syncParentTailer(true);
             const message = errorText(error);
             this.emit({ type: 'error', fatal: false, message, code: String(error.code) });
             this.emitAll(this.mapper.failOpen(startedAt, Date.now(), message));
@@ -1370,7 +1388,10 @@ class AgySession implements AgentSession {
       }
     } finally {
       this.draining = false;
-      if (!this.closed && this.queue.length) void this.drain();
+      if (!this.closed) {
+        if (this.queue.length) void this.drain();
+        else this.refreshSubagentPoller();
+      }
     }
   }
 
@@ -1673,9 +1694,11 @@ class AgySession implements AgentSession {
     this.events.close();
   }
 
-  private async syncParentTailer(): Promise<void> {
+  private async syncParentTailer(resetReactive = false): Promise<void> {
     if (!this.parentTailer || this.closed) return;
-    const snap = await this.parentTailer.syncToEnd();
+    const snap = await this.parentTailer.syncToEnd(
+      resetReactive ? { resetReactive: true } : undefined,
+    );
     if (this.closed) return;
     if (snap.maxStepIndex > this.lastStepIndex) {
       this.lastStepIndex = snap.maxStepIndex;
@@ -1718,7 +1741,7 @@ class AgySession implements AgentSession {
     return false;
   }
 
-  private shouldPollSubagents(): boolean {
+  private needsFastPoll(): boolean {
     if (this.closed) return false;
     if (this.pendingParentToolResolutions.length > 0) return true;
     if (this.hasActiveSubagents()) return true;
@@ -1727,12 +1750,39 @@ class AgySession implements AgentSession {
     return false;
   }
 
-  private ensureSubagentPoller(immediate = false): void {
-    if (this.closed) return;
+  private isParentIdle(): boolean {
+    return (
+      !this.closed &&
+      !this.loading &&
+      !this.draining &&
+      !this.turn &&
+      !this.wakeupTurn &&
+      !this.compacting &&
+      this.queue.length === 0
+    );
+  }
+
+  private desiredPollIntervalMs(): number | undefined {
+    if (this.closed) return undefined;
+    if (this.needsFastPoll()) return this.subagentPollMs;
+    if (this.idleParentPollMs > 0 && this.parentTailer && this.isParentIdle()) {
+      return this.idleParentPollMs;
+    }
+    return undefined;
+  }
+
+  private ensureSubagentPoller(immediate = false, intervalMs = this.subagentPollMs): void {
+    if (this.closed || intervalMs <= 0) return;
+    if (this.subagentTimer && this.subagentTimerMs !== intervalMs) {
+      clearInterval(this.subagentTimer);
+      this.subagentTimer = undefined;
+      this.subagentTimerMs = undefined;
+    }
     if (!this.subagentTimer) {
+      this.subagentTimerMs = intervalMs;
       this.subagentTimer = setInterval(() => {
         void this.pollSubagentsOnce();
-      }, this.subagentPollMs);
+      }, intervalMs);
       this.subagentTimer.unref?.();
     }
     if (immediate) {
@@ -1752,8 +1802,9 @@ class AgySession implements AgentSession {
   }
 
   private refreshSubagentPoller(): void {
-    if (this.shouldPollSubagents()) {
-      this.ensureSubagentPoller(false);
+    const desiredMs = this.desiredPollIntervalMs();
+    if (desiredMs !== undefined) {
+      this.ensureSubagentPoller(false, desiredMs);
       if (this.pendingParentToolResolutions.length > 0) {
         this.scheduleFastParentToolRetry();
       }
@@ -1766,6 +1817,7 @@ class AgySession implements AgentSession {
     if (this.subagentTimer) {
       clearInterval(this.subagentTimer);
       this.subagentTimer = undefined;
+      this.subagentTimerMs = undefined;
     }
     if (this.parentToolRetryTimer) {
       clearTimeout(this.parentToolRetryTimer);
@@ -1839,7 +1891,7 @@ class AgySession implements AgentSession {
     });
     this.subagentReaders.set(normUuid, reader);
     this.emit(reader.buildStartEvent(startedAt));
-    this.silentWatchUntil = Math.max(this.silentWatchUntil, Date.now() + SILENT_WAKEUP_WATCH_MS);
+    this.silentWatchUntil = Math.max(this.silentWatchUntil, Date.now() + this.silentWakeupWatchMs);
   }
 
   private applyManagedSubagents(managed: ManagedSubagentsResult, at: number | undefined): void {
@@ -1881,6 +1933,9 @@ class AgySession implements AgentSession {
     }
     for (const rep of polled.freshReports) {
       this.subagentReaders.get(rep.childUuid)?.noteParentReport(rep.summary);
+    }
+    for (const knownUuid of this.subagentReaders.keys()) {
+      this.parentToolReader.claimByChildUuid(knownUuid);
     }
 
     if (this.pendingParentToolResolutions.length === 0) return;
@@ -1993,21 +2048,7 @@ class AgySession implements AgentSession {
             );
           }
 
-          const anyActive = this.hasActiveSubagents();
-          const shouldWatchParent =
-            anyActive ||
-            Boolean(this.parentTailer?.hasPendingReactiveWork()) ||
-            Date.now() < this.silentWatchUntil;
-          const parentIdle =
-            !this.closed &&
-            !this.loading &&
-            !this.draining &&
-            !this.turn &&
-            !this.wakeupTurn &&
-            !this.compacting &&
-            this.queue.length === 0;
-
-          if (shouldWatchParent && parentIdle && this.parentTailer) {
+          if (this.isParentIdle() && this.parentTailer) {
             const res = await this.parentTailer.pollSilentTurn(
               this.lastStepIndex,
               this.config.model?.current,
@@ -2028,7 +2069,7 @@ class AgySession implements AgentSession {
               if (res.events.length > 0) {
                 this.emitAll(res.events);
               }
-              if (res.bgTaskTriggered) {
+              if (res.bgTaskTriggered || res.interruptedTurn) {
                 this.silentWatchUntil = Math.max(
                   this.silentWatchUntil,
                   Date.now() + this.silentWakeupWatchMs,
@@ -2036,6 +2077,7 @@ class AgySession implements AgentSession {
               }
               if (
                 res.completedTurn &&
+                !res.interruptedTurn &&
                 !this.hasActiveSubagents() &&
                 !this.parentTailer.hasPendingReactiveWork()
               ) {

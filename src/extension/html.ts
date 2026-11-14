@@ -5,6 +5,10 @@ export interface WebviewHtmlOptions {
   nonce: string;
   scriptUri: string;
   styleUris: string[];
+  /** Заглушка до разбора бандла чата (`chat.js`): Preact очищает `#root` перед первым рендером. */
+  bootShell?: boolean;
+  /** Новая панель открывается сразу под возобновление сессии (`resumeId`): не мигать экраном «Новая сессия» до `ready`. */
+  bootResume?: boolean;
 }
 
 function escapeAttr(value: string): string {
@@ -23,8 +27,13 @@ export function buildWebviewHtml(o: WebviewHtmlOptions): string {
   const styles = o.styleUris
     .map((u) => `<link rel="stylesheet" href="${escapeAttr(u)}">`)
     .join('\n');
+  const bootAttr = o.bootResume ? ' data-boot-resume="1"' : '';
+  const bootText = o.lang === 'en' ? 'Loading chat…' : 'Загружаю чат…';
+  const rootBody = o.bootShell
+    ? `<div class="boot-load" role="status" aria-live="polite" aria-busy="true"><span class="spin" aria-hidden="true"></span><span>${bootText}</span></div>`
+    : '';
   return `<!doctype html>
-<html lang="${o.lang}">
+<html lang="${o.lang}"${bootAttr}>
 <head>
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="${csp}">
@@ -33,7 +42,7 @@ export function buildWebviewHtml(o: WebviewHtmlOptions): string {
 ${styles}
 </head>
 <body>
-<div id="root"></div>
+<div id="root">${rootBody}</div>
 <script type="module" nonce="${o.nonce}" src="${escapeAttr(o.scriptUri)}"></script>
 </body>
 </html>`;
