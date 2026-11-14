@@ -1375,7 +1375,9 @@ function ModeMenu({
                       ? ui.menus.bypassOff
                       : m === 'default' && provider.value === 'antigravity'
                         ? ui.menus.agyDefault
-                        : small,
+                        : m === 'acceptEdits' && provider.value === 'kimi'
+                          ? ui.menus.kimiAuto
+                          : small,
                     hint: m === 'default' ? '⇧⇥' : hint,
                     dis: off,
                   }}
@@ -1430,6 +1432,7 @@ function AgentItems({ close }: { close: () => void }) {
     { id: 'codex', label: 'Codex', small: ui.compose.codexVia },
     { id: 'antigravity', label: 'Antigravity', small: ui.compose.antigravityVia(cur === 'antigravity' ? s.engineVersion : undefined) },
     { id: 'cursor', label: 'Cursor', small: ui.compose.cursorVia },
+    { id: 'kimi', label: 'Kimi Code', small: ui.compose.kimiVia(cur === 'kimi' ? s.engineVersion : undefined) },
   ] as const;
   const ordered = locked ? [...agents.filter((a) => a.id === cur), ...agents.filter((a) => a.id !== cur)] : agents;
   return (

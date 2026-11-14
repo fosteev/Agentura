@@ -32,13 +32,14 @@ export interface EngineView {
   windows: EngineWindowView[];
 }
 
-export const ENGINE_ORDER: readonly EngineId[] = ['claude', 'codex', 'antigravity'];
-export const ENGINE_MARK: Record<EngineId, string> = { claude: 'C', codex: 'X', antigravity: 'G', cursor: 'R' };
+export const ENGINE_ORDER: readonly EngineId[] = ['claude', 'codex', 'antigravity', 'kimi'];
+export const ENGINE_MARK: Record<EngineId, string> = { claude: 'C', codex: 'X', antigravity: 'G', cursor: 'R', kimi: 'K' };
 export const ENGINE_MARK_CLASS: Record<EngineId, string> = {
   claude: 'claude',
   codex: 'codex',
   antigravity: 'agy',
   cursor: 'cursor',
+  kimi: 'kimi',
 };
 
 export const engineName = (e: EngineId): string => ui.sidebar.providerNames[e];

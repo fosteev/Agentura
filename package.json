@@ -341,6 +341,17 @@
           "default": "",
           "description": "%config.antigravity.defaultModel.description%"
         },
+        "agentura.kimi.defaultModel": {
+          "type": "string",
+          "default": "",
+          "description": "%config.kimi.defaultModel.description%"
+        },
+        "agentura.kimi.defaultEffort": {
+          "type": "string",
+          "enum": ["", "low", "medium", "high", "xhigh", "max"],
+          "default": "",
+          "description": "%config.kimi.defaultEffort.description%"
+        },
         "agentura.codex.defaultApproval": {
           "type": "string",
           "enum": ["", "untrusted", "on-request", "never"],
@@ -388,6 +399,12 @@
           "default": "",
           "description": "%config.cursorExecutable.description%"
         },
+        "agentura.kimiExecutable": {
+          "type": "string",
+          "scope": "machine",
+          "default": "",
+          "description": "%config.kimiExecutable.description%"
+        },
         "agentura.defaultProvider": {
           "type": "string",
           "scope": "application",
@@ -395,13 +412,15 @@
             "claude",
             "codex",
             "antigravity",
-            "cursor"
+            "cursor",
+            "kimi"
           ],
           "enumDescriptions": [
             "Claude Code",
             "Codex",
             "Antigravity",
-            "Cursor"
+            "Cursor",
+            "Kimi Code"
           ],
           "default": "claude",
           "description": "%config.defaultProvider.description%"
@@ -479,12 +498,16 @@
             "enum": [
               "claude",
               "codex",
-              "antigravity"
+              "antigravity",
+              "cursor",
+              "kimi"
             ],
             "enumDescriptions": [
               "Claude Code",
               "Codex",
-              "Antigravity"
+              "Antigravity",
+              "Cursor",
+              "Kimi Code"
             ]
           },
           "uniqueItems": true,

@@ -149,6 +149,8 @@ export interface PlanCard {
   agentId?: string;
   plan: string;
   planFilePath?: string;
+  /** Нативные варианты движка (Kimi plan_opt_N), если они есть. */
+  options?: { id: string; label: string }[];
   state: 'pending' | 'sent' | 'done' | 'cancelled';
   choice?: PlanChoice;
   feedback?: string;
@@ -644,6 +646,7 @@ function reduce(s: ChatState, e: AgentEvent, now: number): ChatState {
         ...(e.agentId ? { agentId: e.agentId } : {}),
         plan: e.plan,
         ...(e.planFilePath ? { planFilePath: e.planFilePath } : {}),
+        ...(e.options?.length ? { options: e.options } : {}),
         state: 'pending',
       });
     case 'permission.resolved':

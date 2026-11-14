@@ -1112,7 +1112,7 @@ export function declineQuestion(toolUseId: string): void {
 }
 
 /** Кнопка плана. «Доработать» без текста — ждём его из поля ввода. */
-export function decidePlan(toolUseId: string, choice: PlanChoice, feedback?: string): void {
+export function decidePlan(toolUseId: string, choice: PlanChoice, feedback?: string, optionId?: string): void {
   const card = chat.value.rows.find((r) => r.kind === 'plan' && r.toolUseId === toolUseId);
   if (!card || card.kind !== 'plan' || card.state !== 'pending') return;
   const text = feedback?.trim();
@@ -1128,6 +1128,7 @@ export function decidePlan(toolUseId: string, choice: PlanChoice, feedback?: str
     toolUseId,
     decision: choice,
     ...(choice === 'refine' && text ? { feedback: text } : {}),
+    ...(optionId ? { optionId } : {}),
   });
 }
 

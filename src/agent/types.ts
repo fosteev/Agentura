@@ -37,7 +37,7 @@ export interface SessionPolicy {
 
 export type PermissionMode = 'default' | 'acceptEdits' | 'plan' | 'bypassPermissions';
 /** Внешний движок сессии. Во всех долговечных ссылках id хранится вместе с провайдером. */
-export type AgentProvider = 'claude' | 'codex' | 'antigravity' | 'cursor';
+export type AgentProvider = 'claude' | 'codex' | 'antigravity' | 'cursor' | 'kimi';
 export interface SessionRef {
   provider: AgentProvider;
   id: string;
@@ -285,7 +285,14 @@ export type AgentEvent =
       diff?: DiffPreview;
     })
   | (Base & { type: 'question.request'; toolUseId: string; questions: Question[] })
-  | (Base & { type: 'plan.request'; toolUseId: string; plan: string; planFilePath?: string })
+  | (Base & {
+      type: 'plan.request';
+      toolUseId: string;
+      plan: string;
+      planFilePath?: string;
+      /** Нативные варианты плана; `id` возвращается движку без переименования. */
+      options?: { id: string; label: string }[];
+    })
   | (Base & {
       type: 'permission.resolved';
       toolUseId: string;
@@ -525,7 +532,7 @@ export interface ResumeOptions extends SessionOptions {
  * текстом, который видит модель (доработка), с `interrupt` — ещё и остановить ход (отклонить).
  */
 export type PlanDecision =
-  | { approve: true; mode?: 'acceptEdits' | 'default' }
+  | { approve: true; mode?: 'acceptEdits' | 'default'; optionId?: string }
   | { approve: false; feedback: string; interrupt?: boolean };
 
 /** Модель из `supportedModels()` движка (этап 3: переключатель модели и effort). */

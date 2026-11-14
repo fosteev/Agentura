@@ -64,7 +64,7 @@ function engineTip(e: EngineView): string | undefined {
 }
 
 function SignIn({ engine }: { engine: EngineId }) {
-  if (engine !== 'codex' && engine !== 'antigravity') return null;
+  if (engine !== 'codex' && engine !== 'antigravity' && engine !== 'kimi') return null;
   return (
     <button
       type="button"

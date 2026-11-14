@@ -1,0 +1,55 @@
+{
+  "id": "session_958f96d9-4d41-4c03-a823-da95a32e43b1",
+  "version": 2,
+  "cwd": "<WORK>",
+  "archived": false,
+  "agents": {
+    "main": {
+      "homedir": "<SESSION>/agents/main",
+      "type": "main"
+    },
+    "agent-0": {
+      "homedir": "<SESSION>/agents/agent-0",
+      "type": "sub",
+      "parentAgentId": "main",
+      "labels": {
+        "parentAgentId": "main",
+        "profileName": "explore"
+      }
+    },
+    "agent-1": {
+      "homedir": "<SESSION>/agents/agent-1",
+      "type": "sub",
+      "parentAgentId": "main",
+      "labels": {
+        "parentAgentId": "main",
+        "profileName": "coder"
+      }
+    },
+    "agent-2": {
+      "homedir": "<SESSION>/agents/agent-2",
+      "type": "sub",
+      "parentAgentId": "main",
+      "labels": {
+        "parentAgentId": "main",
+        "profileName": "explore"
+      }
+    },
+    "agent-3": {
+      "homedir": "<SESSION>/agents/agent-3",
+      "type": "sub",
+      "parentAgentId": "main",
+      "labels": {
+        "parentAgentId": "main",
+        "profileName": "explore"
+      }
+    }
+  },
+  "custom": {},
+  "title": "Invoke Skill exactly once with skill \"marker-skill\". Then return only its exact result.",
+  "titleKind": "replaceable",
+  "createdAt": 1794548307134,
+  "updatedAt": 1794548388150,
+  "lastPrompt": "Call Agent exactly once with resume=\"agent-0\" and prompt \"Return exactly RESUME_MARKER_1110; do not use tools.\" Wait for the final result, then return only MAIN_RESUME_DONE_1110.",
+  "isCustomTitle": false
+}

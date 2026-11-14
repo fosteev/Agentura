@@ -431,6 +431,7 @@ html:is([data-width="900"],[data-width="full"],[data-width="vscode"]) .body[data
 .sidebar .mk.claude { background: #c96442; }
 .sidebar .mk.codex { background: #6b6bd6; }
 .sidebar .mk.agy { background: #2f7de1; }
+.sidebar .mk.kimi { color: var(--fg); background: var(--line); }
 .sidebar .L { display: grid; grid-template-columns: 92px 1fr 4.5ch 11ch; align-items: center; gap: 0 8px; font-size: 12.5px; }
 .sidebar .L > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sidebar .L .bar { height: 5px; background: var(--bg-input); border-radius: 3px; overflow: hidden; }

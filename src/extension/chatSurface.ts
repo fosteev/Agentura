@@ -75,7 +75,7 @@ export function chatIcon(context: vscode.ExtensionContext, provider?: AgentProvi
     const asset = provider === 'codex' ? 'openai' : provider === 'claude' ? 'claude-color' : provider;
     return {
       light: vscode.Uri.joinPath(context.extensionUri, 'media', 'brands', `${asset}.svg`),
-      dark: vscode.Uri.joinPath(context.extensionUri, 'media', 'brands', `${provider === 'codex' ? 'openai-dark' : asset}.svg`),
+      dark: vscode.Uri.joinPath(context.extensionUri, 'media', 'brands', `${provider === 'codex' ? 'openai-dark' : provider === 'kimi' ? 'kimi-dark' : asset}.svg`),
     };
   }
   return {

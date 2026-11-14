@@ -4,8 +4,9 @@
 
 Claude chat for VS Code that shows what Claude Code keeps out of sight: context in tokens, cost per turn, cache,
 subscription limits, which subagents are running and what they edited. It runs on the Claude Agent SDK, the same
-engine as Claude Code, through your installed `claude` and its login. Codex CLI is available as a second engine
-(see [Codex](#codex)).
+engine as Claude Code, through your installed `claude` and its login. Codex, Antigravity, Cursor and Kimi Code
+are available as additional engines (see [Codex](#codex), [Cursor](#cursor),
+[Antigravity](#antigravity-engine-experimental) and [Kimi Code](#kimi-code)).
 
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="docs/images/hero-light.png">
@@ -14,6 +15,9 @@ engine as Claude Code, through your installed `claude` and its login. Codex CLI 
 
 Personal project, not on the Marketplace. Install it from a `.vsix` (see [Install](#install)).
 
+> **Kimi Code ACP.** Native `kimi acp` sessions with plan review, questions, images, context, session history,
+> and live/restored subagent graphs with read-only transcripts. See [Kimi Code](#kimi-code) for the v1 boundaries.
+>
 > **New in 0.22 — redesigned session settings.** Provider cards, grouped model and permission controls,
 > advanced settings, and engine logos in chats. Codex chats attached to Jira tasks now start correctly.
 >
@@ -36,7 +40,7 @@ Personal project, not on the Marketplace. Install it from a `.vsix` (see [Instal
 
 ## Features
 
-- **Engines.** Claude (default), Codex, Antigravity or Cursor, picked per tab in the "agent" menu under the input box.
+- **Engines.** Claude (default), Codex, Antigravity, Cursor or Kimi Code, picked per tab in the "agent" menu under the input box.
 - **Chat in editor tabs.** One session per tab. `Cmd/Ctrl+Alt+A` opens a chat, `Cmd/Ctrl+Shift+N` starts a new
   session.
 - **Gauges by the input box.** Context with yellow and orange thresholds, cost and tokens per turn, cache TTL and hit
@@ -49,15 +53,16 @@ Personal project, not on the Marketplace. Install it from a `.vsix` (see [Instal
   with server status. See [MCP servers and skills](#mcp-servers-and-skills).
 - **Jira tasks.** Chats grouped by Jira issue, a "task" tab with the full card and change feed beside the chat, and Claude can comment,
   change status and log work on the issue. See [Jira tasks](#jira-tasks).
-- **Sidebar.** The project's sessions: search, resume, rename. Account and limits are shown above the list — for every
-  installed engine (Claude, Codex, Antigravity), in one of five layouts.
+- **Sidebar.** The project's sessions: search, resume, rename. Account and limits are shown above the list for
+  engines that report them (Claude, Codex, Antigravity), in one of five layouts.
 - **Right panel.**
   - `changes` lists files the session touched.
   - `git` is a working tree view where you stage, commit and push. Files the agent edited are marked.
   - `agents` shows the turn's subagents.
 - **Agents graph.** Opens in its own editor tab: who started whom, the prompt each agent got and the summary it
   returned, plus its live calls.
-- **Attachments.** Paste screenshots with `⌘V`. Attach files with "+" or by dragging them in with `⇧` held. Text and PDF are sent as documents.
+- **Attachments.** Paste screenshots with `⌘V`. Attach files with "+" or by dragging them in with `⇧` held.
+  Document and PDF support depends on the selected engine.
 - **Look.** Four feed styles, six input layouts, five agent views, three git layouts, three session list densities, your own fonts
   (bundled, installed or Google Fonts), separate text sizes for the feed and the rest of the interface.
 - **English and Russian interface.**
@@ -118,6 +123,7 @@ You need:
 - Claude Code 2.1.285 or newer, installed and logged in (`claude`, then `/login`).
 - Optional, for the Codex engine: Codex CLI, installed and logged in (`codex login`).
 - Optional, for the Cursor engine: Cursor CLI, installed and logged in (`agent login`).
+- Optional, for the Kimi engine: Kimi Code CLI 2.6.0 or newer, installed and logged in (`kimi acp --login`).
 
 The extension does not ship the engine binary (200+ MB). It finds the system `claude` in `PATH`, `~/.local/bin`,
 `~/.claude/local` or Homebrew (on Windows it looks for `claude.exe`). To point it somewhere else, set `agentura.claudeExecutable`.
@@ -250,6 +256,53 @@ Remaining limits:
 - No native plan acceptance callback (plans stream as text).
 - No subagents or document/PDF attachment blocks.
 
+## Kimi Code
+
+Pick **Kimi Code** in the engine menu of an empty tab, or set `agentura.defaultProvider` to `kimi`. Install Kimi
+Code CLI **2.6.0 or newer** and sign in with `kimi acp --login`. Agentura starts one `kimi acp` process per tab
+and talks ACP over stdio. It finds `kimi` in `PATH`, `~/.kimi-code/bin`, `~/.local/bin` or Homebrew;
+`agentura.kimiExecutable` points elsewhere (⚙ → Engine has a check button).
+
+In **Settings → New session**, `agentura.kimi.defaultModel` and `agentura.kimi.defaultEffort` are populated from
+`kimi provider list --json`. Empty values inherit the CLI and resumed sessions keep their server-side settings.
+Only actual effort levels are offered: boolean thinking values `on`/`off` are not emulated as effort. The shared
+initial permission mode also applies to new Kimi chats. **`acceptEdits` maps to Kimi's native `auto`, which allows
+safe file edits and commands without a separate prompt, not just edits.** `bypassPermissions` maps to `yolo`
+only when `agentura.allowBypassPermissions` is enabled.
+
+Supported:
+
+- Streaming text and reasoning, Stop, tool cards and structured Edit diffs. Write calls retain their actual raw
+  input/output, but Kimi 2.6.0 did not provide an ACP diff for Write or overwrite.
+- Allow once, session-only allow and deny permission cards; native plan review with approve/revise/reject,
+  `plan_opt_N` choices and feedback as the next prompt.
+- Single- and multi-question forms with multi-select, plus the single-question permission fallback. Custom
+  **Other** answers are not supported and are declined rather than inventing a `qN_other` field.
+- Image attachments and text context fallback. PDF/document blocks are refused; a direct adapter call also
+  emits a warning that the PDF was not sent.
+- Server-advertised slash commands and Skill cards; the context gauge from `usage_update.used/size`.
+- Manual `/compact` start. Kimi confirms only background start, so Agentura does not claim compaction completion
+  or a proven context reduction.
+- Project session list, history replay, live resume and rename through Agentura's own index.
+
+The **agents** panel and graph show foreground, background, parallel and nested Agent calls, background Bash
+tasks, prompts, calls, token totals and summaries where Kimi records them. Restored history adds the persisted
+graph and read-only Markdown transcripts. Live `Agent(resume=...)` is supported in the original new session.
+After an ACP session resume, Kimi 2.6.0 did not expose Agent in the main tool set, so continuing child agents
+there is not promised.
+
+Remaining v1 limits:
+
+- No structured per-turn usage, USD cost, cache TTL, subscription quota, or fabricated account/plan fields.
+- No structured MCP status/toggle/reconnect, Remote Control, browser integration or per-subagent Stop.
+- No working AgentSwarm (`Swarm mode is off` in the verified session), PDF delivery or Other answers.
+- No built-in Jira host tools or MCP bridge to `AgentJiraTools`. Kimi can use separately configured Kimi
+  skills/MCP, but Agentura does not provide its in-process Claude/Codex Jira tools to Kimi.
+- The graph reader uses versioned but internal Kimi `state.json`, `wire.jsonl` and task output read-only.
+  This persistence is not stable ACP and may need adaptation after a CLI update.
+
+See [docs/kimi-protocol.md](docs/kimi-protocol.md) for the exact supported frames, correlation keys and limits.
+
 ## Jira tasks
 
 Chats on the same Jira issue are grouped under it in the sidebar (`agentura.tasks.sidebar`: `groups` or `section`).
@@ -297,11 +350,11 @@ A commit is found only if the key is in its message (`NEWMFC-1482: …`) or on a
 
 With `agentura.tasks.tab=chat` the task strip shows the task's chats as chips: engine mark, title, a dot for a chat that is working, waiting for you or failed (a click opens it). The current chat keeps its turn indicators; with more than four chats the current one and the three latest stay, the rest are under "N more". A chat you no longer need goes to the archive: × on hover over its chip or "N more" row, or "Archive" in its right-click menu (a notification offers "Undo"; "Archive" in the sidebar brings it back). Archived chats leave the chips and "Chats for this task"; the chat of this tab stays. Three ways to start another chat on the same task:
 
-- **"+ chat"** (or "+" among the inner tabs with `tasks.tab=task`) opens a popover: the first message (optional), the engine (claude, codex, antigravity), what to carry over, where it works, and "create" or "beside" (next to this tab). **Alt+click** skips the questions: a new chat on this tab's engine with the task context.
-- **`/new [engine] [text]`** in the input box of a task chat: the first word may be `claude`, `codex`, `agy` or `antigravity`; the text becomes the first message and is sent by itself.
+- **"+ chat"** (or "+" among the inner tabs with `tasks.tab=task`) opens a popover: the first message (optional), the engine (claude, codex, antigravity, cursor, kimi), what to carry over, where it works, and "create" or "beside" (next to this tab). **Alt+click** skips the questions: a new chat on this tab's engine with the task context.
+- **`/new [engine] [text]`** in the input box of a task chat: the first word may be `claude`, `codex`, `agy`, `antigravity`, `cursor` or `kimi`; the text becomes the first message and is sent by itself.
 - **`/fork [text]`**: the same on this chat's engine, plus a summary of this chat. Both commands exist only in task chats.
 
-What goes to the new chat, each as a text attachment you can remove with the chip's ×: the task context (`<KEY>.md`, as in "Chat for Issue…"), a summary of this chat (`<KEY>-handoff.md`: goal, what is done, what is left, decisions, next steps; written by Claude whatever the source engine) and the task changes (`<KEY>-changes.md`: commits and uncommitted files from the "code" tab). Codex and Antigravity do not take files, so for them the attachments go into the message's context block (the feed does not show it). If the summary or the changes cannot be prepared, the chat opens without them and says so in a notification.
+What goes to the new chat, each as a text attachment you can remove with the chip's ×: the task context (`<KEY>.md`, as in "Chat for Issue…"), a summary of this chat (`<KEY>-handoff.md`: goal, what is done, what is left, decisions, next steps; written by Claude whatever the source engine) and the task changes (`<KEY>-changes.md`: commits and uncommitted files from the "code" tab). Codex, Antigravity and Kimi do not take document files, so for them the attachments go into the message's context block (the feed does not show it). If the summary or the changes cannot be prepared, the chat opens without them and says so in a notification.
 
 "Own worktree" runs `git worktree add -b feature/<KEY>-<n> <repo>-<KEY>-<n> HEAD` next to the repository and opens the chat there, so two agents do not edit the same files. Uncommitted changes of the source chat do not move over. The branch name carries the key, so the "code" tab finds it. Agentura never deletes the worktree; when the work is merged, run `git worktree remove <path>` (and `git branch -d feature/<KEY>-<n>`) yourself. A chat in a worktree keeps its folder after Reload Window.
 
@@ -325,8 +378,8 @@ What the agent reaches for is visible without opening `/mcp`.
 - **A line in the feed** when a server fails to start or drops.
 - **Where to turn it off.** Settings, "Appearance", "MCP and skills": `agentura.mcp.feedLabels`,
   `agentura.mcp.composerButton`, `agentura.mcp.panelTab`, `agentura.mcp.feedStatus` (`failures`, `start`, `off`).
-  Server status is for Claude and Codex; Antigravity reports none, so the button, the tab and the status line are
-  hidden for it.
+  Server status is for Claude and Codex; Antigravity and Kimi report none, so the button, the tab and the status
+  line are hidden for them.
 
 ![MCP and skills: server chips and a skill strip in the feed, the "mcp" tab with server status](docs/images/skills-mcp.png)
 
@@ -359,8 +412,9 @@ user settings only, so a cloned repository can't change them through its `.vscod
 | `agentura.codexExecutable`        | empty    | Path to `codex`; empty means auto-detect         |
 | `agentura.antigravityExecutable`  | empty    | Path to `agy`; empty means auto-detect           |
 | `agentura.cursorExecutable`       | empty    | Path to Cursor `agent`; empty means auto-detect  |
-| `agentura.defaultProvider`        | `claude` | Engine for new tabs: `claude`, `codex`, `antigravity` or `cursor` |
-| `agentura.allowBypassPermissions` | `false`  | Allow `bypassPermissions` (Claude, Antigravity, Cursor) and explicit Codex full-access sandbox selection |
+| `agentura.kimiExecutable`         | empty    | Path to `kimi`; empty means auto-detect          |
+| `agentura.defaultProvider`        | `claude` | Engine for new tabs: `claude`, `codex`, `antigravity`, `cursor` or `kimi` |
+| `agentura.allowBypassPermissions` | `false`  | Allow `bypassPermissions` (Claude, Antigravity, Cursor, Kimi) and explicit Codex full-access sandbox selection |
 | `agentura.remoteControl`          | `false`  | Remote Control for every Claude tab              |
 | `agentura.remoteControlNamePrefix`| empty    | Session name prefix on claude.ai; empty means the machine name |
 
@@ -380,9 +434,9 @@ If `agentura.defaultPermissionMode` is set to `bypassPermissions` while bypass i
 - **Remote Control** uses the Agent SDK's alpha `bridge` API and was tried against SDK 0.3.285 only. Approval
   requests opened before it was turned on are not sent to claude.ai.
 - **Cost** is an estimate. Your subscription bill is the source of truth.
-- **Each chat tab runs its own `claude` (or `codex app-server`) process.**
-- **Subagents** have no separate cost or token counts because the engine does not report them. Prompt and summary sizes are
-  estimated from text length.
+- **Each chat tab runs its own engine process** (`claude`, `codex app-server`, `agy acp`, `agent acp` or `kimi acp`).
+- **Claude subagents** have no separate cost or token counts because the engine does not report them. Prompt and
+  summary sizes are estimated from text length; other engines expose only the usage their protocols record.
 - **Tested only on macOS arm64.** CI runs on macOS and Ubuntu, but nobody has used it by hand on Windows or Linux.
 
 ## Development

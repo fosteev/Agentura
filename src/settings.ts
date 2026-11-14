@@ -165,10 +165,10 @@ export const DEFAULT_HIGHLIGHT_THEME: HighlightTheme = 'github';
 export const MIN_DIFF_FONT_SIZE = 0;
 export const MAX_DIFF_FONT_SIZE = 40;
 
-export const PROVIDERS: readonly AgentProvider[] = ['claude', 'codex', 'antigravity', 'cursor'];
+export const PROVIDERS: readonly AgentProvider[] = ['claude', 'codex', 'antigravity', 'cursor', 'kimi'];
 export const DEFAULT_PROVIDER: AgentProvider = 'claude';
 export function isProvider(v: unknown): v is AgentProvider {
-  return v === 'claude' || v === 'codex' || v === 'antigravity' || v === 'cursor';
+  return v === 'claude' || v === 'codex' || v === 'antigravity' || v === 'cursor' || v === 'kimi';
 }
 
 /** Ключи без префикса `agentura.` — те же, что в `getConfiguration('agentura')`. */
@@ -179,8 +179,10 @@ export type SettingKey =
   | 'codex.defaultModel'
   | 'cursor.defaultModel'
   | 'antigravity.defaultModel'
+  | 'kimi.defaultModel'
   | 'codex.defaultEffort'
   | 'antigravity.defaultEffort'
+  | 'kimi.defaultEffort'
   | 'codex.defaultApproval'
   | 'codex.defaultSandbox'
   | 'defaultEffort'
@@ -193,6 +195,7 @@ export type SettingKey =
   | 'codexExecutable'
   | 'antigravityExecutable'
   | 'cursorExecutable'
+  | 'kimiExecutable'
   | 'defaultProvider'
   | 'sessionList.view'
   | 'sessionList.context'
@@ -236,8 +239,10 @@ export const SETTING_KEYS: readonly SettingKey[] = [
   'codex.defaultModel',
   'cursor.defaultModel',
   'antigravity.defaultModel',
+  'kimi.defaultModel',
   'codex.defaultEffort',
   'antigravity.defaultEffort',
+  'kimi.defaultEffort',
   'codex.defaultApproval',
   'codex.defaultSandbox',
   'defaultEffort',
@@ -250,6 +255,7 @@ export const SETTING_KEYS: readonly SettingKey[] = [
   'codexExecutable',
   'antigravityExecutable',
   'cursorExecutable',
+  'kimiExecutable',
   'defaultProvider',
   'sessionList.view',
   'sessionList.context',
@@ -299,6 +305,7 @@ export const MACHINE_KEYS: readonly SettingKey[] = [
   'codexExecutable',
   'antigravityExecutable',
   'cursorExecutable',
+  'kimiExecutable',
   'defaultProvider',
 ];
 
@@ -311,8 +318,11 @@ export interface SettingsValues {
   'cursor.defaultModel': string;
   /** ID модели новых чатов Antigravity; пусто — выбор движка. */
   'antigravity.defaultModel': string;
+  /** Модель и effort только новых чатов Kimi; пусто — наследовать CLI. */
+  'kimi.defaultModel': string;
   'codex.defaultEffort': '' | EffortLevel;
   'antigravity.defaultEffort': '' | 'low' | 'medium' | 'high';
+  'kimi.defaultEffort': '' | EffortLevel;
   'codex.defaultApproval': (typeof CODEX_DEFAULT_APPROVALS)[number];
   'codex.defaultSandbox': (typeof CODEX_DEFAULT_SANDBOXES)[number];
   /** Пусто — выбор движка. */
@@ -328,6 +338,7 @@ export interface SettingsValues {
   codexExecutable: string;
   antigravityExecutable: string;
   cursorExecutable: string;
+  kimiExecutable: string;
   defaultProvider: AgentProvider;
   'sessionList.view': SessionListMode;
   'sessionList.context': boolean;
@@ -593,6 +604,7 @@ export function validateSetting(key: SettingKey, value: unknown, lang: ErrLang =
       return isProvider(value) ? { ok: true, value } : bad(t.allowed(PROVIDERS.join(', ')));
     case 'defaultEffort':
     case 'codex.defaultEffort':
+    case 'kimi.defaultEffort':
       return value === '' || isEffort(value)
         ? { ok: true, value }
         : bad(t.allowedOrEmpty(EFFORT_LEVELS.join(', ')));
@@ -619,11 +631,13 @@ export function validateSetting(key: SettingKey, value: unknown, lang: ErrLang =
     case 'codex.defaultModel':
     case 'cursor.defaultModel':
     case 'antigravity.defaultModel':
+    case 'kimi.defaultModel':
     case 'remoteControlNamePrefix':
     case 'claudeExecutable':
     case 'codexExecutable':
     case 'antigravityExecutable':
     case 'cursorExecutable':
+    case 'kimiExecutable':
       return typeof value === 'string' ? { ok: true, value: value.trim() } : bad(t.string);
     case 'font.interface':
     case 'font.panels':
@@ -716,6 +730,7 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
   const effort = cfg.get<unknown>('defaultEffort');
   const codexEffort = cfg.get<unknown>('codex.defaultEffort');
   const agyEffort = cfg.get<unknown>('antigravity.defaultEffort');
+  const kimiEffort = cfg.get<unknown>('kimi.defaultEffort');
   const th = cfg.get<unknown>('contextThresholds');
   const poll = cfg.get<unknown>('usagePollMinutes');
   const list = cfg.get<unknown>('sessionList.view');
@@ -748,9 +763,11 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
     'codex.defaultModel': str('codex.defaultModel'),
     'cursor.defaultModel': str('cursor.defaultModel'),
     'antigravity.defaultModel': str('antigravity.defaultModel'),
+    'kimi.defaultModel': str('kimi.defaultModel'),
     'codex.defaultEffort': isEffort(codexEffort) ? codexEffort : '',
     'antigravity.defaultEffort':
       agyEffort === 'low' || agyEffort === 'medium' || agyEffort === 'high' ? agyEffort : '',
+    'kimi.defaultEffort': isEffort(kimiEffort) ? kimiEffort : '',
     'codex.defaultApproval': CODEX_DEFAULT_APPROVALS.find((v) => v === cfg.get<unknown>('codex.defaultApproval')) ?? '',
     'codex.defaultSandbox': CODEX_DEFAULT_SANDBOXES.find((v) => v === cfg.get<unknown>('codex.defaultSandbox')) ?? '',
     defaultEffort: isEffort(effort) ? effort : '',
@@ -767,6 +784,7 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
     codexExecutable: str('codexExecutable'),
     antigravityExecutable: str('antigravityExecutable'),
     cursorExecutable: str('cursorExecutable'),
+    kimiExecutable: str('kimiExecutable'),
     defaultProvider: isProvider(provider) ? provider : DEFAULT_PROVIDER,
     'sessionList.view': isSessionListMode(list) ? list : DEFAULT_SESSION_LIST,
     'sessionList.context': cfg.get<unknown>('sessionList.context') !== false,

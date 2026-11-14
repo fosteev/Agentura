@@ -1,0 +1,97 @@
+{
+  "sessionId": "session_4ed9dfe6-3fec-4809-9953-3fafc715408a",
+  "protocol": "Kimi wire protocol_version=1.5",
+  "correlations": [
+    {
+      "subagentId": "agent-2",
+      "parentAgentId": "agent-1",
+      "parentToolCallId": "tool_d7FS3K9gwCob94h7qlq6xWhM",
+      "correlationKey": "tool_d7FS3K9gwCob94h7qlq6xWhM",
+      "taskId": "agent-0nbyg7kh",
+      "runInBackground": false,
+      "subagentName": "explore",
+      "model": "kimi-code/k3.1-pro",
+      "thinkingEffort": "high",
+      "terminal": {
+        "type": "subagent.completed",
+        "resultSummary": "NESTED_MARKER_842",
+        "usage": {
+          "inputOther": 0,
+          "output": 41,
+          "inputCacheRead": 9766,
+          "inputCacheCreation": 0
+        },
+        "contextTokens": 9807
+      }
+    },
+    {
+      "subagentId": "agent-0",
+      "parentAgentId": "main",
+      "parentToolCallId": "tool_YxcmEMYZzJ3KaLQFCyEr7slB",
+      "correlationKey": "tool_YxcmEMYZzJ3KaLQFCyEr7slB",
+      "taskId": "agent-ouwyfaza",
+      "runInBackground": false,
+      "subagentName": "explore",
+      "model": "kimi-code/k3.1-pro",
+      "thinkingEffort": "high",
+      "terminal": {
+        "type": "subagent.completed",
+        "resultSummary": "RESUME_BASE_MARKER_1601",
+        "usage": {
+          "inputOther": 295,
+          "output": 44,
+          "inputCacheRead": 9472,
+          "inputCacheCreation": 0
+        },
+        "contextTokens": 9811
+      },
+      "acpToolCallId": "0:tool_YxcmEMYZzJ3KaLQFCyEr7slB"
+    },
+    {
+      "subagentId": "agent-0",
+      "parentAgentId": "main",
+      "parentToolCallId": "tool_8ZGWTXIWiBXO8KmxXB7ScEFM",
+      "correlationKey": "tool_8ZGWTXIWiBXO8KmxXB7ScEFM",
+      "taskId": "agent-73q1y5ol",
+      "runInBackground": false,
+      "subagentName": "explore",
+      "model": "kimi-code/k3.1-pro",
+      "thinkingEffort": "high",
+      "terminal": {
+        "type": "subagent.completed",
+        "resultSummary": "RESUME_OK_MARKER_1602",
+        "usage": {
+          "inputOther": 411,
+          "output": 75,
+          "inputCacheRead": 19200,
+          "inputCacheCreation": 0
+        },
+        "contextTokens": 9875
+      },
+      "acpToolCallId": "1:tool_8ZGWTXIWiBXO8KmxXB7ScEFM"
+    },
+    {
+      "subagentId": "agent-1",
+      "parentAgentId": "main",
+      "parentToolCallId": "tool_KQ14pyIBiHm0khrHCvqtqSgc",
+      "correlationKey": "tool_KQ14pyIBiHm0khrHCvqtqSgc",
+      "taskId": "agent-iorlgb43",
+      "runInBackground": false,
+      "subagentName": "nester",
+      "model": "kimi-code/k3.1-pro",
+      "thinkingEffort": "high",
+      "terminal": {
+        "type": "subagent.completed",
+        "resultSummary": "OUTER_MARKER_841 NESTED_MARKER_842",
+        "usage": {
+          "inputOther": 475,
+          "output": 180,
+          "inputCacheRead": 3803,
+          "inputCacheCreation": 0
+        },
+        "contextTokens": 2298
+      },
+      "acpToolCallId": "2:tool_KQ14pyIBiHm0khrHCvqtqSgc"
+    }
+  ]
+}

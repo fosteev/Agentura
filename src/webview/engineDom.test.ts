@@ -42,7 +42,7 @@ function mount(component: typeof Composer | typeof Chat = Composer) {
 
 const flush = () => new Promise((r) => setTimeout(r, 120));
 
-function info(p: 'claude' | 'codex' | 'antigravity' | undefined, extra: Record<string, unknown> = {}) {
+function info(p: 'claude' | 'codex' | 'antigravity' | 'cursor' | 'kimi' | undefined, extra: Record<string, unknown> = {}) {
   handleHostMessage({
     type: 'chat.info',
     project: 'p',
@@ -173,6 +173,21 @@ describe('chat.info: движок и флаги', () => {
     expect(draftFiles.value[1]).toMatchObject({ name: 'a.pdf', problem: 'engine' });
     expect(draftFiles.value[1]!.file).toBeUndefined();
     draftFiles.value = [];
+  });
+  it('Kimi: PDF не обещается, текст принят; cost/limits/remote/MCP скрыты по flags', async () => {
+    info('kimi');
+    addFiles([{ name: 'a.pdf', path: 'a.pdf', kind: 'pdf', data: 'JVBERi0=', size: 6 }]);
+    expect(draftFiles.value[0]).toMatchObject({ name: 'a.pdf', problem: 'engine' });
+    addFiles([{ name: 'a.txt', path: 'a.txt', kind: 'text', data: 'hi', size: 2 }]);
+    expect(draftFiles.value[1]!.file).toMatchObject({ kind: 'text', path: 'a.txt' });
+    const host = mount();
+    await flush();
+    expect(host.querySelector('.meters, .rcw, .mcpw')).toBeNull();
+    expect(host.textContent).toContain('kimi');
+    expect(features.value).toMatchObject({ cost: false, remote: false, mcp: false, agentStop: false });
+    host.querySelector<HTMLButtonElement>('.mode')!.click();
+    await flush();
+    expect(host.querySelector('.menu')?.textContent).toContain('Kimi auto: безопасные правки и команды');
   });
 });
 
@@ -450,6 +465,19 @@ describe('Выбор движка', () => {
     expect(cursor.getAttribute('aria-disabled')).toBeNull();
     cursor.click();
     expect(posted).toContainEqual({ type: 'engine.set', provider: 'cursor' });
+  });
+
+  it('пустая вкладка: Kimi Code имеет свой логотип и шлёт engine.set kimi', async () => {
+    info('claude');
+    const host = mount();
+    await flush();
+    await openAgentMenu(host);
+    const kimi = items(host).find((i) => i.textContent?.startsWith('Kimi Code'))!;
+    expect(kimi.textContent).toContain('через kimi acp');
+    expect(kimi.querySelector('.agent-logo-kimi')).not.toBeNull();
+    expect(kimi.querySelector('.agent-logo-claude, .agent-logo-codex')).toBeNull();
+    kimi.click();
+    expect(posted).toContainEqual({ type: 'engine.set', provider: 'kimi' });
   });
 
   it('пустая вкладка: пункт Antigravity шлёт engine.set', async () => {

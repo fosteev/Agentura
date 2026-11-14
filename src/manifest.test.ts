@@ -21,6 +21,8 @@ import {
   DEFAULT_TASK_TAB,
   MCP_FEED_STATUS_MODES,
   DEFAULT_MCP_FEED_STATUS,
+  EFFORT_LEVELS,
+  PROVIDERS,
 } from './settings';
 
 const root = join(__dirname, '..');
@@ -271,5 +273,32 @@ describe('настройки Jira (roadmap 19, этап 2)', () => {
     for (const c of ['agentura.jira.connect', 'agentura.jira.disconnect', 'agentura.jira.test', 'agentura.chatForTask']) {
       expect(ids).toContain(c);
     }
+  });
+});
+
+
+describe('Kimi provider manifest', () => {
+  const props = (read('package.json') as {
+    contributes: { configuration: { properties: Record<string, {
+      type?: string; scope?: string; enum?: string[]; enumDescriptions?: string[]; default?: unknown;
+      items?: { enum?: string[] };
+    }> } };
+  }).contributes.configuration.properties;
+
+  it('defaultProvider и limitsHidden перечисляют тот же полный provider union', () => {
+    expect(props['agentura.defaultProvider']!.enum).toEqual([...PROVIDERS]);
+    expect(props['agentura.defaultProvider']!.enumDescriptions).toHaveLength(PROVIDERS.length);
+    expect(props['agentura.sidebar.limitsHidden']!.items).toMatchObject({ enum: [...PROVIDERS] });
+  });
+
+  it('Kimi defaults и machine-scope executable объявлены с nls', () => {
+    expect(props['agentura.kimi.defaultModel']).toMatchObject({ type: 'string', default: '' });
+    expect(props['agentura.kimi.defaultEffort']).toMatchObject({
+      type: 'string', default: '', enum: ['', ...EFFORT_LEVELS],
+    });
+    expect(props['agentura.kimiExecutable']).toMatchObject({ type: 'string', scope: 'machine', default: '' });
+    expect(refs(props['agentura.kimi.defaultModel'])).toEqual(['config.kimi.defaultModel.description']);
+    expect(refs(props['agentura.kimi.defaultEffort'])).toEqual(['config.kimi.defaultEffort.description']);
+    expect(refs(props['agentura.kimiExecutable'])).toEqual(['config.kimiExecutable.description']);
   });
 });

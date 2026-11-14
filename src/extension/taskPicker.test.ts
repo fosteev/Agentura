@@ -234,4 +234,10 @@ describe('sidebar task lookup and actions', () => {
     vi.mocked(deps.create).mockResolvedValue(true);
     expect(await picker.act({ requestId: 1, mode: 'create', provider: 'cursor' })).toBeUndefined();
   });
+  it('creates a Kimi chat through the same host handoff', async () => {
+    const { picker, deps } = setup();
+    await picker.find(1, 'P7-1');
+    expect(await picker.act({ requestId: 1, mode: 'create', provider: 'kimi' })).toBeUndefined();
+    expect(deps.create).toHaveBeenCalledWith(expect.objectContaining({ key: 'P7-1' }), expect.any(String), 'kimi', undefined);
+  });
 });

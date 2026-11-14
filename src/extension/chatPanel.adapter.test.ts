@@ -20,19 +20,21 @@ import type { AgentAdapter } from '../agent/types';
 import { adapterOf, engineOf, type ChatServices } from './chatPanel';
 
 function services(): ChatServices & {
-  marks: { claude: AgentAdapter; codex: AgentAdapter; agy: AgentAdapter; cursor: AgentAdapter };
+  marks: { claude: AgentAdapter; codex: AgentAdapter; agy: AgentAdapter; cursor: AgentAdapter; kimi: AgentAdapter };
 } {
   const marks = {
     claude: { id: 'claude' } as unknown as AgentAdapter,
     codex: { id: 'codex' } as unknown as AgentAdapter,
     agy: { id: 'agy' } as unknown as AgentAdapter,
     cursor: { id: 'cursor' } as unknown as AgentAdapter,
+    kimi: { id: 'kimi' } as unknown as AgentAdapter,
   };
   const engines = {
     claude: { id: 'loc-claude' },
     codex: { id: 'loc-codex' },
     agy: { id: 'loc-agy' },
     cursor: { id: 'loc-cursor' },
+    kimi: { id: 'loc-kimi' },
   };
   return {
     marks,
@@ -40,10 +42,12 @@ function services(): ChatServices & {
     codexAdapter: () => marks.codex,
     antigravityAdapter: () => marks.agy,
     cursorAdapter: () => marks.cursor,
+    kimiAdapter: () => marks.kimi,
     engine: engines.claude,
     codexEngine: engines.codex,
     antigravityEngine: engines.agy,
     cursorEngine: engines.cursor,
+    kimiEngine: engines.kimi,
   } as unknown as ChatServices & { marks: typeof marks };
 }
 
@@ -51,11 +55,13 @@ describe('adapterOf / engineOf', () => {
   it('cursor идёт в свой адаптер и локатор, а не в Claude', () => {
     const s = services();
     expect(adapterOf(s, 'cursor')).toBe(s.marks.cursor);
+    expect(adapterOf(s, 'kimi')).toBe(s.marks.kimi);
     expect(adapterOf(s, 'codex')).toBe(s.marks.codex);
     expect(adapterOf(s, 'antigravity')).toBe(s.marks.agy);
     expect(adapterOf(s, 'claude')).toBe(s.marks.claude);
     expect(adapterOf(s, undefined)).toBe(s.marks.claude);
     expect(engineOf(s, 'cursor')).toBe(s.cursorEngine);
+    expect(engineOf(s, 'kimi')).toBe(s.kimiEngine);
     expect(engineOf(s, 'codex')).toBe(s.codexEngine);
     expect(engineOf(s, 'antigravity')).toBe(s.antigravityEngine);
     expect(engineOf(s, 'claude')).toBeUndefined();

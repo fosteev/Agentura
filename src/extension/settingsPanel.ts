@@ -6,6 +6,8 @@ import { loadAntigravityCatalog } from '../agent/antigravity/models';
 import { resolveExecutable } from '../agent/claude/executable';
 import { CODEX_NOT_FOUND, resolveCodexExecutable } from '../agent/codex/executable';
 import { CURSOR_NOT_FOUND, resolveCursorExecutable } from '../agent/cursor/executable';
+import { KIMI_NOT_FOUND, resolveKimiExecutable } from '../agent/kimi/executable';
+import { loadKimiModels } from '../agent/kimi/models';
 import { postToWebview, type SettingsSection } from '../protocol';
 import { hostStrings } from '../shared/l10n';
 import type { JiraRuntime } from './jira/setup';
@@ -68,6 +70,14 @@ export class SettingsPanel {
         if (!executable.path) throw new Error(executable.problem ?? hostStrings(currentLanguage()).antigravityNotFound);
         return loadAntigravityCatalog(executable.path);
       },
+      listKimiModels: async () => {
+        const path = vscode.workspace.getConfiguration('agentura').get<string>('kimiExecutable') ?? '';
+        const executable = await resolveKimiExecutable(path);
+        if (!executable.path || !executable.version) {
+          throw new Error(executable.problem ?? hostStrings(currentLanguage()).kimiNotFound);
+        }
+        return loadKimiModels(executable.path);
+      },
       checkEngine: async (path, engine) => {
         // «не найден» — на языке интерфейса, как в карточке чата; прочие проблемы резолвера английские
         const r =
@@ -85,7 +95,13 @@ export class SettingsPanel {
                       ? { ...c, problem: hostStrings(currentLanguage()).cursorNotFound }
                       : c,
                   )
-                : await resolveExecutable(path.trim(), { lang: currentLanguage() });
+                : engine === 'kimi'
+                  ? await resolveKimiExecutable(path.trim()).then((c) =>
+                      c.problem === KIMI_NOT_FOUND
+                        ? { ...c, problem: hostStrings(currentLanguage()).kimiNotFound }
+                        : c,
+                    )
+                  : await resolveExecutable(path.trim(), { lang: currentLanguage() });
         return {
           ok: r.version !== undefined,
           source: r.source,

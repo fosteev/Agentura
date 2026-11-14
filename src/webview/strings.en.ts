@@ -476,6 +476,9 @@ export const en: Ui = {
     missingTitleAgy: 'Antigravity not found',
     missingHintAgy:
       'Install the Antigravity CLI (agy), sign in (run agy once) or set the path to agy in settings ⚙ (agentura.antigravityExecutable).',
+    missingTitleKimi: 'Kimi Code not found or too old',
+    missingHintKimi:
+      'Kimi Code CLI 2.6.0 or newer is required. Sign in (kimi acp --login) or set the kimi path in settings ⚙ (agentura.kimiExecutable).',
     missingRecheck: 'Check again',
     missingChecking: 'checking…',
     openLog: 'Open extension log',
@@ -843,7 +846,7 @@ export const en: Ui = {
     model: 'model',
     effort: 'effort',
     agent: 'agent',
-    agentTitle: 'Agent: Claude, Codex, Antigravity',
+    agentTitle: 'Agent: Claude, Codex, Antigravity, Cursor, Kimi Code',
     context: 'context',
     compact: 'compact',
     ctxTitle: (thresholds: string[], fullAt: string, scale?: string) =>
@@ -890,6 +893,7 @@ export const en: Ui = {
     codexVia: 'via codex app-server',
     antigravityVia: (version?: string) => `via agy (Antigravity CLI)${version ? ` · ${version}` : ''}`,
     cursorVia: 'via agent acp',
+    kimiVia: (version?: string) => `via kimi acp (Kimi Code CLI)${version ? ` · kimi ${version}` : ''}`,
     agentLocked: 'You can change the agent in a new chat.',
     agentCurrent: 'Agent for this chat',
     agentChoose: 'Choose an agent',
@@ -993,6 +997,7 @@ export const en: Ui = {
     thinkingHint: 'show think blocks in the feed',
     byDefault: 'default',
     agyDefault: 'agy refuses commands and edits itself (a card offers a retry)',
+    kimiAuto: 'Kimi auto: safe file edits and commands without a separate prompt',
     bypassOff: 'enabled by the agentura.allowBypassPermissions setting',
     modelDesc: {
       opus: 'complex tasks, planning',
@@ -1109,7 +1114,7 @@ export const en: Ui = {
     },
     bypass: {
       name: 'Allow “no permissions” mode',
-      desc: 'Allows bypassPermissions for Claude/Antigravity and full access for Codex. Select the mode in new-chat settings or in the current session.',
+      desc: 'Allows bypassPermissions for Claude/Antigravity/Kimi and full access for Codex. Select the mode in new-chat settings or in the current session.',
       warnTitle: 'No permissions',
       warn: ' the agent edits files and runs any commands without asking — including deletion and network access. Enable it for an isolated folder or a container; on a working project, “accept edits” is safer.',
     },
@@ -1135,7 +1140,7 @@ export const en: Ui = {
       effort: 'Reasoning depth',
       effortDesc: 'Deeper reasoning can take more time.',
       modeGroup: 'How to approach the task',
-      modeDesc: 'Initial Claude mode. New Cursor and Antigravity chats also use this setting.',
+      modeDesc: 'Initial Claude mode. New Cursor, Antigravity and Kimi chats also use this setting.',
       permissions: 'Permissions',
       approval: 'When to ask',
       approvalDesc: 'Controls approval requests, not file access.',
@@ -1151,8 +1156,9 @@ export const en: Ui = {
       advancedNote: 'Full access and configuration keys',
       unlock: 'Allow full access',
       unlockDesc:
-        'Adds the no-approval mode for Claude / Antigravity and full access for Codex. Does not activate the mode.',
+        'Adds the no-approval mode for Claude / Antigravity / Kimi and full access for Codex. Does not activate the mode.',
       sharedMode: 'The initial mode comes from the shared Claude mode setting.',
+      kimiAutoNote: 'For Kimi, acceptEdits maps to native auto: safe file edits AND commands run without a separate prompt, not just files.',
       openClaude: 'Configure Claude mode',
       agyNote:
         'Choose the Antigravity model in the chat. There is no separate default model setting here yet.',
@@ -1192,6 +1198,10 @@ export const en: Ui = {
       modelsLoading: 'Loading models…',
       modelsReload: 'Refresh models',
       noModels: 'Codex returned no models. Check the CLI path and sign-in, then refresh the list.',
+      kimiInherit: 'inherit from CLI',
+      kimiModelDesc: 'Models from kimi provider list --json. Empty inherits the CLI; resumed sessions are not overwritten.',
+      kimiEffortDesc: 'Only actual effort levels of the selected model. Empty inherits the CLI; boolean on/off values are not emulated.',
+      kimiNoModels: 'Kimi returned no models. Check the CLI and sign-in, then refresh the list.',
       unavailable: 'unavailable',
       approval: 'Codex approvals',
       approvalDesc: 'When Codex asks for permission to perform an action.',
@@ -1396,7 +1406,7 @@ export const en: Ui = {
     limitsHidden: {
       name: 'Show limits for',
       desc: 'Unchecking an engine hides its limits from the sidebar and stops polling them. Uncheck all to drop the limits section. Limits in the chat header are unaffected.',
-      engines: { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity', cursor: 'Cursor' },
+      engines: { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity', cursor: 'Cursor', kimi: 'Kimi Code' },
     },
     feedStyle: {
       name: 'Chat feed style',
@@ -1506,7 +1516,7 @@ export const en: Ui = {
     provider: {
       name: 'Default engine',
       desc: 'Engine for new tabs. The “agent” menu in the input box (empty tab) changes it too; a started session keeps its engine.',
-      options: { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity', cursor: 'Cursor' },
+      options: { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity', cursor: 'Cursor', kimi: 'Kimi Code' },
     },
     exe: {
       name: 'Path to claude',
@@ -1526,6 +1536,11 @@ export const en: Ui = {
     exeCursor: {
       name: 'Path to agent (Cursor)',
       desc: 'Empty — look for the system one: PATH, ~/.local/bin, Homebrew. Needs the Cursor CLI signed in (agent login). Another agent binary without a Cursor build stamp is rejected.',
+      placeholder: 'empty — look for the system one',
+    },
+    exeKimi: {
+      name: 'Path to kimi (Kimi Code)',
+      desc: 'Empty — PATH, ~/.kimi-code/bin, ~/.local/bin, Homebrew. Requires Kimi Code CLI 2.6.0+; sign in with kimi acp --login.',
       placeholder: 'empty — look for the system one',
     },
   },
@@ -1593,7 +1608,7 @@ export const en: Ui = {
     fold: (name: string, folded: boolean) => `${folded ? 'Expand' : 'Collapse'}: ${name}`,
     accountLabels: { account: 'Account', plan: 'Plan', login: 'Login', agent: 'Agent' },
     agentName: 'Claude',
-    providerNames: { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity', cursor: 'Cursor' },
+    providerNames: { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity', cursor: 'Cursor', kimi: 'Kimi Code' },
     unknown: '—',
     loadError: 'could not load',
     limitFive: '5-hour window',

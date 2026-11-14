@@ -106,6 +106,7 @@ describe('contextRequest', () => {
     });
     expect(bad).toEqual({ name: 'context.md', context: 'x' });
     expect(contextRequest({ context: 'x', files: 'a' })).not.toHaveProperty('files');
+    expect(contextRequest({ context: 'x', provider: 'kimi' })).toMatchObject({ provider: 'kimi' });
     // больше четырёх — лишние отброшены; текст режется до лимита контекста
     const many = contextRequest({
       context: 'x',

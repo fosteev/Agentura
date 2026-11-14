@@ -631,3 +631,45 @@ describe('SessionsService: сессии Cursor', () => {
     expect(m.warn).toHaveBeenCalled();
   });
 });
+
+describe('SessionsService: сессии Kimi', () => {
+  function kimiSvc(fail = false, available = true) {
+    const claude = { listSessions: vi.fn(async () => [info('c1', 1)]), renameSession: vi.fn(async () => undefined) } as unknown as AgentAdapter;
+    const codex = { listSessions: vi.fn(async () => [{ ...info('x1', 5), provider: 'codex' as const }]) } as unknown as AgentAdapter;
+    const kimi = {
+      listSessions: vi.fn(async () => {
+        if (fail) throw new Error('kimi list down');
+        return [{ id: 'k1', title: 'Kimi', cwd: '/nonexistent/project', updatedAt: 9, provider: 'kimi' as const }];
+      }),
+      renameSession: vi.fn(async () => undefined),
+    } as unknown as AgentAdapter;
+    const svc = new SessionsService({
+      adapter: claude,
+      codex: { adapter: () => codex, available: async () => true },
+      kimi: { adapter: () => kimi, available: async () => available },
+      cwd: '/nonexistent/project', live: new LiveSessions(), cache: new TranscriptCache(),
+      log: { debug: vi.fn(), warn: vi.fn() }, dir: '/tmp', watch: () => ({ close: () => undefined }),
+    });
+    return { svc, claude, codex, kimi };
+  }
+
+  it('list/resume identity/rename используют Kimi source, а не Claude; сбой не стирает чужие списки', async () => {
+    const m = kimiSvc();
+    expect((await m.svc.summaries()).map((r) => [r.id, r.provider])).toEqual([
+      ['k1', 'kimi'], ['x1', 'codex'], ['c1', undefined],
+    ]);
+    expect(m.svc.providerOf('k1')).toBe('kimi');
+    await m.svc.rename('k1', 'новое');
+    expect(m.kimi.renameSession).toHaveBeenCalledWith('k1', 'новое', '/nonexistent/project');
+    expect(m.claude.renameSession).not.toHaveBeenCalled();
+    expect(m.codex.listSessions).toHaveBeenCalled();
+  });
+
+  it('missing/failure Kimi оставляет Claude и Codex и не создаёт адаптер без available', async () => {
+    const missing = kimiSvc(false, false);
+    expect((await missing.svc.summaries()).map((r) => r.id)).toEqual(['x1', 'c1']);
+    expect(missing.kimi.listSessions).not.toHaveBeenCalled();
+    const failed = kimiSvc(true);
+    expect((await failed.svc.summaries()).map((r) => r.id)).toEqual(['x1', 'c1']);
+  });
+});

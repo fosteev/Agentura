@@ -17,6 +17,8 @@ import {
   errors,
   handleSettingsMessage,
   integrations,
+  kimiCheck,
+  kimiModels,
   overridden,
   requestedSection,
   settingsValues,
@@ -44,8 +46,10 @@ const values: SettingsValues = {
   'codex.defaultModel': '',
   'cursor.defaultModel': '',
   'antigravity.defaultModel': '',
+  'kimi.defaultModel': '',
   'codex.defaultEffort': '',
   'antigravity.defaultEffort': '',
+  'kimi.defaultEffort': '',
   'codex.defaultApproval': '',
   'codex.defaultSandbox': '',
   defaultEffort: '',
@@ -58,6 +62,7 @@ const values: SettingsValues = {
   codexExecutable: '',
   antigravityExecutable: '',
   cursorExecutable: '',
+  kimiExecutable: '',
   defaultProvider: 'claude',
   'sessionList.view': 'compact',
   'sessionList.context': true,
@@ -123,7 +128,9 @@ beforeEach(() => {
   codexCheck.value = { pending: false };
   codexModels.value = { models: [], loading: true };
   antigravityModels.value = { models: [], loading: true };
+  kimiModels.value = { models: [], loading: true };
   agyCheck.value = { pending: false };
+  kimiCheck.value = { pending: false };
   userFonts.value = { ui: [], code: [] };
 });
 afterEach(() => vi.restoreAllMocks());
@@ -201,11 +208,30 @@ describe('вкладка настроек', () => {
     reload?.click();
     expect(posted).toContainEqual({ type: 'settings.antigravityModels' });
   });
+  it('Kimi: каталог без ACP session выбирает model/effort и показывает семантику native auto', async () => {
+    const host = mount(Settings);
+    state({ defaultProvider: 'kimi', 'kimi.defaultModel': 'kimi-code/k3.1-pro', 'kimi.defaultEffort': 'high' });
+    handleSettingsMessage({
+      type: 'settings.kimiModels', loading: false,
+      models: [{ value: 'kimi-code/k3.1-pro', displayName: 'K3.1 Pro', effortLevels: ['low', 'high', 'max'] }],
+    });
+    await flush();
+    const options = (k: string) => [...host.querySelectorAll<HTMLOptionElement>(`select[aria-label="${k}"] option`)].map((o) => o.value);
+    expect(options('kimi.defaultModel')).toEqual(['', 'kimi-code/k3.1-pro']);
+    expect(options('kimi.defaultEffort')).toEqual(['', 'low', 'high', 'max']);
+    expect(host.querySelector('#ns-panel-kimi')?.textContent).toContain('безопасные правки файлов И команды');
+    change(host.querySelector('[aria-label="kimi.defaultEffort"]')!, 'max');
+    expect(sets()).toEqual([{ type: 'settings.set', key: 'kimi.defaultEffort', value: 'max' }]);
+    const reload = [...host.querySelectorAll<HTMLButtonElement>('#ns-panel-kimi button')].find((b) => b.textContent === 'Обновить модели');
+    reload?.click();
+    expect(posted).toContainEqual({ type: 'settings.kimiModels' });
+  });
+
   it('Claude и Codex имеют отдельные поля; Codex пишет свои разрешения', async () => {
     const host = mount(Settings);
     state({ defaultModel: 'opus', 'codex.defaultModel': 'gpt-test' });
     await flush();
-    expect([...host.querySelectorAll('.ns-providers strong')].map((e) => e.textContent)).toEqual(['Claude', 'Codex', 'Cursor', 'Antigravity']);
+    expect([...host.querySelectorAll('.ns-providers strong')].map((e) => e.textContent)).toEqual(['Claude', 'Codex', 'Cursor', 'Antigravity', 'Kimi Code']);
     expect(host.querySelector<HTMLInputElement>('[aria-label="defaultModel"]')!.value).toBe('opus');
     expect(host.querySelector<HTMLInputElement>('[aria-label="codex.defaultModel"]')!.value).toBe('gpt-test');
     change(host.querySelector('[aria-label="codex.defaultApproval"]')!, 'never');
@@ -349,6 +375,8 @@ describe('вкладка настроек', () => {
       'agentura.antigravity.defaultModel',
       'agentura.antigravity.defaultEffort',
       'agentura.cursor.defaultModel',
+      'agentura.kimi.defaultModel',
+      'agentura.kimi.defaultEffort',
       'agentura.contextThresholds',
       'agentura.usagePollMinutes · не меньше 5',
       'agentura.limits.readKeychain',
@@ -393,6 +421,7 @@ describe('вкладка настроек', () => {
       'agentura.codexExecutable · только эта машина',
       'agentura.antigravityExecutable · только эта машина',
       'agentura.cursorExecutable · только эта машина',
+      'agentura.kimiExecutable · только эта машина',
     ].sort());
   });
 
@@ -583,7 +612,7 @@ describe('вкладка настроек', () => {
     const boxes = [
       ...host.querySelectorAll<HTMLInputElement>('[data-key="agentura.sidebar.limitsHidden"] input[type="checkbox"]'),
     ];
-    expect(boxes.map((b) => b.checked)).toEqual([true, false, true, true]);
+    expect(boxes.map((b) => b.checked)).toEqual([true, false, true, true, true]);
     boxes[2]!.click();
     expect(sets().at(-1)).toEqual({
       type: 'settings.set',
@@ -905,6 +934,26 @@ describe('вкладка настроек', () => {
     const sel = host.querySelector<HTMLSelectElement>('select[aria-label="defaultProvider"]')!;
     expect(sel.value).toBe('cursor');
     expect([...sel.options].map((o) => o.value)).toContain('cursor');
+  });
+
+  it('Kimi: свой путь, свой checkEngine и пункт defaultProvider', async () => {
+    const host = mount(Settings);
+    state({ kimiExecutable: '/x/kimi', defaultProvider: 'kimi' });
+    await flush();
+    const row = host.querySelector('.set[data-key$="kimiExecutable"]')!;
+    expect(row.textContent).toContain('Путь к kimi');
+    row.querySelector<HTMLButtonElement>('.btn')!.click();
+    expect(posted).toContainEqual({ type: 'settings.checkEngine', path: '/x/kimi', engine: 'kimi' });
+    handleSettingsMessage({
+      type: 'settings.engine', engine: 'kimi',
+      result: { ok: true, source: 'setting', path: '/x/kimi', version: '2.6.0' },
+    });
+    await flush();
+    expect(row.querySelector('.ok[role="status"]')!.textContent).toContain('2.6.0');
+    expect(host.querySelector('.set[data-key$="claudeExecutable"] .ok')).toBeNull();
+    const sel = host.querySelector<HTMLSelectElement>('select[aria-label="defaultProvider"]')!;
+    expect(sel.value).toBe('kimi');
+    expect([...sel.options].map((o) => o.value)).toContain('kimi');
   });
 
   it('ссылки «в настройках VS Code» и settings.json', async () => {

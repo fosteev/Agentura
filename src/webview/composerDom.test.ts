@@ -80,7 +80,7 @@ beforeEach(() => {
 });
 
 describe('поле ввода', () => {
-  it.each(['claude', 'codex', 'cursor', 'antigravity'] as const)('логотип %s появляется после старта/восстановления и сбрасывается с новой сессией', async (engine) => {
+  it.each(['claude', 'codex', 'cursor', 'antigravity', 'kimi'] as const)('логотип %s появляется после старта/восстановления и сбрасывается с новой сессией', async (engine) => {
     const host = mount();
     handleHostMessage({ type: 'chat.info', project: 'p', cwd: '/p', allowBypass: false, provider: engine });
     await flush();
@@ -752,7 +752,7 @@ describe('меню агента — вариант A', () => {
     host.querySelector<HTMLButtonElement>('.agent, .engine')!.click();
     await flush();
     const rows = [...host.querySelectorAll<HTMLButtonElement>('.agent-row')];
-    expect(rows).toHaveLength(4);
+    expect(rows).toHaveLength(5);
     expect(rows[0]!.textContent).toContain('Antigravity');
     expect(rows[0]!.textContent).toContain('1.5.3');
     expect(rows[0]!.getAttribute('aria-checked')).toBe('true');

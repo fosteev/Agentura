@@ -111,6 +111,19 @@ it('new chat in existing task is explicit and preserves user input', async () =>
   await flush();
   expect(get<HTMLTextAreaElement>('#sp-prompt').value).toBe('Review this');
 });
+it('new task provider list includes Kimi with K and sends kimi', async () => {
+  await open();
+  const id = await find();
+  post({ type: 'task.picker.result', requestId: id, result: { ...found, existing: false, chats: [] } });
+  await flush();
+  const engines = [...document.querySelectorAll<HTMLButtonElement>('.engines button')];
+  const kimi = engines.find((b) => b.textContent?.includes('Kimi Code'))!;
+  expect(kimi.querySelector('.mk.kimi')?.textContent).toBe('K');
+  kimi.click();
+  await flush();
+  get('.ft .go').click();
+  expect(sent.at(-1)).toMatchObject({ type: 'task.picker.act', mode: 'create', provider: 'kimi' });
+});
 it('new task shows settings immediately; stale replies and edited query cannot enable actions', async () => {
   await open();
   const first = await find();

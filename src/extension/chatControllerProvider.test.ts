@@ -101,11 +101,13 @@ function setup(over: Partial<ChatDeps> = {}) {
   const codex = fakeAdapter('codex');
   const agy = fakeAdapter('agy', (id) => new AgyTestSession(id));
   const cursor = fakeAdapter('cursor');
+  const kimi = fakeAdapter('kimi');
   const posted: ToWebview[] = [];
   const remembered: AgentProvider[] = [];
   const codexReady = vi.fn(async () => ({ ok: true as const }));
   const agyReady = vi.fn(async () => ({ ok: true as const }));
   const cursorReady = vi.fn(async () => ({ ok: true as const }));
+  const kimiReady = vi.fn(async () => ({ ok: true as const }));
   const deps: ChatDeps = {
     adapter: claude.adapter,
     adapterFor: (p) =>
@@ -115,7 +117,9 @@ function setup(over: Partial<ChatDeps> = {}) {
           ? agy.adapter
           : p === 'cursor'
             ? cursor.adapter
-            : claude.adapter,
+            : p === 'kimi'
+              ? kimi.adapter
+              : claude.adapter,
     engineFor: (p) =>
       p === 'codex'
         ? { ready: codexReady }
@@ -123,7 +127,9 @@ function setup(over: Partial<ChatDeps> = {}) {
           ? { ready: agyReady }
           : p === 'cursor'
             ? { ready: cursorReady }
-            : undefined,
+            : p === 'kimi'
+              ? { ready: kimiReady }
+              : undefined,
     rememberProvider: (p) => remembered.push(p),
     cwd: '/p',
     project: 'p',
@@ -144,7 +150,7 @@ function setup(over: Partial<ChatDeps> = {}) {
     ...over,
   };
   const controller = new ChatController(deps);
-  return { controller, claude, codex, agy, cursor, posted, remembered, codexReady, agyReady, cursorReady };
+  return { controller, claude, codex, agy, cursor, kimi, posted, remembered, codexReady, agyReady, cursorReady, kimiReady };
 }
 
 const infos = (posted: ToWebview[]) =>
@@ -918,5 +924,81 @@ describe('ChatController: Cursor', () => {
     expect(remembered).toEqual(['cursor']);
     expect(cursor.created).toHaveLength(1);
     expect(claude.created).toHaveLength(0);
+  });
+});
+
+
+describe('ChatController: Kimi', () => {
+  const kimiSettings = () => ({
+    allowBypass: false,
+    defaultModel: 'sonnet',
+    defaultEffort: 'max' as const,
+    defaultPermissionMode: 'acceptEdits' as const,
+    kimiDefaults: { model: 'kimi-code/k3.1-pro', effort: 'high' as const },
+  });
+
+  it('новая вкладка использует только Kimi adapter/defaults и не вызывает Claude limits', async () => {
+    const usage = vi.fn(async () => ({ windows: [], updatedAt: 0 }));
+    const t = setup({ provider: 'kimi', settings: kimiSettings, usage: { refresh: usage } });
+    t.controller.start();
+    await tick();
+    expect(t.kimiReady).toHaveBeenCalled();
+    expect(t.kimi.created).toEqual([{
+      cwd: '/p', allowBypassPermissions: false, permissionMode: 'acceptEdits',
+      model: 'kimi-code/k3.1-pro', effort: 'high',
+    }]);
+    expect(t.claude.created).toHaveLength(0);
+    expect(t.codex.created).toHaveLength(0);
+    expect(t.kimi.created[0]).not.toHaveProperty('codexDefaults');
+    expect(t.kimi.created[0]).not.toHaveProperty('taskTools');
+    expect(t.kimi.created[0]).not.toHaveProperty('mcpWatch');
+    expect(t.posted).toContainEqual({ type: 'session.defaults', mode: 'acceptEdits', effort: 'high' });
+    expect(usage).not.toHaveBeenCalled();
+    t.controller.pushInfo();
+    expect(infos(t.posted).at(-1)).toMatchObject({ provider: 'kimi', features: providerFeatures('kimi') });
+    expect(infos(t.posted).at(-1)?.features).toMatchObject({
+      cost: false, mcp: false, remote: false, agentStop: false, plan: true, subagents: true,
+    });
+  });
+
+  it('resume не получает model/effort defaults новой вкладки', async () => {
+    const t = setup({ provider: 'kimi', resumeId: 'kimi-existing', settings: kimiSettings });
+    t.controller.start();
+    await tick();
+    await tick();
+    expect(t.kimi.resumed[0]![0]).toBe('kimi-existing');
+    expect(t.kimi.resumed[0]![1]).not.toHaveProperty('model');
+    expect(t.kimi.resumed[0]![1]).not.toHaveProperty('effort');
+    expect(t.kimi.resumed[0]![1]).toMatchObject({ permissionMode: 'default' });
+    expect(t.kimi.created).toHaveLength(0);
+    expect(t.claude.resumed).toHaveLength(0);
+  });
+
+  it('native plan option id доходит без переименования', async () => {
+    const t = setup({ provider: 'kimi' });
+    t.controller.start();
+    await tick();
+    await t.controller.handle({
+      type: 'plan.decide', sessionId: 'kimi-new', toolUseId: 'plan-1', decision: 'run', optionId: 'plan_opt_1',
+    });
+    expect(t.kimi.sessions[0]!.planned).toEqual([[
+      'plan-1', { approve: true, mode: 'default', optionId: 'plan_opt_1' },
+    ]]);
+  });
+
+  it('текстовый task context идёт inline; PDF не уходит адаптеру', async () => {
+    const t = setup({ provider: 'kimi' });
+    t.controller.start();
+    await tick();
+    await t.controller.handle({
+      type: 'send', sessionId: '', text: 'продолжи',
+      files: [
+        { kind: 'text', path: 'K-1.md', data: '# K-1', size: 5 },
+        { kind: 'pdf', path: 'a.pdf', data: 'JVBERi0=', size: 6 },
+      ],
+    } as never);
+    const session = t.kimi.sessions[0]!;
+    expect(session.sent[0]).toBe('продолжи\n\n[Agentura: контекст]\n--- K-1.md ---\n# K-1');
+    expect(session.sentFiles[0]).toBeUndefined();
   });
 });

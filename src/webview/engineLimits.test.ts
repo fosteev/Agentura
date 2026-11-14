@@ -321,6 +321,20 @@ describe('лимиты нескольких движков в боковой п�
     expect(host.querySelectorAll('.eng[data-engine="antigravity"]').length).toBe(0);
   });
 
+  it('Kimi signedOut показывает K и login без выдуманных email/plan/окон', async () => {
+    const host = await mount({
+      limits: 'stack',
+      engines: [{ engine: 'kimi', state: 'signedOut', version: 'kimi 2.6.0', windows: [], updatedAt: Date.now() }],
+    });
+    const card = q(host, '.eng[data-engine="kimi"]');
+    expect(card.querySelector('.mk.kimi')?.textContent).toBe('K');
+    expect(card.textContent).toContain('не вошли');
+    expect(card.querySelector('.L')).toBeNull();
+    expect(card.textContent).not.toContain('@');
+    card.querySelector<HTMLElement>('.signin')!.click();
+    expect(posted).toContainEqual({ type: 'engine.login', engine: 'kimi' });
+  });
+
   it('signedOut в таблице и в D', async () => {
     const host = await mount({
       limits: 'table',

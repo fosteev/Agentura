@@ -63,10 +63,12 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     codexAdapter,
     antigravityAdapter,
     cursorAdapter,
+    kimiAdapter,
     engine,
     codexEngine,
     antigravityEngine,
     cursorEngine,
+    kimiEngine,
   } = createAdapter(log, String(context.extension.packageJSON.version), context.globalState);
   engine.warm();
   const folder = vscode.workspace.workspaceFolders?.[0];
@@ -96,6 +98,8 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     antigravity: { adapter: antigravityAdapter, available: () => antigravityEngine.available() },
     // сессии Cursor (`session/list`): короткий `agent acp` только если резолвер не нашёл `problem`
     cursor: { adapter: cursorAdapter, available: () => cursorEngine.available() },
+    // Kimi: такой же изолированный источник; его сбой не отменяет Promise.all чужих списков
+    kimi: { adapter: kimiAdapter, available: () => kimiEngine.available() },
     cwd,
     // беседы Codex/agy своих worktree чатов задач (roadmap 26, Д2): их папки — в ссылках групп
     extraCwds: (p) => taskGroups.cwds(p),
@@ -130,6 +134,7 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     agyQuota,
     codexEngine,
     antigravityEngine,
+    kimiEngine,
   });
   const pollMinutes = () =>
     vscode.workspace.getConfiguration('agentura').get<number>('usagePollMinutes', 15);
@@ -140,6 +145,7 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     codexAdapter,
     antigravityAdapter,
     cursorAdapter,
+    kimiAdapter,
     live,
     transcripts,
     usage,
@@ -158,6 +164,7 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     codexEngine,
     antigravityEngine,
     cursorEngine,
+    kimiEngine,
     git: new GitService({
       loadApi: getGitApi,
       ui: vscodeGitUi(),
@@ -208,7 +215,9 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
               ? 'Antigravity'
               : r.provider === 'cursor'
                 ? 'Cursor'
-                : `${t.turns(r.turns)}${r.costUsd !== undefined ? ` · $${r.costUsd.toFixed(2)}` : ''}`,
+                : r.provider === 'kimi'
+                  ? 'Kimi Code'
+                  : `${t.turns(r.turns)}${r.costUsd !== undefined ? ` · $${r.costUsd.toFixed(2)}` : ''}`,
         detail: new Date(r.updatedAt).toLocaleString(t.locale),
         id: r.id,
         provider: r.provider ?? ('claude' as const),

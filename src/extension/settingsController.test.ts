@@ -69,6 +69,25 @@ describe('SettingsController', () => {
     ]);
   });
 
+  it('каталог Kimi идёт отдельным сообщением; смена модели сбрасывает несовместимый effort', async () => {
+    const models = [
+      { value: 'kimi-code/k3.1-pro', displayName: 'K3.1 Pro', effortLevels: ['low' as const, 'high' as const, 'max' as const] },
+      { value: 'kimi-code/boolean', displayName: 'Boolean', supportsEffort: false },
+    ];
+    const t = setup(
+      { 'kimi.defaultModel': 'kimi-code/k3.1-pro', 'kimi.defaultEffort': 'high' },
+      { listKimiModels: async () => models },
+    );
+    await t.c.handle({ type: 'settings.kimiModels' });
+    expect(t.posted.at(-1)).toEqual({ type: 'settings.kimiModels', models, loading: false });
+    await t.c.handle({ type: 'settings.set', key: 'kimi.defaultModel', value: 'kimi-code/boolean' });
+    expect(t.updates).toEqual([
+      { key: 'kimi.defaultModel', value: 'kimi-code/boolean', target: GLOBAL },
+      { key: 'kimi.defaultEffort', value: '', target: GLOBAL },
+    ]);
+    expect(t.deps.config().get('defaultEffort')).toBeUndefined();
+  });
+
   it('ошибка загрузки моделей не оставляет pending, повторный запрос восстанавливает каталог', async () => {
     const load = vi.fn().mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce([]);
     const t = setup({}, { listCodexModels: load });
@@ -205,6 +224,13 @@ describe('SettingsController', () => {
     await c.handle({ type: 'settings.checkEngine', path: '/x/agent', engine: 'cursor' });
     expect(deps.checkEngine).toHaveBeenCalledWith('/x/agent', 'cursor');
     expect(posted[0]).toMatchObject({ type: 'settings.engine', engine: 'cursor' });
+  });
+
+  it('checkEngine: Kimi не подменяется Claude и помечает ответ', async () => {
+    const { c, posted, deps } = setup();
+    await c.handle({ type: 'settings.checkEngine', path: '/x/kimi', engine: 'kimi' });
+    expect(deps.checkEngine).toHaveBeenCalledWith('/x/kimi', 'kimi');
+    expect(posted[0]).toMatchObject({ type: 'settings.engine', engine: 'kimi' });
   });
 
   it('checkEngine: для Antigravity проверяет agy и помечает ответ', async () => {

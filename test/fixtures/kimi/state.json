@@ -1,0 +1,37 @@
+{
+  "id": "session_b8d99f0b-88fa-458b-bab6-d922cd52635b",
+  "version": 2,
+  "cwd": "<WORK>",
+  "archived": false,
+  "agents": {
+    "main": {
+      "homedir": "<HOME>/.kimi-code/sessions/wd_work_1c196ee8ed9a/session_b8d99f0b-88fa-458b-bab6-d922cd52635b/agents/main",
+      "type": "main"
+    },
+    "agent-0": {
+      "homedir": "<HOME>/.kimi-code/sessions/wd_work_1c196ee8ed9a/session_b8d99f0b-88fa-458b-bab6-d922cd52635b/agents/agent-0",
+      "type": "sub",
+      "parentAgentId": "main",
+      "labels": {
+        "parentAgentId": "main",
+        "profileName": "nester"
+      }
+    },
+    "agent-1": {
+      "homedir": "<HOME>/.kimi-code/sessions/wd_work_1c196ee8ed9a/session_b8d99f0b-88fa-458b-bab6-d922cd52635b/agents/agent-1",
+      "type": "sub",
+      "parentAgentId": "main",
+      "labels": {
+        "parentAgentId": "agent-0",
+        "profileName": "explore"
+      }
+    }
+  },
+  "custom": {},
+  "title": "Call Agent exactly once in foreground with subagent_type \"nester\" and prompt \"Execute your nested marker task now.\" Wait for the final result, then return only MAIN_NEST_DONE_1501.",
+  "titleKind": "replaceable",
+  "createdAt": 1794548694340,
+  "updatedAt": 1794548720465,
+  "lastPrompt": "Call Agent exactly once with resume=\"agent-0\" and prompt \"Return exactly RESUME_MARKER_1502; do not use tools.\" Wait for the final result, then return only MAIN_RESUME_DONE_1502.",
+  "isCustomTitle": false
+}

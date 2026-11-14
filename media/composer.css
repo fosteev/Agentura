@@ -246,6 +246,9 @@ html[data-width="380"] .compose[data-layout="gauges"] .top .g { margin-left: 0; 
 .compose .prompt .provider-logo-codex { background-image: url('brands/openai.svg'); }
 .compose .prompt .provider-logo-cursor { background-image: url('brands/cursor.svg'); }
 .compose .prompt .provider-logo-antigravity { background-image: url('brands/antigravity.svg'); }
+.compose .prompt .provider-logo-kimi { background-image: url('brands/kimi.svg'); }
+body.vscode-dark .compose .prompt .provider-logo-kimi,
+body.vscode-high-contrast .compose .prompt .provider-logo-kimi { background-image: url('brands/kimi-dark.svg'); }
 body.vscode-dark .compose .prompt .provider-logo-codex,
 body.vscode-high-contrast .compose .prompt .provider-logo-codex { background-image: url('brands/openai-dark.svg'); }
 .compose[data-layout] .prompt:has(.provider-logo) { grid-template-columns: 16px minmax(0, 1fr); }
@@ -264,6 +267,9 @@ body.vscode-high-contrast .compose .prompt .provider-logo-codex { background-ima
 .agent-row .agent-logo-codex { background-image: url('brands/openai.svg'); }
 .agent-row .agent-logo-antigravity { background-image: url('brands/antigravity.svg'); }
 .agent-row .agent-logo-cursor { background-image: url('brands/cursor.svg'); }
+.agent-row .agent-logo-kimi { background-image: url('brands/kimi.svg'); }
+body.vscode-dark .agent-row .agent-logo-kimi,
+body.vscode-high-contrast .agent-row .agent-logo-kimi { background-image: url('brands/kimi-dark.svg'); }
 body.vscode-dark .agent-row .agent-logo-codex,
 body.vscode-high-contrast .agent-row .agent-logo-codex { background-image: url('brands/openai-dark.svg'); }
 .agent-row .agent-name { grid-column: 2; font-size: 13px; font-weight: 500; }

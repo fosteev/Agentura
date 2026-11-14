@@ -38,8 +38,10 @@ import {
   agyCheck,
   codexCheck,
   cursorCheck,
+  kimiCheck,
   codexModels,
   antigravityModels,
+  kimiModels,
   engineCheck,
   errors,
   integrations,
@@ -78,12 +80,14 @@ const S = T.sessionUi;
 const sessionProviders: readonly [AgentProvider, string, string][] = [
   ['claude', 'Claude', 'Anthropic'], ['codex', 'Codex', 'OpenAI'],
   ['cursor', 'Cursor', 'Cursor'], ['antigravity', 'Antigravity', 'Google'],
+  ['kimi', 'Kimi Code', 'Moonshot AI'],
 ];
 const sessionKeys: Record<AgentProvider, SettingKey[]> = {
   claude: ['defaultModel', 'defaultEffort', 'defaultPermissionMode', 'remoteControl', 'remoteControlNamePrefix'],
   codex: ['codex.defaultModel', 'codex.defaultEffort', 'codex.defaultApproval', 'codex.defaultSandbox'],
   cursor: ['cursor.defaultModel', 'defaultPermissionMode'],
   antigravity: ['antigravity.defaultModel', 'antigravity.defaultEffort', 'defaultPermissionMode'],
+  kimi: ['kimi.defaultModel', 'kimi.defaultEffort', 'defaultPermissionMode'],
 };
 /** Ширина вкладки, с которой разделы — колонкой слева (уже — полосой вкладок над страницей). */
 const NAV_PX = 600;
@@ -657,21 +661,22 @@ function ThresholdScale({ value }: { value: [number, number] }) {
   );
 }
 
-type EngineId = 'claude' | 'codex' | 'antigravity' | 'cursor';
-const ENGINE_KEY = {
+type EngineId = AgentProvider;
+const ENGINE_KEY: Record<EngineId, SettingKey> = {
   claude: 'claudeExecutable',
   codex: 'codexExecutable',
   antigravity: 'antigravityExecutable',
   cursor: 'cursorExecutable',
-} as const;
+  kimi: 'kimiExecutable',
+};
 
 function EngineRow({ value, engine = 'claude' }: { value: string; engine?: EngineId }) {
   const [draft, setDraft] = useDraft(value);
   const k = ENGINE_KEY[engine];
   const text =
-    engine === 'codex' ? T.exeCodex : engine === 'antigravity' ? T.exeAgy : engine === 'cursor' ? T.exeCursor : T.exe;
+    engine === 'codex' ? T.exeCodex : engine === 'antigravity' ? T.exeAgy : engine === 'cursor' ? T.exeCursor : engine === 'kimi' ? T.exeKimi : T.exe;
   const c = (
-    engine === 'codex' ? codexCheck : engine === 'antigravity' ? agyCheck : engine === 'cursor' ? cursorCheck : engineCheck
+    engine === 'codex' ? codexCheck : engine === 'antigravity' ? agyCheck : engine === 'cursor' ? cursorCheck : engine === 'kimi' ? kimiCheck : engineCheck
   ).value;
   const r = c.result;
   const save = (text: string) => {
@@ -731,7 +736,8 @@ export function Settings() {
   };
   const providerHasError = (provider: AgentProvider) => sessionKeys[provider].some(k => errors.value[k])
     || (provider === 'codex' && !!codexModels.value.error)
-    || (provider === 'antigravity' && !!antigravityModels.value.error);
+    || (provider === 'antigravity' && !!antigravityModels.value.error)
+    || (provider === 'kimi' && !!kimiModels.value.error);
   // примерка шрифта (наведение на карточку): образец ленты рисуется им, настройка не меняется
   const [trying, setTrying] = useState<{ k: FontKey; name: string }>();
   const tryFont = (k: FontKey) => (name: string | undefined) =>
@@ -827,6 +833,20 @@ export function Settings() {
   if (v['antigravity.defaultEffort'] && !['', 'low', 'medium', 'high'].includes(v['antigravity.defaultEffort']))
     agyEfforts.push([v['antigravity.defaultEffort'], `${v['antigravity.defaultEffort']} (${T.newChat.unavailable})`, true]);
 
+  const kimiCatalog = kimiModels.value;
+  const kimiModel = kimiCatalog.models.find((m) => m.value === v['kimi.defaultModel']);
+  const kimiModelOptions: [string, string, boolean?][] = [
+    ['', T.newChat.kimiInherit], ...kimiCatalog.models.map((m): [string, string] => [m.value, m.displayName]),
+  ];
+  if (v['kimi.defaultModel'] && !kimiModel) kimiModelOptions.push([
+    v['kimi.defaultModel'], `${v['kimi.defaultModel']}${kimiCatalog.loading ? '' : ` (${T.newChat.unavailable})`}`, true,
+  ]);
+  const kimiEfforts: [string, string, boolean?][] = [
+    ['', T.newChat.kimiInherit], ...(kimiModel?.effortLevels ?? []).map((e): [string, string] => [e, S.efforts[e]]),
+  ];
+  if (v['kimi.defaultEffort'] && !kimiModel?.effortLevels?.includes(v['kimi.defaultEffort']))
+    kimiEfforts.push([v['kimi.defaultEffort'], `${v['kimi.defaultEffort']} (${T.newChat.unavailable})`, true]);
+
   // примеряемый шрифт перекрывает свою переменную только у образцов; '' — значение по умолчанию
   // (у панелей — `initial`: var(--panel-font, …) берёт прежний шрифт)
   const trialVars = trying
@@ -852,6 +872,7 @@ export function Settings() {
     ['codex', T.provider.options.codex],
     ['antigravity', T.provider.options.antigravity],
     ['cursor', T.provider.options.cursor],
+    ['kimi', T.provider.options.kimi],
   ];
   const languageModes = LANGUAGE_MODES.map((m): [string, string] => [
     m,
@@ -937,8 +958,9 @@ export function Settings() {
                     data-provider={id} onClick={() => setSettingsProvider(id)}
                     onKeyDown={(e) => {
                       const i = sessionProviders.findIndex(([p]) => p === id);
-                      const next = e.key === 'ArrowRight' ? (i + 1) % 4 : e.key === 'ArrowLeft' ? (i + 3) % 4
-                        : e.key === 'Home' ? 0 : e.key === 'End' ? 3 : -1;
+                      const next = e.key === 'ArrowRight' ? (i + 1) % sessionProviders.length
+                        : e.key === 'ArrowLeft' ? (i + sessionProviders.length - 1) % sessionProviders.length
+                        : e.key === 'Home' ? 0 : e.key === 'End' ? sessionProviders.length - 1 : -1;
                       if (next < 0) return;
                       e.preventDefault();
                       const nextProvider = sessionProviders[next];
@@ -1048,6 +1070,28 @@ export function Settings() {
                     <Select k="antigravity.defaultEffort" value={v['antigravity.defaultEffort']} options={agyEfforts} disabled={agyCatalog.loading || !agyModelSupportsEffort} />
                   </Row>
                   <p>{S.sharedMode}</p>
+                  <button type="button" class="ns-link" onClick={() => selectProvider('claude')}>{S.openClaude}</button>
+                </div>
+              </div>
+              <div id="ns-panel-kimi" role="tabpanel" aria-labelledby="ns-tab-kimi" hidden={selectedProvider !== 'kimi'}>
+                <div class="ns-group"><h4>{S.modelGroup}</h4>
+                  <Row name={S.model} desc={T.newChat.kimiModelDesc} k="kimi.defaultModel">
+                    {kimiCatalog.models.length > 0 ? (
+                      <Select k="kimi.defaultModel" value={v['kimi.defaultModel']} options={kimiModelOptions} disabled={kimiCatalog.loading} />
+                    ) : (
+                      <TextField k="kimi.defaultModel" value={v['kimi.defaultModel']} placeholder={T.newChat.kimiInherit} />
+                    )}
+                    <button type="button" class="btn" disabled={kimiCatalog.loading} onClick={() => send({ type: 'settings.kimiModels' })}>
+                      {kimiCatalog.loading ? T.newChat.modelsLoading : T.newChat.modelsReload}
+                    </button>
+                  </Row>
+                  {!kimiCatalog.loading && (kimiCatalog.error || !kimiCatalog.models.length) &&
+                    <div class="err" role="alert">{kimiCatalog.error ?? T.newChat.kimiNoModels}</div>}
+                  <Row name={S.effort} desc={T.newChat.kimiEffortDesc} k="kimi.defaultEffort">
+                    <Select k="kimi.defaultEffort" value={v['kimi.defaultEffort']} options={kimiEfforts} disabled={kimiCatalog.loading || !kimiModel} />
+                  </Row>
+                  <p>{S.sharedMode}</p>
+                  <p class="note">{S.kimiAutoNote}</p>
                   <button type="button" class="ns-link" onClick={() => selectProvider('claude')}>{S.openClaude}</button>
                 </div>
               </div>
@@ -1424,6 +1468,7 @@ export function Settings() {
               <EngineRow engine="codex" value={v.codexExecutable} />
               <EngineRow engine="antigravity" value={v.antigravityExecutable} />
               <EngineRow engine="cursor" value={v.cursorExecutable} />
+              <EngineRow engine="kimi" value={v.kimiExecutable} />
             </>,
           )}
         </div>

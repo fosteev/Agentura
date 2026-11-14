@@ -21,7 +21,9 @@ export function parseNewCommand(args: string, fallback: AgentProvider): { provid
           ? 'antigravity'
           : word === 'cursor'
             ? 'cursor'
-            : undefined;
+            : word === 'kimi'
+              ? 'kimi'
+              : undefined;
   if (!engine) return { provider: fallback, prompt: text };
   return { provider: engine, prompt: (m?.[2] ?? '').trim() };
 }

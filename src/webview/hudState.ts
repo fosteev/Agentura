@@ -236,6 +236,15 @@ export function applyHud(s: HudState, e: AgentEvent, now = Date.now()): HudState
         }),
         (a) => ({
           ...a,
+          // Дurable resume может повторно открыть уже завершённый вызов; накопленный timeline сохраняем.
+          // Только новое durable событие с timestamp: поздний enrichment без at не «возобновляет» завершённый вызов.
+          ...(a.status !== 'running' && e.at !== undefined ? {
+            status: 'running' as const,
+            startedAt: e.at ?? now,
+            endedAt: undefined,
+            summary: undefined,
+            durationMs: undefined,
+          } : {}),
           taskId: e.taskId,
           description: e.description,
           taskType: e.taskType,

@@ -92,6 +92,8 @@ export interface ChatDeps {
   settings(): {
     codexDefaults?: import('../agent/types').CodexNewChatDefaults;
     antigravityDefaults?: { model?: string; effort?: import('../agent/types').EffortLevel };
+    /** Только новые вкладки Kimi; пустые значения наследуют CLI, resume их не получает. */
+    kimiDefaults?: { model?: string; effort?: import('../agent/types').EffortLevel };
     defaultModel?: string;
     /** `agentura.cursor.defaultModel`: ACP modelId новых чатов Cursor; пусто — выбор движка. */
     cursorDefaultModel?: string;
@@ -1078,7 +1080,7 @@ export class ChatController {
         case 'plan.decide':
           this.answered(
             m.type,
-            session.decidePlan(m.toolUseId, planDecision(m.decision, m.feedback)),
+            session.decidePlan(m.toolUseId, planDecision(m.decision, m.feedback, m.optionId)),
           );
           return;
         default:
@@ -1560,6 +1562,8 @@ export class ChatController {
   /** Лимиты подписки → webview (`limits.update`). Не чаще кулдауна `UsageService`. */
   private async refreshLimits(): Promise<void> {
     const { usage, post, agyQuota } = this.deps;
+    // Kimi не сообщает subscription limits: не запрашивать ради него чужой Claude account.
+    if (this.engineProvider === 'kimi') return;
     if (this.engineProvider === 'antigravity') {
       // квота Antigravity вместо лимитов Claude: у agy своих окон 5ч/неделя нет
       if (!agyQuota) return;
@@ -1643,23 +1647,27 @@ export class ChatController {
             : (() => {
               // настройки «режим» и «effort по умолчанию» — только новым сессиям (resume берёт своё)
               const mode = resolveDefaultMode(s.defaultPermissionMode, s.allowBypass);
-              // effort по умолчанию — Claude и Antigravity (у Cursor дефолт внутри движка)
+              // Effort по умолчанию — только новые сессии со своей настройкой; Cursor наследует CLI.
               const effort = claude
                 ? resolveDefaultEffort(s.defaultEffort)
                 : provider === 'antigravity'
                   ? s.antigravityDefaults?.effort
-                  : undefined;
+                  : provider === 'kimi'
+                    ? s.kimiDefaults?.effort
+                    : undefined;
               // меню под полем ввода — сразу, не дожидаясь `session.init` после первого хода
               this.defaults = { type: 'session.defaults', mode, ...(effort ? { effort } : {}) };
               deps.post(this.defaults);
-              // модель: Claude — `defaultModel`; Cursor — свой ACP modelId; Antigravity — antigravityDefaults.model. Пусто — выбор движка, свойства нет.
+              // У каждого движка свой default; пусто — наследовать CLI, resume сюда не приходит.
               const model = claude
                 ? s.defaultModel
                 : provider === 'cursor'
                   ? s.cursorDefaultModel
                   : provider === 'antigravity'
                     ? s.antigravityDefaults?.model
-                    : undefined;
+                    : provider === 'kimi'
+                      ? s.kimiDefaults?.model
+                      : undefined;
               return adapter.createSession({
                 ...base,
                 permissionMode: mode,
@@ -1718,7 +1726,7 @@ export class ChatController {
     const deferInit =
       e.type === 'session.init' &&
       this.pristine &&
-      (this.engineProvider === 'antigravity' || this.engineProvider === 'cursor');
+      (this.engineProvider === 'antigravity' || this.engineProvider === 'cursor' || this.engineProvider === 'kimi');
     if (e.type === 'session.init' && session.id && !deferInit) this.lastSessionId = session.id;
     this.log.debug(`← ${describeEvent(e)}`);
     const out = deferInit ? { ...e, sessionId: '' } : e;
@@ -2004,10 +2012,11 @@ export class ChatController {
 export function planDecision(
   choice: PlanChoice,
   feedback?: string,
+  optionId?: string,
 ): Parameters<AgentSession['decidePlan']>[1] {
   switch (choice) {
     case 'run':
-      return { approve: true, mode: 'default' };
+      return { approve: true, mode: 'default', ...(optionId ? { optionId } : {}) };
     case 'run-edits':
       return { approve: true, mode: 'acceptEdits' };
     case 'refine': {

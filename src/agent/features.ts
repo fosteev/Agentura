@@ -158,6 +158,34 @@ export const CURSOR_FEATURES: Readonly<ProviderFeatures> = {
   skills: false,
 };
 
+/**
+ * Kimi Code (`kimi acp`): подтверждены modes/plan/questions/images, local `/compact`, context и skills.
+ * Граф и read-only транскрипты восстанавливаются из versioned session persistence; отдельного Stop субагента нет.
+ * PDF/files, cost/remote/mcp/browser не поддерживаются.
+ */
+export const KIMI_FEATURES: Readonly<ProviderFeatures> = {
+  nativeSettings: false,
+  modes: true,
+  compact: true,
+  autoCompact: false,
+  context: true,
+  cost: false,
+  subagents: true,
+  agentStop: false,
+  agentTranscript: true,
+  plan: true,
+  questions: true,
+  images: true,
+  files: false,
+  remote: false,
+  browser: false,
+  mcp: false,
+  mcpReconnect: false,
+  mcpReloadAll: false,
+  mcpToggle: false,
+  skills: true,
+};
+
 export function providerFeatures(provider: AgentProvider): ProviderFeatures {
   return {
     ...(provider === 'codex'
@@ -166,6 +194,8 @@ export function providerFeatures(provider: AgentProvider): ProviderFeatures {
         ? ANTIGRAVITY_FEATURES
         : provider === 'cursor'
           ? CURSOR_FEATURES
-          : CLAUDE_FEATURES),
+          : provider === 'kimi'
+            ? KIMI_FEATURES
+            : CLAUDE_FEATURES),
   };
 }

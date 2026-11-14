@@ -234,16 +234,17 @@ function EngineMissingCard({ c }: { c: FailCard }) {
   const retrying = c.state === 'retrying';
   const codex = provider.value === 'codex';
   const agy = provider.value === 'antigravity';
+  const kimi = provider.value === 'kimi';
   return (
     <div class="ask danger" role="alert">
       <div class="h">
-        {agy ? ui.fail.missingTitleAgy : codex ? ui.fail.missingTitleCodex : ui.fail.missingTitle}
+        {kimi ? ui.fail.missingTitleKimi : agy ? ui.fail.missingTitleAgy : codex ? ui.fail.missingTitleCodex : ui.fail.missingTitle}
         <span class="tag">{ui.fail.tag(c.at)}</span>
       </div>
       <div class="bd">
         <p>{c.message}</p>
         <p class="dim">
-          {agy ? ui.fail.missingHintAgy : codex ? ui.fail.missingHintCodex : ui.fail.missingHint}
+          {kimi ? ui.fail.missingHintKimi : agy ? ui.fail.missingHintAgy : codex ? ui.fail.missingHintCodex : ui.fail.missingHint}
         </p>
       </div>
       <div class="acts">
@@ -401,12 +402,21 @@ export function PlanCardView({ c, cwd }: { c: PlanCard; cwd: string }) {
       </div>
       {pending && (
         <div class="acts">
-          <button class="btn pri" onClick={() => decidePlan(c.toolUseId, 'run')}>
-            {ui.cards.run}
-          </button>
-          <button class="btn" onClick={() => decidePlan(c.toolUseId, 'run-edits')}>
-            {ui.cards.runEdits}
-          </button>
+          {c.options?.length ? c.options.map((option, index) => (
+            <button class={index === 0 ? 'btn pri' : 'btn'} key={option.id}
+              onClick={() => decidePlan(c.toolUseId, 'run', undefined, option.id)}>
+              {option.label}
+            </button>
+          )) : (
+            <>
+              <button class="btn pri" onClick={() => decidePlan(c.toolUseId, 'run')}>
+                {ui.cards.run}
+              </button>
+              <button class="btn" onClick={() => decidePlan(c.toolUseId, 'run-edits')}>
+                {ui.cards.runEdits}
+              </button>
+            </>
+          )}
           <button class="btn ghost" onClick={() => decidePlan(c.toolUseId, 'refine')}>
             {ui.cards.refine}
           </button>

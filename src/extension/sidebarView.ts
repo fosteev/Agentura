@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import type { TaskPicker } from './taskPicker';
-import { postToWebview, type SessionSummary } from '../protocol';
+import { postToWebview, type EngineLimitsSummary, type SessionSummary } from '../protocol';
 import { overriddenKeys, readSettings, writeSetting } from '../settings';
 import type { AccountService } from './account';
 import { ChatPanel } from './chatPanel';
@@ -10,6 +10,7 @@ import type { UsageService } from './usage';
 import type { AgyQuotaService } from './agyQuota';
 import type { CodexLimitsService } from './codexLimits';
 import type { EngineLocator } from './engineLocator';
+import { KimiCatalogError, loadKimiModels } from '../agent/kimi/models';
 import { summarizeAgy, summarizeCodex } from './engineLimits';
 import type { ArchivedSessions } from './archive';
 import { decorateSessions, parseTaskKey, type TaskGroups } from './taskGroups';
@@ -22,6 +23,7 @@ export interface SidebarEngines {
   agyQuota: AgyQuotaService;
   codexEngine: EngineLocator;
   antigravityEngine: EngineLocator;
+  kimiEngine: EngineLocator;
 }
 
 export const SIDEBAR_VIEW_ID = 'agentura.sidebar';
@@ -38,6 +40,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   taskPicker?: TaskPicker;
   private pickerRequest = 0;
   private pickerBusy = false;
+  /** Только наличие/версия/вход Kimi; windows, email, plan и quota не выдумываются. */
+  private kimiSummary: EngineLimitsSummary | undefined;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -143,7 +147,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         )
           this.pushView();
         // движок вернули в панель — его лимиты могли не опрашиваться, не ждём следующего опроса
-        if (e.affectsConfiguration('agentura.sidebar.limitsHidden')) void this.refreshUsage();
+        if (e.affectsConfiguration('agentura.sidebar.limitsHidden') || e.affectsConfiguration('agentura.kimiExecutable'))
+          void this.refreshUsage();
       }),
     ];
     view.onDidDispose(() => {
@@ -237,13 +242,20 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
   /**
    * «войти» у движка без входа: терминал, в котором сразу запущен найденный исполняемый файл (путь из настройки
-   * тоже), без shell и кавычек — `codex login` / `agy acp --login`. Не нашли — команда по имени из PATH.
+   * тоже), без shell и кавычек — `codex login` / `agy|kimi acp --login`. Не нашли — команда по имени из PATH.
    */
-  private async openLogin(engine: 'codex' | 'antigravity'): Promise<void> {
-    const loc = engine === 'codex' ? this.engines.codexEngine : this.engines.antigravityEngine;
-    const exe = (await loc.locate(true).catch(() => undefined))?.path ?? (engine === 'codex' ? 'codex' : 'agy');
+  private async openLogin(engine: 'codex' | 'antigravity' | 'kimi'): Promise<void> {
+    const loc = engine === 'codex'
+      ? this.engines.codexEngine
+      : engine === 'antigravity'
+        ? this.engines.antigravityEngine
+        : this.engines.kimiEngine;
+    const name = engine === 'codex' ? 'codex' : engine === 'antigravity' ? 'agy' : 'kimi';
+    // Старый/чужой явный путь имеет path, но не version: login запускаем только у проверенного Kimi.
+    const located = await loc.locate(true).catch(() => undefined);
+    const exe = (located?.path && (engine !== 'kimi' || located.version) ? located.path : undefined) ?? name;
     const args = engine === 'codex' ? ['login'] : ['acp', '--login'];
-    vscode.window.createTerminal({ name: [engine === 'codex' ? 'codex' : 'agy', ...args].join(' '), shellPath: exe, shellArgs: args }).show();
+    vscode.window.createTerminal({ name: [name, ...args].join(' '), shellPath: exe, shellArgs: args }).show();
   }
 
   /** Сводка Codex и Antigravity → `engines.limits`; не установленный движок приходит как `missing`. */
@@ -261,8 +273,40 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       engines: [
         summarizeCodex(codexLimits.snapshot, codexVersion),
         summarizeAgy(agyQuota.snapshot, agy.installed, agy.version),
+        ...(this.kimiSummary ? [this.kimiSummary] : []),
       ],
     });
+  }
+
+  /** Kimi: resolver различает missing/old; только явный auth-отказ CLI даёт signedOut. Без ACP session. */
+  private async refreshKimi(): Promise<void> {
+    const located = await this.engines.kimiEngine.locate(true).catch(() => undefined);
+    const base = { engine: 'kimi' as const, windows: [], updatedAt: Date.now() };
+    if (!located) {
+      this.kimiSummary = { ...base, state: 'error', error: 'kimi executable lookup failed' };
+      return;
+    }
+    if (!located.path || !located.version) {
+      this.kimiSummary = {
+        ...base,
+        state: located.path ? 'error' : 'missing',
+        ...(located.problem ? { error: located.problem } : {}),
+      };
+      return;
+    }
+    const version = `kimi ${located.version}`;
+    try {
+      await loadKimiModels(located.path);
+      this.kimiSummary = { ...base, state: 'ok', version };
+    } catch (error) {
+      const signedOut = error instanceof KimiCatalogError && error.signedOut;
+      this.kimiSummary = {
+        ...base,
+        state: signedOut ? 'signedOut' : 'error',
+        version,
+        ...(!signedOut ? { error: error instanceof Error ? error.message : String(error) } : {}),
+      };
+    }
   }
 
   /** Кнопка ↻ в боковой панели и команда «Обновить лимиты». Claude, Codex и Antigravity — параллельно. */
@@ -275,7 +319,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const agy = hidden.includes('antigravity')
       ? undefined
       : antigravityEngine.available().then((ok) => (ok ? agyQuota.refresh() : undefined));
-    const others = Promise.allSettled([codex, agy]).then(() => this.pushEngineLimits());
+    const kimi = hidden.includes('kimi') ? undefined : this.refreshKimi();
+    const others = Promise.allSettled([codex, agy, kimi]).then(() => this.pushEngineLimits());
     const snap = await this.usage.refresh();
     if (snap.error) this.log.warn(`Лимиты не обновились: ${snap.error}`);
     else this.log.info(`Лимиты: данные на ${new Date(snap.updatedAt).toLocaleTimeString(hostStrings(currentLanguage()).locale)}`);

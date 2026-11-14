@@ -3,12 +3,13 @@ import { signal } from '@preact/signals';
 import type { SettingsSection, ToWebview } from '../protocol';
 import type { IntegrationsState } from '../shared/integrations';
 import type { EngineCheck, SettingKey, SettingsValues } from '../settings';
-import type { ModelOption } from '../agent/types';
+import type { AgentProvider, ModelOption } from '../agent/types';
 import { send } from './vscode';
 
 export const settingsValues = signal<SettingsValues | undefined>(undefined);
 export const codexModels = signal<{ models: ModelOption[]; loading: boolean; error?: string }>({ models: [], loading: true });
 export const antigravityModels = signal<{ models: ModelOption[]; loading: boolean; error?: string }>({ models: [], loading: true });
+export const kimiModels = signal<{ models: ModelOption[]; loading: boolean; error?: string }>({ models: [], loading: true });
 /** Jiraffe и свои подключения Jira (страница «Интеграции»); до ответа хоста — `undefined`. */
 export const integrations = signal<IntegrationsState | undefined>(undefined);
 /** Хост просит открыть раздел (`settings.section`); страница забирает запрос и сбрасывает его в `undefined`. */
@@ -21,11 +22,13 @@ export const engineCheck = signal<{ pending: boolean; result?: EngineCheck }>({ 
 export const codexCheck = signal<{ pending: boolean; result?: EngineCheck }>({ pending: false });
 export const agyCheck = signal<{ pending: boolean; result?: EngineCheck }>({ pending: false });
 export const cursorCheck = signal<{ pending: boolean; result?: EngineCheck }>({ pending: false });
+export const kimiCheck = signal<{ pending: boolean; result?: EngineCheck }>({ pending: false });
 
-function checkSignal(engine: 'claude' | 'codex' | 'antigravity' | 'cursor') {
+function checkSignal(engine: AgentProvider) {
   if (engine === 'codex') return codexCheck;
   if (engine === 'antigravity') return agyCheck;
   if (engine === 'cursor') return cursorCheck;
+  if (engine === 'kimi') return kimiCheck;
   return engineCheck;
 }
 
@@ -36,6 +39,9 @@ export function handleSettingsMessage(m: ToWebview): void {
       break;
     case 'settings.antigravityModels':
       antigravityModels.value = { models: m.models, loading: m.loading, ...(m.error ? { error: m.error } : {}) };
+      break;
+    case 'settings.kimiModels':
+      kimiModels.value = { models: m.models, loading: m.loading, ...(m.error ? { error: m.error } : {}) };
       break;
     case 'settings.state':
       settingsValues.value = m.values;
@@ -52,8 +58,7 @@ export function handleSettingsMessage(m: ToWebview): void {
       break;
     case 'settings.engine': {
       const engine = m.engine ?? 'claude';
-      if (engine === 'claude' || engine === 'codex' || engine === 'antigravity' || engine === 'cursor')
-        checkSignal(engine).value = { pending: false, result: m.result };
+      checkSignal(engine).value = { pending: false, result: m.result };
       break;
     }
     default:
@@ -74,7 +79,7 @@ export function commit(key: SettingKey, value: unknown): void {
   send({ type: 'settings.set', key, value });
 }
 
-export function checkEngine(path: string, engine: 'claude' | 'codex' | 'antigravity' | 'cursor' = 'claude'): void {
+export function checkEngine(path: string, engine: AgentProvider = 'claude'): void {
   checkSignal(engine).value = { pending: true };
   send(engine === 'claude' ? { type: 'settings.checkEngine', path } : { type: 'settings.checkEngine', path, engine });
 }

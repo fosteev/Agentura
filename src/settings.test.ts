@@ -69,6 +69,22 @@ describe('validateSetting', () => {
     });
     expect(validateSetting('cursor.defaultModel', 1).ok).toBe(false);
   });
+  it('Kimi defaults читаются отдельно, обрезаются и принимают только реальный EffortLevel', () => {
+    const values = readSettings(cfgOf({
+      defaultModel: 'opus', defaultEffort: 'max',
+      'kimi.defaultModel': ' kimi-code/k3.1-pro ', 'kimi.defaultEffort': 'high', kimiExecutable: ' /x/kimi ',
+    }));
+    expect(values.defaultModel).toBe('opus');
+    expect(values['kimi.defaultModel']).toBe(' kimi-code/k3.1-pro '); // readSettings показывает исходную строку; write валидирует/trim
+    expect(values['kimi.defaultEffort']).toBe('high');
+    expect(values.kimiExecutable).toBe(' /x/kimi ');
+    expect(validateSetting('kimi.defaultModel', ' kimi-code/k3.1-pro ')).toEqual({ ok: true, value: 'kimi-code/k3.1-pro' });
+    expect(validateSetting('kimi.defaultEffort', 'high')).toEqual({ ok: true, value: 'high' });
+    expect(validateSetting('kimi.defaultEffort', 'on').ok).toBe(false);
+    expect(validateSetting('kimiExecutable', ' /x/kimi ')).toEqual({ ok: true, value: '/x/kimi' });
+    expect(readSettings(cfgOf({}))['kimi.defaultEffort']).toBe('');
+  });
+
   it('режим и effort — только из списка', () => {
     expect(validateSetting('defaultPermissionMode', 'plan')).toEqual({ ok: true, value: 'plan' });
     expect(validateSetting('defaultPermissionMode', 'default').ok).toBe(false);
@@ -89,6 +105,7 @@ describe('validateSetting', () => {
     expect(validateSetting('defaultProvider', 'codex')).toEqual({ ok: true, value: 'codex' });
     expect(validateSetting('defaultProvider', 'antigravity')).toEqual({ ok: true, value: 'antigravity' });
     expect(validateSetting('defaultProvider', 'cursor')).toEqual({ ok: true, value: 'cursor' });
+    expect(validateSetting('defaultProvider', 'kimi')).toEqual({ ok: true, value: 'kimi' });
     expect(validateSetting('cursorExecutable', ' /bin/agent ')).toEqual({ ok: true, value: '/bin/agent' });
     expect(validateSetting('cursorExecutable', 1).ok).toBe(false);
     expect(validateSetting('antigravityExecutable', ' /bin/agy ')).toEqual({ ok: true, value: '/bin/agy' });
@@ -403,7 +420,7 @@ describe('overriddenKeys', () => {
   it('значение рабочей области перекрывает пользовательское; machine-ключи не считаются', () => {
     const cfg = {
       inspect: (k: string) =>
-        k === 'defaultModel' || k === 'claudeExecutable' || k === 'codexExecutable' || k === 'antigravityExecutable' ? { workspaceValue: 'x' } : {},
+        k === 'defaultModel' || k === 'claudeExecutable' || k === 'codexExecutable' || k === 'antigravityExecutable' || k === 'kimiExecutable' ? { workspaceValue: 'x' } : {},
     };
     expect(overriddenKeys(cfg)).toEqual(['defaultModel']);
   });

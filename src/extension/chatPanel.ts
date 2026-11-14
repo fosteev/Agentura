@@ -13,6 +13,8 @@ import { AntigravityAdapter } from '../agent/antigravity/adapter';
 import { AGY_NOT_FOUND, resolveAgyExecutable } from '../agent/antigravity/executable';
 import { CursorAdapter } from '../agent/cursor/adapter';
 import { CURSOR_NOT_FOUND, resolveCursorExecutable } from '../agent/cursor/executable';
+import { KimiAdapter } from '../agent/kimi/adapter';
+import { KIMI_NOT_FOUND, resolveKimiExecutable } from '../agent/kimi/executable';
 import type { AgyStateStore } from '../agent/antigravity/sessionIndex';
 import type { AgentAdapter, AgentProvider, SessionRef } from '../agent/types';
 import { readOAuthToken, type LimitsSource } from '../data/limits';
@@ -107,6 +109,8 @@ export interface ChatServices {
   antigravityAdapter: () => AgentAdapter;
   /** Адаптер Cursor (лениво). */
   cursorAdapter: () => AgentAdapter;
+  /** Адаптер Kimi (лениво); процесс ACP создаётся только операцией выбранного движка. */
+  kimiAdapter: () => AgentAdapter;
   live: LiveSessions;
   transcripts: TranscriptCache;
   usage: UsageService;
@@ -137,6 +141,8 @@ export interface ChatServices {
   antigravityEngine: EngineLocator;
   /** Поиск `agent` (без прогрева: `acp` стартует только после `ready()`, когда у резолвера нет `problem`). */
   cursorEngine: EngineLocator;
+  /** Поиск `kimi` без прогрева и без общего с Claude/Codex кэша ошибок. */
+  kimiEngine: EngineLocator;
   /** Вкладка «git» (roadmap 12): репозитории рабочей папки над API встроенного git. */
   git: GitService;
 }
@@ -153,10 +159,13 @@ export function createAdapter(
   antigravityAdapter: () => AgentAdapter;
   /** Cursor-адаптер — тоже лениво. Пока его не выбрали, процесса `agent acp` нет. */
   cursorAdapter: () => AgentAdapter;
+  /** Kimi-адаптер и его globalState index создаются лениво, `kimi acp` — ещё позже. */
+  kimiAdapter: () => AgentAdapter;
   engine: EngineLocator;
   codexEngine: EngineLocator;
   antigravityEngine: EngineLocator;
   cursorEngine: EngineLocator;
+  kimiEngine: EngineLocator;
 } {
   const cfg = () => vscode.workspace.getConfiguration('agentura');
   // `.vsix` без бинарника движка: настройка → системный `claude` (с проверкой версии). Поиск асинхронный
@@ -207,6 +216,19 @@ export function createAdapter(
     warn: (m) => log.warn(m),
     lang: currentLanguage,
   });
+  let kimiVersion: string | undefined;
+  const kimiEngine = new EngineLocator({
+    setting: () => cfg().get<string>('kimiExecutable') ?? '',
+    resolve: async (s) => {
+      const r = await resolveKimiExecutable(s);
+      if (r.version) kimiVersion = r.version;
+      return r.problem === KIMI_NOT_FOUND ? { ...r, problem: hostStrings(currentLanguage()).kimiNotFound } : r;
+    },
+    name: 'kimi',
+    info: (m) => log.info(m),
+    warn: (m) => log.warn(m),
+    lang: currentLanguage,
+  });
   const adapter = new ClaudeAdapter({
     executablePath: () => engine.path(),
     clientApp: 'agentura',
@@ -241,15 +263,26 @@ export function createAdapter(
       log: (level, message) => log[level](message),
       ...(clientVersion ? { clientVersion } : {}),
     }));
+  let kimi: AgentAdapter | undefined;
+  const kimiAdapter = (): AgentAdapter =>
+    (kimi ??= new KimiAdapter({
+      executablePath: () => kimiEngine.path(),
+      engineVersion: () => kimiVersion,
+      log: (level, message) => log[level](message),
+      ...(clientVersion ? { clientVersion } : {}),
+      ...(state ? { state } : {}),
+    }));
   return {
     adapter,
     codexAdapter,
     antigravityAdapter,
     cursorAdapter,
+    kimiAdapter,
     engine,
     codexEngine,
     antigravityEngine,
     cursorEngine,
+    kimiEngine,
   };
 }
 
@@ -815,6 +848,10 @@ export class ChatPanel {
           },
           defaultModel: cfg.get<string>('defaultModel') || undefined,
           cursorDefaultModel: values['cursor.defaultModel'] || undefined,
+          kimiDefaults: {
+            model: values['kimi.defaultModel'] || undefined,
+            effort: values['kimi.defaultEffort'] || undefined,
+          },
           allowBypass: cfg.get<boolean>('allowBypassPermissions', false),
           // кривые пороги из settings.json (вкладка настроек такие не пишет) — по умолчанию
           contextThresholds: ((th) => (thresholdsError(th) ? [...DEFAULT_THRESHOLDS] : th))(
@@ -1264,11 +1301,12 @@ export class ChatPanel {
   }
 }
 
-/** Адаптер движка `p` (Codex, Antigravity и Cursor — лениво). Неизвестный и пустой — Claude. */
+/** Адаптер движка `p` (все не-Claude — лениво). Неизвестный и пустой — только legacy Claude. */
 export function adapterOf(services: ChatServices, p: AgentProvider | undefined): AgentAdapter {
   if (p === 'codex') return services.codexAdapter();
   if (p === 'antigravity') return services.antigravityAdapter();
   if (p === 'cursor') return services.cursorAdapter();
+  if (p === 'kimi') return services.kimiAdapter();
   return services.adapter;
 }
 
@@ -1277,6 +1315,7 @@ export function engineOf(services: ChatServices, p: AgentProvider | undefined): 
   if (p === 'codex') return services.codexEngine;
   if (p === 'antigravity') return services.antigravityEngine;
   if (p === 'cursor') return services.cursorEngine;
+  if (p === 'kimi') return services.kimiEngine;
   return undefined;
 }
 

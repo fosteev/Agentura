@@ -88,8 +88,8 @@ describe('кнопка «rc»', () => {
     expect(btn?.textContent).toBe('rc выкл');
   });
 
-  it('у Codex и Antigravity кнопки нет', async () => {
-    for (const p of ['codex', 'antigravity'] as const) {
+  it('у движков без features.remote кнопки нет', async () => {
+    for (const p of ['codex', 'antigravity', 'kimi'] as const) {
       features.value = providerFeatures(p);
       const host = mount();
       await flush();

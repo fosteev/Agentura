@@ -203,6 +203,8 @@ const ru = {
     'Не найден Antigravity CLI (agy). Установите его и выполните вход (agy) либо укажите путь в настройке agentura.antigravityExecutable.',
   cursorNotFound:
     'Не найден Cursor CLI (agent). Установите его и выполните вход (agent login) либо укажите путь в настройке agentura.cursorExecutable.',
+  kimiNotFound:
+    'Не найден Kimi Code CLI (kimi). Установите его и выполните вход (kimi acp --login) либо укажите путь в настройке agentura.kimiExecutable.',
   engineWrapper: (path: string) =>
     `${path} — npm-обёртка, движок через неё не запускается. Установите Claude Code нативным установщиком (claude.exe) или укажите путь к claude.exe в agentura.claudeExecutable.`,
   engineOld: (min: string, found: string, path: string) =>
@@ -465,6 +467,8 @@ const en: HostUi = {
     'Antigravity CLI (agy) not found. Install it and sign in (agy), or set the path in agentura.antigravityExecutable.',
   cursorNotFound:
     'Cursor CLI (agent) not found. Install it and sign in (agent login), or set the path in agentura.cursorExecutable.',
+  kimiNotFound:
+    'Kimi Code CLI (kimi) not found. Install it and sign in (kimi acp --login), or set the path in agentura.kimiExecutable.',
   engineWrapper: (path) =>
     `${path} is an npm wrapper; the engine cannot run through it. Install Claude Code with the native installer (claude.exe) or set the path to claude.exe in agentura.claudeExecutable.`,
   engineOld: (min, found, path) =>

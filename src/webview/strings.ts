@@ -481,6 +481,9 @@ const ru = {
     missingTitleAgy: 'Antigravity не найден',
     missingHintAgy:
       'Установите Antigravity CLI (agy), выполните вход (запустите agy один раз) или укажите путь к agy в настройках ⚙ (agentura.antigravityExecutable).',
+    missingTitleKimi: 'Kimi Code не найден или устарел',
+    missingHintKimi:
+      'Нужен Kimi Code CLI 2.6.0 или новее. Выполните вход (kimi acp --login) или укажите путь к kimi в настройках ⚙ (agentura.kimiExecutable).',
     missingRecheck: 'Проверить снова',
     missingChecking: 'проверяю…',
     openLog: 'Открыть журнал расширения',
@@ -852,7 +855,7 @@ const ru = {
     model: 'модель',
     effort: 'effort',
     agent: 'агент',
-    agentTitle: 'Агент: Claude, Codex, Antigravity',
+    agentTitle: 'Агент: Claude, Codex, Antigravity, Cursor, Kimi Code',
     context: 'контекст',
     compact: 'сжать',
     ctxTitle: (thresholds: string[], fullAt: string, scale?: string) =>
@@ -901,6 +904,7 @@ const ru = {
     codexVia: 'через codex app-server',
     antigravityVia: (version?: string) => `через agy (Antigravity CLI)${version ? ` · ${version}` : ''}`,
     cursorVia: 'через agent acp',
+    kimiVia: (version?: string) => `через kimi acp (Kimi Code CLI)${version ? ` · kimi ${version}` : ''}`,
     agentLocked: 'Сменить агента можно в новом чате.',
     agentCurrent: 'Агент этого чата',
     agentChoose: 'Выберите агента',
@@ -1001,6 +1005,7 @@ const ru = {
     thinkingHint: 'показывать блоки think в ленте',
     byDefault: 'по умолчанию',
     agyDefault: 'agy сам отклоняет команды и правки (карточка с повтором)',
+    kimiAuto: 'Kimi auto: безопасные правки и команды без отдельного вопроса',
     bypassOff: 'включается настройкой agentura.allowBypassPermissions',
     modelDesc: {
       opus: 'сложные задачи, планирование',
@@ -1129,7 +1134,7 @@ const ru = {
     },
     bypass: {
       name: 'Разрешить режим «без разрешений»',
-      desc: 'Разрешает bypassPermissions для Claude/Antigravity и полный доступ Codex. Сам режим не включается — выбери его в настройках нового чата или в текущей сессии.',
+      desc: 'Разрешает bypassPermissions для Claude/Antigravity/Kimi и полный доступ Codex. Сам режим не включается — выбери его в настройках нового чата или в текущей сессии.',
       warnTitle: 'Без разрешений',
       warn: ' агент правит файлы и запускает любые команды, не спрашивая, — включая удаление и сеть. Включай для изолированной папки или контейнера; на рабочем проекте лучше режим «принимать правки».',
     },
@@ -1155,7 +1160,7 @@ const ru = {
       effort: 'Глубина размышления',
       effortDesc: 'Больше глубина — больше времени на ответ.',
       modeGroup: 'Как выполнять задачу',
-      modeDesc: 'Начальный режим Claude. Его также используют новые чаты Cursor и Antigravity.',
+      modeDesc: 'Начальный режим Claude. Его также используют новые чаты Cursor, Antigravity и Kimi.',
       permissions: 'Разрешения',
       approval: 'Когда спрашивать',
       approvalDesc: 'Управляет запросами подтверждения, а не доступом к файлам.',
@@ -1172,8 +1177,9 @@ const ru = {
       advancedNote: 'Полный доступ и ключи конфигурации',
       unlock: 'Разрешить полный доступ',
       unlockDesc:
-        'Добавляет режим без подтверждений Claude / Antigravity и полный доступ Codex. Сам режим не включается.',
+        'Добавляет режим без подтверждений Claude / Antigravity / Kimi и полный доступ Codex. Сам режим не включается.',
       sharedMode: 'Начальный режим берётся из общей настройки режима Claude.',
+      kimiAutoNote: 'У Kimi acceptEdits означает нативный auto: безопасные правки файлов И команды без отдельного вопроса, не только файлы.',
       openClaude: 'Настроить режим Claude',
       agyNote:
         'Модель Antigravity выбирается в чате. Отдельной настройки модели по умолчанию здесь пока нет.',
@@ -1213,6 +1219,10 @@ const ru = {
       modelsLoading: 'Загрузка моделей…',
       modelsReload: 'Обновить модели',
       noModels: 'Codex не вернул доступных моделей. Проверь путь к CLI и вход в аккаунт, затем обнови список.',
+      kimiInherit: 'наследовать CLI',
+      kimiModelDesc: 'Модели из kimi provider list --json. Пусто — наследовать CLI; восстановленные сессии не перезаписываются.',
+      kimiEffortDesc: 'Только реальные effort выбранной модели. Пусто — наследовать CLI; boolean on/off здесь не имитируются.',
+      kimiNoModels: 'Kimi не вернул моделей. Проверь CLI и вход, затем обнови список.',
       unavailable: 'недоступно',
       approval: 'Подтверждения Codex',
       approvalDesc: 'Когда Codex запрашивает разрешение на действие.',
@@ -1417,7 +1427,7 @@ const ru = {
     limitsHidden: {
       name: 'Чьи лимиты показывать',
       desc: 'Снятый флажок прячет лимиты движка из боковой панели и выключает их опрос. Снять все — секции лимитов не будет. Лимиты в шапке чата не меняются.',
-      engines: { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity', cursor: 'Cursor' },
+      engines: { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity', cursor: 'Cursor', kimi: 'Kimi Code' },
     },
     feedStyle: {
       name: 'Вид ленты чата',
@@ -1527,7 +1537,7 @@ const ru = {
     provider: {
       name: 'Движок по умолчанию',
       desc: 'Движок новых вкладок. Меняется и меню «агент» в поле ввода (пустая вкладка); начатая сессия остаётся на своём движке.',
-      options: { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity', cursor: 'Cursor' },
+      options: { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity', cursor: 'Cursor', kimi: 'Kimi Code' },
     },
     exe: {
       name: 'Путь к claude',
@@ -1547,6 +1557,11 @@ const ru = {
     exeCursor: {
       name: 'Путь к agent (Cursor)',
       desc: 'Пусто — искать системный: PATH, ~/.local/bin, Homebrew. Нужен Cursor CLI, вошедший в аккаунт (agent login). Чужой agent без штампа Cursor не принимается.',
+      placeholder: 'пусто — искать системный',
+    },
+    exeKimi: {
+      name: 'Путь к kimi (Kimi Code)',
+      desc: 'Пусто — PATH, ~/.kimi-code/bin, ~/.local/bin, Homebrew. Нужен Kimi Code CLI 2.6.0+, вход: kimi acp --login.',
       placeholder: 'пусто — искать системный',
     },
   },
@@ -1614,7 +1629,7 @@ const ru = {
     fold: (name: string, folded: boolean) => `${folded ? 'Развернуть' : 'Свернуть'}: ${name}`,
     accountLabels: { account: 'Аккаунт', plan: 'План', login: 'Вход', agent: 'Агент' },
     agentName: 'Claude',
-    providerNames: { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity', cursor: 'Cursor' },
+    providerNames: { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity', cursor: 'Cursor', kimi: 'Kimi Code' },
     unknown: '—',
     loadError: 'не удалось получить',
     limitFive: 'Окно 5 часов',

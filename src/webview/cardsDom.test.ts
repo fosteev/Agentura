@@ -315,6 +315,23 @@ describe('карточка плана (plan.html)', () => {
     const sys = [...host.querySelectorAll('.log .sys')].map((s) => s.textContent);
     expect(sys.some((t) => t?.includes('план принят · выполняю'))).toBe(true);
   });
+
+  it('Kimi native plan options показываются и возвращают исходный optionId', async () => {
+    provider.value = 'kimi';
+    const host = mount();
+    dispatchEvent(ev({
+      type: 'plan.request', toolUseId: 'pk', plan: '# План\n\nДва варианта.',
+      options: [{ id: 'plan_opt_0', label: 'Сначала тесты' }, { id: 'plan_opt_1', label: 'Сначала реализация' }],
+    }));
+    await flush();
+    const card = host.querySelector('.ask.plan')!;
+    expect(button(card, 'Сначала тесты')).toBeDefined();
+    expect(button(card, 'Выполнять, принимая правки')).toBeUndefined();
+    click(button(card, 'Сначала реализация'));
+    expect(posted.at(-1)).toMatchObject({
+      type: 'plan.decide', toolUseId: 'pk', decision: 'run', optionId: 'plan_opt_1',
+    });
+  });
 });
 
 describe('карточки подтверждений Codex', () => {

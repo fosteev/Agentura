@@ -416,4 +416,27 @@ describe('агенты', () => {
     expect(s.agents[1]).toMatchObject({ status: 'stopped', endedAt: 300 });
     expect(s.agents[0]).toMatchObject({ status: 'completed', endedAt: 200 });
   });
+
+  it('повторный agent.start переоткрывает terminal узел, очищает endedAt и сохраняет timeline', () => {
+    const initial = ev({
+      type: 'agent.start', agentId: 'a1', taskId: 'agent-0', description: 'first',
+      taskType: 'subagent', background: false, at: 100,
+    });
+    let s = applyHud(initialHud(), initial);
+    s = applyHud(s, ev({
+      type: 'tool.start', agentId: 'a1', toolUseId: 'tool_1', name: 'Read', input: {}, at: 110,
+    }));
+    s = applyHud(s, ev({
+      type: 'agent.end', agentId: 'a1', taskId: 'agent-0', status: 'completed', summary: 'old', at: 200,
+    }));
+    s = applyHud(s, ev({
+      ...initial, description: 'resumed', at: 300,
+    }));
+    expect(s.agents[0]).toMatchObject({
+      status: 'running', startedAt: 300, description: 'resumed', calls: 1,
+    });
+    expect(s.agents[0]?.endedAt).toBeUndefined();
+    expect(s.agents[0]?.summary).toBeUndefined();
+    expect(s.agents[0]?.segs[0]).toMatchObject({ id: 'tool_1', state: 'ok', endAt: 200 });
+  });
 });

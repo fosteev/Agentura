@@ -8,7 +8,7 @@ import { ui, uiLang } from '../strings';
 import { onHostMessage, send } from '../vscode';
 
 let nextRequest = 0;
-const engines: AgentProvider[] = ['claude', 'codex', 'antigravity', 'cursor'];
+const engines: AgentProvider[] = ['claude', 'codex', 'antigravity', 'cursor', 'kimi'];
 
 // Keep overlays outside the sidebar scroll/zoom root. Importing preact/compat here
 // would globally turn native change events into input events, committing Settings drafts.

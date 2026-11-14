@@ -74,6 +74,7 @@
 .tv .mk.claude, .tk-ctabs .mk.claude { background: #c96442; }
 .tv .mk.codex, .tk-ctabs .mk.codex { background: #6b6bd6; }
 .tv .mk.agy, .tk-ctabs .mk.agy { background: #2f7de1; }
+.tv .mk.kimi, .tk-ctabs .mk.kimi { color: var(--fg); background: var(--line); }
 
 /* полоска над лентой: строка между шапкой (и плашкой лимита) и телом чата */
 .webview:has(> .tk-strip) { grid-template-rows: auto auto 1fr auto; }
@@ -102,6 +103,7 @@
 .tk-strip .mk.claude { background: #c96442; }
 .tk-strip .mk.codex { background: #6b6bd6; }
 .tk-strip .mk.agy { background: #2f7de1; }
+.tk-strip .mk.kimi { color: var(--fg); background: var(--line); }
 .tk-strip .cc { display: flex; gap: 5px; align-items: center; align-self: stretch; min-width: 0; max-width: 150px; padding: 0 8px; color: var(--fg-mute); border-bottom: 2px solid transparent; margin-bottom: -1px; font-family: var(--font); font-size: 12.5px; white-space: nowrap; }
 .tk-strip .cc:hover { color: var(--fg); }
 .tk-strip .cc.on { color: var(--fg); border-bottom-color: var(--fg); }
@@ -157,6 +159,7 @@
 .ncp .mk.codex { color: #b5a9ff; background: #7b68ee26; }
 .ncp .mk.agy { color: #78afff; background: #2f7de126; }
 .ncp .mk.cursor { color: var(--fg); background: var(--line); }
+.ncp .mk.kimi { color: var(--fg); background: var(--line); }
 .ncp-prompt { margin-top: 18px; }
 .ncp .optional { margin-left: 6px; font-size: 11px; font-weight: 400; color: var(--fg-mute); }
 .ncp .inp { display: block; width: 100%; min-height: 80px; max-height: 180px; resize: vertical; padding: 10px 11px; background: var(--bg); color: var(--fg); border: 1px solid var(--line-strong); border-radius: 6px; font: 13px/1.5 var(--font); }

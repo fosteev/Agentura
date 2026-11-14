@@ -22,6 +22,8 @@ describe('protocol', () => {
     expect(isFromWebview({ type: 'ready' })).toBe(true);
     expect(isFromWebview({ type: 'limits.refresh' })).toBe(true);
     expect(isFromWebview({ type: 'task.newChat', taskKey: 'jira:x:A-1' })).toBe(true);
+    expect(isFromWebview({ type: 'task.newChat', taskKey: 'jira:x:A-1', provider: 'kimi' })).toBe(true);
+    expect(isFromWebview({ type: 'engine.set', provider: 'kimi' })).toBe(true);
     expect(isFromWebview({ type: 'task.newChat' })).toBe(false);
     expect(isFromWebview({ type: 'task.archiveChat', sessionId: 's1' })).toBe(true);
     expect(isFromWebview({ type: 'task.archiveChat', sessionId: '' })).toBe(false);
@@ -40,6 +42,10 @@ describe('protocol', () => {
     expect(isFromWebview({ type: 'fonts.remove', family: 'Onest' })).toBe(true);
     expect(isFromWebview({ type: 'settings.codexModels' })).toBe(true);
     expect(isFromWebview({ type: 'settings.antigravityModels' })).toBe(true);
+    expect(isFromWebview({ type: 'settings.kimiModels' })).toBe(true);
+    expect(isFromWebview({ type: 'settings.checkEngine', path: '', engine: 'kimi' })).toBe(true);
+    expect(isFromWebview({ type: 'engine.login', engine: 'kimi' })).toBe(true);
+    expect(isFromWebview({ type: 'plan.decide', sessionId: 's', toolUseId: 'p', decision: 'run', optionId: 'plan_opt_1' })).toBe(true);
     // roadmap 17: Remote Control вкладки
     expect(isFromWebview({ type: 'remote.set', on: true })).toBe(true);
     expect(isFromWebview({ type: 'remote.set', sessionId: 's', on: false })).toBe(true);
@@ -63,6 +69,7 @@ describe('protocol', () => {
       { type: 'task.picker.act', requestId: 1, mode: 'open' },
       { type: 'task.picker.act', requestId: 1, mode: 'open', sessionId: 's', provider: 'codex' },
       { type: 'task.picker.act', requestId: 1, mode: 'create', provider: 'cursor', prompt: 'Review' },
+      { type: 'task.picker.act', requestId: 2, mode: 'create', provider: 'kimi', prompt: 'Review' },
       { type: 'task.picker.cancel' },
     ]) expect(isFromWebview(m)).toBe(true);
     for (const m of [

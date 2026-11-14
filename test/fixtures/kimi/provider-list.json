@@ -1,0 +1,116 @@
+{
+  "models": {
+    "kimi-code/kimi-for-coding": {
+      "provider": "managed:kimi-code",
+      "model": "kimi-for-coding",
+      "maxContextSize": 1048576,
+      "capabilities": [
+        "thinking",
+        "always_thinking",
+        "image_in",
+        "video_in",
+        "tool_use",
+        "dynamically_loaded_tools"
+      ],
+      "displayName": "K2.8 Preview",
+      "supportEfforts": [
+        "low",
+        "high",
+        "max"
+      ],
+      "defaultEffort": "max"
+    },
+    "kimi-code/kimi-for-coding-highspeed": {
+      "provider": "managed:kimi-code",
+      "model": "kimi-for-coding-highspeed",
+      "maxContextSize": 262144,
+      "capabilities": [
+        "thinking",
+        "always_thinking",
+        "image_in",
+        "video_in",
+        "tool_use"
+      ],
+      "displayName": "K2.7 Code Highspeed"
+    },
+    "kimi-code/k3": {
+      "provider": "managed:kimi-code",
+      "model": "k3",
+      "maxContextSize": 1048576,
+      "capabilities": [
+        "thinking",
+        "always_thinking",
+        "image_in",
+        "video_in",
+        "tool_use",
+        "dynamically_loaded_tools"
+      ],
+      "displayName": "K3",
+      "supportEfforts": [
+        "low",
+        "high",
+        "max"
+      ],
+      "defaultEffort": "high"
+    },
+    "kimi-code/k3-256k": {
+      "provider": "managed:kimi-code",
+      "model": "k3-256k",
+      "maxContextSize": 262144,
+      "capabilities": [
+        "thinking",
+        "always_thinking",
+        "image_in",
+        "tool_use",
+        "dynamically_loaded_tools"
+      ],
+      "displayName": "K3-256k",
+      "supportEfforts": [
+        "low",
+        "high",
+        "max"
+      ],
+      "defaultEffort": "high"
+    },
+    "kimi-code/k3.1-pro": {
+      "provider": "managed:kimi-code",
+      "model": "k3.1-pro",
+      "maxContextSize": 1048576,
+      "capabilities": [
+        "thinking",
+        "always_thinking",
+        "image_in",
+        "video_in",
+        "tool_use",
+        "dynamically_loaded_tools"
+      ],
+      "displayName": "K3.1 Pro",
+      "supportEfforts": [
+        "low",
+        "high",
+        "max"
+      ],
+      "defaultEffort": "high"
+    },
+    "kimi-code/k3.1-pro-highspeed": {
+      "provider": "managed:kimi-code",
+      "model": "k3.1-pro-highspeed",
+      "maxContextSize": 1048576,
+      "capabilities": [
+        "thinking",
+        "always_thinking",
+        "image_in",
+        "video_in",
+        "tool_use",
+        "dynamically_loaded_tools"
+      ],
+      "displayName": "K3.1 Pro Highspeed 2x Usage Cost",
+      "supportEfforts": [
+        "low",
+        "high",
+        "max"
+      ],
+      "defaultEffort": "high"
+    }
+  }
+}

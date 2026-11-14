@@ -86,6 +86,32 @@ describe('providerFeatures', () => {
     expect(providerFeatures('cursor')).not.toEqual(providerFeatures('claude'));
   });
 
+  it('Kimi: граф и read-only транскрипты есть, отдельного Stop и неподдержанных приборов нет', () => {
+    expect(providerFeatures('kimi')).toEqual({
+      modes: true,
+      nativeSettings: false,
+      compact: true,
+      autoCompact: false,
+      context: true,
+      cost: false,
+      subagents: true,
+      agentStop: false,
+      agentTranscript: true,
+      plan: true,
+      questions: true,
+      images: true,
+      files: false,
+      remote: false,
+      browser: false,
+      mcp: false,
+      mcpReconnect: false,
+      mcpReloadAll: false,
+      mcpToggle: false,
+      skills: true,
+    });
+    expect(providerFeatures('kimi')).not.toEqual(providerFeatures('claude'));
+  });
+
   it('копия: правка результата не портит константы', () => {
     providerFeatures('codex').modes = true;
     expect(CODEX_FEATURES.modes).toBe(false);

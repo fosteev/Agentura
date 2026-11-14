@@ -1,0 +1,46 @@
+{
+  "id": "session_4ed9dfe6-3fec-4809-9953-3fafc715408a",
+  "version": 2,
+  "cwd": "<WORK>",
+  "archived": false,
+  "agents": {
+    "main": {
+      "homedir": "<SESSION>/agents/main",
+      "type": "main"
+    },
+    "agent-0": {
+      "homedir": "<SESSION>/agents/agent-0",
+      "type": "sub",
+      "parentAgentId": "main",
+      "labels": {
+        "parentAgentId": "main",
+        "profileName": "explore"
+      }
+    },
+    "agent-1": {
+      "homedir": "<SESSION>/agents/agent-1",
+      "type": "sub",
+      "parentAgentId": "main",
+      "labels": {
+        "parentAgentId": "main",
+        "profileName": "nester"
+      }
+    },
+    "agent-2": {
+      "homedir": "<SESSION>/agents/agent-2",
+      "type": "sub",
+      "parentAgentId": "main",
+      "labels": {
+        "parentAgentId": "agent-1",
+        "profileName": "explore"
+      }
+    }
+  },
+  "custom": {},
+  "title": "Use the Agent tool exactly once in foreground with subagent_type \"explore\" and prompt \"Return exactly RESUME_BASE_MARKER_1601; do not use tools.\" Wait for its final result, then return only MAIN_RESUM",
+  "titleKind": "replaceable",
+  "createdAt": 1794548909578,
+  "updatedAt": 1794548935944,
+  "lastPrompt": "Use the Agent tool exactly once in foreground with subagent_type \"nester\" and prompt \"Execute your nested marker task now.\" Wait for the final result, then return only MAIN_NESTED_DONE_1603.",
+  "isCustomTitle": false
+}

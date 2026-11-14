@@ -195,6 +195,7 @@ export type ToWebview =
   | { type: 'settings.state'; values: SettingsValues; overridden: SettingKey[] }
   | { type: 'settings.codexModels'; models: ModelOption[]; loading: boolean; error?: string }
   | { type: 'settings.antigravityModels'; models: ModelOption[]; loading: boolean; error?: string }
+  | { type: 'settings.kimiModels'; models: ModelOption[]; loading: boolean; error?: string }
   /** Открыть вкладку настроек сразу на разделе (`settings.open` с `section`). */
   | { type: 'settings.section'; section: SettingsSection }
   /** Страница «Интеграции» (roadmap 19, этап 6): Jiraffe и свои подключения Jira. */
@@ -433,6 +434,8 @@ export type FromWebview =
       toolUseId: string;
       decision: PlanChoice;
       feedback?: string;
+      /** Нативный plan_opt_N из plan.request; хост передаёт без переименования. */
+      optionId?: string;
     }
   | { type: 'mode.set'; sessionId: string; mode: PermissionMode }
   | { type: 'codex.settings'; sessionId: string; change: CodexSettingsChange }
@@ -483,7 +486,7 @@ export type FromWebview =
   | { type: 'engine.set'; provider: AgentProvider }
   | { type: 'limits.refresh' }
   /** «войти» у движка без входа (боковая панель, лимиты движков): хост открывает терминал с командой входа. */
-  | { type: 'engine.login'; engine: 'codex' | 'antigravity' }
+  | { type: 'engine.login'; engine: 'codex' | 'antigravity' | 'kimi' }
   | { type: 'session.resume'; sessionId: string; provider?: AgentProvider }
   /** Этап 6: переименование по двойному клику в списке (B9). */
   | { type: 'session.rename'; sessionId: string; title: string }
@@ -503,6 +506,7 @@ export type FromWebview =
   | { type: 'settings.checkEngine'; path: string; /** Чей путь проверять; нет — claude. */ engine?: AgentProvider }
   | { type: 'settings.codexModels' }
   | { type: 'settings.antigravityModels' }
+  | { type: 'settings.kimiModels' }
   /** Страница «Интеграции»: команды этапа 2 (`agentura.jira.connect|test|disconnect`) и «поставить» Jiraffe. */
   | { type: 'integrations.connect' }
   | { type: 'integrations.test'; instanceId: string }
@@ -565,7 +569,7 @@ export interface EngineWindowSummary {
   resetsAt?: number; // мс
 }
 export interface EngineLimitsSummary {
-  engine: 'codex' | 'antigravity';
+  engine: 'codex' | 'antigravity' | 'kimi';
   state: EngineLimitsState;
   email?: string;
   plan?: string; // `Plus`, `Pro` — planType с заглавной
@@ -672,6 +676,7 @@ const FROM_WEBVIEW_TYPES: Record<FromWebview['type'], true> = {
   'settings.checkEngine': true,
   'settings.codexModels': true,
   'settings.antigravityModels': true,
+  'settings.kimiModels': true,
   'settings.reveal': true,
   'integrations.connect': true,
   'integrations.test': true,
@@ -729,12 +734,12 @@ const FIELD_CHECKS: Partial<Record<FromWebview['type'], (m: Record<string, unkno
   'task.picker.find': (m) => Number.isSafeInteger(m.requestId) && Number(m.requestId) > 0 && str(m.query) && m.query.length > 0 && m.query.length <= 2000 && (m.instanceId === undefined || str(m.instanceId) && /^[a-z0-9-]{1,200}$/i.test(m.instanceId)),
   'task.picker.act': (m) => Number.isSafeInteger(m.requestId) && Number(m.requestId) > 0 && (m.mode === 'open' || m.mode === 'create') &&
     (m.sessionId === undefined || str(m.sessionId) && m.sessionId.length > 0 && m.sessionId.length <= 200) &&
-    (m.provider === undefined ? m.mode === 'open' && m.sessionId === undefined : str(m.provider) && ['claude', 'codex', 'antigravity', 'cursor'].includes(m.provider)) &&
+    (m.provider === undefined ? m.mode === 'open' && m.sessionId === undefined : str(m.provider) && ['claude', 'codex', 'antigravity', 'cursor', 'kimi'].includes(m.provider)) &&
     (m.prompt === undefined || str(m.prompt) && m.prompt.length <= NEW_CHAT_PROMPT_LIMIT),
   'codex.settings': (m) => str(m.sessionId) && isCodexSettingsChange(m.change),
   'engine.set': (m) =>
-    m.provider === 'claude' || m.provider === 'codex' || m.provider === 'antigravity' || m.provider === 'cursor',
-  'engine.login': (m) => m.engine === 'codex' || m.engine === 'antigravity',
+    m.provider === 'claude' || m.provider === 'codex' || m.provider === 'antigravity' || m.provider === 'cursor' || m.provider === 'kimi',
+  'engine.login': (m) => m.engine === 'codex' || m.engine === 'antigravity' || m.engine === 'kimi',
   'agents.openGraph': (m) => m.agentId === undefined || typeof m.agentId === 'string',
   'agents.snapshot': (m) => typeof m.sessionId === 'string' && isAgentGraphView(m.graph),
   'remote.set': (m) => bool(m.on) && (m.sessionId === undefined || str(m.sessionId)),
@@ -766,7 +771,8 @@ const FIELD_CHECKS: Partial<Record<FromWebview['type'], (m: Record<string, unkno
       m.provider === 'claude' ||
       m.provider === 'codex' ||
       m.provider === 'antigravity' ||
-      m.provider === 'cursor') &&
+      m.provider === 'cursor' ||
+      m.provider === 'kimi') &&
     (m.prompt === undefined || (str(m.prompt) && m.prompt.length <= NEW_CHAT_PROMPT_LIMIT)) &&
     (m.carry === undefined || isNewChatCarry(m.carry)) &&
     (m.where === undefined || m.where === 'same' || m.where === 'worktree') &&

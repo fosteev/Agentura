@@ -169,6 +169,7 @@ describe('publicNewChatOptions (Д4)', () => {
       from: { provider: 'claude', id: 's1', cwd: '/etc' },
     };
     expect(publicNewChatOptions(raw)).toEqual({ provider: 'codex', prompt: 'сделай', carry: { task: false } });
+    expect(publicNewChatOptions({ provider: 'kimi', carry: { task: true } })).toEqual({ provider: 'kimi', carry: { task: true } });
     expect(publicNewChatOptions({ carry: { summary: true } })).toEqual({});
     expect(publicNewChatOptions('x')).toEqual({});
     // внутренний вызов (вкладка чата) — всё

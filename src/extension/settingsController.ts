@@ -23,6 +23,7 @@ export interface SettingsDeps {
   checkEngine(path: string, engine: AgentProvider): Promise<EngineCheck>;
   listCodexModels?(): Promise<ModelOption[]>;
   listAntigravityModels?(): Promise<ModelOption[]>;
+  listKimiModels?(): Promise<ModelOption[]>;
   reveal(target: 'ui' | 'json'): void;
   warn(message: string): void;
   /** Скачать шрифт из Google Fonts (`kind` — назначение карточки) / удалить скачанный. */
@@ -50,8 +51,11 @@ export class SettingsController {
   private agyModels: ModelOption[] = [];
   private agyModelsSeq = 0;
   private agyModelsPath: string | undefined;
+  private kimiModels: ModelOption[] = [];
+  private kimiModelsSeq = 0;
+  private kimiModelsPath: string | undefined;
   /** Номер последней «проверить» — ответ приходит только на неё. */
-  private checkSeq: Record<AgentProvider, number> = { claude: 0, codex: 0, antigravity: 0, cursor: 0 };
+  private checkSeq: Record<AgentProvider, number> = { claude: 0, codex: 0, antigravity: 0, cursor: 0, kimi: 0 };
 
   /** Webview прислал `ready` и получил первое состояние: раздел можно слать сразу. */
   private ready = false;
@@ -79,6 +83,8 @@ export class SettingsController {
     if (this.deps.listCodexModels && this.modelsPath !== path) void this.loadCodexModels();
     const agyPath = cfg.get<string>('antigravityExecutable') ?? '';
     if (this.deps.listAntigravityModels && this.agyModelsPath !== agyPath) void this.loadAntigravityModels();
+    const kimiPath = cfg.get<string>('kimiExecutable') ?? '';
+    if (this.deps.listKimiModels && this.kimiModelsPath !== kimiPath) void this.loadKimiModels();
   }
 
   private async loadCodexModels(): Promise<void> {
@@ -115,6 +121,23 @@ export class SettingsController {
     }
   }
 
+  private async loadKimiModels(): Promise<void> {
+    if (!this.deps.listKimiModels) return;
+    this.kimiModelsPath = this.deps.config().get<string>('kimiExecutable') ?? '';
+    const seq = ++this.kimiModelsSeq;
+    this.deps.post({ type: 'settings.kimiModels', models: this.kimiModels, loading: true });
+    try {
+      const models = await this.deps.listKimiModels();
+      if (seq !== this.kimiModelsSeq) return;
+      this.kimiModels = models;
+      this.deps.post({ type: 'settings.kimiModels', models, loading: false });
+    } catch (e) {
+      if (seq !== this.kimiModelsSeq) return;
+      this.kimiModels = [];
+      this.deps.post({ type: 'settings.kimiModels', models: [], loading: false, error: String(e) });
+    }
+  }
+
   /** Состояние Jiraffe и своих подключений → webview (на `ready`, при смене источников/подключений и настройки). */
   pushIntegrations(): void {
     const i = this.deps.integrations;
@@ -138,6 +161,9 @@ export class SettingsController {
       case 'settings.antigravityModels':
         await this.loadAntigravityModels();
         break;
+      case 'settings.kimiModels':
+        await this.loadKimiModels();
+        break;
       case 'ready':
         this.pushState();
         this.ready = true;
@@ -152,7 +178,9 @@ export class SettingsController {
       case 'settings.checkEngine': {
         // проверки асинхронные (до 5 с): ответ устаревшей не должен перебить ответ последней
         const engine: AgentProvider =
-          m.engine === 'codex' || m.engine === 'antigravity' || m.engine === 'cursor' ? m.engine : 'claude';
+          m.engine === 'codex' || m.engine === 'antigravity' || m.engine === 'cursor' || m.engine === 'kimi'
+            ? m.engine
+            : 'claude';
         const seq = ++this.checkSeq[engine];
         // исключение проверки не должно оставить кнопки «проверить» заблокированными
         const result: EngineCheck = await this.deps
@@ -223,6 +251,11 @@ export class SettingsController {
         const levels = this.agyModels.find((m) => m.value === checked.value)?.effortLevels ?? [];
         if (effort && !levels.includes(effort))
           await writeSetting(this.deps.config(), 'antigravity.defaultEffort', '', this.deps.globalTarget);
+      } else if (key === 'kimi.defaultModel') {
+        const effort = readSettings(this.deps.config())['kimi.defaultEffort'];
+        const levels = this.kimiModels.find((m) => m.value === checked.value)?.effortLevels ?? [];
+        if (effort && !levels.includes(effort))
+          await writeSetting(this.deps.config(), 'kimi.defaultEffort', '', this.deps.globalTarget);
       }
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
