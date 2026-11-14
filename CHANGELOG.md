@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.23.3 — 2026-11-14
+
+### Added
+
+- **Chat boot shell and session-loading indicator (`session.loading`).** Cold chat tabs render a lightweight themed loading shell inside `#root` while `chat.js` parses, show a delayed (`80 ms`) accessible loading skeleton with the session title instead of flashing the empty-session screen or freezing the previous feed while `loadHistory` runs, and reuse clean in-memory history on idle task sub-tab switches without respawning ACP/CLI processes.
+
+### Fixed
+
+- **Antigravity multi-stage silent reactive chains after stream interruptions and auto-compactions.** When an upstream stream drops mid-thought inside a silent reactive turn, `agy` writes an empty `PLANNER_RESPONSE` (`tool_calls: null`, `content: ""`) and resumes minutes later via `ERROR_MESSAGE` (`The stream was interrupted...`) without a new `SYSTEM_MESSAGE`, or pauses across `CHECKPOINT` auto-compaction beyond `180 s`. `AgyParentTranscriptTailer` now keeps `reactiveSession` active until the next user turn, surfaces `ERROR_MESSAGE` (`api_retry`) and `CHECKPOINT` (`compaction.end` `auto`), and `AgySession` maintains a lightweight `1000 ms` `stat`-only idle watch on the parent `transcript.jsonl` (`400 ms` while active) without advancing `lastStepIndex` during idle `contextUsage()` checks.
+
 ## 0.23.2 — 2026-11-14
 
 ### Added
