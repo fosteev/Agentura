@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.24.0 — 2026-11-14
+
+### Added
+
+- **Kimi Code is the fifth engine.** Installed Kimi Code CLI 2.6.0+ runs through native `kimi acp` with streaming text/reasoning, tools and Edit diffs, permissions, plan review and options, questions, model/thinking/mode controls, images, session history/resume/rename, context updates and manual `/compact` start. Settings include model/effort defaults and a machine-scoped executable path; sign in with `kimi acp --login`.
+- **Live and restored Kimi agent graphs.** Foreground, background, parallel, nested and resumed Agent calls appear in the agents panel and `AgentsGraph` with prompts, calls, token totals and summaries where recorded, plus bounded read-only Markdown transcripts restored from Kimi's versioned session persistence.
+- Kimi v1 explicitly omits unsupported PDF/document delivery, Other answers, AgentSwarm, structured per-turn cost/quota, MCP status controls, Remote Control and per-subagent Stop rather than fabricating them.
+
 ## 0.23.3 — 2026-11-14
 
 ### Added

@@ -135,7 +135,7 @@ The extension does not ship the engine binary (200+ MB). It finds the system `cl
 `~/.claude/local` or Homebrew (on Windows it looks for `claude.exe`). To point it somewhere else, set `agentura.claudeExecutable`.
 
 ```
-code --install-extension agentura-0.23.0.vsix
+code --install-extension agentura-0.24.0.vsix
 ```
 
 To build from source:

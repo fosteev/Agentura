@@ -2,7 +2,7 @@
   "name": "agentura",
   "displayName": "Agentura",
   "description": "%ext.description%",
-  "version": "0.23.3",
+  "version": "0.24.0",
   "private": true,
   "publisher": "fosteev",
   "repository": {
@@ -348,7 +348,14 @@
         },
         "agentura.kimi.defaultEffort": {
           "type": "string",
-          "enum": ["", "low", "medium", "high", "xhigh", "max"],
+          "enum": [
+            "",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
           "default": "",
           "description": "%config.kimi.defaultEffort.description%"
         },
