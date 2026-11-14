@@ -2869,5 +2869,293 @@ describe('AntigravityAdapter (ACP)', () => {
         await rm(tempDir, { recursive: true, force: true });
       }
     });
+
+    it('streams multi-stage silent reactive chain live across stream interruption, long pause (>silentWakeupWatchMs), auto-compaction, and idle contextUsage()', async () => {
+      const tempDir = await mkdtemp(join(os.tmpdir(), 'agy-stream-interrupt-chain-'));
+      try {
+        const CHILD_1 = '55004339-99b6-46d2-bd01-01c2d062995f';
+        const CHILD_2 = 'b67dec17-7580-49f1-82bc-53a60e2a4180';
+        const parentPath = await brainFile(tempDir, DEFAULT_SESSION_ID, []);
+        const child1Path = await brainFile(tempDir, CHILD_1, []);
+        const child2Path = await brainFile(tempDir, CHILD_2, []);
+
+        const server = createFakeAgyServer();
+        server.handle('session/prompt', async (params) => {
+          const sid = String(params.sessionId);
+          await appendFile(
+            parentPath,
+            [
+              { step_index: 0, type: 'USER_INPUT', status: 'DONE', content: '/roadmap-run-agy' },
+              {
+                step_index: 1,
+                type: 'PLANNER_RESPONSE',
+                status: 'DONE',
+                input_tokens: 1000,
+                output_tokens: 30,
+                tool_calls: [
+                  {
+                    name: 'invoke_subagent',
+                    args: { TypeName: '"self"', Role: '"Stage 1 Executor"', Prompt: '"Stage 1"' },
+                  },
+                ],
+              },
+              {
+                step_index: 2,
+                type: 'GENERIC',
+                status: 'DONE',
+                content: `Created the following subagent:\n{"conversationId":"${CHILD_1}"}`,
+              },
+              {
+                step_index: 3,
+                type: 'PLANNER_RESPONSE',
+                status: 'DONE',
+                input_tokens: 1200,
+                output_tokens: 20,
+                content: 'Запустил этап 1.',
+              },
+            ]
+              .map((r) => JSON.stringify(r))
+              .join('\n') + '\n',
+            'utf8',
+          );
+          server.notify('session/update', {
+            sessionId: sid,
+            update: {
+              sessionUpdate: 'tool_call',
+              toolCallId: 'tc_stage_1',
+              name: 'invoke_subagent',
+              kind: 'other',
+              status: 'in_progress',
+              rawInput: { TypeName: 'self', Role: 'Stage 1 Executor', Prompt: 'Stage 1' },
+            },
+          });
+          server.notify('session/update', {
+            sessionId: sid,
+            update: {
+              sessionUpdate: 'tool_call_update',
+              toolCallId: 'tc_stage_1',
+              status: 'completed',
+            },
+          });
+          server.notify('session/update', {
+            sessionId: sid,
+            update: {
+              sessionUpdate: 'agent_message_chunk',
+              content: { type: 'text', text: 'Запустил этап 1.' },
+            },
+          });
+          return { stopReason: 'end_turn', usage: { inputTokens: 1200, outputTokens: 20 } };
+        });
+
+        const { adapter } = setup(server, {
+          dataDir: tempDir,
+          subagentPollMs: 15,
+          idleParentPollMs: 25,
+          silentWakeupWatchMs: 40,
+        });
+        const session = await adapter.createSession({ cwd: '/work' });
+        const events = collect(session);
+        await until(() => events.some((e) => e.type === 'session.init'), 'session.init');
+
+        session.send('/roadmap-run-agy');
+        await until(
+          () =>
+            events.some((e) => e.type === 'agent.start' && e.taskId === CHILD_1) &&
+            events.filter((e) => e.type === 'turn.result').length === 1,
+          'stage 1 launched and initial user turn closed',
+        );
+
+        // Stage 1 finishes -> parent opens silent turn and gets interrupted mid-thought (empty content, no tool_calls)
+        await writeFile(
+          child1Path,
+          [
+            {
+              step_index: 0,
+              type: 'USER_INPUT',
+              status: 'DONE',
+              content: `<SYSTEM_MESSAGE>\n[Message] sender=${DEFAULT_SESSION_ID} content=Stage 1\n</SYSTEM_MESSAGE>`,
+            },
+            {
+              step_index: 1,
+              type: 'PLANNER_RESPONSE',
+              status: 'DONE',
+              input_tokens: 500,
+              output_tokens: 40,
+              content: 'Stage 1 done.',
+            },
+          ]
+            .map((r) => JSON.stringify(r))
+            .join('\n') + '\n',
+          'utf8',
+        );
+        await until(
+          () => events.some((e) => e.type === 'agent.end' && e.agentId === 'tc_stage_1'),
+          'stage 1 agent.end',
+        );
+
+        await appendFile(
+          parentPath,
+          [
+            {
+              step_index: 4,
+              type: 'SYSTEM_MESSAGE',
+              status: 'DONE',
+              created_at: '2026-11-14T10:00:41Z',
+              content: `<SYSTEM_MESSAGE>\n[Message] sender=${CHILD_1} content=Stage 1 done.\n</SYSTEM_MESSAGE>`,
+            },
+            {
+              step_index: 5,
+              type: 'PLANNER_RESPONSE',
+              status: 'DONE',
+              created_at: '2026-11-14T10:01:30Z',
+              input_tokens: 2000,
+              output_tokens: 50,
+              thinking: 'Reviewing stage 1 diff...',
+              content: '',
+            },
+          ]
+            .map((r) => JSON.stringify(r))
+            .join('\n') + '\n',
+          'utf8',
+        );
+
+        await until(
+          () => events.filter((e) => e.type === 'turn.result').length === 2,
+          'interrupted silent turn closed without hanging spinner',
+        );
+
+        // Wait longer than silentWakeupWatchMs (40ms), then append silent steps AND call contextUsage() before idle poller ticks
+        await new Promise((r) => setTimeout(r, 90));
+        await appendFile(
+          parentPath,
+          [
+            {
+              step_index: 6,
+              type: 'ERROR_MESSAGE',
+              status: 'DONE',
+              created_at: '2026-11-14T10:19:54Z',
+              error: 'Error: The stream was interrupted. Please continue the task you were working on.',
+            },
+            {
+              step_index: 7,
+              type: 'PLANNER_RESPONSE',
+              status: 'DONE',
+              created_at: '2026-11-14T10:21:10Z',
+              input_tokens: 2400,
+              output_tokens: 60,
+              tool_calls: [
+                {
+                  name: 'invoke_subagent',
+                  args: { TypeName: '"self"', Role: '"Stage 2 Executor"', Prompt: '"Stage 2"' },
+                },
+              ],
+            },
+            {
+              step_index: 8,
+              type: 'GENERIC',
+              status: 'DONE',
+              created_at: '2026-11-14T10:21:12Z',
+              content: `Created the following subagent:\n{"conversationId":"${CHILD_2}"}`,
+            },
+            {
+              step_index: 9,
+              type: 'CHECKPOINT',
+              status: 'DONE',
+              created_at: '2026-11-14T11:05:02Z',
+              input_tokens: 190_000,
+              output_tokens: 4_000,
+              content: '# Resuming from a compaction\n...',
+            },
+            {
+              step_index: 10,
+              type: 'PLANNER_RESPONSE',
+              status: 'DONE',
+              created_at: '2026-11-14T11:37:44Z',
+              input_tokens: 35_000,
+              output_tokens: 45,
+              content: 'Этап 1 принят, запустил этап 2.',
+            },
+          ]
+            .map((r) => JSON.stringify(r))
+            .join('\n') + '\n',
+          'utf8',
+        );
+        // Idle contextUsage() must NOT advance lastStepIndex past unread silent steps 6..10
+        await session.contextUsage();
+
+        await until(
+          () =>
+            events.some((e) => e.type === 'agent.start' && e.taskId === CHILD_2) &&
+            events.some(
+              (e) => e.type === 'turn.result' && e.text === 'Этап 1 принят, запустил этап 2.',
+            ),
+          'silent continuation + Stage 2 subagent delivered live without user prompt',
+        );
+        expect(events.some((e) => e.type === 'error' && e.code === 'api_retry')).toBe(true);
+        expect(
+          events.some(
+            (e) => e.type === 'compaction.end' && e.ok && e.trigger === 'auto' && e.preTokens === 194_000,
+          ),
+        ).toBe(true);
+
+        // Stage 2 finishes and final roadmap report arrives live without sending any user message
+        await writeFile(
+          child2Path,
+          [
+            {
+              step_index: 0,
+              type: 'USER_INPUT',
+              status: 'DONE',
+              content: `<SYSTEM_MESSAGE>\n[Message] sender=${DEFAULT_SESSION_ID} content=Stage 2\n</SYSTEM_MESSAGE>`,
+            },
+            {
+              step_index: 1,
+              type: 'PLANNER_RESPONSE',
+              status: 'DONE',
+              input_tokens: 600,
+              output_tokens: 30,
+              content: 'Stage 2 done.',
+            },
+          ]
+            .map((r) => JSON.stringify(r))
+            .join('\n') + '\n',
+          'utf8',
+        );
+        await appendFile(
+          parentPath,
+          [
+            {
+              step_index: 11,
+              type: 'SYSTEM_MESSAGE',
+              status: 'DONE',
+              created_at: '2026-11-14T12:00:00Z',
+              content: `<SYSTEM_MESSAGE>\n[Message] sender=${CHILD_2} content=Stage 2 done.\n</SYSTEM_MESSAGE>`,
+            },
+            {
+              step_index: 12,
+              type: 'PLANNER_RESPONSE',
+              status: 'DONE',
+              created_at: '2026-11-14T12:00:05Z',
+              input_tokens: 36_000,
+              output_tokens: 40,
+              content: 'Все этапы roadmap завершены.',
+            },
+          ]
+            .map((r) => JSON.stringify(r))
+            .join('\n') + '\n',
+          'utf8',
+        );
+
+        await until(
+          () =>
+            events.some((e) => e.type === 'turn.result' && e.text === 'Все этапы roadmap завершены.'),
+          'final silent turn delivered live without user prompt',
+        );
+
+        session.dispose();
+      } finally {
+        await rm(tempDir, { recursive: true, force: true });
+      }
+    });
   });
 });
