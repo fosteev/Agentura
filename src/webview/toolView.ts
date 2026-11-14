@@ -25,6 +25,20 @@ function str(v: unknown): string | undefined {
   return typeof v === 'string' && v ? v : undefined;
 }
 
+function firstLine(v: unknown): string | undefined {
+  if (typeof v !== 'string') return undefined;
+  const line = v.trim().split('\n', 1)[0]?.trim();
+  return line || undefined;
+}
+
+function firstArg(input: Record<string, unknown>): string | undefined {
+  return (
+    (Object.entries(input).find(([k, v]) => k !== 'toolSummary' && typeof v === 'string' && v)?.[1] as
+      | string
+      | undefined) ?? (Object.values(input).find((v) => typeof v === 'string' && v) as string | undefined)
+  );
+}
+
 function clip(s: string, max = MAX_WHAT): string {
   const line = s.split('\n', 1)[0] ?? '';
   return line.length > max ? `${line.slice(0, max - 1)}…` : line;
@@ -94,7 +108,7 @@ export function toolView(
     // метки B (roadmap 21, решение 8): чип сервера перед инструментом; `Skill` — отдельная полоса
     const mcp = mcpToolParts(name);
     if (mcp) {
-      const arg = Object.values(input).find((v) => typeof v === 'string' && v) as string | undefined;
+      const arg = firstArg(input);
       const view: ToolView = { op: 'mcp', what: clip(mcp.tool), server: mcp.server };
       if (arg) {
         view.dim = clip(arg);
@@ -176,9 +190,51 @@ export function toolView(
       }
       return { op: 'artifact', what: url ? `${action} · ${clip(url)}` : action };
     }
+    case 'manage_subagents': {
+      const action = str(input['Action']) ?? str(input['action']);
+      const rawIds = input['ConversationIds'] ?? input['conversationIds'];
+      const ids = Array.isArray(rawIds)
+        ? rawIds.filter((x): x is string => typeof x === 'string' && x.length > 0)
+        : [];
+      return {
+        op: 'agent',
+        what: clip([action, ids.length ? ids.join(', ') : undefined].filter(Boolean).join(' · ')),
+      };
+    }
+    case 'send_message': {
+      const to = str(input['Recipient']) ?? str(input['recipient']);
+      const msg = firstLine(input['Message'] ?? input['message']);
+      return { op: 'msg', what: clip([to, msg].filter(Boolean).join(' · ')) };
+    }
+    case 'define_subagent': {
+      const subName = str(input['Name']) ?? str(input['name']);
+      const desc = firstLine(input['Description'] ?? input['description']);
+      return { op: 'agent', what: clip([subName, desc].filter(Boolean).join(' — ')) };
+    }
+    case 'manage_task': {
+      const action = str(input['Action']) ?? str(input['action']);
+      const taskId = str(input['TaskId']) ?? str(input['taskId']);
+      return { op: 'task', what: clip([action, taskId].filter(Boolean).join(' · ')) };
+    }
+    case 'schedule': {
+      const cron = str(input['CronExpression']) ?? str(input['cronExpression']);
+      const durRaw = input['DurationSeconds'] ?? input['durationSeconds'];
+      const dur = typeof durRaw === 'number' && Number.isFinite(durRaw) ? durRaw : undefined;
+      const when = cron ?? (dur !== undefined ? (dur > 0 ? formatSeconds(dur) : '0s') : undefined);
+      const prompt = firstLine(input['Prompt'] ?? input['prompt']);
+      return {
+        op: cron ? 'cron' : 'timer',
+        what: clip([when, prompt].filter(Boolean).join(' · ')),
+      };
+    }
+    case 'swarm': {
+      const action = str(input['action']) ?? str(input['Action']);
+      const target = str(input['name']) ?? str(input['title']) ?? str(input['model']);
+      const brief = !target ? firstLine(input['brief']) : undefined;
+      return { op: 'swarm', what: clip([action, target, brief].filter(Boolean).join(' · ')) };
+    }
     default: {
-      const first = Object.values(input).find((v) => typeof v === 'string' && v) as
-        string | undefined;
+      const first = firstArg(input);
       return { op: shortName(name).toLowerCase().slice(0, 7), what: clip(first ?? '') };
     }
   }

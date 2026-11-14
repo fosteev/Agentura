@@ -1,9 +1,18 @@
 import { structuredPatch } from 'diff';
+import { hostStrings, type Lang } from '../../shared/l10n';
 import type { AgentEvent, ImageRef, PromptImage, TokenUsage } from '../types';
 import { chunkText, record, sessionTitleOf, sessionUpdateKind, stopReasonOf } from './acpProtocol';
 import { mapAgyTool } from './tools';
 
 const ZERO: TokenUsage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+const API_RETRY_RE = /\r?\n?⚠ API error \(attempt (\d+)\): ([^\r\n]+)\r?\n?/g;
+
+export interface AgyAcpMapperOptions {
+  /** Язык пользовательских плашек (`api_retry`); по умолчанию `'ru'`. */
+  lang?: () => Lang;
+  /** Известные имена MCP-серверов из `<dataDir>/mcp` (от длинных к коротким) для точного разреза `mcp_<server>_<tool>`. */
+  mcpServers?: readonly string[];
+}
 
 /**
  * Токены хода из `session/prompt.result.usage`. `inputTokens` у agy уже очищен от кэша (кэш повторно не вычитаем),
@@ -38,12 +47,19 @@ interface ToolState {
  *   `plan` — не лента.
  */
 export class AgyAcpMapper {
+  private readonly lang: () => Lang;
+  private readonly mcpServers: readonly string[] | undefined;
   private messageId = '';
   private text = '';
   private seq = 0;
   private thinking: { messageId: string } | undefined;
   private readonly tools = new Map<string, ToolState>();
   private readonly finished = new Set<string>();
+
+  constructor(options?: AgyAcpMapperOptions) {
+    this.lang = options?.lang ?? (() => 'ru');
+    this.mcpServers = options?.mcpServers;
+  }
 
   /** Новый ход: сбрасывает накопленный текст предыдущего. `images` — миниатюры реплики в ленте. */
   startTurn(prompt: string, at = Date.now(), images?: readonly PromptImage[]): AgentEvent[] {
@@ -70,9 +86,33 @@ export class AgyAcpMapper {
       const text = chunkText(update);
       if (!text) return [];
       const events = this.closeThinking(now);
-      if (!this.messageId) this.messageId = this.nextMessageId();
-      this.text += text;
-      events.push({ type: 'text.delta', messageId: this.messageId, text });
+      const emitText = (part: string): void => {
+        if (!part) return;
+        if (!this.messageId) this.messageId = this.nextMessageId();
+        this.text += part;
+        events.push({ type: 'text.delta', messageId: this.messageId, text: part });
+      };
+      if (!text.includes('⚠ API error (attempt ')) {
+        emitText(text);
+        return events;
+      }
+      API_RETRY_RE.lastIndex = 0;
+      let cursor = 0;
+      let match: RegExpExecArray | null;
+      while ((match = API_RETRY_RE.exec(text)) !== null) {
+        emitText(text.slice(cursor, match.index));
+        this.messageId = '';
+        const attempt = Number.parseInt(match[1]!, 10);
+        const detail = match[2]!;
+        events.push({
+          type: 'error',
+          fatal: false,
+          code: 'api_retry',
+          message: hostStrings(this.lang()).agyApiRetry(attempt, detail),
+        });
+        cursor = match.index + match[0].length;
+      }
+      emitText(text.slice(cursor));
       return events;
     }
     if (kind === 'agent_thought_chunk') {
@@ -185,7 +225,7 @@ export class AgyAcpMapper {
       events.push(...this.closeThinking(now));
       const rawName = toolName(row);
       const rawInput = toolInput(row);
-      const mapped = mapAgyTool(rawName, rawInput);
+      const mapped = mapAgyTool(rawName, rawInput, this.mcpServers);
       tool = { name: mapped.name, input: mapped.input };
       this.tools.set(id, tool);
       events.push({ type: 'tool.start', toolUseId: id, name: tool.name, input: { ...tool.input } });

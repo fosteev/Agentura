@@ -107,7 +107,9 @@ function agentNode(line: TurnGroup['agents'][number], a: AgentNode): GraphNodeVi
     status: st,
     cls: st,
     mark: st === 'ok' ? '✓' : st === 'err' ? '✕' : st === 'stop' ? '■' : '◐',
-    head: a.model ? `${line.type} · ${shortModel(a.model)}` : line.type,
+    head: [line.type, a.model ? shortModel(a.model) : '', a.reasoningEffort ?? '']
+      .filter(Boolean)
+      .join(' · '),
     ...(a.tokens !== undefined ? { tokens: compactTokens(a.tokens) } : {}),
     time: line.time,
     title: line.title,

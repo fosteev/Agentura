@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.23.2 — 2026-11-14
+
+### Added
+
+- **Agents graph zoom.** `⌘/Ctrl + wheel` and trackpad pinch zoom toward the cursor (`25%–200%`), with `−`, `+`, `fit` and double-click on the percentage for `100%` in the turn bar. Each graph tab keeps its zoom across session switches and window reloads.
+- **Clickable `file://` links and line ranges in chat.** Local `file:///...` links (POSIX and Windows drive paths) and `#L10-L20` / `:10-20` ranges open directly in the VS Code editor with range selection. Remote `file://host/...` UNC shares and unsafe schemes stay blocked, and stripped anchors no longer look like active links.
+- **Interface micro-animations and `agentura.ui.animations`.** Subtle CSS transitions (`120–220 ms`) for context/limit gauges, popovers, discrete feed cards and live graph nodes, toggled immediately on the Appearance settings page (`prefers-reduced-motion` always disables motion).
+- **Extension version badge** in the settings tab header.
+
+### Fixed
+
+- **Antigravity silent reactive turns** after background tasks and subagent wakeups are delivered reliably into the chat feed.
+- **Long limit error messages** in the sidebar no longer cause horizontal overflow.
+
+## 0.23.1 — 2026-11-13
+
+### Fixed
+
+- **Antigravity subagents in the `agents` panel and `AgentsGraph`.** Real `agy acp` omits `rawOutput` / `content` on `invoke_subagent` and `manage_subagents` over ACP (both live and in `session/load`) and stores `tool_calls[].args` as JSON-encoded strings in `transcript.jsonl`. Live sessions (`AgyParentToolOutputReader`) and restored history (`readParentTranscriptSummary`) now pair parent `PLANNER_RESPONSE` calls with `GENERIC` outputs in `brain/<sessionId>/.system_generated/logs/transcript.jsonl`, decode `oneharness` JSON-stringified tool arguments, prefer untruncated `<SYSTEM_MESSAGE>` child reports over truncated child `send_message` payloads, and resolve inherited `model` + `reasoningEffort` (`Model: "inherit"` and `<USER_SETTINGS_CHANGE>`).
+- **Subagent launch prompt, model and reasoning effort across panel & graph views.** `tree`, `lanes`, `cards`, `list`, `AgentsGraph` nodes/details and read-only subagent Markdown transcripts display each subagent's resolved model, `reasoningEffort` and launch prompt (with scrollable multi-line prompts in `tree` and `lanes`).
+
+## 0.23.0 — 2026-11-13
+
+### Added
+
+- **Antigravity ACP (`agy acp`), subagents graph and `/compact`.** Native ACP sessions (`agy >= 1.5.0`, standard `1.5.6+`) with live permissions, interactive questions (`ask_question`), slash-command autocomplete (`/`), context window gauge (`1M` Gemini, `200k` Claude, `128k` GPT-OSS) with instant recalculation on model switch, and manual `/compact`. Child subagents (`invoke_subagent`) render in `AgentGroup`, the **agents** tab and `AgentsGraph` (nested subagents, background bash tasks, `waiting_for_input` detection, `send_message` reopening, history reconstruction, read-only Markdown transcripts and clickable `conversation://<uuid>` links), and inherit auto-approval in `bypassPermissions` via `agy acp --dangerously-skip-permissions` with transparent `session/resume` rotation.
+- **Antigravity MCP chips and `/usage` quota diagnostics.** Eager and lazy MCP calls resolve full server chips against `<dataDir>/mcp`, orchestration tools get dedicated feed labels, and `agy -p "/usage"` keeps dedicated model pools (`Gemini 4 Argon`, `Gemini 4 Carbon`) separate from general `Gemini`, preserving cached rings and surfacing `Eligibility check failed` / network errors with manual refresh.
+- **MCP tab search and server details** across supported engines, plus opening bound Jira issues directly from session rows and recording Codex agent launches.
+
+### Fixed
+
+- **Antigravity transient API retries** (`⚠ API error (attempt N)`) collapse into compact `api_retry` rows instead of merging into the assistant reply text, `\r` spinner frames no longer corrupt `agy models` / `/usage` parsing, late server titles (`session_info_update`) update after turn completion, and server-side `auto` mode is preserved on resume.
+- **Empty Antigravity and Cursor tabs** initialize cleanly without stale state, and the composer agent menu layout stays aligned.
+
 ## 0.22.0 — 2026-11-07
 
 ### Added

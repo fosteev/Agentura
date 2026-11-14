@@ -15,6 +15,7 @@ import {
   codexModels,
   engineCheck,
   errors,
+  extensionVersion,
   handleSettingsMessage,
   integrations,
   kimiCheck,
@@ -90,6 +91,7 @@ const values: SettingsValues = {
   'browser.enabled': false,
   'feed.fontSize': 13,
   'ui.fontSize': 13,
+  'ui.animations': true,
   'diff.syntaxHighlighting': true,
   'diff.highlightTheme': 'github',
   'diff.fontSize': 0,
@@ -120,6 +122,7 @@ beforeEach(() => {
     (m) => void posted.push(m as Record<string, unknown>),
   );
   settingsValues.value = undefined;
+  extensionVersion.value = undefined;
   requestedSection.value = undefined;
   integrations.value = undefined;
   overridden.value = [];
@@ -396,6 +399,7 @@ describe('вкладка настроек', () => {
       'agentura.tasks.tab',
       'agentura.feed.fontSize',
       'agentura.ui.fontSize',
+      'agentura.ui.animations',
       'agentura.diff.syntaxHighlighting',
       'agentura.diff.highlightTheme',
       'agentura.diff.fontSize',
@@ -446,6 +450,19 @@ describe('вкладка настроек', () => {
     expect(host.querySelector('.st-wrap > .st-nav')).not.toBeNull();
     expect(host.querySelector('.ns-advanced .tg.on.danger')).not.toBeNull();
     expect(host.querySelector('.ns-advanced .warn')).not.toBeNull();
+  });
+
+  it('шапка настроек выводит версию расширения из сообщения init', async () => {
+    const host = mount(Settings);
+    state();
+    await flush();
+    expect(host.querySelector('.hud .st-ver')).toBeNull();
+
+    act(() => {
+      handleSettingsMessage({ type: 'init', surface: 'settings', version: '0.23.1' });
+    });
+    await flush();
+    expect(host.querySelector('.hud .st-ver')?.textContent).toBe('v0.23.1');
   });
 
   it('Remote Control: переключатель и префикс пишут через settings.set', async () => {
@@ -975,6 +992,16 @@ describe('вкладка настроек', () => {
     await flush();
     expect(host.querySelector('.set[data-key$="defaultModel"] .note')).not.toBeNull();
     expect(host.querySelector('.set[data-key$="defaultEffort"] .note')).toBeNull();
+  });
+
+  it('тумблер ui.animations на странице «Внешний вид» пишет настройку', async () => {
+    const host = mount(Settings);
+    state();
+    await flush();
+    const tg = host.querySelector<HTMLButtonElement>('#look button[aria-label="ui.animations"]')!;
+    expect(tg.getAttribute('aria-checked')).toBe('true');
+    tg.click();
+    expect(sets()).toEqual([{ type: 'settings.set', key: 'ui.animations', value: false }]);
   });
 });
 

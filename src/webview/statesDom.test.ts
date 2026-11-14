@@ -413,12 +413,19 @@ describe('доступность', () => {
     expect(host.querySelector('.log')?.getAttribute('role')).toBe('log');
   });
 
-  it('prefers-reduced-motion гасит анимации (спиннер, курсор), видимый фокус у карточек и меню задан', () => {
+  it('prefers-reduced-motion и body[data-motion="off"] гасят анимации, токены движения и видимый фокус заданы', () => {
     const css = (f: string) => readFileSync(join(__dirname, '..', '..', 'media', f), 'utf8');
-    expect(css('tokens.css')).toMatch(
+    const tokens = css('tokens.css');
+    expect(tokens).toContain('--dur-fast: 120ms;');
+    expect(tokens).toContain('--dur: 180ms;');
+    expect(tokens).toContain('--ease-out: cubic-bezier(0.16, 1, 0.3, 1);');
+    expect(tokens).toMatch(
+      /body\[data-motion="off"\] \*, body\[data-motion="off"\] \*::before, body\[data-motion="off"\] \*::after \{\s*animation: none !important;\s*transition: none !important;\s*\}/,
+    );
+    expect(tokens).toMatch(
       /@media \(prefers-reduced-motion: reduce\)[^}]*animation: none !important/s,
     );
-    expect(css('tokens.css')).toContain(':focus-visible');
+    expect(tokens).toContain(':focus-visible');
     expect(css('webview.css')).toMatch(/\.ask \.btn:focus-visible[\s\S]*outline: 2px solid/);
   });
 });

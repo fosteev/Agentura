@@ -92,6 +92,8 @@ function Status({ e }: { e: EngineView }) {
   }
   if (e.state === 'loading' && !e.windows.length)
     return <span class="wait">{ui.sidebar.engineLoading}</span>;
+  if (e.state === 'error' && !e.windows.length && !whoText(e) && e.error)
+    return <span class="wait">{e.error}</span>;
   return <span>{whoText(e)}</span>;
 }
 
@@ -163,7 +165,11 @@ function Switch({ engines, current }: { engines: EngineView[]; current: EngineId
               class={lv(w?.percent)}
               data-engine={x.engine}
               data-tip={
-                w ? ui.sidebar.engineWorst(engineName(x.engine), w.percent) : engineName(x.engine)
+                w
+                  ? ui.sidebar.engineWorst(engineName(x.engine), w.percent)
+                  : [engineName(x.engine), x.state === 'error' && x.error ? ui.sidebar.engineError(x.error) : '']
+                      .filter(Boolean)
+                      .join('\n')
               }
               onClick={() => (picked.value = { engine: x.engine, base: current })}
             >
@@ -175,7 +181,7 @@ function Switch({ engines, current }: { engines: EngineView[]; current: EngineId
         })}
       </div>
       <div class="who" data-tip={engineTip(e)}>
-        {e.state === 'ok' || e.state === 'error' ? (
+        {e.state === 'ok' || (e.state === 'error' && (Boolean(whoText(e)) || e.windows.length > 0 || !e.error)) ? (
           <>
             <b>{e.email ?? ui.sidebar.unknown}</b>
             {e.plan && <span>· {e.plan}</span>}
@@ -196,14 +202,14 @@ function Table({ engines }: { engines: EngineView[] }) {
   return (
     <div class="grid">
       {engines.map((e) => {
-        if (e.state === 'signedOut') {
+        if (e.state === 'signedOut' || (e.state === 'error' && !e.windows.length && e.error)) {
           return (
             <Fragment key={e.engine}>
               <span class="nm" data-tip={engineTip(e)}>
                 <Mark engine={e.engine} />
                 {ui.sidebar.tableShort[e.engine] ?? engineName(e.engine)}
               </span>
-              <span class="off">
+              <span class="off" data-tip={e.state === 'error' ? engineTip(e) : undefined}>
                 <Status e={e} />
               </span>
             </Fragment>
@@ -366,7 +372,12 @@ export function EngineHeaderLimits({
               class={`m ${lv(w?.percent)}`.trim()}
               key={e.engine}
               data-engine={e.engine}
-              data-tip={[engineName(e.engine), w?.note].filter(Boolean).join(' · ')}
+              data-tip={[
+                engineName(e.engine),
+                w?.note ?? (e.state === 'error' && e.error ? ui.sidebar.engineError(e.error) : ''),
+              ]
+                .filter(Boolean)
+                .join(' · ')}
             >
               <Mark engine={e.engine} />
               {w ? (

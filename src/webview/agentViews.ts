@@ -55,6 +55,8 @@ export interface AgentLine extends MapRowView {
   status: AgentStatus;
   /** `Explore`, `general-purpose`. */
   type: string;
+  /** Короткая метка модели и effort (`carbon-4 · medium`). */
+  modelTag?: string;
   /** Описание задачи агента. */
   title: string;
   /** Сколько работает / проработал: `1m 12s`. */
@@ -128,12 +130,16 @@ function agentLine(
   cwd?: string,
   parentId?: string,
 ): AgentLine {
+  const modelTag = [a.model ? shortModel(a.model) : '', a.reasoningEffort ?? '']
+    .filter(Boolean)
+    .join(' · ');
   return {
     ...mapRow(a, depth, now, false, cwd),
     agentId: a.agentId,
     taskId: a.taskId,
     status: statusOf(a),
     type: a.subagentType ?? a.taskType,
+    ...(modelTag ? { modelTag } : {}),
     title: a.description || a.agentId,
     time: formatDuration(elapsed(a, now)),
     brief: briefOf(a, cwd),
@@ -547,8 +553,10 @@ export function laneView(h: HudState, g: TurnGroup, now: number): LaneView {
 export interface CardView {
   launchRecord?: AgentNode['launchRecord'];
   line: AgentLine;
-  /** `Explore · sonnet-5.5`. */
+  /** `Explore · sonnet-5.5 · medium`. */
   kind: string;
+  /** Короткая выдержка промпта запуска (если нет `launchRecord`). */
+  promptExcerpt?: string;
   /** Текущий вызов; нет — агент не идёт. */
   live: string | null;
   /** Состояния последних вызовов: `rd` — прошёл, `gr` — идёт, `er` — упал, пусто — прерван. */
@@ -564,16 +572,31 @@ export interface CardView {
 
 const CELLS = 20;
 const EXCERPT = 200;
+const PROMPT_EXCERPT = 140;
 
 export function cardView(a: AgentNode, now: number, cwd?: string, hasSession = true): CardView {
   const text = (a.summary ?? '')
     .slice(0, EXCERPT * 4)
     .replace(/\s+/g, ' ')
     .trim();
+  const rawPrompt = !a.launchRecord && a.prompt
+    ? a.prompt.slice(0, PROMPT_EXCERPT * 4).replace(/\s+/g, ' ').trim()
+    : '';
+  const promptExcerpt =
+    rawPrompt.length > PROMPT_EXCERPT
+      ? `${rawPrompt.slice(0, PROMPT_EXCERPT).trimEnd()}…`
+      : rawPrompt;
   return {
     line: agentLine(a, 0, now, cwd),
     ...(a.launchRecord ? { launchRecord: a.launchRecord } : {}),
-    kind: `${a.subagentType ?? a.taskType}${a.model ? ` · ${shortModel(a.model)}` : ''}`,
+    ...(promptExcerpt ? { promptExcerpt } : {}),
+    kind: [
+      a.subagentType ?? a.taskType,
+      a.model ? shortModel(a.model) : '',
+      a.reasoningEffort ?? '',
+    ]
+      .filter(Boolean)
+      .join(' · '),
     live: a.status === 'running' ? currentCall(a, cwd) : null,
     cells: a.segs
       .slice(-CELLS)

@@ -374,14 +374,23 @@ describe('cardView / cardList', () => {
       seg(`s${i}`, T0 + i * 100, i === 29 ? undefined : T0 + i * 100 + 50),
     );
     const run = cardView(
-      agent('r', { status: 'running', segs, calls: 30, model: 'claude-sonnet-5-5' }),
+      agent('r', {
+        status: 'running',
+        segs,
+        calls: 30,
+        model: 'claude-sonnet-5-5',
+        reasoningEffort: 'high',
+        prompt: 'Найди все точки входа субагентов',
+      }),
       now,
     );
     expect(run.live).toMatch(/^read/);
     expect(run.cells).toHaveLength(20);
     expect(run.cells.at(-1)).toBe('gr');
     expect(run.cells[0]).toBe('rd');
-    expect(run.kind).toBe('Explore · sonnet-5.5');
+    expect(run.kind).toBe('Explore · sonnet-5.5 · high');
+    expect(run.line.modelTag).toBe('sonnet-5.5 · high');
+    expect(run.promptExcerpt).toBe('Найди все точки входа субагентов');
     expect(run.resultEst).toBeNull();
 
     const summary = 'Найдено   одно место:\nQueue.tsx:58 — ' + 'x'.repeat(400);

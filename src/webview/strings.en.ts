@@ -701,6 +701,12 @@ export const en: Ui = {
       turnsAria: 'Turns with agents',
       live: 'running',
       agentsTotal: 'agent tokens',
+      zoomAria: 'Graph zoom',
+      zoomOutTitle: 'Zoom out (⌘/Ctrl + wheel down)',
+      zoomInTitle: 'Zoom in (⌘/Ctrl + wheel up)',
+      zoomFit: 'fit',
+      zoomFitTitle: 'Fit graph in window',
+      zoomResetTitle: 'Double-click for 100%',
       context: (used: string, limit: string) => `context ${used} / ${limit}`,
       returned: (est: string) => `summaries returned: ${est}`,
       edgeTip: '↗ prompt to the agent (estimated by length) · ↙ summary back to the main agent',
@@ -1498,6 +1504,10 @@ export const en: Ui = {
     uiFontSize: {
       name: 'Interface size',
       desc: 'Everything except the feed: header, input box, panels, sidebar, this tab. The feed has its own size above. Open tabs update immediately.',
+    },
+    uiAnimations: {
+      name: 'UI micro-animations',
+      desc: 'Subtle transitions for context and limit gauges, menus, discrete cards and active edges in the agents graph. System reduced-motion always disables animations. Open tabs update immediately.',
     },
     feedFontSize: {
       name: 'Feed text size',

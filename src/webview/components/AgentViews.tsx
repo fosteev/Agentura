@@ -331,7 +331,7 @@ function TreeNode({
       >
         <Mark status={a.status} mark={a.mark} />
         <span class="nm">
-          <span class="ty">{a.type} ·</span> {a.title}
+          <span class="ty">{a.modelTag ? `${a.type} · ${a.modelTag}` : a.type} ·</span> {a.title}
           <small>{a.brief}</small>
         </span>
         <span class="tk">
@@ -571,6 +571,11 @@ function Card({ c, act }: { c: CardView; act: AgentViewActions }) {
         </span>
       </div>
       <div class="ct">{l.title}</div>
+      {c.promptExcerpt && (
+        <div class="cp" data-tip={ui.agents.detail.prompt}>
+          ↗ {c.promptExcerpt}
+        </div>
+      )}
       <div class="cb">{body}</div>
       {c.launchRecord && <AgentLaunchRecord record={c.launchRecord} />}
       {c.cells.length > 0 && (

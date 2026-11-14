@@ -44,6 +44,7 @@ import {
   kimiModels,
   engineCheck,
   errors,
+  extensionVersion,
   integrations,
   integrationsAction,
   overridden,
@@ -893,11 +894,14 @@ export function Settings() {
     </section>
   );
 
+  const ver = extensionVersion.value?.trim();
+
   return (
     <div class="webview settings">
       <header class="hud" aria-label={T.aria}>
         <span class="sess" style="display:block;padding-left:8px">
           Agentura · <b>{T.title.toLowerCase()}</b>
+          {ver ? <span class="st-ver">v{ver}</span> : null}
         </span>
         <span class="acts">
           <button type="button" data-tip={T.openUiTitle} onClick={() => reveal('ui')}>
@@ -1347,6 +1351,9 @@ export function Settings() {
               </Row>
               <Row name={T.uiFontSize.name} isNew desc={T.uiFontSize.desc} k="ui.fontSize">
                 <FontSizeSelect value={v['ui.fontSize']} k="ui.fontSize" />
+              </Row>
+              <Row name={T.uiAnimations.name} isNew desc={T.uiAnimations.desc} k="ui.animations">
+                <Toggle k="ui.animations" value={v['ui.animations']} />
               </Row>
               <Row name={T.diffHighlight.name} isNew desc={T.diffHighlight.desc} k="diff.syntaxHighlighting">
                 <Toggle k="diff.syntaxHighlighting" value={v['diff.syntaxHighlighting']} />

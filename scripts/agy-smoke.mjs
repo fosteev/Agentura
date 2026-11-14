@@ -72,6 +72,17 @@ try {
   const flash = caps.models.find((m) => m.value === MODEL);
   if (!flash || !flash.effortLevels?.includes(EFFORT)) exitCode = 1;
 
+  let initEvent = events.filter((e) => e.type === 'session.init').at(-1);
+  for (let i = 0; i < 30 && !(Array.isArray(initEvent?.slashCommands) && initEvent.slashCommands.length > 0); i++) {
+    await new Promise((r) => setTimeout(r, 50));
+    initEvent = events.filter((e) => e.type === 'session.init').at(-1);
+  }
+  const slashCommands = Array.isArray(initEvent?.slashCommands) ? initEvent.slashCommands : [];
+  console.log(
+    `${t()} session.init slashCommands (${slashCommands.length}): ${slashCommands.slice(0, 6).join(', ') || 'нет'}`,
+  );
+  if (slashCommands.length === 0) exitCode = 1;
+
   const initialUsage = events.find((e) => e.type === 'context.usage');
   console.log(`${t()} context.usage init: maxTokens=${initialUsage?.maxTokens}`);
   if (!initialUsage || initialUsage.maxTokens !== 1_000_000) exitCode = 1;

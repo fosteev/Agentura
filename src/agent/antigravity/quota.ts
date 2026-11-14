@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { stripAgySpinnerLine } from './executable';
 
 export type AgyUsageWindow = 'fiveHour' | 'weekly';
 
@@ -16,10 +17,10 @@ export interface AgyQuotaRow {
 }
 
 function parseFamily(name: string): string {
-  if (/argon/i.test(name)) return 'Gemini 4 Argon';
-  if (/gemini/i.test(name)) return 'Gemini';
-  if (/claude|gpt/i.test(name)) return 'Claude/GPT';
-  return name;
+  const clean = name.trim();
+  if (/^gemini(?:\s+models)?$/i.test(clean)) return 'Gemini';
+  if (/claude|gpt/i.test(clean)) return 'Claude/GPT';
+  return clean;
 }
 
 function parseWindow(caption: string): AgyUsageWindow | undefined {
@@ -44,9 +45,8 @@ function shortLabel(name: string, window?: AgyUsageWindow): string {
  */
 export function parseAgyUsage(output: string): AgyQuotaRow[] {
   const rows: AgyQuotaRow[] = [];
-  for (const line of output.split('\n')) {
-    const fields = line
-      .replace(/\r$/, '')
+  for (const rawLine of output.split('\n')) {
+    const fields = stripAgySpinnerLine(rawLine)
       .split(/\t| {2,}/)
       .map((f) => f.trim())
       .filter((f) => f !== '');
@@ -74,6 +74,45 @@ export function parseAgyUsage(output: string): AgyQuotaRow[] {
   return rows;
 }
 
+/** Снимает ANSI-последовательности, `\r`-спиннер и ведущий префикс `error:`. */
+export function cleanAgyCliText(raw: string): string {
+  const lines = raw
+    .split('\n')
+    .map((l) => stripAgySpinnerLine(l).trim())
+    .filter((l) => l !== '' && !/^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏\s]*fetching\b/i.test(l));
+  return lines.join(' ').replace(/^error:\s*/i, '').trim();
+}
+
+export function cleanAgyUsageError(error: Error, stdout = '', stderr = ''): Error {
+  const msg =
+    cleanAgyCliText(stderr) ||
+    cleanAgyCliText(stdout) ||
+    cleanAgyCliText(error.message.replace(/^Command failed:[^\n]*\n?/i, '')) ||
+    cleanAgyCliText(error.message) ||
+    'agy -p /usage failed';
+  return new Error(msg);
+}
+
+/** Признак явного разлогина/невалидной авторизации `agy` (не региональный отказ `Eligibility check failed` и не сеть). */
+export function isAgyAuthError(errOrOutput: unknown): boolean {
+  const raw = errOrOutput instanceof Error ? errOrOutput.message : typeof errOrOutput === 'string' ? errOrOutput : '';
+  const msg = cleanAgyCliText(raw);
+  if (!msg) return false;
+  if (/eligibility check failed|not currently available in your location|not eligible for antigravity/i.test(msg)) {
+    return false;
+  }
+  if (
+    /i\/o timeout|tls handshake timeout|context deadline exceeded|client\.timeout|connection reset|econnreset|econnrefused|etimedout|enotfound|eai_again|enetunreach|ehostunreach|no such host|dial tcp|\beof\b/i.test(
+      msg,
+    )
+  ) {
+    return false;
+  }
+  return /not logged in|please (?:log|sign) in|run agy\b.*\bsign in|\bsign in\b|\blog in\b|login required|auth(?:entication)? required|unauthenticated|\bunauthori[sz]ed\b|\b401\b|invalid_grant|(?:invalid|expired|missing) credentials/i.test(
+    msg,
+  );
+}
+
 export type RunAgyUsage = (path: string) => Promise<string>;
 
 /** Сторож поверх таймаута `execFile`: тот шлёт SIGTERM только самому процессу и ждёт закрытия stdio. */
@@ -83,11 +122,11 @@ const WATCHDOG_MS = 35_000;
 export const runAgyUsage: RunAgyUsage = (path) =>
   new Promise((resolve, reject) => {
     let done = false;
-    const child = execFile(path, ['-p', '/usage'], { encoding: 'utf8', timeout: 30_000, windowsHide: true }, (error, stdout) => {
+    const child = execFile(path, ['-p', '/usage'], { encoding: 'utf8', timeout: 30_000, windowsHide: true }, (error, stdout, stderr) => {
       if (done) return;
       done = true;
       clearTimeout(watchdog);
-      if (error) reject(error);
+      if (error) reject(cleanAgyUsageError(error, stdout, stderr));
       else resolve(stdout);
     });
     const watchdog = setTimeout(() => {

@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { h, render } from 'preact';
 import { act } from 'preact/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -312,12 +314,24 @@ describe('лимиты нескольких движков в боковой п�
       type: 'engines.limits',
       engines: [
         codex({ state: 'error', error: 'timeout' }),
-        agy({ state: 'missing', windows: [] }),
+        agy({ state: 'error', windows: [], error: 'Eligibility check failed' }),
       ],
     });
     await flush();
     expect(q(host, '.eng[data-engine="codex"] .eh')?.getAttribute('data-tip')).toContain('timeout');
     expect(qa(host, '.eng[data-engine="codex"] .L').length).toBe(2); // последние известные окна
+    expect(q(host, '.eng[data-engine="antigravity"] .wait')?.textContent).toBe('Eligibility check failed');
+    expect(q(host, '.eng[data-engine="antigravity"] .eh')?.getAttribute('data-tip')).toContain(
+      'Eligibility check failed',
+    );
+    msg({
+      type: 'engines.limits',
+      engines: [
+        codex({ state: 'error', error: 'timeout' }),
+        agy({ state: 'missing', windows: [] }),
+      ],
+    });
+    await flush();
     expect(host.querySelectorAll('.eng[data-engine="antigravity"]').length).toBe(0);
   });
 
@@ -353,5 +367,66 @@ describe('лимиты нескольких движков в боковой п�
     await flush();
     expect(q(host, '.one[data-engine="codex"] .signin')).not.toBeNull();
     expect(q(host, '.one[data-engine="antigravity"] .wait')?.textContent).toBe('обновляется…');
+  });
+
+  it('длинная ошибка движка: полный текст остаётся в data-tip во всех раскладках и не мешает переключать движки', async () => {
+    const longErr =
+      'Eligibility check failed: Your current account is not eligible for Antigravity, because it is not currently available in your location.';
+    const engines = [codex(), agy({ state: 'error', windows: [], error: longErr })];
+
+    const sw = await mount({ limits: 'switch', provider: 'antigravity', engines });
+    expect(q(sw, '.who .wait')?.textContent).toBe(longErr);
+    expect(q(sw, '.who')?.getAttribute('data-tip')).toContain(longErr);
+    expect(q(sw, '.seg [data-engine="antigravity"]')?.getAttribute('data-tip')).toContain(longErr);
+    q(sw, '.seg [data-engine="codex"]').click();
+    await flush();
+    expect(q(sw, '.who b')?.textContent).toBe('x@y.z');
+    expect(qa(sw, '.lims .L').length).toBe(2);
+
+    const tbl = await mount({ limits: 'table', engines });
+    expect(q(tbl, '.grid .off')?.getAttribute('data-tip')).toContain(longErr);
+
+    const hdr = await mount({ limits: 'header', engines });
+    expect(q(hdr, '.head .hx .m[data-engine="antigravity"]')?.getAttribute('data-tip')).toContain(longErr);
+  });
+
+  it('hud.css ограничивает ширину сетки .sidebar и обрезает .wait троеточием вместо растяжения панели', () => {
+    const css = readFileSync(join(__dirname, '..', '..', 'media', 'hud.css'), 'utf8');
+    expect(css).toMatch(/\.sidebar\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/);
+    expect(css).toMatch(/\.sidebar\s*>\s*\*\s*\{[^}]*min-width:\s*0/);
+    expect(css).toMatch(
+      /\.sidebar\s+\.wait\s*\{(?=[^}]*min-width:\s*0)(?=[^}]*overflow:\s*hidden)(?=[^}]*text-overflow:\s*ellipsis)(?=[^}]*white-space:\s*nowrap)[^}]*\}/,
+    );
+  });
+
+  it('hud.css задаёт плавные переходы для всех полос лимитов, шевронов и сегментов сайдбара', () => {
+    const css = readFileSync(join(__dirname, '..', '..', 'media', 'hud.css'), 'utf8');
+    const barSelectors = [
+      String.raw`\.sidebar\s+\.lim\s+\.row\s+\.bar\s+i`,
+      String.raw`\.sidebar\s+\.head\s+\.hl\s+\.m\s+i\s+b`,
+      String.raw`\.sidebar\s+\.L\s+\.bar\s+i`,
+      String.raw`\.sidebar\s+\.grid\s+\.c\s+\.bar\s+i`,
+      String.raw`\.sidebar\s+\.one\s+\.bar\s+i`,
+      String.raw`\.sidebar\s+\.hx\s+\.m\s+i\.b\s+b`,
+    ];
+    for (const sel of barSelectors) {
+      expect(css, sel).toMatch(
+        new RegExp(
+          `${sel}\\s*\\{[^}]*transition:\\s*width\\s+var\\(--dur\\)\\s+var\\(--ease-out\\),\\s*background-color\\s+var\\(--dur\\)\\s+ease;`,
+        ),
+      );
+    }
+    expect(css).toMatch(
+      /\.sidebar\s+\.sec\s+h3\s+\.tri\s*\{[^}]*transition:\s*transform\s+var\(--dur-fast\)\s+var\(--ease-out\);/,
+    );
+    expect(css).toMatch(
+      /\.sidebar\s+\.one\s+\.tw\s*\{(?=[^}]*border-left:\s*5px\s+solid\s+var\(--fg-mute\);)(?=[^}]*transform-origin:\s*25%\s+50%;)(?=[^}]*transition:\s*transform\s+var\(--dur-fast\)\s+var\(--ease-out\);)[^}]*\}/,
+    );
+    expect(css).toMatch(
+      /\.sidebar\s+\.one\s+\.tw\.open\s*\{(?=[^}]*border-left:\s*5px\s+solid\s+var\(--fg-mute\);)(?=[^}]*transform:\s*rotate\(90deg\);)(?![^}]*border-top:)[^}]*\}/,
+    );
+    expect(css).toMatch(
+      /\.sidebar\s+\.seg\s+button\s*\{[^}]*transition:\s*background-color\s+var\(--dur-fast\)\s+ease,\s*color\s+var\(--dur-fast\)\s+ease,\s*box-shadow\s+var\(--dur-fast\)\s+ease;/,
+    );
   });
 });

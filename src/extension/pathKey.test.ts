@@ -22,5 +22,7 @@ describe('сравнение путей', () => {
     expect(resolveFrom('/work/proj', '/etc/x', 'linux')).toBe('/etc/x');
     expect(resolveFrom('C:\\proj', 'src\\a.ts', 'win32')).toBe('C:\\proj\\src\\a.ts');
     expect(resolveFrom('C:\\proj', 'D:\\x.ts', 'win32')).toBe('D:\\x.ts');
+    expect(resolveFrom('/work/proj', 'C:/dir/a.ts', 'linux')).toBe('C:/dir/a.ts');
+    expect(resolveFrom('/work/proj', 'C:\\dir\\a.ts', 'darwin')).toBe('C:\\dir\\a.ts');
   });
 });

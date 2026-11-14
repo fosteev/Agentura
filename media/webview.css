@@ -68,14 +68,16 @@ body {
 /* лента */
 .log .u > span:nth-child(2) { white-space: pre-wrap; overflow-wrap: anywhere; }
 .log .e.think[role="button"] { cursor: pointer; }
-.log .tool-full { display: grid; gap: 2px; min-width: 0; margin: 2px 0 6px 22px; }
+.log .tool-full { display: grid; gap: 2px; min-width: 0; margin: 2px 0 6px 22px; animation: card-in var(--dur) var(--ease-out); }
 .log .tool-full small { color: var(--fg-faint); font-size: 10.5px; }
 .log .tool-full pre { margin: 0 0 4px; padding: 6px 10px; max-height: 320px; overflow: auto; background: var(--bg-code); border-radius: 3px; font-size: 11.5px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
-.log .txt.think-full { color: var(--fg-mute); font-style: italic; white-space: pre-wrap; padding-top: 2px; }
+.log .txt.think-full { color: var(--fg-mute); font-style: italic; white-space: pre-wrap; padding-top: 2px; animation: card-in var(--dur) var(--ease-out); }
 .log .txt ul, .log .txt ol { margin: 6px 0; padding-left: 20px; }
 .log .txt li + li { margin-top: 2px; }
 .log .txt h1, .log .txt h2, .log .txt h3, .log .txt h4 { margin: 10px 0 4px; font-size: 13px; font-weight: 600; }
 .log .txt a { color: var(--link); }
+.log .txt a[href], .ask .md a[href] { cursor: pointer; }
+.log .txt a:not([href]), .ask .md a:not([href]) { color: inherit; text-decoration: none; cursor: default; }
 .log .txt blockquote { margin: 6px 0; padding-left: 10px; border-left: 2px solid var(--line-strong); color: var(--fg-mute); }
 .log .txt table { border-collapse: collapse; margin: 6px 0; font-size: 12px; }
 .log .txt th, .log .txt td { border: 1px solid var(--line); padding: 2px 8px; text-align: left; }

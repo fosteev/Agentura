@@ -257,7 +257,16 @@ export function applyHud(s: HudState, e: AgentEvent, now = Date.now()): HudState
           ...(e.launchRecord !== undefined ? { launchRecord: e.launchRecord ?? undefined } : {}),
         }),
       );
-    case 'agent.progress':
+    case 'agent.progress': {
+      const waitingDetail =
+        e.status === 'waiting_for_input'
+          ? e.description?.trim() || e.lastToolName?.trim() || 'waiting_for_input'
+          : undefined;
+      const lastTool = waitingDetail
+        ? waitingDetail.startsWith('⏳')
+          ? waitingDetail
+          : `⏳ ${waitingDetail}`
+        : e.lastToolName;
       return updateAgent(
         s,
         e.agentId,
@@ -268,9 +277,10 @@ export function applyHud(s: HudState, e: AgentEvent, now = Date.now()): HudState
           ...(e.totalTokens !== undefined ? { tokens: e.totalTokens } : {}),
           ...(e.toolUses !== undefined ? { toolUses: e.toolUses } : {}),
           ...(e.durationMs !== undefined ? { durationMs: e.durationMs } : {}),
-          ...(e.lastToolName ? { lastTool: e.lastToolName } : {}),
+          ...(lastTool ? { lastTool } : {}),
         }),
       );
+    }
     case 'agent.end':
       // конец задачи, начала которой нет (старт отрезан `maxTurns`, старый транскрипт): узел без
       // типа и описания стал бы фантомным «субагентом» в карте и бейдже — пропускаем

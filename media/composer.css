@@ -3,12 +3,20 @@
    общие правила — под `:not([data-layout="classic"])`: `data-layout="classic"` на footer тоже стоит.
    Источник значений — prototype/shared/composer.css; цвета — только токены. */
 
+@property --p {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 0;
+}
+
 /* общие кирпичи: кольцо, полоса, чип, круглая кнопка */
 .compose:not([data-layout="classic"]) .ring { --p: 0; --c: var(--ok); width: 14px; height: 14px; border-radius: 50%; flex: none;
-  background: radial-gradient(var(--ring-bg, var(--bg-input)) 52%, transparent 54%), conic-gradient(var(--c) calc(var(--p) * 1%), var(--line-strong) 0); }
+  background: radial-gradient(var(--ring-bg, var(--bg-input)) 52%, transparent 54%), conic-gradient(var(--c) calc(var(--p) * 1%), var(--line-strong) 0);
+  transition: --p var(--dur) var(--ease-out); }
 .compose:not([data-layout="classic"]) .cr { display: inline-flex; gap: 6px; align-items: center; font-size: 11px; white-space: nowrap; }
 .compose:not([data-layout="classic"]) .bar { display: inline-block; width: 90px; height: 4px; border-radius: 2px; background: var(--bg-input); position: relative; overflow: hidden; vertical-align: 2px; }
-.compose:not([data-layout="classic"]) .bar > i { position: absolute; inset: 0 auto 0 0; width: calc(var(--p, 0) * 1%); background: var(--c, var(--ok)); }
+.compose:not([data-layout="classic"]) .bar > i { position: absolute; inset: 0 auto 0 0; width: calc(var(--p, 0) * 1%); background: var(--c, var(--ok));
+  transition: width var(--dur) var(--ease-out), background-color var(--dur) ease; }
 .compose:not([data-layout="classic"]) .bar > u { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--fg-mute); opacity: .7; }
 .compose:not([data-layout="classic"]) .chips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; min-width: 0; }
 .compose:not([data-layout="classic"]) .chips:empty { display: none; }
@@ -70,7 +78,8 @@
 /* ── Д · minimal: одна строка, режим — цветом «$», приборы — у порога ── */
 .compose[data-layout="minimal"] { border-top: 0; padding: 8px 14px 10px; position: relative; }
 .compose[data-layout="minimal"]::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 1px;
-  background: linear-gradient(90deg, var(--c, var(--ok)) calc(var(--p, 0) * 1%), var(--line) 0); }
+  background: linear-gradient(90deg, var(--c, var(--ok)) calc(var(--p, 0) * 1%), var(--line) 0);
+  transition: --p var(--dur) var(--ease-out); }
 .compose[data-layout="minimal"] .one { display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 10px; flex-wrap: wrap;
   background: var(--bg-input); border: 1px solid var(--line-strong); border-radius: 4px; min-height: 36px; --ring-bg: var(--bg-input); }
 .compose[data-layout="minimal"] .one:focus-within { border-color: var(--accent); }
@@ -97,7 +106,8 @@
 /* ── В · statusline: поле без обвеса, кромка — заполнение контекста, всё остальное — полоса снизу ── */
 .compose[data-layout="statusline"] { border-top: 0; padding: 0; position: relative; }
 .compose[data-layout="statusline"]::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 2px; z-index: 1;
-  background: linear-gradient(90deg, var(--c, var(--ok)) calc(var(--p, 0) * 1%), var(--line) 0); }
+  background: linear-gradient(90deg, var(--c, var(--ok)) calc(var(--p, 0) * 1%), var(--line) 0);
+  transition: --p var(--dur) var(--ease-out); }
 .compose[data-layout="statusline"] > .att { margin: 0; padding: 10px 14px 0; }
 .compose[data-layout="statusline"] .inp { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; padding: 10px 14px 12px; min-height: 52px; }
 .compose[data-layout="statusline"] .inp > .pop { flex: 1 1 160px; min-width: 0; }

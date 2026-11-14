@@ -107,3 +107,11 @@ export async function resolveAgyExecutable(
 }
 
 export const AGY_NOT_FOUND = 'Antigravity CLI (agy) was not found.';
+
+// eslint-disable-next-line no-control-regex
+const ANSI_ESCAPE_RE = /\x1b(?:\[[0-9;?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\))/g;
+
+/** Очищает одну строку вывода `agy` от ANSI-последовательностей и промежуточных кадров `\r`-спиннера. */
+export function stripAgySpinnerLine(rawLine: string): string {
+  return rawLine.replace(ANSI_ESCAPE_RE, '').replace(/\r$/, '').split('\r').pop() ?? '';
+}

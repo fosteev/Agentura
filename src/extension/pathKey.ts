@@ -28,6 +28,7 @@ export function resolveFrom(
   p: string,
   platform: NodeJS.Platform = process.platform,
 ): string {
+  if (/^[a-zA-Z]:[\\/]/.test(p)) return p;
   const lib = platform === 'win32' ? win32 : posix;
   return lib.isAbsolute(p) ? p : lib.resolve(cwd, p);
 }

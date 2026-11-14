@@ -625,6 +625,47 @@ describe('ошибки и лимит (этап 7)', () => {
     expect(s.status).toBe('working');
   });
 
+  it('api_retry между двумя кусками стрима закрывает streaming первой строки текста и схлопывает серию повторов', () => {
+    let s = turn(initialState());
+    s = applyEvent(s, ev({ type: 'text.delta', messageId: 'a1', text: 'Начало ответа.' }), 1);
+    expect(s.rows.at(-1)).toMatchObject({ kind: 'text', text: 'Начало ответа.', streaming: true });
+
+    s = applyEvent(
+      s,
+      ev({ type: 'error', fatal: false, code: 'api_retry', message: 'Повтор запроса к API (попытка 1) · EOF' }),
+      2,
+    );
+    expect(s.rows.find((r) => r.kind === 'text')).toMatchObject({
+      kind: 'text',
+      text: 'Начало ответа.',
+      streaming: false,
+    });
+
+    s = applyEvent(
+      s,
+      ev({
+        type: 'error',
+        fatal: false,
+        code: 'api_retry',
+        message: 'Повтор запроса к API (попытка 2) · connection reset by peer',
+      }),
+      3,
+    );
+    s = applyEvent(s, ev({ type: 'text.delta', messageId: 'a2', text: 'Продолжение ответа.' }), 4);
+
+    expect(kindsOf(s)).toEqual(['user', 'text', 'sys', 'text']);
+    const textRows = s.rows.filter((r): r is Extract<FeedRow, { kind: 'text' }> => r.kind === 'text');
+    expect(textRows[0]).toMatchObject({ text: 'Начало ответа.', streaming: false });
+    expect(textRows[1]).toMatchObject({ text: 'Продолжение ответа.', streaming: true });
+
+    const retryRows = s.rows.filter((r) => r.kind === 'sys');
+    expect(retryRows).toHaveLength(1);
+    expect(retryRows[0]).toMatchObject({
+      tag: 'retry',
+      text: ['Повтор запроса к API (попытка 2) · connection reset by peer'],
+    });
+  });
+
   it('markRetrying гасит карточку; новая ошибка заменяет «повторяю…», а не копится', () => {
     let s = applyEvent(turn(initialState()), ev({ type: 'error', fatal: true, message: 'a' }), 1);
     s = markRetrying(s);

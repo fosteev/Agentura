@@ -4,6 +4,15 @@
 .webview.settings {
   grid-template-rows: auto 1fr;
 }
+.settings .hud .st-ver {
+  margin-left: 7px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--bg-raise);
+  border: 1px solid var(--line);
+  color: var(--fg-mute);
+  font: 10.5px/1.3 var(--mono);
+}
 .st-wrap {
   display: grid;
   grid-template-columns: 170px 1fr;

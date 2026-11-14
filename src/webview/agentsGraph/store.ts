@@ -1,7 +1,17 @@
 import { signal } from '@preact/signals';
 import type { ToWebview } from '../../protocol';
 import { isAgentGraphView, type AgentGraphView } from '../../shared/agentsGraph';
-import { readGraphState, saveGraphState, send } from '../vscode';
+import {
+  clampGraphZoom,
+  GRAPH_ZOOM_MAX,
+  GRAPH_ZOOM_MIN,
+  GRAPH_ZOOM_STEP,
+  readGraphState,
+  saveGraphState,
+  send,
+} from '../vscode';
+
+export { clampGraphZoom, GRAPH_ZOOM_MAX, GRAPH_ZOOM_MIN, GRAPH_ZOOM_STEP };
 
 /**
  * Состояние вкладки графа агентов (roadmap 11, этап 2): последний снимок от чата, выбранные ход и агент.
@@ -10,6 +20,7 @@ import { readGraphState, saveGraphState, send } from '../vscode';
 export const graphSnap = signal<{ sessionId: string; graph: AgentGraphView } | undefined>(undefined);
 export const graphTurn = signal<number | undefined>(undefined);
 export const graphSelected = signal<string | undefined>(undefined);
+export const graphZoom = signal<number>(1);
 /** Свои часы: таймеры идущих агентов считаются от их `startedAt`. */
 export const graphNow = signal(Date.now());
 
@@ -26,16 +37,26 @@ export function restoreGraphState(): void {
   shownSession = st.sessionId;
   graphTurn.value = st.graph.turn;
   graphSelected.value = st.graph.selected;
+  graphZoom.value = st.graph.zoom ?? 1;
 }
 
 function persist(): void {
   const s = graphSnap.value;
-  if (!s) return;
+  const session = s?.sessionId || shownSession || '';
+  if (!s && !shownSession && graphZoom.value === 1) return;
   // пустой снимок не стирает сессию, к которой сериализатор вернёт граф после перезагрузки
-  saveGraphState(s.sessionId || shownSession || '', {
+  saveGraphState(session, {
     ...(graphTurn.value !== undefined ? { turn: graphTurn.value } : {}),
     ...(graphSelected.value ? { selected: graphSelected.value } : {}),
+    ...(graphZoom.value !== 1 ? { zoom: graphZoom.value } : {}),
   });
+}
+
+export function setGraphZoom(zoom: number): void {
+  const next = clampGraphZoom(zoom);
+  if (graphZoom.value === next) return;
+  graphZoom.value = next;
+  persist();
 }
 
 function applyFocus(agentId: string): boolean {

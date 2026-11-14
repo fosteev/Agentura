@@ -3,7 +3,7 @@ import type { EffortLevel, PermissionMode } from '../types';
 export interface AgySessionSettings {
   model?: string;
   effort?: EffortLevel;
-  permissionMode: PermissionMode;
+  permissionMode?: PermissionMode;
 }
 
 /**

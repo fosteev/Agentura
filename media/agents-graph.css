@@ -11,16 +11,25 @@
 .gmap .cv .bar .turns button[aria-pressed="true"] { border-color: var(--accent); color: var(--fg); }
 .gmap .cv .bar .r { margin-left: auto; flex: none; white-space: nowrap; }
 .gmap .cv .bar .r b { color: var(--fg); font-weight: 500; }
+.gmap .cv .bar .zoom { display: flex; align-items: center; gap: 4px; flex: none; margin-left: auto; white-space: nowrap; }
+.gmap .cv .bar .r + .zoom { margin-left: 0; }
+.gmap .cv .bar .zoom button { flex: none; padding: 2px 7px; border: 1px solid var(--line); border-radius: 3px; font-size: 10.5px; color: var(--fg-mute); background: none; cursor: pointer; white-space: nowrap; line-height: 14px; }
+.gmap .cv .bar .zoom button:hover:not(:disabled) { border-color: var(--fg-faint); color: var(--fg); }
+.gmap .cv .bar .zoom button:disabled { opacity: 0.45; cursor: default; }
+.gmap .cv .bar .zoom .pct { min-width: 36px; text-align: center; cursor: pointer; user-select: none; font-variant-numeric: tabular-nums; color: var(--fg); font-weight: 500; }
 .gmap .sc { position: relative; flex: 1; min-height: 0; overflow: auto; background-image: radial-gradient(var(--line) 1px, transparent 1px); background-size: 16px 16px; }
+.gmap .pl-box { position: relative; flex: none; }
 .gmap .pl { position: relative; }
 .gmap .none { padding: 24px 16px; color: var(--fg-mute); }
 .gmap svg.edges { position: absolute; left: 0; top: 0; z-index: 0; overflow: visible; }
 .gmap svg.edges path { fill: none; stroke: var(--line-strong); stroke-width: 1.2; }
 .gmap svg.edges path.ok { stroke: color-mix(in srgb, var(--ok) 65%, transparent); }
-.gmap svg.edges path.busy { stroke: var(--info); stroke-dasharray: 5 4; }
+.gmap svg.edges path.busy { stroke: var(--info); stroke-dasharray: 5 4; animation: gmap-flow 0.75s linear infinite; }
 .gmap svg.edges path.err { stroke: color-mix(in srgb, var(--full) 70%, transparent); }
 .gmap svg.edges path.bg { stroke-dasharray: 2 3; }
-.gmap .n { position: absolute; z-index: 1; box-sizing: border-box; background: var(--bg); border: 1px solid var(--line-strong); border-radius: 4px; padding: 7px 10px; font-size: 11px; }
+@keyframes gmap-flow { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -9; } }
+@keyframes gmap-node-in { from { opacity: 0; } to { opacity: 1; } }
+.gmap .n { position: absolute; z-index: 1; box-sizing: border-box; background: var(--bg); border: 1px solid var(--line-strong); border-radius: 4px; padding: 7px 10px; font-size: 11px; animation: gmap-node-in var(--dur-fast) var(--ease-out); transition: border-color var(--dur-fast) ease, box-shadow var(--dur-fast) ease; }
 .gmap .n[role="button"] { cursor: pointer; }
 .gmap .n[role="button"]:hover { border-color: var(--fg-faint); }
 .gmap .n[role="button"]:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
@@ -39,7 +48,7 @@
 .gmap .n.main { border-width: 1px 1px 1px 3px; border-left-color: var(--accent); }
 .gmap .n.main.busy .s { color: var(--fg-mute); }
 .gmap .n.main .ctxb { height: 4px; background: var(--bg-input); border-radius: 2px; margin: 6px 0 2px; overflow: hidden; }
-.gmap .n.main .ctxb i { display: block; height: 100%; background: var(--info); }
+.gmap .n.main .ctxb i { display: block; height: 100%; background: var(--info); transition: width var(--dur) var(--ease-out), background-color var(--dur) ease; }
 .gmap .n.main .ctxb i.warn { background: var(--warn); }
 .gmap .n.main .ctxb i.full { background: var(--full); }
 .gmap .n.shell { border-style: dashed; background: var(--bg-side); }

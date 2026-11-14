@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { h, render } from 'preact';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Composer } from './components/Composer';
@@ -398,5 +400,43 @@ describe('statusline и shell', () => {
     );
     low!.click();
     expect(posted).toContainEqual(expect.objectContaining({ type: 'effort.set' }));
+  });
+});
+
+describe('микроанимации шкал контекста и тумблеров меню в CSS', () => {
+  const readCss = (file: string) => readFileSync(join(__dirname, '..', '..', 'media', file), 'utf8');
+
+  it('composer.css регистрирует @property --p и анимирует кольцо, полосу и кромки minimal/statusline', () => {
+    const css = readCss('composer.css');
+    expect(css).toMatch(
+      /@property\s+--p\s*\{(?=[^}]*syntax:\s*'<number>';)(?=[^}]*inherits:\s*true;)(?=[^}]*initial-value:\s*0;)[^}]*\}/,
+    );
+    expect(css).toMatch(
+      /\.compose:not\(\[data-layout="classic"\]\)\s+\.ring\s*\{[^}]*transition:\s*--p\s+var\(--dur\)\s+var\(--ease-out\);/,
+    );
+    expect(css).toMatch(
+      /\.compose:not\(\[data-layout="classic"\]\)\s+\.bar\s*>\s*i\s*\{[^}]*transition:\s*width\s+var\(--dur\)\s+var\(--ease-out\),\s*background-color\s+var\(--dur\)\s+ease;/,
+    );
+    expect(css).toMatch(
+      /\.compose\[data-layout="minimal"\]::before\s*\{[^}]*transition:\s*--p\s+var\(--dur\)\s+var\(--ease-out\);/,
+    );
+    expect(css).toMatch(
+      /\.compose\[data-layout="statusline"\]::before\s*\{[^}]*transition:\s*--p\s+var\(--dur\)\s+var\(--ease-out\);/,
+    );
+  });
+
+  it('hud.css анимирует классические блоки контекста и тумблеры выпадающих меню', () => {
+    const css = readCss('hud.css');
+    expect(css).toMatch(/\.blocks\s+i\s*\{[^}]*transition:\s*background-color\s+var\(--dur\)\s+ease;/);
+    expect(css).toMatch(
+      /\.blocks\s+i\.part::after\s*\{[^}]*transition:\s*width\s+var\(--dur\)\s+var\(--ease-out\),\s*background-color\s+var\(--dur\)\s+ease;/,
+    );
+    expect(css).toMatch(
+      /\.menu\s+\.it\s+\.sw\s*\{[^}]*transition:\s*background-color\s+var\(--dur-fast\)\s+var\(--ease-out\);/,
+    );
+    expect(css).toMatch(
+      /\.menu\s+\.it\s+\.sw::after\s*\{[^}]*transition:\s*transform\s+var\(--dur-fast\)\s+var\(--ease-out\),\s*background-color\s+var\(--dur-fast\)\s+var\(--ease-out\);/,
+    );
+    expect(css).toMatch(/\.menu\s+\.it\s+\.sw\.on::after\s*\{[^}]*transform:\s*translateX\(12px\);/);
   });
 });
