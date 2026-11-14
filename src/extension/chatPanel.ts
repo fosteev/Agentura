@@ -398,7 +398,7 @@ export class ChatPanel {
       if (!folder) return undefined;
       const column = open.column ?? ChatPanel.panels.at(-1)?.surface.viewColumn ?? vscode.ViewColumn.Beside;
       if (open.task && !open.panel && taskTabMode()) {
-        const tab = TaskTabPanel.forTask(open.task) ?? TaskTabPanel.create(context, log, open.task, column);
+        const tab = TaskTabPanel.forTask(open.task) ?? TaskTabPanel.create(context, log, open.task, column, undefined, !!open.resumeId);
         const chat = ChatPanel.inTab(tab, context, log, services, folder, open);
         chat.surface.reveal(open.column);
         return chat;
@@ -409,7 +409,7 @@ export class ChatPanel {
           ...webviewOptions(context.extensionUri, userFontsDir(context)),
           retainContextWhenHidden: true,
         });
-      return new ChatPanel(panelSurface(panel, context, log), context, log, services, folder, open);
+      return new ChatPanel(panelSurface(panel, context, log, !!open.resumeId), context, log, services, folder, open);
     }
     const target = ChatPanel.panels[route.index]!;
     target.surface.reveal(open.column);

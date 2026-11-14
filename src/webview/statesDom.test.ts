@@ -19,9 +19,12 @@ import {
   hudState,
   limitBlocked,
   limits,
+  recent,
   replyTarget,
   RETRY_TIMEOUT_MS,
   retryTurn,
+  sendMessage,
+  sessionLoading,
   tick,
 } from './store';
 import * as vscode from './vscode';
@@ -59,7 +62,9 @@ beforeEach(() => {
   chat.value = initialState();
   hudState.value = initialHud();
   limits.value = { windows: [], updatedAt: 0 };
+  recent.value = [];
   replyTarget.value = undefined;
+  sessionLoading.value = undefined;
   tick.value = Date.now();
 });
 
@@ -427,5 +432,58 @@ describe('доступность', () => {
     );
     expect(tokens).toContain(':focus-visible');
     expect(css('webview.css')).toMatch(/\.ask \.btn:focus-visible[\s\S]*outline: 2px solid/);
+  });
+
+  it('session.loading: скрывает экран «Новая сессия» и прежнюю ленту, гасит отправку и снимается историей или сбросом', async () => {
+    const host = mount();
+    play('working');
+    await flush();
+    expect(host.querySelector('.log')).not.toBeNull();
+
+    handleHostMessage({
+      type: 'sessions.update',
+      sessions: [
+        {
+          id: 's-next',
+          title: 'Разбор бага в AGY',
+          updatedAt: NOW,
+          turns: 4,
+          state: 'idle',
+        },
+      ],
+      current: 's-next',
+    });
+    handleHostMessage({ type: 'session.loading', sessionId: 's-next' });
+    await flush();
+
+    expect(host.querySelector('.log')).toBeNull();
+    expect(host.querySelector('#pane-chat .empty')).toBeNull();
+    const loader = host.querySelector('.chat-loading');
+    expect(loader).not.toBeNull();
+    expect(loader?.getAttribute('role')).toBe('status');
+    expect(loader?.getAttribute('aria-busy')).toBe('true');
+    expect(loader?.textContent).toContain('Загружаю чат… · Разбор бага в AGY');
+    expect(host.querySelector<HTMLButtonElement>('.compose .send')?.disabled).toBe(true);
+    expect(sendMessage('пока грузится')).toBe(false);
+
+    handleHostMessage({
+      type: 'session.history',
+      sessionId: 's-next',
+      title: 'Разбор бага в AGY',
+      events: [{ type: 'turn.start', prompt: 'привет', at: NOW } as AgentEvent],
+      skippedTurns: 0,
+    });
+    await flush();
+    expect(host.querySelector('.chat-loading')).toBeNull();
+    expect(host.querySelector('.log')?.textContent).toContain('привет');
+
+    // ошибка чтения истории → session.reset возвращает экран новой сессии
+    handleHostMessage({ type: 'session.loading', sessionId: 's-broken', title: 'Битая' });
+    await flush();
+    expect(host.querySelector('.chat-loading')).not.toBeNull();
+    handleHostMessage({ type: 'session.reset' });
+    await flush();
+    expect(host.querySelector('.chat-loading')).toBeNull();
+    expect(host.querySelector('#pane-chat .empty')).not.toBeNull();
   });
 });

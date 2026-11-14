@@ -604,6 +604,7 @@ const ru = {
     newSession: 'новая сессия',
     turns: (n: number) => `${n} ${plural(n, 'ход', 'хода', 'ходов')}`,
     waiting: 'ждёт ответа',
+    loading: 'Загружаю чат…',
   },
   agents: {
     heading: 'агенты',

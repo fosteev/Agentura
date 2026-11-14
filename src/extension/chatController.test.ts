@@ -1569,10 +1569,75 @@ describe('ChatController: сессии (этап 6)', () => {
     });
     controller.start();
     await controller.handle({ type: 'ready' }); // webview загрузился быстрее транскрипта
+    expect(posted).toContainEqual({ type: 'session.loading', sessionId: 's-old' });
     expect(historyMsg(posted)).toBeUndefined();
     release();
     await tick();
     await tick();
+    expect(posted.filter((m) => m.type === 'session.history')).toHaveLength(1);
+    expect(posted.findIndex((m) => m.type === 'session.loading')).toBeLessThan(
+      posted.findIndex((m) => m.type === 'session.history'),
+    );
+  });
+
+  it('переключение на другую сессию в готовой вкладке шлёт session.loading до окончания loadHistory', async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    const { controller, posted, loadHistory } = setupResume();
+    controller.start();
+    await controller.handle({ type: 'ready' });
+    await tick();
+    loadHistory.mockImplementation(async () => {
+      await gate;
+      return { events: historyEvents, turns: 1, skippedTurns: 0 };
+    });
+    posted.length = 0;
+    const done = controller.handle({ type: 'session.resume', sessionId: 's-slow' });
+    expect(posted).toContainEqual({ type: 'session.loading', sessionId: 's-slow' });
+    expect(historyMsg(posted)).toBeUndefined();
+    release();
+    await done;
+    expect(historyMsg(posted)).toMatchObject({ sessionId: 's-slow' });
+  });
+
+  it('повторный ready у простаивающей восстановленной сессии не перечитывает транскрипт заново до новых событий', async () => {
+    const { controller, sessions, posted, loadHistory } = setupResume({ resumeId: 's-old' });
+    controller.start();
+    await tick();
+    await tick();
+    await controller.handle({ type: 'ready' });
+    await tick();
+    expect(loadHistory).toHaveBeenCalledTimes(1);
+
+    posted.length = 0;
+    await controller.handle({ type: 'ready' }); // переключение внутренней вкладки задачи обратно на простаивающий чат
+    await tick();
+    expect(loadHistory).toHaveBeenCalledTimes(1);
+    expect(posted.some((m) => m.type === 'session.loading')).toBe(false);
+    expect(posted.filter((m) => m.type === 'session.history')).toHaveLength(1);
+
+    // после реального хода история помечается грязной — следующий пересев перечитывает транскрипт
+    const s = sessions[0]!;
+    s.emit({ type: 'turn.start', at: 200, prompt: 'обнови' });
+    s.emit({
+      type: 'turn.result',
+      ok: true,
+      subtype: 'success',
+      interrupted: false,
+      durationMs: 10,
+      apiDurationMs: 5,
+      numTurns: 1,
+      totalCostUsd: 0,
+      permissionDenials: [],
+      usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 },
+    });
+    await tick();
+    posted.length = 0;
+    await controller.handle({ type: 'ready' });
+    await tick();
+    await tick();
+    expect(loadHistory).toHaveBeenCalledTimes(2);
+    expect(posted).toContainEqual(expect.objectContaining({ type: 'session.loading', sessionId: 's-old' }));
     expect(posted.filter((m) => m.type === 'session.history')).toHaveLength(1);
   });
 

@@ -18,6 +18,7 @@ import {
   openFile,
   respondPermission,
   selectedAgent,
+  sessionLoading,
   features,
   mcpPanelTab,
   feedStyle,
@@ -284,6 +285,12 @@ export function Chat() {
   const { ref: paneRef, onScroll } = useStickToBottom<HTMLElement>([s.rows, tab.value]);
 
   const empty = s.rows.length === 0;
+  const loading = sessionLoading.value;
+  const isLoading = empty && loading !== undefined;
+  const loadingTitle =
+    loading?.title ||
+    s.title ||
+    (loading?.sessionId ? recent.value.find((r) => r.id === loading.sessionId)?.title : undefined);
   // в пустой сессии вкладки «изменения»/«агенты» отключены — после «new» возвращаемся в чат
   // вкладка «агенты» есть не у каждого движка (`features.subagents`): сохранённая или открытая — уступает «изменениям»
   const subagents = features.value.subagents;
@@ -480,7 +487,7 @@ export function Chat() {
     >
       <Hud
         project={s.project}
-        title={s.title}
+        title={s.title || (isLoading ? loadingTitle : undefined)}
         tab={t}
         onTab={(k) => {
           tab.value = k;
@@ -559,7 +566,19 @@ export function Chat() {
           ref={paneRef}
           onScroll={onScroll}
         >
-          {empty ? (
+          {isLoading ? (
+            <div class="chat-loading" role="status" aria-live="polite" aria-busy="true">
+              <div class="chat-loading-head">
+                <span class="spin" aria-hidden="true" />
+                <span>{loadingTitle ? `${ui.empty.loading} · ${loadingTitle}` : ui.empty.loading}</span>
+              </div>
+              <div class="chat-loading-skel" aria-hidden="true">
+                <i class="w1" />
+                <i class="w2" />
+                <i class="w3" />
+              </div>
+            </div>
+          ) : empty ? (
             <Empty
               project={s.project}
               recent={recent.value}

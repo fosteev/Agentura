@@ -29,6 +29,7 @@ export class TaskTabPanel {
     taskKey: TaskKey,
     column: vscode.ViewColumn,
     panel?: vscode.WebviewPanel,
+    bootResume = false,
   ): TaskTabPanel {
     const p =
       panel ??
@@ -36,7 +37,7 @@ export class TaskTabPanel {
         ...webviewOptions(context.extensionUri, userFontsDir(context)),
         retainContextWhenHidden: true,
       });
-    return new TaskTabPanel(p, context, log, taskKey);
+    return new TaskTabPanel(p, context, log, taskKey, bootResume);
   }
 
   private constructor(
@@ -44,11 +45,12 @@ export class TaskTabPanel {
     context: vscode.ExtensionContext,
     log: Logger,
     readonly taskKey: TaskKey,
+    bootResume = false,
   ) {
     const version = String(context.extension.packageJSON.version);
     panel.webview.options = webviewOptions(context.extensionUri, userFontsDir(context));
     panel.iconPath = chatIcon(context);
-    panel.webview.html = renderWebview(panel.webview, context.extensionUri, 'chat', 'Agentura', currentLanguage());
+    panel.webview.html = renderWebview(panel.webview, context.extensionUri, 'chat', 'Agentura', currentLanguage(), bootResume);
     this.slots = new TabSlots(taskKey, {
       post: (m) => {
         if (m.type === 'tab.chats') {

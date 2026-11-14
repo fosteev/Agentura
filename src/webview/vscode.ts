@@ -147,6 +147,20 @@ export function persistSession(sessionId: string, provider?: AgentProvider): voi
 }
 
 /**
+ * Сессия, которую вкладка собирается поднять при холодном старте: из `getState` сериализатора или атрибута
+ * `data-boot-resume="1"` новой панели под возобновление. `undefined` — открывается чистая новая вкладка.
+ */
+export function readBootSession(): string | undefined {
+  const st = readState();
+  if (st.taskTab?.active) return st.taskTab.active;
+  if (st.sessionId) return st.sessionId;
+  if (typeof document !== 'undefined' && document.documentElement.dataset.bootResume === '1') {
+    return '';
+  }
+  return undefined;
+}
+
+/**
  * Вкладка бросила сессию (новая, `/clear`, сброс хостом): забыть id, иначе после перезагрузки окна
  * сериализатор воскресит брошенную сессию (а она могла быть уже открыта в другой вкладке).
  * Состояние панели остаётся: ширина и вид панели принадлежат вкладке, а не сессии.

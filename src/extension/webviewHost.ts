@@ -43,6 +43,7 @@ export function renderWebview(
   surface: Surface,
   title: string,
   lang: 'ru' | 'en',
+  bootResume?: boolean,
 ): string {
   const uri = (...p: string[]) =>
     webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, ...p)).toString();
@@ -52,6 +53,8 @@ export function renderWebview(
     cspSource: webview.cspSource,
     nonce: makeNonce(),
     scriptUri: uri('dist', 'webview', `${surface}.js`),
+    ...(surface === 'chat' ? { bootShell: true } : {}),
+    ...(bootResume ? { bootResume: true } : {}),
     styleUris: [
       uri('media', 'fonts', 'fonts.css'),
       uri('media', 'tokens.css'),
