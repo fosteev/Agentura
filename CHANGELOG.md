@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.23.2 — 2026-11-14
+
+### Added
+
+- **Agents graph zoom.** `⌘/Ctrl + wheel` and trackpad pinch zoom toward the cursor (`25%–200%`), with `−`, `+`, `fit` and double-click on the percentage for `100%` in the turn bar. Each graph tab keeps its zoom across session switches and window reloads.
+- **Clickable `file://` links and line ranges in chat.** Local `file:///...` links (POSIX and Windows drive paths) and `#L10-L20` / `:10-20` ranges open directly in the VS Code editor with range selection. Remote `file://host/...` UNC shares and unsafe schemes stay blocked, and stripped anchors no longer look like active links.
+- **Interface micro-animations and `agentura.ui.animations`.** Subtle CSS transitions (`120–220 ms`) for context/limit gauges, popovers, discrete feed cards and live graph nodes, toggled immediately on the Appearance settings page (`prefers-reduced-motion` always disables motion).
+- **Extension version badge** in the settings tab header.
+
+### Fixed
+
+- **Antigravity silent reactive turns** after background tasks and subagent wakeups are delivered reliably into the chat feed.
+- **Long limit error messages** in the sidebar no longer cause horizontal overflow.
+
 ## 0.23.1 — 2026-11-13
 
 ### Fixed

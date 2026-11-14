@@ -61,7 +61,7 @@ Personal project, not on the Marketplace. Install it from a `.vsix` (see [Instal
   - `git` is a working tree view where you stage, commit and push. Files the agent edited are marked.
   - `agents` shows the turn's subagents.
 - **Agents graph.** Opens in its own editor tab: who started whom, the prompt each agent got and the summary it
-  returned, plus its live calls.
+  returned, plus its live calls and canvas zoom (`⌘/Ctrl + wheel`, pinch, `fit`).
 - **Attachments.** Paste screenshots with `⌘V`. Attach files with "+" or by dragging them in with `⇧` held. Text and PDF are sent as documents.
 - **Look.** Four feed styles, six input layouts, five agent views, three git layouts, three session list densities, your own fonts
   (bundled, installed or Google Fonts), separate text sizes for the feed and the rest of the interface.

@@ -2,7 +2,7 @@
   "name": "agentura",
   "displayName": "Agentura",
   "description": "%ext.description%",
-  "version": "0.23.1",
+  "version": "0.23.2",
   "private": true,
   "publisher": "fosteev",
   "repository": {
@@ -343,19 +343,36 @@
         },
         "agentura.codex.defaultApproval": {
           "type": "string",
-          "enum": ["", "untrusted", "on-request", "never"],
+          "enum": [
+            "",
+            "untrusted",
+            "on-request",
+            "never"
+          ],
           "default": "",
           "description": "%config.codex.defaultApproval.description%"
         },
         "agentura.codex.defaultEffort": {
           "type": "string",
-          "enum": ["", "low", "medium", "high", "xhigh", "max"],
+          "enum": [
+            "",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
           "default": "",
           "description": "%config.codex.defaultEffort.description%"
         },
         "agentura.antigravity.defaultEffort": {
           "type": "string",
-          "enum": ["", "low", "medium", "high"],
+          "enum": [
+            "",
+            "low",
+            "medium",
+            "high"
+          ],
           "default": "",
           "description": "%config.antigravity.defaultEffort.description%"
         },
