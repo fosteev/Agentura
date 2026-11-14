@@ -102,6 +102,16 @@ export interface WebviewState {
 export interface GraphViewState {
   turn?: number;
   selected?: string;
+  zoom?: number;
+}
+
+export const GRAPH_ZOOM_MIN = 0.25;
+export const GRAPH_ZOOM_MAX = 2;
+export const GRAPH_ZOOM_STEP = 0.1;
+
+export function clampGraphZoom(z: number): number {
+  if (typeof z !== 'number' || !Number.isFinite(z)) return 1;
+  return Math.min(GRAPH_ZOOM_MAX, Math.max(GRAPH_ZOOM_MIN, Math.round(z * 1000) / 1000));
 }
 
 export { SETTINGS_SECTIONS, type SettingsSection };
@@ -244,6 +254,7 @@ export function readGraphState(): { sessionId?: string; graph: GraphViewState } 
   if (g && typeof g === 'object') {
     if (typeof g.turn === 'number' && Number.isFinite(g.turn)) graph.turn = g.turn;
     if (typeof g.selected === 'string' && g.selected) graph.selected = g.selected;
+    if (typeof g.zoom === 'number' && Number.isFinite(g.zoom)) graph.zoom = clampGraphZoom(g.zoom);
   }
   return {
     ...(typeof st.sessionId === 'string' && st.sessionId ? { sessionId: st.sessionId } : {}),

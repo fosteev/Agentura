@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { AgentLaunchRecord } from './AgentLaunchRecord';
 import type { DetailRowView } from '../agentsView';
 import type { AgentOpenView } from '../agentViews';
 import { graphLayout } from '../agentsGraph/layout';
 import type { GraphModel, GraphNodeView } from '../agentsGraph/model';
 import { ui } from '../strings';
+import { clampGraphZoom, GRAPH_ZOOM_MAX, GRAPH_ZOOM_MIN, GRAPH_ZOOM_STEP } from '../vscode';
 
 /**
  * Граф агентов (roadmap 11, вид Д): холст с основным и агентами выбранного хода, полоса ходов сверху,
@@ -16,6 +17,8 @@ export interface AgentsGraphProps {
   model: GraphModel | undefined;
   /** Размер холста задан (превью в ⚙); нет — измеряется. */
   size?: { w: number; h: number };
+  zoom?: number;
+  onZoom?: (zoom: number) => void;
   onTurn: (turnNo: number) => void;
   onSelect: (agentId: string) => void;
   onStop: (taskId: string) => void;
@@ -170,12 +173,86 @@ function Detail({
   );
 }
 
-export function AgentsGraph({ model, size, onTurn, onSelect, onStop, onTranscript }: AgentsGraphProps) {
+export function AgentsGraph({
+  model,
+  size,
+  zoom,
+  onZoom,
+  onTurn,
+  onSelect,
+  onStop,
+  onTranscript,
+}: AgentsGraphProps) {
   const { ref, size: box } = useSize(size);
-  const lay = model ? graphLayout(model.layout, box.w, box.h) : undefined;
+  const zoomEnabled = !size && !!onZoom;
+  const z = zoomEnabled && typeof zoom === 'number' ? zoom : 1;
+  const lay = model ? graphLayout(model.layout, Math.round(box.w / z), Math.round(box.h / z)) : undefined;
   const pos = new Map(lay?.nodes.map((n) => [n.id, n]));
   const edgeOf = new Map(lay?.edges.map((e) => [e.id, e]));
   const empty = !model || model.nodes.length === 0;
+
+  const anchorRef = useRef<{ wx: number; wy: number; vx: number; vy: number } | null>(null);
+
+  useLayoutEffect(() => {
+    const anchor = anchorRef.current;
+    if (!anchor || !ref.current) return;
+    anchorRef.current = null;
+    const sc = ref.current;
+    sc.scrollLeft = Math.max(0, Math.round(anchor.wx * z - anchor.vx));
+    sc.scrollTop = Math.max(0, Math.round(anchor.wy * z - anchor.vy));
+  }, [z]);
+
+  const zoomAtCenter = (targetZoom: number) => {
+    if (!onZoom || empty) return;
+    const next = clampGraphZoom(targetZoom);
+    if (next === z) return;
+    const sc = ref.current;
+    const vx = box.w / 2;
+    const vy = box.h / 2;
+    const scrollLeft = sc?.scrollLeft ?? 0;
+    const scrollTop = sc?.scrollTop ?? 0;
+    const wx = (scrollLeft + vx) / z;
+    const wy = (scrollTop + vy) / z;
+    anchorRef.current = { wx, wy, vx, vy };
+    onZoom(next);
+  };
+
+  const zoomFit = () => {
+    if (!onZoom || !model || empty) return;
+    const raw = graphLayout(model.layout, 0, 0);
+    const scaleX = raw.width > 0 ? box.w / raw.width : 1;
+    const scaleY = raw.height > 0 ? box.h / raw.height : 1;
+    const next = clampGraphZoom(Math.min(1, scaleX, scaleY));
+    anchorRef.current = null;
+    if (ref.current) {
+      ref.current.scrollLeft = 0;
+      ref.current.scrollTop = 0;
+    }
+    onZoom(next);
+  };
+
+  useEffect(() => {
+    const sc = ref.current;
+    if (!zoomEnabled || !sc) return;
+    const handler = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      if (empty) return;
+      e.preventDefault();
+      const factor = Math.exp(-e.deltaY * (e.deltaMode === 1 ? 0.05 : 0.004));
+      const next = clampGraphZoom(z * factor);
+      if (next === z) return;
+      const rect = sc.getBoundingClientRect();
+      const vx = rect.width > 0 ? ((e.clientX - rect.left) / rect.width) * sc.clientWidth : e.clientX - rect.left;
+      const vy = rect.height > 0 ? ((e.clientY - rect.top) / rect.height) * sc.clientHeight : e.clientY - rect.top;
+      const wx = (sc.scrollLeft + vx) / z;
+      const wy = (sc.scrollTop + vy) / z;
+      anchorRef.current = { wx, wy, vx, vy };
+      onZoom?.(next);
+    };
+    sc.addEventListener('wheel', handler, { passive: false });
+    return () => sc.removeEventListener('wheel', handler);
+  }, [zoomEnabled, empty, z, onZoom]);
+
   return (
     <div class="gmap" aria-label={g().aria}>
       <div class="cv">
@@ -198,103 +275,157 @@ export function AgentsGraph({ model, size, onTurn, onSelect, onStop, onTranscrip
               {g().agentsTotal} <b>{model.total.tokens}</b> · {model.total.time}
             </span>
           )}
+          {zoomEnabled && (
+            <span class="zoom" role="group" aria-label={g().zoomAria}>
+              <button
+                type="button"
+                disabled={empty || z <= GRAPH_ZOOM_MIN}
+                data-tip={g().zoomOutTitle}
+                aria-label={g().zoomOutTitle}
+                onClick={() => zoomAtCenter(Math.round((z - GRAPH_ZOOM_STEP) * 100) / 100)}
+              >
+                −
+              </button>
+              <span
+                class="pct"
+                data-tip={g().zoomResetTitle}
+                onDblClick={() => zoomAtCenter(1)}
+              >
+                {Math.round(z * 100)}%
+              </span>
+              <button
+                type="button"
+                disabled={empty || z >= GRAPH_ZOOM_MAX}
+                data-tip={g().zoomInTitle}
+                aria-label={g().zoomInTitle}
+                onClick={() => zoomAtCenter(Math.round((z + GRAPH_ZOOM_STEP) * 100) / 100)}
+              >
+                +
+              </button>
+              <button
+                type="button"
+                class="fit"
+                disabled={empty}
+                data-tip={g().zoomFitTitle}
+                aria-label={g().zoomFitTitle}
+                onClick={zoomFit}
+              >
+                {g().zoomFit}
+              </button>
+            </span>
+          )}
         </div>
         <div class="sc" ref={ref}>
           {empty ? (
             <div class="none">{model ? ui.agents.view.empty : g().waiting}</div>
           ) : (
             lay && (
-              <div class="pl" style={{ width: `${lay.width}px`, height: `${lay.height}px` }}>
-                <svg class="edges" aria-hidden="true" width={lay.width} height={lay.height}>
-                  {model.nodes.map((n) => {
-                    const e = edgeOf.get(n.id);
-                    return e ? <path key={n.id} class={n.kind === 'task' ? 'bg' : n.cls} d={e.d} /> : null;
-                  })}
-                </svg>
+              <div
+                class="pl-box"
+                style={{
+                  width: `${Math.round(lay.width * z)}px`,
+                  height: `${Math.round(lay.height * z)}px`,
+                }}
+              >
                 <div
-                  class={model.main.working ? 'n main busy' : 'n main'}
+                  class="pl"
                   style={{
-                    left: `${lay.main.x}px`,
-                    top: `${lay.main.y}px`,
-                    width: `${lay.main.w}px`,
+                    width: `${lay.width}px`,
+                    height: `${lay.height}px`,
+                    ...(z !== 1 ? { transform: `scale(${z})`, transformOrigin: '0 0' } : {}),
                   }}
                 >
-                  <div class="h">
-                    <span class={model.main.working ? 'ok' : 'mute'}>{model.main.working ? '●' : '○'}</span>
-                    <span>{ui.agents.main}</span>
-                    <span class="r">{model.main.model}</span>
+                  <svg class="edges" aria-hidden="true" width={lay.width} height={lay.height}>
+                    {model.nodes.map((n) => {
+                      const e = edgeOf.get(n.id);
+                      return e ? <path key={n.id} class={n.kind === 'task' ? 'bg' : n.cls} d={e.d} /> : null;
+                    })}
+                  </svg>
+                  <div
+                    class={model.main.working ? 'n main busy' : 'n main'}
+                    style={{
+                      left: `${lay.main.x}px`,
+                      top: `${lay.main.y}px`,
+                      width: `${lay.main.w}px`,
+                    }}
+                  >
+                    <div class="h">
+                      <span class={model.main.working ? 'ok' : 'mute'}>{model.main.working ? '●' : '○'}</span>
+                      <span>{ui.agents.main}</span>
+                      <span class="r">{model.main.model}</span>
+                    </div>
+                    <div class="t">{model.main.state}</div>
+                    <div class="s">{model.main.context}</div>
+                    <div class="ctxb">
+                      <i class={model.main.ctxCls || undefined} style={{ width: `${model.main.ctxPct}%` }} />
+                    </div>
+                    <div class="s">{model.main.returned}</div>
                   </div>
-                  <div class="t">{model.main.state}</div>
-                  <div class="s">{model.main.context}</div>
-                  <div class="ctxb">
-                    <i class={model.main.ctxCls || undefined} style={{ width: `${model.main.ctxPct}%` }} />
-                  </div>
-                  <div class="s">{model.main.returned}</div>
-                </div>
-                {model.nodes.map((n) => {
-                  const e = edgeOf.get(n.id);
-                  return n.kind === 'agent' && e && n.up ? (
-                    <span
-                      key={`l-${n.id}`}
-                      class="lab"
-                      style={{ left: `${e.label.x}px`, top: `${e.label.y}px` }}
-                      data-tip={g().edgeTip}
-                    >
-                      <span class="up">{n.up}</span> · <span class={n.downCls}>{n.down}</span>
-                    </span>
-                  ) : null;
-                })}
-                {model.nodes.map((n) => {
-                  const p = pos.get(n.id);
-                  if (!p) return null;
-                  const sel = n.id === model.selectedId;
-                  const cls = ['n', n.cls, sel && 'sel'].filter(Boolean).join(' ');
-                  const style = { left: `${p.x}px`, top: `${p.y}px`, width: `${p.w}px` };
-                  const body = (
-                    <>
-                      <div class="h">
-                        <Mark n={n} />
-                        <span>{n.head}</span>
-                        <span class="r">
-                          {n.tokens && (
-                            <>
-                              <b>{n.tokens}</b> ·{' '}
-                            </>
-                          )}
-                          {n.time}
-                          {n.kind === 'task' && n.stopTaskId && (
-                            <button
-                              class="x"
-                              data-tip={ui.agents.stopTitle}
-                              aria-label={ui.agents.stopTitle}
-                              onClick={() => onStop(n.stopTaskId!)}
-                            >
-                              ■
-                            </button>
-                          )}
-                        </span>
+                  {model.nodes.map((n) => {
+                    const e = edgeOf.get(n.id);
+                    return n.kind === 'agent' && e && n.up ? (
+                      <span
+                        key={`l-${n.id}`}
+                        class="lab"
+                        style={{ left: `${e.label.x}px`, top: `${e.label.y}px` }}
+                        data-tip={g().edgeTip}
+                      >
+                        <span class="up">{n.up}</span> · <span class={n.downCls}>{n.down}</span>
+                      </span>
+                    ) : null;
+                  })}
+                  {model.nodes.map((n) => {
+                    const p = pos.get(n.id);
+                    if (!p) return null;
+                    const sel = n.id === model.selectedId;
+                    const cls = ['n', n.cls, sel && 'sel'].filter(Boolean).join(' ');
+                    const style = { left: `${p.x}px`, top: `${p.y}px`, width: `${p.w}px` };
+                    const body = (
+                      <>
+                        <div class="h">
+                          <Mark n={n} />
+                          <span>{n.head}</span>
+                          <span class="r">
+                            {n.tokens && (
+                              <>
+                                <b>{n.tokens}</b> ·{' '}
+                              </>
+                            )}
+                            {n.time}
+                            {n.kind === 'task' && n.stopTaskId && (
+                              <button
+                                class="x"
+                                data-tip={ui.agents.stopTitle}
+                                aria-label={ui.agents.stopTitle}
+                                onClick={() => onStop(n.stopTaskId!)}
+                              >
+                                ■
+                              </button>
+                            )}
+                          </span>
+                        </div>
+                        <div class="t">{n.title}</div>
+                        <div class="s">{n.sub || ' '}</div>
+                      </>
+                    );
+                    return n.kind === 'agent' ? (
+                      <div
+                        key={n.id}
+                        class={cls}
+                        style={style}
+                        data-agent={n.id}
+                        aria-pressed={sel}
+                        {...press(() => onSelect(n.id))}
+                      >
+                        {body}
                       </div>
-                      <div class="t">{n.title}</div>
-                      <div class="s">{n.sub || ' '}</div>
-                    </>
-                  );
-                  return n.kind === 'agent' ? (
-                    <div
-                      key={n.id}
-                      class={cls}
-                      style={style}
-                      data-agent={n.id}
-                      aria-pressed={sel}
-                      {...press(() => onSelect(n.id))}
-                    >
-                      {body}
-                    </div>
-                  ) : (
-                    <div key={n.id} class={cls} style={style} data-task={n.id}>
-                      {body}
-                    </div>
-                  );
-                })}
+                    ) : (
+                      <div key={n.id} class={cls} style={style} data-task={n.id}>
+                        {body}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )
           )}

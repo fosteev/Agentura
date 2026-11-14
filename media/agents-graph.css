@@ -11,7 +11,14 @@
 .gmap .cv .bar .turns button[aria-pressed="true"] { border-color: var(--accent); color: var(--fg); }
 .gmap .cv .bar .r { margin-left: auto; flex: none; white-space: nowrap; }
 .gmap .cv .bar .r b { color: var(--fg); font-weight: 500; }
+.gmap .cv .bar .zoom { display: flex; align-items: center; gap: 4px; flex: none; margin-left: auto; white-space: nowrap; }
+.gmap .cv .bar .r + .zoom { margin-left: 0; }
+.gmap .cv .bar .zoom button { flex: none; padding: 2px 7px; border: 1px solid var(--line); border-radius: 3px; font-size: 10.5px; color: var(--fg-mute); background: none; cursor: pointer; white-space: nowrap; line-height: 14px; }
+.gmap .cv .bar .zoom button:hover:not(:disabled) { border-color: var(--fg-faint); color: var(--fg); }
+.gmap .cv .bar .zoom button:disabled { opacity: 0.45; cursor: default; }
+.gmap .cv .bar .zoom .pct { min-width: 36px; text-align: center; cursor: pointer; user-select: none; font-variant-numeric: tabular-nums; color: var(--fg); font-weight: 500; }
 .gmap .sc { position: relative; flex: 1; min-height: 0; overflow: auto; background-image: radial-gradient(var(--line) 1px, transparent 1px); background-size: 16px 16px; }
+.gmap .pl-box { position: relative; flex: none; }
 .gmap .pl { position: relative; }
 .gmap .none { padding: 24px 16px; color: var(--fg-mute); }
 .gmap svg.edges { position: absolute; left: 0; top: 0; z-index: 0; overflow: visible; }

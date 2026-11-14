@@ -5,9 +5,11 @@ import {
   graphSelected,
   graphSnap,
   graphTurn,
+  graphZoom,
   openGraphTranscript,
   pickAgent,
   pickTurn,
+  setGraphZoom,
   stopGraphAgent,
 } from './store';
 
@@ -25,6 +27,8 @@ export function GraphApp() {
   return (
     <AgentsGraph
       model={model}
+      zoom={graphZoom.value}
+      onZoom={setGraphZoom}
       onTurn={pickTurn}
       onSelect={pickAgent}
       onStop={stopGraphAgent}
