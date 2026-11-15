@@ -1,11 +1,14 @@
 import {
   cleanAgyCliText,
+  formatAgyQuotaError,
   isAgyAuthError,
+  isAgyEligibilityError,
   parseAgyUsage,
   runAgyUsage,
   type AgyQuotaRow,
   type RunAgyUsage,
 } from '../agent/antigravity/quota';
+import type { Lang } from '../shared/l10n';
 
 export type AgyQuotaState = 'loading' | 'ok' | 'signedOut' | 'missing' | 'error';
 
@@ -35,6 +38,8 @@ export class AgyQuotaService {
   private last: AgyQuotaSnapshot = { state: 'loading', rows: [], updatedAt: 0 };
   private lastAttempt = 0;
   private inflight: Promise<AgyQuotaSnapshot> | undefined;
+  private lastIneligible = false;
+  private lastWarnedError: string | undefined;
   private readonly listeners = new Set<(snap: AgyQuotaSnapshot) => void>();
 
   constructor(
@@ -43,6 +48,7 @@ export class AgyQuotaService {
     private readonly now: () => number = Date.now,
     private readonly intervalMs = AGY_QUOTA_INTERVAL_MS,
     private readonly warn?: (message: string) => void,
+    private readonly lang: () => Lang = () => 'ru',
   ) {}
 
   onUpdate(listener: (snap: AgyQuotaSnapshot) => void): () => void {
@@ -58,7 +64,7 @@ export class AgyQuotaService {
     if (this.inflight) return this.inflight;
     if (!force && this.lastAttempt) {
       const cooldown =
-        this.last.state === 'error'
+        this.last.state === 'error' && !this.lastIneligible
           ? Math.min(this.intervalMs, AGY_QUOTA_ERROR_COOLDOWN_MS)
           : this.intervalMs;
       if (this.now() - this.lastAttempt < cooldown) return Promise.resolve(this.last);
@@ -90,9 +96,16 @@ export class AgyQuotaService {
         this.set({ state: 'signedOut', rows: [], updatedAt: this.now() });
       } else {
         const cleaned = cleanAgyCliText(output);
-        if (this.last.rows.length > 0 || looksLikeExplicitError(cleaned)) {
-          const error = cleaned || 'agy -p /usage: empty output';
-          this.warn?.(error);
+        const ineligible = isAgyEligibilityError(output);
+        if (this.last.rows.length > 0 || looksLikeExplicitError(cleaned) || ineligible) {
+          const error = ineligible
+            ? formatAgyQuotaError(output, this.lang())
+            : (cleaned || 'agy -p /usage: empty output');
+          this.lastIneligible = ineligible;
+          if (error !== this.lastWarnedError) {
+            this.warn?.(error);
+            this.lastWarnedError = error;
+          }
           this.set({ state: 'error', rows: this.last.rows, updatedAt: this.last.updatedAt, error });
         } else {
           this.set({ state: 'signedOut', rows: [], updatedAt: this.now() });
@@ -102,8 +115,15 @@ export class AgyQuotaService {
       if (isAgyAuthError(e)) {
         this.set({ state: 'signedOut', rows: [], updatedAt: this.now() });
       } else {
-        const error = e instanceof Error ? e.message : String(e);
-        this.warn?.(error);
+        const ineligible = isAgyEligibilityError(e);
+        const error = ineligible
+          ? formatAgyQuotaError(e, this.lang())
+          : (e instanceof Error ? e.message : String(e));
+        this.lastIneligible = ineligible;
+        if (error !== this.lastWarnedError) {
+          this.warn?.(error);
+          this.lastWarnedError = error;
+        }
         this.set({ state: 'error', rows: this.last.rows, updatedAt: this.last.updatedAt, error });
       }
     }
@@ -111,6 +131,10 @@ export class AgyQuotaService {
   }
 
   private set(snap: AgyQuotaSnapshot): void {
+    if (snap.state !== 'error') {
+      this.lastIneligible = false;
+      this.lastWarnedError = undefined;
+    }
     this.last = snap;
     for (const l of this.listeners) {
       try {

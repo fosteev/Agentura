@@ -45,6 +45,7 @@ export function buildAgyHistory(
   const mapper = new AgyAcpMapper({
     ...(options.lang ? { lang: options.lang } : {}),
     ...(options.mcpServers ? { mcpServers: options.mcpServers } : {}),
+    ...(options.now ? { now: options.now } : {}),
   });
   const now = options.now ?? Date.now;
   const events: AgentEvent[] = [];

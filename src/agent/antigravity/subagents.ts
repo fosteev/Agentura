@@ -12,7 +12,7 @@ const BG_TASK_RE =
 const EXIT_CODE_RE = /\bCommand exited with code (-?\d+)\b/;
 const HEADER_STRIP_RE = /^(?:(?:Created|Completed) At:[^\n]*\n)+/i;
 const SYSTEM_MSG_BLOCK_RE = /<SYSTEM_MESSAGE>\s*([\s\S]*?)\s*<\/SYSTEM_MESSAGE>/gi;
-const MESSAGE_PREFIX_RE = /^\[Message\][^\n]*?\bcontent=([\s\S]*)$/;
+const MESSAGE_PREFIX_RE = /(?:^|\n)\[Message\][^\n]*?\bcontent=([\s\S]*)$/;
 const SENDER_RE = /\[Message\][^\n]*?\bsender=([^\s]+)/;
 const TRUNCATED_SUFFIX_RE = /\r?\n?<truncated \d+ bytes>"?\s*$/i;
 const USER_MODEL_SELECTION_RE =
@@ -467,19 +467,27 @@ export function unwrapAgySystemMessage(raw: string): string {
     .join('\n\n');
 }
 
-function extractSystemMessages(raw: string): { sender: string | undefined; body: string }[] {
+export function extractSystemMessages(raw: string): { sender: string | undefined; body: string }[] {
   if (!raw) return [];
+  const cleaned = raw.replace(
+    /The following is a <SYSTEM_MESSAGE> not actually sent by the user[^\n]*\r?\n*/gi,
+    '',
+  );
   const out: { sender: string | undefined; body: string }[] = [];
   SYSTEM_MSG_BLOCK_RE.lastIndex = 0;
   let m: RegExpExecArray | null;
-  while ((m = SYSTEM_MSG_BLOCK_RE.exec(raw)) !== null) {
-    const inner = m[1]!.trim();
+  while ((m = SYSTEM_MSG_BLOCK_RE.exec(cleaned)) !== null) {
+    const inner = m[1]!
+      .replace(/^not actually sent by the user[\s\S]*?<SYSTEM_MESSAGE>\s*/i, '')
+      .trim();
     const sender = SENDER_RE.exec(inner)?.[1]?.trim();
     const msgMatch = MESSAGE_PREFIX_RE.exec(inner);
     out.push({ sender, body: (msgMatch ? msgMatch[1]! : inner).trim() });
   }
   if (out.length > 0) return out;
-  const trimmed = raw.trim();
+  const trimmed = cleaned
+    .replace(/^not actually sent by the user[\s\S]*?<SYSTEM_MESSAGE>\s*/i, '')
+    .trim();
   if (!trimmed) return [];
   const sender = SENDER_RE.exec(trimmed)?.[1]?.trim();
   const msgMatch = MESSAGE_PREFIX_RE.exec(trimmed);
@@ -675,6 +683,9 @@ export class AgySubagentReader {
   private completedStepIndex = -1;
   private rounds = 1;
   private roundCompleted = false;
+  private completedRounds = 0;
+  private lastCompletedAt: number | undefined;
+  private reopenCount = 0;
   private stopped = false;
   private waitingEmitted = false;
   private totalTokens: number | undefined;
@@ -761,13 +772,24 @@ export class AgySubagentReader {
 
   /** Переоткрывает завершённого субагента при новом сообщении `send_message` от родителя. */
   reopen(now = Date.now(), prompt?: string): AgentEvent[] {
-    this.stopped = false;
+    if (this.stopped) return [];
+    if (this.roundCompleted) {
+      if (this.lastCompletedAt !== undefined && now <= this.lastCompletedAt) {
+        if (prompt) this.prompt = prompt;
+        return [];
+      }
+      this.reopenCount += 1;
+      if (this.completedRounds >= 1 + this.reopenCount) {
+        if (prompt) this.prompt = prompt;
+        return [];
+      }
+    }
     this.roundCompleted = false;
     this.waitingEmitted = false;
     this.lastSendMessageSummary = undefined;
     this.parentReportSummary = undefined;
     if (prompt) this.prompt = prompt;
-    return [this.buildStartEvent(now)];
+    return [this.buildStartEvent(this.startedAt)];
   }
 
   reopenByUuid(targetUuid: string, now = Date.now(), prompt?: string): AgentEvent[] {
@@ -966,7 +988,7 @@ export class AgySubagentReader {
         this.waitingEmitted = false;
         this.lastSendMessageSummary = undefined;
         this.parentReportSummary = undefined;
-        out.push(this.buildStartEvent(at));
+        out.push(this.buildStartEvent(this.startedAt));
       }
       return out;
     }
@@ -981,7 +1003,7 @@ export class AgySubagentReader {
         this.waitingEmitted = false;
         this.lastSendMessageSummary = undefined;
         this.parentReportSummary = undefined;
-        out.push(this.buildStartEvent(at));
+        out.push(this.buildStartEvent(this.startedAt));
       }
 
       // Если предыдущий PLANNER_RESPONSE имел несколько tool_calls, а GENERIC пришёл пачкой — дозакрываем остаток
@@ -1077,6 +1099,8 @@ export class AgySubagentReader {
         out.push(...this.closeAllBgTasks('completed', at));
         this.roundCompleted = true;
         this.completedStepIndex = stepIndex;
+        this.completedRounds += 1;
+        this.lastCompletedAt = at;
         out.push({
           type: 'agent.end',
           agentId: this.agentId,
@@ -2015,6 +2039,31 @@ export async function readParentTranscriptSummary(
   };
 }
 
+export function matchesPotentiallyTruncated(a: string, b: string): boolean {
+  if (a === b) return true;
+  const strip = (s: string): { truncated: boolean; prefix: string } => {
+    if (s.endsWith('…')) {
+      const prefix = s.slice(0, -1).trimEnd().replace(/\\+$/, '');
+      return { truncated: true, prefix };
+    }
+    if (TRUNCATED_SUFFIX_RE.test(s)) {
+      const prefix = s.replace(TRUNCATED_SUFFIX_RE, '').trimEnd().replace(/\\+$/, '');
+      return { truncated: true, prefix };
+    }
+    return { truncated: false, prefix: s };
+  };
+
+  const aTrunc = strip(a);
+  if (aTrunc.truncated && aTrunc.prefix.length > 0 && b.startsWith(aTrunc.prefix)) {
+    return true;
+  }
+  const bTrunc = strip(b);
+  if (bTrunc.truncated && bTrunc.prefix.length > 0 && a.startsWith(bTrunc.prefix)) {
+    return true;
+  }
+  return false;
+}
+
 function matchesInvokeCall(
   candidate: ParentOrchestrationCall,
   query: { subagentType?: string; description?: string; prompt?: string },
@@ -2025,7 +2074,7 @@ function matchesInvokeCall(
   if (query.description && candidate.description && query.description !== candidate.description) {
     return false;
   }
-  if (query.prompt && candidate.prompt && query.prompt !== candidate.prompt) {
+  if (query.prompt && candidate.prompt && !matchesPotentiallyTruncated(query.prompt, candidate.prompt)) {
     return false;
   }
   return Boolean(query.subagentType || query.description || query.prompt);

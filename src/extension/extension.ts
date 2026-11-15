@@ -57,7 +57,12 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     userAgent: `Agentura/${String(context.extension.packageJSON.version)}`,
     lang: currentLanguage,
   });
-  const usage = new UsageService(limits.fetch);
+  const usage = new UsageService(
+    limits.fetch,
+    undefined,
+    undefined,
+    (m) => log.warn(`Лимиты не обновились: ${m}`),
+  );
   const {
     adapter,
     codexAdapter,
@@ -133,6 +138,7 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     undefined,
     undefined,
     (m) => log.warn(`квота agy: ${m}`),
+    currentLanguage,
   );
   const codexLimits = new CodexLimitsService(async () => ((await codexEngine.available()) ? codexEngine.path() : undefined));
   const sidebar = new SidebarProvider(context, log, usage, sessions, account, taskGroups, archive, {

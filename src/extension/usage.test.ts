@@ -70,4 +70,43 @@ describe('UsageService', () => {
     await svc.refresh();
     expect(seen).toHaveBeenCalledTimes(1);
   });
+
+  it('дедуплицирует warn: одинаковая ошибка пишется один раз, смена текста и сбой после успеха пишут снова', async () => {
+    let now = 0;
+    const warnings: string[] = [];
+    const fetch = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('нет токена Claude Code (войдите в claude)'))
+      .mockRejectedValueOnce(new Error('нет токена Claude Code (войдите в claude)'))
+      .mockRejectedValueOnce(new Error('503 Service Unavailable'))
+      .mockResolvedValueOnce(windows)
+      .mockRejectedValueOnce(new Error('нет токена Claude Code (войдите в claude)'));
+    const svc = new UsageService(fetch, () => now, 60_000, (m) => warnings.push(m));
+
+    await svc.refresh();
+    expect(warnings).toEqual(['нет токена Claude Code (войдите в claude)']);
+
+    now = 70_000;
+    await svc.refresh();
+    expect(warnings).toEqual(['нет токена Claude Code (войдите в claude)']);
+
+    now = 140_000;
+    await svc.refresh();
+    expect(warnings).toEqual([
+      'нет токена Claude Code (войдите в claude)',
+      '503 Service Unavailable',
+    ]);
+
+    now = 210_000;
+    await svc.refresh();
+    expect(warnings).toHaveLength(2);
+
+    now = 280_000;
+    await svc.refresh();
+    expect(warnings).toEqual([
+      'нет токена Claude Code (войдите в claude)',
+      '503 Service Unavailable',
+      'нет токена Claude Code (войдите в claude)',
+    ]);
+  });
 });

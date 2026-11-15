@@ -210,6 +210,44 @@ describe('KimiAdapter ACP core', () => {
     session.dispose();
   });
 
+  it('emits exactly one session.init on createSession and suppresses intermediate event storm during handshake', async () => {
+    const server = createFakeKimiServer();
+    server.handle('session/new', () => {
+      server.update(DEFAULT_KIMI_SESSION_ID, {
+        sessionUpdate: 'available_commands_update',
+        availableCommands: [
+          { name: 'compact', description: 'Compact context' },
+          { name: 'usage', description: 'Token usage' },
+        ],
+      });
+      return {
+        sessionId: DEFAULT_KIMI_SESSION_ID,
+        configOptions: makeKimiConfigOptions('kimi-code/k3.1-pro', 'high', 'default'),
+        modes: { currentModeId: 'default', availableModes: [{ id: 'default', name: 'Default' }, { id: 'auto', name: 'Auto' }] },
+      };
+    });
+    const { adapter } = setup(server);
+    const session = await adapter.createSession({
+      cwd: '/work',
+      model: 'kimi-code/k3',
+      effort: 'low',
+      permissionMode: 'acceptEdits',
+    });
+    const events = collect(session);
+    await session.capabilities();
+    const initEvents = events.filter((e) => e.type === 'session.init');
+    expect(initEvents).toHaveLength(1);
+    expect(initEvents[0]).toMatchObject({
+      sessionId: DEFAULT_KIMI_SESSION_ID,
+      model: 'kimi-code/k3',
+      effort: 'low',
+      permissionMode: 'acceptEdits',
+      slashCommands: ['compact', 'usage'],
+    });
+    expect(events.filter((e) => e.type === 'mode.changed')).toHaveLength(0);
+    session.dispose();
+  });
+
   it('fake server replays real Read and Edit fixtures through the full adapter', async () => {
     const server = createFakeKimiServer();
     server.handle('session/prompt', (params) => {

@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, symlink } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -117,6 +117,74 @@ describe('Kimi ACP history and globalState index', () => {
       expect(new KimiSessionIndex(state).nameOf('older')).toBeUndefined();
     } finally {
       await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('listSessions filters empty unstarted sessions and preserves active or renamed ones', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'agentura-kimi-home-'));
+    const work = join(home, 'work');
+    try {
+      await mkdir(work, { recursive: true });
+
+      const idEmptyNoWire = 'session_a6b9fb6b-7f7d-404e-9cd1-000000000001';
+      const idEmptyMetaOnly = 'session_a6b9fb6b-7f7d-404e-9cd1-000000000002';
+      const idRenamedEmpty = 'session_a6b9fb6b-7f7d-404e-9cd1-000000000003';
+      const idActiveWire = 'session_a6b9fb6b-7f7d-404e-9cd1-000000000004';
+      const idNativeTitle = 'session_a6b9fb6b-7f7d-404e-9cd1-000000000005';
+
+      const writeSession = async (id: string, wireLines?: string[]) => {
+        const root = join(home, 'sessions/wd_test', id);
+        await mkdir(join(root, 'agents/main'), { recursive: true });
+        await writeFile(join(root, 'state.json'), JSON.stringify({
+          version: 2, id, agents: { main: { type: 'main' } },
+        }));
+        if (wireLines) {
+          await writeFile(join(root, 'agents/main/wire.jsonl'), wireLines.join('\n') + '\n');
+        }
+      };
+
+      const meta = JSON.stringify({ type: 'metadata', protocol_version: '1.5', min_protocol_version: '1.5' });
+      const record = JSON.stringify({ type: 'context.append_loop_event', time: 1000 });
+
+      // 1: empty session without wire.jsonl
+      await writeSession(idEmptyNoWire);
+      // 2: empty session with only metadata in wire.jsonl
+      await writeSession(idEmptyMetaOnly, [meta]);
+      // 4: active session with real turn event in wire.jsonl
+      await writeSession(idActiveWire, [meta, record]);
+
+      const server = createFakeKimiServer();
+      server.handle('session/list', () => ({
+        sessions: [
+          { sessionId: idEmptyNoWire, cwd: work, title: '', updatedAt: '2026-11-15T10:00:00Z' },
+          { sessionId: idEmptyMetaOnly, cwd: work, title: idEmptyMetaOnly, updatedAt: '2026-11-15T11:00:00Z' },
+          { sessionId: idRenamedEmpty, cwd: work, title: '', updatedAt: '2026-11-15T12:00:00Z' },
+          { sessionId: idActiveWire, cwd: work, title: idActiveWire, updatedAt: '2026-11-15T13:00:00Z' },
+          { sessionId: idNativeTitle, cwd: work, title: 'Native Active', updatedAt: '2026-11-15T14:00:00Z' },
+        ],
+      }));
+
+      const state = memoryStore();
+      const engine = new KimiAdapter({
+        executablePath: '/bin/kimi',
+        spawn: () => server,
+        state,
+        graceMs: 20,
+        env: { KIMI_CODE_HOME: home },
+      });
+
+      // 3: session without title, but renamed by user in KimiSessionIndex
+      await engine.renameSession(idRenamedEmpty, 'User Renamed Draft');
+
+      const sessions = await engine.listSessions(work);
+      expect(sessions.map((s) => s.id)).toEqual([idNativeTitle, idActiveWire, idRenamedEmpty]);
+      expect(sessions.find((s) => s.id === idEmptyNoWire)).toBeUndefined();
+      expect(sessions.find((s) => s.id === idEmptyMetaOnly)).toBeUndefined();
+      expect(sessions.find((s) => s.id === idRenamedEmpty)?.title).toBe('User Renamed Draft');
+      expect(sessions.find((s) => s.id === idActiveWire)?.title).toBe(idActiveWire);
+      expect(sessions.find((s) => s.id === idNativeTitle)?.title).toBe('Native Active');
+    } finally {
+      await rm(home, { recursive: true, force: true });
     }
   });
 

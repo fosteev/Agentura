@@ -873,6 +873,121 @@ describe('ChatController', () => {
     expect(events).toEqual(['error', 'session.closed']);
   });
 
+  it('асинхронный таймаут session/new в пустой нетронутой вкладке откладывается до первого сообщения', async () => {
+    const { controller, sessions, posted } = setup();
+    controller.start();
+    await tick();
+    await controller.handle({ type: 'ready' });
+    await tick();
+
+    expect(sessions).toHaveLength(1);
+    const s1 = sessions[0]!;
+    expect(controller.pristine).toBe(true);
+    expect(controller.chatStatus).toBe('idle');
+
+    // Приходит асинхронный таймаут от agy acp
+    const timeoutMsg = 'Antigravity RPC session/new timed out after 120000 ms.';
+    s1.emit({ type: 'error', fatal: true, message: timeoutMsg });
+    s1.emit({ type: 'session.closed', reason: 'error', message: timeoutMsg });
+    await tick();
+
+    // В posted нет fatal error и session.closed
+    const errorEvents = posted
+      .filter((m) => m.type === 'agent.event')
+      .map((m) => (m as { event: AgentEvent }).event)
+      .filter((e) => e.type === 'error' || e.type === 'session.closed');
+    expect(errorEvents).toHaveLength(0);
+
+    expect(controller.chatStatus).toBe('idle');
+    expect(controller.pristine).toBe(true);
+    expect(s1.disposed).toBe(true);
+
+    // Первое пользовательское send прозрачно поднимает вторую сессию
+    posted.length = 0;
+    await controller.handle({ type: 'send', sessionId: '', text: 'привет' });
+    await tick();
+    await tick();
+
+    expect(sessions).toHaveLength(2);
+    const s2 = sessions[1]!;
+    expect(s2.sent).toEqual(['привет']);
+    expect(posted).toContainEqual(
+      expect.objectContaining({ type: 'capabilities', sessionId: s2.id }),
+    );
+  });
+
+  it('отказ createSession с таймаутом в пустой pristine-вкладке откладывается до первого send', async () => {
+    const sessions: FakeSession[] = [];
+    let attempts = 0;
+    const { deps, posted } = setup();
+    const timeoutMsg = 'session/new timed out after 120000 ms.';
+    const controller = new ChatController({
+      ...deps,
+      adapter: {
+        id: 'fake',
+        createSession: async () => {
+          attempts++;
+          if (attempts === 1) {
+            throw new Error(timeoutMsg);
+          }
+          const s = new FakeSession();
+          sessions.push(s);
+          return s;
+        },
+      } as unknown as AgentAdapter,
+    });
+
+    controller.start();
+    await tick();
+    await controller.handle({ type: 'ready' });
+    await tick();
+
+    const errorEvents = posted
+      .filter((m) => m.type === 'agent.event')
+      .map((m) => (m as { event: AgentEvent }).event)
+      .filter((e) => e.type === 'error' || e.type === 'session.closed');
+    expect(errorEvents).toHaveLength(0);
+    expect(controller.chatStatus).toBe('idle');
+    expect(controller.pristine).toBe(true);
+
+    await controller.handle({ type: 'send', sessionId: '', text: 'привет' });
+    await tick();
+    await tick();
+
+    expect(attempts).toBe(2);
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]!.sent).toEqual(['привет']);
+  });
+
+  it('если пользователь успел отправить сообщение до прихода таймаута, fatal error и session.closed показываются', async () => {
+    const { controller, sessions, posted } = setup();
+    controller.start();
+    await tick();
+    await controller.handle({ type: 'ready' });
+    await tick();
+
+    expect(sessions).toHaveLength(1);
+    const s1 = sessions[0]!;
+
+    await controller.handle({ type: 'send', sessionId: '', text: 'быстрое сообщение' });
+    await tick();
+    expect(controller.pristine).toBe(false);
+
+    const timeoutMsg = 'Antigravity RPC session/new timed out after 120000 ms.';
+    s1.emit({ type: 'error', fatal: true, message: timeoutMsg });
+    s1.emit({ type: 'session.closed', reason: 'error', message: timeoutMsg });
+    await tick();
+
+    const errorEvents = posted
+      .filter((m) => m.type === 'agent.event')
+      .map((m) => (m as { event: AgentEvent }).event)
+      .filter((e) => e.type === 'error' || e.type === 'session.closed');
+    expect(errorEvents).toHaveLength(2);
+    expect(errorEvents[0]).toMatchObject({ type: 'error', fatal: true, message: timeoutMsg });
+    expect(errorEvents[1]).toMatchObject({ type: 'session.closed', reason: 'error' });
+    expect(controller.chatStatus).toBe('error');
+  });
+
   it('ready: пороги контекста из настроек и лимиты подписки уходят в webview', async () => {
     const { controller, posted, deps } = setup();
     deps.settings = () => ({ allowBypass: false, contextThresholds: [100, 200] });

@@ -86,6 +86,9 @@ function defaultSpawn(path: string, args: string[], options: CursorSpawnOptions)
   }) as unknown as CursorProcess;
 }
 
+/** Таймаут фонового листинга сессий проекта (не держим зависший процесс 120 с). */
+export const CURSOR_LIST_SESSIONS_TIMEOUT_MS = 20_000;
+
 export class CursorAdapter implements AgentAdapter {
   readonly id = 'cursor';
   /** `-32601` на `session/list` — один warn на адаптер, не на каждый опрос сайдбара. */
@@ -107,7 +110,11 @@ export class CursorAdapter implements AgentAdapter {
    */
   async listSessions(dir: string): Promise<SessionInfo[]> {
     try {
-      const result = await this.withAcp(dir, (client) => client.request('session/list', { cwd: dir }));
+      const result = await this.withAcp(
+        dir,
+        (client) => client.request('session/list', { cwd: dir }),
+        CURSOR_LIST_SESSIONS_TIMEOUT_MS,
+      );
       return sessionsFrom(result, dir);
     } catch (error) {
       if (error instanceof CursorRpcError && error.code === -32601) {
@@ -193,14 +200,16 @@ export class CursorAdapter implements AgentAdapter {
   private withAcp<T>(
     cwd: string,
     fn: (client: CursorRpcClient, updates: unknown[]) => Promise<T>,
+    defaultTimeoutMs = 120_000,
   ): Promise<T> {
-    return this.executable().then((executable) => this.acp(executable, cwd, fn));
+    return this.executable().then((executable) => this.acp(executable, cwd, fn, defaultTimeoutMs));
   }
 
   private async acp<T>(
     executable: string,
     cwd: string,
     fn: (client: CursorRpcClient, updates: unknown[]) => Promise<T>,
+    defaultTimeoutMs = 120_000,
   ): Promise<T> {
     const proc = (this.config.spawn ?? defaultSpawn)(executable, ['acp'], {
       cwd,
@@ -211,7 +220,7 @@ export class CursorAdapter implements AgentAdapter {
     proc.on('exit', () => (exited = true));
     const updates: unknown[] = [];
     const client = new CursorRpcClient(proc, {
-      timeoutMs: this.config.timeoutMs ?? 120_000,
+      timeoutMs: this.config.timeoutMs ?? defaultTimeoutMs,
       maxLineBytes: MAX_LINE_BYTES,
       onNotification: (method, params) => {
         if (method !== 'session/update') return;

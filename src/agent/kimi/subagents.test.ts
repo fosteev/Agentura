@@ -16,6 +16,7 @@ import {
   KimiWireReader,
   appendKimiSubagentHistory,
   findKimiSessionRoot,
+  hasKimiSessionActivity,
   kimiSubagentMarkdown,
   kimiSubagentTranscript,
   parseKimiState,
@@ -527,6 +528,38 @@ describe('Kimi history limits and read-only transcripts', () => {
       });
       session.dispose();
       expect(events.at(-1)?.type).toBe('session.closed');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('hasKimiSessionActivity detects presence or absence of non-metadata wire activity', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'agentura-kimi-act-'));
+    try {
+      const sessionId = 'session_a6b9fb6b-7f7d-404e-9cd1-777777777777';
+      const root = join(dir, 'sessions/wd_act', sessionId);
+      await mkdir(join(root, 'agents/main'), { recursive: true });
+      await writeFile(join(root, 'state.json'), JSON.stringify({
+        version: 2, id: sessionId, agents: { main: { type: 'main' } },
+      }));
+
+      // No wire.jsonl yet
+      expect(await hasKimiSessionActivity(sessionId, { KIMI_CODE_HOME: dir })).toBe(false);
+
+      // Wire.jsonl with only metadata
+      const wirePath = join(root, 'agents/main/wire.jsonl');
+      const meta = JSON.stringify({ type: 'metadata', protocol_version: '1.5', min_protocol_version: '1.5' });
+      await writeFile(wirePath, meta + '\n');
+      expect(await hasKimiSessionActivity(sessionId, { KIMI_CODE_HOME: dir })).toBe(false);
+
+      // Wire.jsonl with metadata + real event
+      const event = JSON.stringify({ type: 'context.append_loop_event', time: 1000 });
+      await appendFile(wirePath, event + '\n');
+      expect(await hasKimiSessionActivity(sessionId, { KIMI_CODE_HOME: dir })).toBe(true);
+
+      // Invalid or non-existent session id
+      expect(await hasKimiSessionActivity('bad-session-id', { KIMI_CODE_HOME: dir })).toBe(false);
+      expect(await hasKimiSessionActivity('session_00000000-0000-0000-0000-000000000000', { KIMI_CODE_HOME: dir })).toBe(false);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

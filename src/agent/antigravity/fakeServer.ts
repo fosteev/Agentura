@@ -92,9 +92,9 @@ export function makeConfigOptions(model = 'gemini-4-argon', thoughtLevel = 'medi
  * Только для тестов.
  */
 export class FakeAgyAcp extends EventEmitter implements AgyAcpProcess {
-  readonly stdin = new PassThrough();
-  readonly stdout = new PassThrough();
-  readonly stderr = new PassThrough();
+  stdin = new PassThrough();
+  stdout = new PassThrough();
+  stderr = new PassThrough();
   readonly received: { id?: number | string; method: string; params?: unknown }[] = [];
   readonly handlers = new Map<string, Handler>();
   killed = false;
@@ -106,11 +106,25 @@ export class FakeAgyAcp extends EventEmitter implements AgyAcpProcess {
 
   constructor() {
     super();
+    this.initStreams();
+  }
+
+  private initStreams(): void {
     this.stdin.setEncoding('utf8');
     this.stdin.on('data', (chunk: string) => this.read(chunk));
     this.stdin.on('end', () => {
       if (!this.ignoreStdinEnd) this.exit(0);
     });
+  }
+
+  resetStreams(): void {
+    this.stdin = new PassThrough();
+    this.stdout = new PassThrough();
+    this.stderr = new PassThrough();
+    this.killed = false;
+    this.exited = false;
+    this.buffer = '';
+    this.initStreams();
   }
 
   on(event: 'error' | 'exit' | 'close', listener: (...args: unknown[]) => void): this {

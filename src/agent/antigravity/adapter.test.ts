@@ -4,10 +4,12 @@ import * as os from 'node:os';
 import { join } from 'node:path';
 import { AcpRpcError } from '../acp/client';
 import { availableCommandsOf, availableModesOf, permissionModeOf, parseElicitation, formatElicitationAnswer } from './acpProtocol';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { AgentEvent, AgentEventOf, AgentSession, PromptImage } from '../types';
+import { nextStatus, updatePending, type ChatStatus } from '../status';
 import {
   AntigravityAdapter,
+  AGY_LIST_SESSIONS_TIMEOUT_MS,
   agySpawnArgs,
   type AntigravityAdapterConfig,
   type AgySpawnOptions,
@@ -27,6 +29,7 @@ function setup(s: FakeAgyAcp = createFakeAgyServer(), config: Partial<Antigravit
     engineVersion: '1.5.3',
     spawn: (path, args, options) => {
       spawned.push({ path, args, options });
+      if (s.exited) s.resetStreams();
       return s;
     },
     graceMs: 20,
@@ -414,6 +417,7 @@ describe('AntigravityAdapter (ACP)', () => {
 
   it('interactive questions: elicitation/create emits question.request and answers with 1-based index', async () => {
     const s = createFakeAgyServer();
+    let promptResolve!: (val: unknown) => void;
     s.handle('session/prompt', (params) => {
       s.request('req_elicit_1', 'elicitation/create', {
         sessionId: params.sessionId,
@@ -436,7 +440,9 @@ describe('AntigravityAdapter (ACP)', () => {
           required: ['q1'],
         },
       });
-      return { stopReason: 'end_turn' };
+      return new Promise((resolve) => {
+        promptResolve = resolve;
+      });
     });
 
     const { adapter } = setup(s);
@@ -460,12 +466,106 @@ describe('AntigravityAdapter (ACP)', () => {
       ],
     });
 
+    const checkStatus = () => {
+      let pending: string[] = [];
+      let status: ChatStatus = 'idle';
+      for (const e of events) {
+        pending = updatePending(pending, e);
+        status = nextStatus(status, e, pending.length);
+      }
+      return { status, pending };
+    };
+
+    expect(checkStatus()).toEqual({ status: 'waiting', pending: ['call_q_1'] });
+
     const answered = session.answerQuestion('call_q_1', { 'Select frontend library': 'Vue' });
     expect(answered).toBe(true);
 
     await until(() => s.replies().some((r) => r.id === 'req_elicit_1'), 'reply req_elicit_1');
     const reply = s.replies().find((r) => r.id === 'req_elicit_1');
     expect(reply?.result).toEqual({ action: 'accept', content: { q1: '2' } });
+
+    const resolved = events.find((e) => e.type === 'permission.resolved');
+    expect(resolved).toMatchObject({
+      type: 'permission.resolved',
+      toolUseId: 'call_q_1',
+      decision: 'allow',
+      by: 'user',
+    });
+
+    expect(checkStatus()).toEqual({ status: 'working', pending: [] });
+
+    promptResolve({ stopReason: 'end_turn' });
+    await until(() => events.some((e) => e.type === 'turn.result'), 'turn.result');
+
+    expect(checkStatus()).toEqual({ status: 'idle', pending: [] });
+
+    session.dispose();
+  });
+
+  it('respondPermission deny on question declines elicitation and resolves card as deny/user', async () => {
+    const s = createFakeAgyServer();
+    let promptResolve!: (val: unknown) => void;
+    s.handle('session/prompt', (params) => {
+      s.request('req_elicit_decline', 'elicitation/create', {
+        sessionId: params.sessionId,
+        toolCallId: 'call_q_decline',
+        mode: 'form',
+        requestedSchema: {
+          type: 'object',
+          properties: {
+            q1: {
+              type: 'string',
+              description: 'Do you want tea?',
+              oneOf: [{ const: '1', title: 'Yes' }, { const: '2', title: 'No' }],
+            },
+          },
+          required: ['q1'],
+        },
+      });
+      return new Promise((resolve) => {
+        promptResolve = resolve;
+      });
+    });
+
+    const { adapter } = setup(s);
+    const session = await adapter.createSession({ cwd: '/work' });
+    const events = collect(session);
+
+    await until(() => events.some((e) => e.type === 'session.init'), 'session.init');
+    session.send('ask me');
+
+    await until(() => events.some((e) => e.type === 'question.request'), 'question.request');
+
+    // allow on question via respondPermission is rejected
+    expect(session.respondPermission('call_q_decline', 'allow')).toBe(false);
+
+    // deny on question declines elicitation
+    expect(session.respondPermission('call_q_decline', 'deny')).toBe(true);
+
+    await until(() => s.replies().some((r) => r.id === 'req_elicit_decline'), 'reply req_elicit_decline');
+    const reply = s.replies().find((r) => r.id === 'req_elicit_decline');
+    expect(reply?.result).toEqual({ action: 'decline' });
+
+    const resolved = events.find((e) => e.type === 'permission.resolved');
+    expect(resolved).toMatchObject({
+      type: 'permission.resolved',
+      toolUseId: 'call_q_decline',
+      decision: 'deny',
+      by: 'user',
+    });
+
+    promptResolve({ stopReason: 'end_turn' });
+    await until(() => events.some((e) => e.type === 'turn.result'), 'turn.result');
+
+    let pending: string[] = [];
+    let status: ChatStatus = 'idle';
+    for (const e of events) {
+      pending = updatePending(pending, e);
+      status = nextStatus(status, e, pending.length);
+    }
+    expect(status).toBe('idle');
+    expect(pending).toEqual([]);
 
     session.dispose();
   });
@@ -512,16 +612,154 @@ describe('AntigravityAdapter (ACP)', () => {
     const elicitReply = s.replies().find((r) => r.id === 'req_elicit_abort');
     expect(elicitReply?.result).toEqual({ action: 'cancel' });
 
-    const resolved = events.find((e) => e.type === 'permission.resolved');
-    expect(resolved).toMatchObject({
+    const resolvedPerm = events.find((e) => e.type === 'permission.resolved' && e.toolUseId === 'call_abort_perm');
+    expect(resolvedPerm).toMatchObject({
       type: 'permission.resolved',
       toolUseId: 'call_abort_perm',
       decision: 'deny',
       by: 'abort',
     });
 
+    const resolvedElicit = events.find((e) => e.type === 'permission.resolved' && e.toolUseId === 'call_abort_elicit');
+    expect(resolvedElicit).toMatchObject({
+      type: 'permission.resolved',
+      toolUseId: 'call_abort_elicit',
+      decision: 'deny',
+      by: 'abort',
+    });
+
     session.dispose();
     await interruptPromise.catch(() => {});
+  });
+
+  it('server timeout on elicitation closes pending question on tool_call_update without client.respond and settles idle', async () => {
+    const s = createFakeAgyServer();
+    let promptResolve!: (val: unknown) => void;
+    s.handle('session/prompt', (params) => {
+      s.request('req_elicit_timeout', 'elicitation/create', {
+        sessionId: params.sessionId,
+        toolCallId: 'call_timeout_q',
+        mode: 'form',
+        requestedSchema: {
+          type: 'object',
+          properties: {
+            q1: { type: 'string', description: 'Question', oneOf: [{ const: '1', title: 'Opt' }] },
+          },
+        },
+      });
+      return new Promise((resolve) => {
+        promptResolve = resolve;
+      });
+    });
+
+    const { adapter } = setup(s);
+    const session = await adapter.createSession({ cwd: '/work' });
+    const events = collect(session);
+
+    await until(() => events.some((e) => e.type === 'session.init'), 'session.init');
+    session.send('ask me');
+
+    await until(() => events.some((e) => e.type === 'question.request'), 'question.request');
+
+    // Simulate agy acp 60s timeout: server continues by updating tool_call to completed
+    s.notify('session/update', {
+      sessionId: DEFAULT_SESSION_ID,
+      update: {
+        sessionUpdate: 'tool_call_update',
+        toolCallId: 'call_timeout_q',
+        status: 'completed',
+        rawOutput: { action: 'accept', content: { q1: '1' } },
+      },
+    });
+
+    await until(() => events.some((e) => e.type === 'permission.resolved'), 'permission.resolved');
+    const resolved = events.find((e) => e.type === 'permission.resolved' && e.toolUseId === 'call_timeout_q');
+    expect(resolved).toMatchObject({
+      type: 'permission.resolved',
+      toolUseId: 'call_timeout_q',
+      decision: 'deny',
+      by: 'abort',
+    });
+
+    // Make sure we did NOT send client.respond on stale question
+    expect(s.replies().some((r) => r.id === 'req_elicit_timeout')).toBe(false);
+
+    // Turn completes
+    promptResolve({ stopReason: 'end_turn' });
+    await until(() => events.some((e) => e.type === 'turn.result'), 'turn.result');
+
+    let pending: string[] = [];
+    let status: ChatStatus = 'idle';
+    for (const e of events) {
+      pending = updatePending(pending, e);
+      status = nextStatus(status, e, pending.length);
+    }
+    expect(status).toBe('idle');
+    expect(pending).toEqual([]);
+
+    session.dispose();
+  });
+
+  it('stale elicitation question is auto-settled on subsequent message chunk or end_turn', async () => {
+    const s = createFakeAgyServer();
+    let promptResolve!: (val: unknown) => void;
+    s.handle('session/prompt', (params) => {
+      s.request('req_elicit_chunk', 'elicitation/create', {
+        sessionId: params.sessionId,
+        toolCallId: 'call_chunk_q',
+        mode: 'form',
+        requestedSchema: {
+          type: 'object',
+          properties: {
+            q1: { type: 'string', description: 'Question', oneOf: [{ const: '1', title: 'Opt' }] },
+          },
+        },
+      });
+      return new Promise((resolve) => {
+        promptResolve = resolve;
+      });
+    });
+
+    const { adapter } = setup(s);
+    const session = await adapter.createSession({ cwd: '/work' });
+    const events = collect(session);
+
+    await until(() => events.some((e) => e.type === 'session.init'), 'session.init');
+    session.send('ask me');
+
+    await until(() => events.some((e) => e.type === 'question.request'), 'question.request');
+
+    // Server sends next message chunk without tool_call_update
+    s.notify('session/update', {
+      sessionId: DEFAULT_SESSION_ID,
+      update: {
+        sessionUpdate: 'agent_message_chunk',
+        content: { type: 'text', text: 'I decided myself' },
+      },
+    });
+
+    await until(() => events.some((e) => e.type === 'permission.resolved'), 'permission.resolved');
+    const resolved = events.find((e) => e.type === 'permission.resolved' && e.toolUseId === 'call_chunk_q');
+    expect(resolved).toMatchObject({
+      type: 'permission.resolved',
+      toolUseId: 'call_chunk_q',
+      decision: 'deny',
+      by: 'abort',
+    });
+
+    promptResolve({ stopReason: 'end_turn' });
+    await until(() => events.some((e) => e.type === 'turn.result'), 'turn.result');
+
+    let pending: string[] = [];
+    let status: ChatStatus = 'idle';
+    for (const e of events) {
+      pending = updatePending(pending, e);
+      status = nextStatus(status, e, pending.length);
+    }
+    expect(status).toBe('idle');
+    expect(pending).toEqual([]);
+
+    session.dispose();
   });
 
   it('interrupt sends session/cancel notification and marks turn cancelled', async () => {
@@ -675,6 +913,34 @@ describe('AntigravityAdapter (ACP)', () => {
       cwd: '/work',
       provider: 'antigravity',
     });
+  });
+
+  it('listSessions отваливается по таймауту 20 000 мс (не ждёт 120 000 мс) и убивает процесс', async () => {
+    vi.useFakeTimers();
+    try {
+      const s = createFakeAgyServer();
+      s.handle('session/list', () => new Promise(() => {}));
+      const { adapter, logs } = setup(s);
+      expect(AGY_LIST_SESSIONS_TIMEOUT_MS).toBe(20_000);
+
+      let settled = false;
+      const promise = adapter.listSessions('/work').then((r) => {
+        settled = true;
+        return r;
+      });
+
+      await vi.advanceTimersByTimeAsync(19_999);
+      expect(settled).toBe(false);
+      expect(s.exited).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(1);
+      const res = await promise;
+      expect(res).toEqual([]);
+      expect(s.exited).toBe(true);
+      expect(logs.some((l) => l.includes('timed out after 20000 ms'))).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('loadHistory calls session/load and rebuilds history', async () => {
@@ -2179,6 +2445,13 @@ describe('AntigravityAdapter (ACP)', () => {
           server.notify('session/update', {
             sessionId: params.sessionId,
             update: {
+              sessionUpdate: 'user_message_chunk',
+              content: { type: 'text', text: 'kill everything' },
+            },
+          });
+          server.notify('session/update', {
+            sessionId: params.sessionId,
+            update: {
               sessionUpdate: 'tool_call',
               toolCallId: 'mgr_kill_all',
               name: 'manage_subagents',
@@ -3151,6 +3424,296 @@ describe('AntigravityAdapter (ACP)', () => {
             events.some((e) => e.type === 'turn.result' && e.text === 'Все этапы roadmap завершены.'),
           'final silent turn delivered live without user prompt',
         );
+
+        session.dispose();
+      } finally {
+        await rm(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it('Scenario 1: all subagents completed in silent turns -> transparent respawnTransport without duplicate cards or reopen', async () => {
+      const tempDir = await mkdtemp(join(os.tmpdir(), 'agy-scenario1-'));
+      const CHILD = '11111111-2222-3333-4444-555555555555';
+      try {
+        const parentPath = await brainFile(tempDir, DEFAULT_SESSION_ID, [
+          { step_index: 0, type: 'USER_INPUT', status: 'DONE', content: 'start worker' },
+          {
+            step_index: 1,
+            type: 'PLANNER_RESPONSE',
+            status: 'DONE',
+            input_tokens: 400,
+            output_tokens: 20,
+            content: 'spawned',
+          },
+        ]);
+        await brainFile(tempDir, CHILD, [
+          { step_index: 0, type: 'SYSTEM_MESSAGE', status: 'DONE', content: 'Do task' },
+          { step_index: 1, type: 'PLANNER_RESPONSE', status: 'DONE', content: 'Subagent completed.' },
+        ]);
+
+        const server = createFakeAgyServer();
+        let promptCall = 0;
+        server.handle('session/prompt', (params) => {
+          promptCall++;
+          const sid = String(params.sessionId);
+          if (promptCall === 1) {
+            server.notify('session/update', {
+              sessionId: sid,
+              update: {
+                sessionUpdate: 'tool_call',
+                toolCallId: 'call_sub_1',
+                name: 'invoke_subagent',
+                rawInput: { TypeName: 'self', Role: 'Worker', Prompt: 'Do task' },
+                status: 'completed',
+                rawOutput: { output: `Created the following subagent:\n{"conversationId":"${CHILD}"}` },
+              },
+            });
+            return { stopReason: 'end_turn', usage: { inputTokens: 400, outputTokens: 20 } };
+          }
+          // Turn 2 after respawn
+          server.notify('session/update', {
+            sessionId: sid,
+            update: {
+              sessionUpdate: 'user_message_chunk',
+              content: { type: 'text', text: 'commit and push' },
+            },
+          });
+          server.notify('session/update', {
+            sessionId: sid,
+            update: {
+              sessionUpdate: 'agent_message_chunk',
+              content: { type: 'text', text: 'Committed and pushed successfully.' },
+            },
+          });
+          return { stopReason: 'end_turn', usage: { inputTokens: 450, outputTokens: 25 } };
+        });
+
+        const { adapter, spawned } = setup(server, {
+          dataDir: tempDir,
+          subagentPollMs: 15,
+          idleParentPollMs: 15,
+        });
+        const session = await adapter.createSession({ cwd: '/work' });
+        const events = collect(session);
+        await until(() => events.some((e) => e.type === 'session.init'), 'session.init');
+
+        session.send('start worker');
+        await until(() => events.some((e) => e.type === 'turn.result'), 'turn 1 result');
+        await until(() => events.some((e) => e.type === 'agent.end' && e.agentId === 'call_sub_1'), 'worker completed');
+        expect(spawned).toHaveLength(1);
+
+        // Subagent is completed; now add a silent parent turn to parent transcript
+        await appendFile(
+          parentPath,
+          [
+            {
+              step_index: 2,
+              type: 'SYSTEM_MESSAGE',
+              status: 'DONE',
+              created_at: '2026-11-14T02:00:00Z',
+              content: `<SYSTEM_MESSAGE>\n[Message] sender=${CHILD} content=Subagent completed.\n</SYSTEM_MESSAGE>`,
+            },
+            {
+              step_index: 3,
+              type: 'PLANNER_RESPONSE',
+              status: 'DONE',
+              created_at: '2026-11-14T02:00:05Z',
+              input_tokens: 1200,
+              output_tokens: 10,
+              content: 'Silent parent acknowledged.',
+            },
+          ]
+            .map((r) => JSON.stringify(r))
+            .join('\n') + '\n',
+          'utf8',
+        );
+
+        await until(
+          () => events.some((e) => e.type === 'turn.result' && e.text === 'Silent parent acknowledged.'),
+          'silent turn picked up',
+        );
+
+        const subagentEndCountBefore = events.filter((e) => e.type === 'agent.end').length;
+        const subagentStartCountBefore = events.filter((e) => e.type === 'agent.start').length;
+
+        // User sends Turn 2: since no subagents are active, respawnTransport triggers
+        session.send('commit and push');
+
+        await until(
+          () => events.some((e) => e.type === 'turn.result' && e.text === 'Committed and pushed successfully.'),
+          'turn 2 finished',
+        );
+
+        // Transport respawned (spawned became 2)
+        expect(spawned).toHaveLength(2);
+
+        // Subagent was NOT reopened or duplicated
+        const subagentStartCountAfter = events.filter((e) => e.type === 'agent.start').length;
+        expect(subagentStartCountAfter).toBe(subagentStartCountBefore);
+        const subagentEndCountAfter = events.filter((e) => e.type === 'agent.end').length;
+        expect(subagentEndCountAfter).toBe(subagentEndCountBefore);
+
+        session.dispose();
+      } finally {
+        await rm(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it('Scenario 2: subagent still active -> respawnTransport NOT called, replay suppressed before user_message_chunk echo', async () => {
+      const tempDir = await mkdtemp(join(os.tmpdir(), 'agy-scenario2-'));
+      const CHILD = '22222222-3333-4444-5555-666666666666';
+      try {
+        const parentPath = await brainFile(tempDir, DEFAULT_SESSION_ID, [
+          { step_index: 0, type: 'USER_INPUT', status: 'DONE', content: 'start active worker' },
+          {
+            step_index: 1,
+            type: 'PLANNER_RESPONSE',
+            status: 'DONE',
+            input_tokens: 500,
+            output_tokens: 20,
+            content: 'spawned',
+          },
+        ]);
+        // Subagent with pending open tool -> stays active
+        await brainFile(tempDir, CHILD, [
+          { step_index: 0, type: 'SYSTEM_MESSAGE', status: 'DONE', content: 'Active subagent' },
+          {
+            step_index: 1,
+            type: 'PLANNER_RESPONSE',
+            status: 'DONE',
+            tool_calls: [{ name: 'run_command', args: { CommandLine: 'sleep 60' } }],
+          },
+        ]);
+
+        const server = createFakeAgyServer();
+        let promptCall = 0;
+        server.handle('session/prompt', (params) => {
+          promptCall++;
+          const sid = String(params.sessionId);
+          if (promptCall === 1) {
+            server.notify('session/update', {
+              sessionId: sid,
+              update: {
+                sessionUpdate: 'tool_call',
+                toolCallId: 'call_sub_active',
+                name: 'invoke_subagent',
+                rawInput: { TypeName: 'self', Role: 'WorkerActive', Prompt: 'Active subagent' },
+                status: 'completed',
+                rawOutput: { output: `Created the following subagent:\n{"conversationId":"${CHILD}"}` },
+              },
+            });
+            return { stopReason: 'end_turn', usage: { inputTokens: 500, outputTokens: 20 } };
+          }
+
+          // Turn 2: server replays stale silent steps BEFORE user_message_chunk echo
+          // 1. Stale user_message_chunk from reactive wakeup
+          server.notify('session/update', {
+            sessionId: sid,
+            update: {
+              sessionUpdate: 'user_message_chunk',
+              content: { type: 'text', text: '<SYSTEM_MESSAGE>\n[Message] sender=bg content=stale\n</SYSTEM_MESSAGE>' },
+            },
+          });
+          // 2. Stale tool_call that would reopen or corrupt subagent
+          server.notify('session/update', {
+            sessionId: sid,
+            update: {
+              sessionUpdate: 'tool_call',
+              toolCallId: 'call_stale_reopen',
+              name: 'send_message',
+              rawInput: { Recipient: CHILD, Message: 'stale reopen message' },
+              status: 'completed',
+              rawOutput: { output: 'delivered' },
+            },
+          });
+          // 3. Stale agent thought / message
+          server.notify('session/update', {
+            sessionId: sid,
+            update: {
+              sessionUpdate: 'agent_message_chunk',
+              content: { type: 'text', text: 'Stale replayed text' },
+            },
+          });
+
+          // NOW comes the echo of the current prompt:
+          server.notify('session/update', {
+            sessionId: sid,
+            update: {
+              sessionUpdate: 'user_message_chunk',
+              content: { type: 'text', text: 'status check' },
+            },
+          });
+
+          // NOW comes the real new response:
+          server.notify('session/update', {
+            sessionId: sid,
+            update: {
+              sessionUpdate: 'agent_message_chunk',
+              content: { type: 'text', text: 'Everything is running smoothly.' },
+            },
+          });
+
+          return { stopReason: 'end_turn', usage: { inputTokens: 550, outputTokens: 25 } };
+        });
+
+        const { adapter, spawned } = setup(server, {
+          dataDir: tempDir,
+          subagentPollMs: 15,
+          idleParentPollMs: 15,
+        });
+        const session = await adapter.createSession({ cwd: '/work' });
+        const events = collect(session);
+        await until(() => events.some((e) => e.type === 'session.init'), 'session.init');
+
+        session.send('start active worker');
+        await until(() => events.some((e) => e.type === 'turn.result'), 'turn 1 result');
+        await until(() => events.some((e) => e.type === 'agent.start' && e.agentId === 'call_sub_active'), 'worker started');
+
+        // Out-of-band silent step in parent to trigger silentStepsEmittedSincePrompt
+        await appendFile(
+          parentPath,
+          [
+            {
+              step_index: 2,
+              type: 'SYSTEM_MESSAGE',
+              status: 'DONE',
+              created_at: '2026-11-14T03:00:00Z',
+              content: `<SYSTEM_MESSAGE>\n[Message] sender=ext content=tick\n</SYSTEM_MESSAGE>`,
+            },
+            {
+              step_index: 3,
+              type: 'PLANNER_RESPONSE',
+              status: 'DONE',
+              created_at: '2026-11-14T03:00:01Z',
+              input_tokens: 1500,
+              output_tokens: 10,
+              content: 'Silent tick done.',
+            },
+          ]
+            .map((r) => JSON.stringify(r))
+            .join('\n') + '\n',
+          'utf8',
+        );
+
+        await until(
+          () => events.some((e) => e.type === 'turn.result' && e.text === 'Silent tick done.'),
+          'silent tick delivered',
+        );
+
+        // Turn 2: subagent is still active, so respawnTransport must NOT be called
+        session.send('status check');
+
+        await until(
+          () => events.some((e) => e.type === 'turn.result' && e.text === 'Everything is running smoothly.'),
+          'turn 2 finished',
+        );
+
+        // Process was NOT killed or respawned
+        expect(spawned).toHaveLength(1);
+
+        // Stale replay before echo was completely suppressed
+        expect(events.some((e) => e.type === 'text.delta' && e.text.includes('Stale replayed text'))).toBe(false);
+        expect(events.some((e) => e.type === 'tool.start' && e.toolUseId === 'call_stale_reopen')).toBe(false);
 
         session.dispose();
       } finally {

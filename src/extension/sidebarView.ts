@@ -361,8 +361,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const kimi = hidden.includes('kimi') ? undefined : this.refreshKimi();
     const others = Promise.allSettled([codex, agy, kimi]).then(() => this.pushEngineLimits());
     const snap = await this.usage.refresh();
-    if (snap.error) this.log.warn(`Лимиты не обновились: ${snap.error}`);
-    else this.log.info(`Лимиты: данные на ${new Date(snap.updatedAt).toLocaleTimeString(hostStrings(currentLanguage()).locale)}`);
+    if (!snap.error) {
+      this.log.info(
+        `Лимиты: данные на ${new Date(snap.updatedAt).toLocaleTimeString(hostStrings(currentLanguage()).locale)}`,
+      );
+    }
     this.post({ type: 'limits.update', ...snap });
     await others;
   }

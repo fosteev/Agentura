@@ -100,7 +100,7 @@ describe('AgyAcpMapper', () => {
   });
 
   it('tool updates: start and completed / failed results', () => {
-    const mapper = new AgyAcpMapper();
+    const mapper = new AgyAcpMapper({ now: () => 1000 });
     mapper.startTurn('run command', 1000);
 
     // in_progress -> tool.start (mapped to Bash)
@@ -117,6 +117,7 @@ describe('AgyAcpMapper', () => {
         toolUseId: 'call_1',
         name: 'Bash',
         input: { command: 'echo 42' },
+        at: 1000,
       },
     ]);
 
@@ -129,12 +130,15 @@ describe('AgyAcpMapper', () => {
     expect(pending).toEqual([]);
 
     // completed -> tool.result
-    const finish = mapper.applyUpdate({
-      sessionUpdate: 'tool_call_update',
-      toolCallId: 'call_1',
-      status: 'completed',
-      rawOutput: { output: '42\n', exit_code: 0 },
-    });
+    const finish = mapper.applyUpdate(
+      {
+        sessionUpdate: 'tool_call_update',
+        toolCallId: 'call_1',
+        status: 'completed',
+        rawOutput: { output: '42\n', exit_code: 0 },
+      },
+      1450,
+    );
     expect(finish).toEqual([
       {
         type: 'tool.result',
@@ -142,6 +146,8 @@ describe('AgyAcpMapper', () => {
         isError: false,
         content: '42\n',
         result: { output: '42\n', exit_code: 0 },
+        at: 1450,
+        durationMs: 450,
       },
     ]);
 
@@ -460,6 +466,7 @@ describe('AgyAcpMapper', () => {
   it('passes mcpServers to mapAgyTool for eager MCP and maps invoke_subagent to Agent', () => {
     const mapper = new AgyAcpMapper({
       mcpServers: ['gemini-api_gemini-api-docs', 'hansard_history'],
+      now: () => 1000,
     });
     mapper.startTurn('check', 1000);
 
@@ -476,6 +483,7 @@ describe('AgyAcpMapper', () => {
         toolUseId: 'tc-mcp',
         name: 'mcp__hansard_history__search_past_sessions',
         input: { query: 'roadmap 38' },
+        at: 1000,
       },
     ]);
 
@@ -492,7 +500,54 @@ describe('AgyAcpMapper', () => {
         toolUseId: 'tc-sub',
         name: 'Agent',
         input: { description: 'Stage 3 Coder', prompt: 'Do work', subagent_type: 'self' },
+        at: 1000,
       },
     ]);
+  });
+
+  it('uses injected now clock for default timings: tool.start at, tool.result at and durationMs, thinking.start and thinking.stop at', () => {
+    let clock = 5000;
+    const mapper = new AgyAcpMapper({ now: () => clock });
+
+    const startTurnEvs = mapper.startTurn('test clock');
+    expect(startTurnEvs[0]).toMatchObject({ type: 'turn.start', at: 5000 });
+
+    clock = 5200;
+    const thought = mapper.applyUpdate({
+      sessionUpdate: 'agent_thought_chunk',
+      content: { type: 'text', text: 'pondering' },
+    });
+    expect(thought[0]).toMatchObject({ type: 'thinking.start', at: 5200 });
+
+    clock = 5500;
+    const toolStart = mapper.applyUpdate({
+      sessionUpdate: 'tool_call',
+      toolCallId: 'c1',
+      name: 'read_file',
+      args: { Path: '/file.ts' },
+      status: 'in_progress',
+    });
+    expect(toolStart).toHaveLength(2);
+    expect(toolStart[0]).toMatchObject({ type: 'thinking.stop', at: 5500 });
+    expect(toolStart[1]).toMatchObject({
+      type: 'tool.start',
+      toolUseId: 'c1',
+      at: 5500,
+    });
+
+    clock = 6100;
+    const toolResult = mapper.applyUpdate({
+      sessionUpdate: 'tool_call_update',
+      toolCallId: 'c1',
+      status: 'completed',
+      content: 'file contents',
+    });
+    expect(toolResult).toHaveLength(1);
+    expect(toolResult[0]).toMatchObject({
+      type: 'tool.result',
+      toolUseId: 'c1',
+      at: 6100,
+      durationMs: 600,
+    });
   });
 });

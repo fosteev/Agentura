@@ -4,13 +4,16 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { AgentEvent, AgentEventOf } from '../types';
 import {
+  AgyParentToolOutputReader,
   AgyParentTranscriptTailer,
   AgySubagentReader,
   MAX_SUBAGENT_EVENTS,
   MAX_SUBAGENT_TIMELINES,
   agySubagentMarkdown,
   agyTranscriptPath,
+  extractSystemMessages,
   isValidAgyUuid,
+  matchesPotentiallyTruncated,
   nonZeroExitCode,
   normalizeTranscriptArgs,
   parseAgyUserSettingsModel,
@@ -110,6 +113,23 @@ describe('antigravity subagents: UUID validation & parsers', () => {
 
     expect(nonZeroExitCode('Command exited with code 0.')).toBe(false);
     expect(nonZeroExitCode('Command exited with code 2.\nError')).toBe(true);
+  });
+
+  it('extractSystemMessages & unwrapAgySystemMessage strip English preamble and keep content containing <SYSTEM_MESSAGE>', () => {
+    const rawWithPreamble =
+      'The following is a <SYSTEM_MESSAGE> not actually sent by the user. It is provided by the system as important information to pay attention to.\n\n' +
+      '<SYSTEM_MESSAGE>\n[Message] timestamp=2026-11-15T12:00:00Z sender=11111111-2222-3333-4444-555555555555 priority=MESSAGE_PRIORITY_HIGH content=Stage 2 report: verified <SYSTEM_MESSAGE> tag handling in prompt.\n</SYSTEM_MESSAGE>';
+
+    const extracted = extractSystemMessages(rawWithPreamble);
+    expect(extracted).toEqual([
+      {
+        sender: '11111111-2222-3333-4444-555555555555',
+        body: 'Stage 2 report: verified <SYSTEM_MESSAGE> tag handling in prompt.',
+      },
+    ]);
+    expect(unwrapAgySystemMessage(rawWithPreamble)).toBe(
+      'Stage 2 report: verified <SYSTEM_MESSAGE> tag handling in prompt.',
+    );
   });
 });
 
@@ -1370,5 +1390,130 @@ describe('antigravity subagents: AgySubagentReader & agySubagentMarkdown', () =>
     expect(afterUser.events).toEqual([]);
     expect(afterUser.lastStepIndex).toBe(12);
     expect(afterUser.usedTokens).toBe(43_020);
+  });
+
+  it('AgyParentToolOutputReader matches long prompt truncated in transcript.jsonl', async () => {
+    const longPrompt = 'Execute large architectural refactoring: '.repeat(60) + 'final line.';
+    const truncatedPrompt = longPrompt.slice(0, 1500) + '…';
+
+    expect(matchesPotentiallyTruncated(longPrompt, truncatedPrompt)).toBe(true);
+    expect(matchesPotentiallyTruncated(truncatedPrompt, longPrompt)).toBe(true);
+
+    const parentFile = await ensureBrainTranscript(tmpDir, PARENT_UUID, []);
+    await appendFile(
+      parentFile,
+      JSON.stringify({
+        step_index: 1,
+        type: 'PLANNER_RESPONSE',
+        status: 'DONE',
+        tool_calls: [
+          {
+            name: 'invoke_subagent',
+            args: {
+              TypeName: 'self',
+              Role: 'Architect',
+              Prompt: `"${truncatedPrompt}"`,
+            },
+          },
+        ],
+      }) + '\n' +
+      JSON.stringify({
+        step_index: 2,
+        type: 'GENERIC',
+        status: 'DONE',
+        content: `Created the following subagent:\n{"conversationId":"${CHILD_UUID}"}`,
+      }) + '\n',
+    );
+
+    const reader = new AgyParentToolOutputReader(PARENT_UUID, tmpDir);
+    await reader.poll();
+
+    // Query from live ACP has the full unabridged prompt
+    const claimed = reader.claimInvoke(
+      { subagentType: 'self', description: 'Architect', prompt: longPrompt },
+      false,
+    );
+    expect(claimed).toBeDefined();
+    expect(claimed?.childUuid).toBe(CHILD_UUID);
+  });
+
+  it('AgySubagentReader.reopen preserves startedAt on legitimate round 2 and ignores late reopen after completion', async () => {
+    const file = await ensureBrainTranscript(tmpDir, CHILD_UUID, [
+      {
+        step_index: 0,
+        type: 'SYSTEM_MESSAGE',
+        status: 'DONE',
+        content: 'Task 1',
+      },
+      {
+        step_index: 1,
+        type: 'PLANNER_RESPONSE',
+        status: 'DONE',
+        content: 'Done 1',
+      },
+    ]);
+
+    const reader = new AgySubagentReader({
+      agentId: 'call_sub_1',
+      childUuid: CHILD_UUID,
+      dataDir: tmpDir,
+      startedAt: 1000,
+    });
+
+    const evs1 = await reader.poll(1500);
+    expect(evs1.map((e) => e.type)).toEqual(['agent.end']);
+    expect(reader.isRoundCompleted()).toBe(true);
+
+    // Reopen for round 2: buildStartEvent must carry original startedAt (1000), not reopen timestamp (2000)
+    const reopenEvs = reader.reopen(2000, 'New instruction for round 2');
+    expect(reopenEvs).toHaveLength(1);
+    expect(reopenEvs[0]).toMatchObject({
+      type: 'agent.start',
+      agentId: 'call_sub_1',
+      at: 1000,
+      prompt: 'New instruction for round 2',
+    });
+    expect(reader.isRoundCompleted()).toBe(false);
+
+    // Child finishes round 2
+    await appendFile(
+      file,
+      JSON.stringify({
+        step_index: 2,
+        type: 'SYSTEM_MESSAGE',
+        status: 'DONE',
+        content: 'New instruction for round 2',
+      }) + '\n' +
+      JSON.stringify({
+        step_index: 3,
+        type: 'PLANNER_RESPONSE',
+        status: 'DONE',
+        content: 'Done 2',
+      }) + '\n',
+    );
+    const evs2 = await reader.poll(2500);
+    expect(evs2.map((e) => e.type)).toEqual(['agent.end']);
+    expect(reader.isRoundCompleted()).toBe(true);
+
+    // Late / duplicate reopen with old timestamp (e.g. historical replay at <= lastCompletedAt)
+    const lateOldReopen = reader.reopen(2400, 'Old message');
+    expect(lateOldReopen).toEqual([]);
+    expect(reader.isRoundCompleted()).toBe(true);
+
+    // When a second reader polls child transcript that already finished 2 rounds:
+    const reader2 = new AgySubagentReader({
+      agentId: 'call_sub_2',
+      childUuid: CHILD_UUID,
+      dataDir: tmpDir,
+      startedAt: 1000,
+    });
+    await reader2.poll(3000);
+    expect(reader2.isRoundCompleted()).toBe(true);
+
+    // Late reopen from parent ACP replay when completedRounds >= 1 + reopenCount:
+    const lateReplay = reader2.reopen(3100, 'Late replay prompt');
+    expect(lateReplay).toEqual([]);
+    expect(reader2.isRoundCompleted()).toBe(true);
+    expect(reader2.isActive()).toBe(false);
   });
 });

@@ -25,12 +25,14 @@ export const MANUAL_REFRESH_COOLDOWN_MS = 60_000;
 export class UsageService {
   private last: UsageSnapshot | undefined;
   private inflight: Promise<UsageSnapshot> | undefined;
+  private lastWarnedError: string | undefined;
   private readonly listeners = new Set<(snap: UsageSnapshot) => void>();
 
   constructor(
     private readonly fetchWindows: UsageFetcher,
     private readonly now: () => number = Date.now,
     private readonly cooldownMs = MANUAL_REFRESH_COOLDOWN_MS,
+    private readonly warn?: (message: string) => void,
   ) {}
 
   /** Подписка на свежие снимки (вкладки чата): вызывается после каждого настоящего запроса, не после ответа из кэша. */
@@ -57,6 +59,14 @@ export class UsageService {
       }))
       .then((snap) => {
         this.inflight = undefined;
+        if (snap.error) {
+          if (snap.error !== this.lastWarnedError) {
+            this.warn?.(snap.error);
+            this.lastWarnedError = snap.error;
+          }
+        } else {
+          this.lastWarnedError = undefined;
+        }
         // Данные старше уже показанных не затирают их.
         if (!snap.error && this.last && snap.updatedAt < this.last.updatedAt) return this.last;
         if (!snap.error) this.last = snap;

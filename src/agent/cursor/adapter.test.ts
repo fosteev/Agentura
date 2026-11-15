@@ -4,7 +4,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgentEvent, AgentSession, PromptFile, PromptImage } from '../types';
-import { CursorAdapter, type CursorAdapterConfig, type CursorSpawnOptions } from './adapter';
+import {
+  CURSOR_LIST_SESSIONS_TIMEOUT_MS,
+  CursorAdapter,
+  type CursorAdapterConfig,
+  type CursorSpawnOptions,
+} from './adapter';
 import { CURSOR_NOT_FOUND } from './executable';
 import { FakeAcp } from './fakeServer';
 
@@ -1011,6 +1016,33 @@ describe('Cursor list, history, account', () => {
     expect(sidebar).toBe(claude);
 
     await expect(new CursorAdapter().listSessions(dir)).rejects.toThrow(CURSOR_NOT_FOUND);
+  });
+
+  it('listSessions отваливается по таймауту 20 000 мс (не ждёт 120 000 мс) и убивает процесс', async () => {
+    vi.useFakeTimers();
+    try {
+      const s = server();
+      s.handle('session/list', () => new Promise(() => {}));
+      const { adapter } = open(s); // без config.timeoutMs
+      expect(CURSOR_LIST_SESSIONS_TIMEOUT_MS).toBe(20_000);
+
+      let error: unknown;
+      const promise = adapter.listSessions(dir).catch((e) => {
+        error = e;
+      });
+
+      await vi.advanceTimersByTimeAsync(19_999);
+      expect(error).toBeUndefined();
+      expect(s.exited).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(1);
+      await promise;
+      expect(error).toBeDefined();
+      expect(String(error)).toContain('20000 ms');
+      expect(s.exited).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('loadHistory: pong из фикстуры — turn.start, текст, turn.result; live оставляет последний ход', async () => {

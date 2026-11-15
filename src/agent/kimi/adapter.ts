@@ -61,6 +61,7 @@ import { KimiSessionIndex, type KimiSessionSettings, type KimiStateStore } from 
 import {
   appendKimiSubagentHistory,
   findKimiSessionRoot,
+  hasKimiSessionActivity,
   kimiHome,
   KimiSubagentTracker,
   kimiSubagentTranscript,
@@ -169,11 +170,17 @@ export class KimiAdapter implements AgentAdapter {
         const id = typeof row?.sessionId === 'string' ? row.sessionId : '';
         const cwd = typeof row?.cwd === 'string' ? row.cwd : '';
         if (!id || !cwd || !matchesCwd(cwd, dir)) continue;
-        const parsed = typeof row?.updatedAt === 'string' ? Date.parse(row.updatedAt) : 0;
+        const customTitle = this.index.nameOf(id);
         const nativeTitle = typeof row?.title === 'string' ? row.title.trim() : '';
+        const hasNativeTitle = Boolean(nativeTitle) && nativeTitle !== id && !/^session_[0-9a-f-]+$/i.test(nativeTitle);
+        if (!customTitle && !hasNativeTitle) {
+          const active = await hasKimiSessionActivity(id, this.config.env);
+          if (!active) continue;
+        }
+        const parsed = typeof row?.updatedAt === 'string' ? Date.parse(row.updatedAt) : 0;
         out.push({
           id,
-          title: this.index.nameOf(id) ?? (nativeTitle || id),
+          title: customTitle ?? (nativeTitle || id),
           cwd: dir,
           updatedAt: Number.isFinite(parsed) ? parsed : 0,
           provider: 'kimi',
@@ -409,7 +416,26 @@ class KimiSession implements AgentSession {
   respondPermission(toolUseId: string, decision: PermissionDecision, message?: string): boolean {
     void message;
     const pending = this.pending.get(toolUseId);
-    if (!pending || pending.kind !== 'permission') return false;
+    if (!pending) return false;
+    if (pending.kind === 'question') {
+      if (decision !== 'deny') return false;
+      this.pending.delete(toolUseId);
+      this.client.respond(pending.rpcId, elicitationDecline());
+      this.emit({ type: 'permission.resolved', toolUseId, decision: 'deny', by: 'user' });
+      return true;
+    }
+    if (pending.kind === 'questionFallback') {
+      if (decision !== 'deny') return false;
+      const optionId =
+        pending.options.find((o) => o.optionId === 'q0_skip')?.optionId ??
+        permissionOption(pending.options, 'reject_once');
+      if (!optionId) return false;
+      this.pending.delete(toolUseId);
+      this.client.respond(pending.rpcId, permissionOutcome(optionId));
+      this.emit({ type: 'permission.resolved', toolUseId, decision: 'deny', by: 'user' });
+      return true;
+    }
+    if (pending.kind !== 'permission') return false;
     const kind = decision === 'deny' ? 'reject_once' : decision === 'allow-always' ? 'allow_always' : 'allow_once';
     const optionId = permissionOption(pending.options, kind);
     if (!optionId) return false;
@@ -426,6 +452,7 @@ class KimiSession implements AgentSession {
     if (pending.kind === 'question') {
       this.pending.delete(toolUseId);
       this.client.respond(pending.rpcId, formatElicitationAnswer(pending.parsed, answers));
+      this.emit({ type: 'permission.resolved', toolUseId, decision: 'allow', by: 'user' });
       return true;
     }
     const answer = answers.q0 ?? answers[pending.question];
@@ -434,6 +461,7 @@ class KimiSession implements AgentSession {
     if (!fallback) return false;
     this.pending.delete(toolUseId);
     this.client.respond(pending.rpcId, permissionOutcome(fallback.optionId));
+    this.emit({ type: 'permission.resolved', toolUseId, decision: 'allow', by: 'user' });
     return true;
   }
 
@@ -451,6 +479,7 @@ class KimiSession implements AgentSession {
     if (!optionId) return false;
     this.pending.delete(toolUseId);
     this.client.respond(pending.rpcId, permissionOutcome(optionId));
+    this.emit({ type: 'permission.resolved', toolUseId, decision: decision.approve ? 'allow' : 'deny', by: 'user' });
     if (!decision.approve && decision.interrupt) void this.interrupt();
     else if (!decision.approve) this.send(decision.feedback);
     return true;
@@ -588,7 +617,6 @@ class KimiSession implements AgentSession {
     this.graph.start();
     this.config = parseConfig(result);
     this.permissionMode = permissionModeOf(currentModeId(result) ?? this.config.mode?.current, this.allowBypass);
-    this.loading = false;
     if (!this.resumeId) {
       // Настройки новой сессии применяются явно; resume никогда не догоняет defaults/index.
       if (options.model) await this.changeModel(options.model).catch(() => {});
@@ -596,6 +624,7 @@ class KimiSession implements AgentSession {
       if (options.permissionMode) await this.changeMode(options.permissionMode).catch(() => {});
     }
     await this.saveSettings();
+    this.loading = false;
     if (!this.closed) this.emit(this.buildSessionInit());
   }
 
@@ -614,6 +643,7 @@ class KimiSession implements AgentSession {
       this.settingFailed('session/set_model', error);
       throw error;
     }
+    if (this.loading) return;
     await this.saveSettings();
     if (!this.closed) this.emit(this.buildSessionInit());
   }
@@ -629,6 +659,7 @@ class KimiSession implements AgentSession {
       this.settingFailed('session/set_config_option thinking', error);
       throw error;
     }
+    if (this.loading) return;
     await this.saveSettings();
     if (!this.closed) this.emit(this.buildSessionInit());
   }
@@ -645,6 +676,7 @@ class KimiSession implements AgentSession {
       }
     }
     this.permissionMode = permissionModeOf(this.config.mode?.current, this.allowBypass);
+    if (this.loading) return;
     await this.saveSettings();
     if (!this.closed) {
       this.emit({ type: 'mode.changed', mode: this.permissionMode });
@@ -663,7 +695,7 @@ class KimiSession implements AgentSession {
     if (this.closed) return;
     this.emit({ type: 'error', fatal: false, message: `${method} failed: ${errorText(error)}` });
     // После optimistic UI выбора перевыпускаем только последнее подтверждённое сервером состояние.
-    this.emit(this.buildSessionInit());
+    if (!this.loading) this.emit(this.buildSessionInit());
   }
 
   private async saveSettings(): Promise<void> {
@@ -767,7 +799,7 @@ class KimiSession implements AgentSession {
   }
 
   private onNotification(method: string, params: unknown): void {
-    if (this.closed || this.loading || method !== 'session/update') return;
+    if (this.closed || method !== 'session/update') return;
     const update = record(params)?.update;
     const kind = sessionUpdateKind(update);
     if (kind === 'usage_update') {
@@ -778,35 +810,46 @@ class KimiSession implements AgentSession {
           percentage: Math.min(100, usage.used / usage.size * 100), source: 'engine',
         };
       }
-      this.emitAll(this.mapper.applyUpdate(update));
+      if (!this.loading) {
+        this.emitAll(this.mapper.applyUpdate(update));
+      }
       return;
     }
     if (kind === 'available_commands_update') {
       this.commands = commandsOf(update);
-      this.emit(this.buildSessionInit());
+      if (!this.loading) {
+        this.emit(this.buildSessionInit());
+      }
       return;
     }
     if (kind === 'config_option_update') {
       if (!hasConfigOptions(update)) return;
       this.config = parseConfig(update);
       this.permissionMode = permissionModeOf(this.config.mode?.current, this.allowBypass);
-      void this.saveSettings();
-      this.emit(this.buildSessionInit());
+      if (!this.loading) {
+        void this.saveSettings();
+        this.emit(this.buildSessionInit());
+      }
       return;
     }
     if (kind === 'current_mode_update') {
       const modeId = record(update)?.currentModeId;
       if (typeof modeId !== 'string') return;
       if (this.config.mode) this.config.mode.current = modeId;
+      else this.config.mode = { current: modeId, values: [] };
       const next = permissionModeOf(modeId, this.allowBypass);
-      if (next !== this.permissionMode) {
-        this.permissionMode = next;
-        this.emit({ type: 'mode.changed', mode: next });
+      const changed = next !== this.permissionMode;
+      this.permissionMode = next;
+      if (!this.loading) {
+        if (changed) {
+          this.emit({ type: 'mode.changed', mode: next });
+        }
+        void this.saveSettings();
+        this.emit(this.buildSessionInit());
       }
-      void this.saveSettings();
-      this.emit(this.buildSessionInit());
       return;
     }
+    if (this.loading) return;
     if (kind === 'session_info_update') {
       const custom = this.index.nameOf(this.sessionId);
       const events = this.mapper.applyUpdate(update);
@@ -817,6 +860,13 @@ class KimiSession implements AgentSession {
     const turn = this.turn;
     if (!turn || turn.done.settled) return;
     for (const event of this.mapper.applyUpdate(update)) {
+      if (event.type === 'tool.result') {
+        const pending = this.pending.get(event.toolUseId);
+        if (pending && (pending.kind === 'question' || pending.kind === 'questionFallback')) {
+          this.pending.delete(event.toolUseId);
+          this.emit({ type: 'permission.resolved', toolUseId: event.toolUseId, decision: 'deny', by: 'abort' });
+        }
+      }
       this.emit(event);
       this.graph?.observeEvent(event);
     }
@@ -924,12 +974,10 @@ class KimiSession implements AgentSession {
     try {
       if (pending.kind === 'question') this.client.respond(pending.rpcId, elicitationCancel());
       else this.client.respond(pending.rpcId, permissionCancelled());
-      if (pending.kind === 'permission') {
-        this.emit({ type: 'permission.resolved', toolUseId, decision: 'deny', by: 'abort' });
-      }
     } catch (error) {
       this.log('debug', `kimi: pending ${pending.kind} cancellation failed: ${errorText(error)}`);
     }
+    this.emit({ type: 'permission.resolved', toolUseId, decision: 'deny', by: 'abort' });
   }
 
   private fatal(error: unknown, reason: 'exit' | 'error' = 'error'): void {

@@ -12,6 +12,8 @@ export interface AgyAcpMapperOptions {
   lang?: () => Lang;
   /** Известные имена MCP-серверов из `<dataDir>/mcp` (от длинных к коротким) для точного разреза `mcp_<server>_<tool>`. */
   mcpServers?: readonly string[];
+  /** Часы (мс); по умолчанию `Date.now`. */
+  now?: () => number;
 }
 
 /**
@@ -34,6 +36,7 @@ export function usageOf(result: unknown): TokenUsage | undefined {
 interface ToolState {
   name: string;
   input: Record<string, unknown>;
+  startedAt: number;
 }
 
 /**
@@ -49,20 +52,22 @@ interface ToolState {
 export class AgyAcpMapper {
   private readonly lang: () => Lang;
   private readonly mcpServers: readonly string[] | undefined;
+  private readonly now: () => number;
   private messageId = '';
   private text = '';
   private seq = 0;
-  private thinking: { messageId: string } | undefined;
+  private thinking: { messageId: string; startedAt: number } | undefined;
   private readonly tools = new Map<string, ToolState>();
   private readonly finished = new Set<string>();
 
   constructor(options?: AgyAcpMapperOptions) {
     this.lang = options?.lang ?? (() => 'ru');
     this.mcpServers = options?.mcpServers;
+    this.now = options?.now ?? Date.now;
   }
 
   /** Новый ход: сбрасывает накопленный текст предыдущего. `images` — миниатюры реплики в ленте. */
-  startTurn(prompt: string, at = Date.now(), images?: readonly PromptImage[]): AgentEvent[] {
+  startTurn(prompt: string, at = this.now(), images?: readonly PromptImage[]): AgentEvent[] {
     this.seq += 1;
     this.messageId = `a${this.seq}`;
     this.text = '';
@@ -80,7 +85,7 @@ export class AgyAcpMapper {
   }
 
   /** Один `session/update.update`. */
-  applyUpdate(update: unknown, now = Date.now()): AgentEvent[] {
+  applyUpdate(update: unknown, now = this.now()): AgentEvent[] {
     const kind = sessionUpdateKind(update);
     if (kind === 'agent_message_chunk') {
       const text = chunkText(update);
@@ -120,7 +125,7 @@ export class AgyAcpMapper {
       if (!text) return [];
       const events: AgentEvent[] = [];
       if (!this.thinking) {
-        this.thinking = { messageId: `t${(this.seq += 1)}` };
+        this.thinking = { messageId: `t${(this.seq += 1)}`, startedAt: now };
         events.push({ type: 'thinking.start', messageId: this.thinking.messageId, at: now });
       }
       events.push({ type: 'thinking.delta', messageId: this.thinking.messageId, text });
@@ -135,14 +140,14 @@ export class AgyAcpMapper {
   }
 
   /** Ответ `session/prompt`: `end_turn` — успех, `cancelled` — Stop. */
-  finish(result: unknown, startedAt: number, now = Date.now()): AgentEvent[] {
+  finish(result: unknown, startedAt: number, now = this.now()): AgentEvent[] {
     const stopReason = stopReasonOf(result) ?? 'end_turn';
     const usage = usageOf(result);
     return this.result(stopReason, Math.max(0, now - startedAt), now, { usage });
   }
 
   /** Ход оборвался (stdout закрылся, ошибка сервера), `stopReason` не пришёл. */
-  failOpen(startedAt: number, now = Date.now(), message?: string): AgentEvent[] {
+  failOpen(startedAt: number, now = this.now(), message?: string): AgentEvent[] {
     return this.result('error', Math.max(0, now - startedAt), now, {
       ok: false,
       interrupted: false,
@@ -151,12 +156,12 @@ export class AgyAcpMapper {
   }
 
   /** Stop не дождался `stopReason`: закрыть ход как `cancelled`, очередь не держать. */
-  abandon(startedAt: number, now = Date.now()): AgentEvent[] {
+  abandon(startedAt: number, now = this.now()): AgentEvent[] {
     return this.result('cancelled', Math.max(0, now - startedAt), now, { ok: false, interrupted: true });
   }
 
   /** Stop раньше `session/prompt`: синтетический ход, процесс жив. */
-  interruptBeforeStart(prompt: string, at = Date.now()): AgentEvent[] {
+  interruptBeforeStart(prompt: string, at = this.now()): AgentEvent[] {
     return [
       { type: 'turn.start', prompt, at },
       ...this.result('interrupted', 0, at, { ok: false, interrupted: true, numTurns: 0 }),
@@ -226,9 +231,15 @@ export class AgyAcpMapper {
       const rawName = toolName(row);
       const rawInput = toolInput(row);
       const mapped = mapAgyTool(rawName, rawInput, this.mcpServers);
-      tool = { name: mapped.name, input: mapped.input };
+      tool = { name: mapped.name, input: mapped.input, startedAt: now };
       this.tools.set(id, tool);
-      events.push({ type: 'tool.start', toolUseId: id, name: tool.name, input: { ...tool.input } });
+      events.push({
+        type: 'tool.start',
+        toolUseId: id,
+        name: tool.name,
+        input: { ...tool.input },
+        at: now,
+      });
     }
     const status = typeof row.status === 'string' ? row.status : '';
     if (status !== 'completed' && status !== 'failed') return events;
@@ -238,6 +249,8 @@ export class AgyAcpMapper {
       toolUseId: id,
       isError: out.isError,
       content: out.content,
+      at: now,
+      durationMs: Math.max(0, now - tool.startedAt),
       ...(out.result !== undefined ? { result: out.result } : {}),
     });
     this.tools.delete(id);

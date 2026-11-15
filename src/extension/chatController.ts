@@ -66,6 +66,10 @@ import { TurnLog, type TurnSpan } from './jira/taskEvents';
 /** Всё, что контроллеру нужно от VS Code, — через этот интерфейс: сам контроллер vscode не импортирует. */
 class EngineMissingError extends Error {}
 
+export function isColdStartupTimeout(message: string): boolean {
+  return /\btimed out\b|тайм-?аут|нет ответа за/i.test(message);
+}
+
 export interface ChatDeps {
   /** Язык текстов для пользователя; по умолчанию русский. */
   lang?: Lang;
@@ -326,6 +330,8 @@ export class ChatController {
   private resumed: { history: SessionHistory; title?: string } | undefined;
   /** Кто-то уже писал в сессию или сессия возобновлена: вкладка не «пустая» (`pristine`). */
   private touched = false;
+  /** Таймаут холодного старта пустой вкладки отложен: сессия создастся прозрачно при первом сообщении. */
+  private coldStartupDeferred = false;
   /** Сведения о воркспейсе и настройках для webview: на `ready` и при смене `agentura.*` (без переоткрытия). */
   pushInfo(): void {
     const { deps } = this;
@@ -1802,6 +1808,18 @@ export class ChatController {
     this.deps.post({ type: 'capabilities', sessionId: session.id, ...caps });
   }
 
+  private canDeferColdStartupError(err?: unknown): boolean {
+    return (
+      this.pristine &&
+      !this.retrying &&
+      !this.inTurn &&
+      this.inflight.length === 0 &&
+      !this.registeredId &&
+      !this.lastInit &&
+      !(err instanceof EngineMissingError)
+    );
+  }
+
   private ensureSession(): Promise<AgentSession | undefined> {
     if (this.disposed) return Promise.resolve(undefined);
     if (this.loading) return this.loading.then(() => this.ensureSession());
@@ -1903,17 +1921,29 @@ export class ChatController {
           session.dispose();
           return session;
         }
+        const deferred = this.coldStartupDeferred;
+        this.coldStartupDeferred = false;
         this.current = session;
         this.unsubscribe = session.events.on((e) => this.onEvent(session, e));
         this.log.info('Сессия агента создана');
         // Remote Control по настройке — новой и восстановленной вкладке Claude; ошибку покажет `remote.state`
         if (claude && (this.remoteWanted ?? s.remoteControl) && session.setRemote) void session.setRemote(true);
+        if (deferred && this.readyCount > 0) {
+          void this.postCapabilities(session).catch((err) => this.log.warn(`возможности движка: ${String(err)}`));
+        }
         return session;
       });
       this.session.catch((e: unknown) => {
         // сессию уже заменили (`/clear`, новая) — падение старой не касается ни новой, ни ленты
         if (gen !== this.generation || this.disposed) return;
         const message = e instanceof Error ? e.message : String(e);
+        if (this.canDeferColdStartupError(e) && isColdStartupTimeout(message)) {
+          this.log.warn(`холодный старт сессии отложен до первого сообщения: ${message}`);
+          this.session = undefined;
+          this.current = undefined;
+          this.coldStartupDeferred = true;
+          return;
+        }
         this.log.error(`сессия не создана: ${message}`);
         this.session = undefined;
         this.forward('', {
@@ -1932,6 +1962,22 @@ export class ChatController {
 
   private onEvent(session: AgentSession, e: AgentEvent): void {
     if (session !== this.current) return;
+    if (
+      ((e.type === 'error' && e.fatal) || (e.type === 'session.closed' && e.reason === 'error')) &&
+      this.canDeferColdStartupError() &&
+      isColdStartupTimeout(e.message ?? '')
+    ) {
+      this.log.warn(`холодный старт сессии отложен до первого сообщения: ${e.message ?? e.type}`);
+      this.unsubscribe?.();
+      this.unsubscribe = undefined;
+      if (this.current === session) {
+        this.current = undefined;
+        this.session = undefined;
+      }
+      this.coldStartupDeferred = true;
+      session.dispose();
+      return;
+    }
     // ACP (`agy`, `cursor`) шлёт `session.init` сразу из `session/new` при открытии пустой вкладки: модель, effort и
     // версия нужны меню сразу, но сессия ещё не начата — не регистрируем её и не отдаём `sessionId` до первого сообщения
     const deferInit =
@@ -2195,6 +2241,7 @@ export class ChatController {
   }
 
   private teardown(): void {
+    this.coldStartupDeferred = false;
     this.turnLog.end(Date.now());
     this.generation++;
     this.unsubscribe?.();

@@ -67,6 +67,7 @@ import {
   DEFAULT_WAITING_THRESHOLD_MS,
   agySubagentMarkdown,
   isValidAgyUuid,
+  matchesPotentiallyTruncated,
   parseCreatedSubagent,
   parseManagedSubagents,
   resolveAgySubagentModelEffort,
@@ -131,6 +132,9 @@ const PARENT_TOOL_RESOLVE_TTL_MS = 3_000;
 const PARENT_TOOL_FAST_RETRY_MS = 50;
 /** Тариф аккаунта меняется редко; `session/new` ради него — отдельный процесс `agy acp`. */
 const ACCOUNT_TTL_MS = 10 * 60_000;
+
+/** Таймаут фонового листинга сессий проекта (не держим зависший процесс 120 с). */
+export const AGY_LIST_SESSIONS_TIMEOUT_MS = 20_000;
 
 /**
  * Аргументы запуска `agy`: `--dangerously-skip-permissions` передаётся строго при
@@ -233,10 +237,15 @@ export class AntigravityAdapter implements AgentAdapter {
       return [];
     }
     try {
-      const result = await this.acp(executable, dir, async (client) => {
-        await client.request('initialize', initializeParams(this.config));
-        return client.request('session/list', { cwd: dir });
-      });
+      const result = await this.acp(
+        executable,
+        dir,
+        async (client) => {
+          await client.request('initialize', initializeParams(this.config));
+          return client.request('session/list', { cwd: dir });
+        },
+        AGY_LIST_SESSIONS_TIMEOUT_MS,
+      );
       const list = record(result)?.sessions;
       if (!Array.isArray(list)) return [];
       const out: SessionInfo[] = [];
@@ -419,6 +428,7 @@ export class AntigravityAdapter implements AgentAdapter {
     executable: string,
     cwd: string,
     fn: (client: AcpRpcClient, updates: unknown[]) => Promise<T>,
+    defaultTimeoutMs = 120_000,
   ): Promise<T> {
     const proc = (this.config.spawn ?? defaultSpawn)(executable, agySpawnArgs(undefined, false), {
       cwd,
@@ -430,7 +440,7 @@ export class AntigravityAdapter implements AgentAdapter {
     const updates: unknown[] = [];
     const client: AcpRpcClient = new AcpRpcClient(proc, {
       engine: 'Antigravity',
-      timeoutMs: this.config.timeoutMs ?? 120_000,
+      timeoutMs: this.config.timeoutMs ?? defaultTimeoutMs,
       maxLineBytes: MAX_LINE_BYTES,
       onNotification: (method, params) => {
         if (method !== 'session/update') return;
@@ -557,9 +567,20 @@ class AgySession implements AgentSession {
   private generation = 0;
   private usedTokens = 0;
   private lastStepIndex = -1;
+  private silentStepsEmittedSincePrompt = false;
   private transcriptCheckInProgress = false;
   private compacting: { done: Deferred; startedAt: number } | undefined;
-  private turn: { done: Deferred; startedAt: number; prevStep: number; toolCalls: number } | undefined;
+  private turn:
+    | {
+        done: Deferred;
+        startedAt: number;
+        prevStep: number;
+        toolCalls: number;
+        suppressReplayUntilEcho?: boolean;
+        expectedPrompt?: string;
+        hasImages?: boolean;
+      }
+    | undefined;
   private wakeupTurn:
     | { startedAt: number; prevStep: number; seq: number; timer: NodeJS.Timeout | undefined }
     | undefined;
@@ -644,7 +665,26 @@ class AgySession implements AgentSession {
 
   respondPermission(toolUseId: string, decision: 'allow' | 'allow-always' | 'allow-edits' | 'deny'): boolean {
     const p = this.pendingPermissions.get(toolUseId);
-    if (!p) return false;
+    if (!p) {
+      if (decision === 'deny') {
+        const q = this.pendingQuestions.get(toolUseId);
+        if (q) {
+          this.pendingQuestions.delete(toolUseId);
+          this.client.respond(q.id, elicitationDecline());
+          this.emit({
+            type: 'permission.resolved',
+            toolUseId,
+            decision: 'deny',
+            by: 'user',
+          });
+          if (this.wakeupTurn && this.pendingPermissions.size === 0 && this.pendingQuestions.size === 0) {
+            this.scheduleWakeupFinish();
+          }
+          return true;
+        }
+      }
+      return false;
+    }
     this.pendingPermissions.delete(toolUseId);
     if (decision === 'allow-edits') {
       void this.setMode('acceptEdits');
@@ -672,6 +712,12 @@ class AgySession implements AgentSession {
     this.pendingQuestions.delete(toolUseId);
     const res = formatElicitationAnswer(p.parsed.properties, p.parsed.questions, answers);
     this.client.respond(p.id, res);
+    this.emit({
+      type: 'permission.resolved',
+      toolUseId,
+      decision: 'allow',
+      by: 'user',
+    });
     if (this.wakeupTurn && this.pendingPermissions.size === 0 && this.pendingQuestions.size === 0) {
       this.scheduleWakeupFinish();
     }
@@ -1098,6 +1144,7 @@ class AgySession implements AgentSession {
         if (this.closed) return;
         if (toolSnap.modelSettings) this.transcriptModelFallback = toolSnap.modelSettings;
       }
+      this.silentStepsEmittedSincePrompt = false;
       this.loading = false;
       readyDeferred.resolve();
       this.refreshSubagentPoller();
@@ -1307,13 +1354,47 @@ class AgySession implements AgentSession {
           continue;
         }
         this.finishSilentTurn(false);
+        let suppressReplayUntilEcho = false;
+        if (this.silentStepsEmittedSincePrompt) {
+          if (
+            !this.hasActiveSubagents() &&
+            !this.parentTailer?.hasPendingReactiveWork() &&
+            this.pendingPermissions.size === 0 &&
+            this.pendingQuestions.size === 0
+          ) {
+            await this.serial(async () => {
+              if (!this.closed && !this.turn && !this.compacting) {
+                await this.respawnTransport();
+              }
+            });
+            if (this.closed) break;
+            if (generation !== this.generation) {
+              this.emitAll(this.mapper.interruptBeforeStart(item.text));
+              continue;
+            }
+          } else {
+            suppressReplayUntilEcho = true;
+          }
+        }
         if (this.pendingParentToolResolutions.length === 0) {
           this.parentToolReader?.clearUnclaimed();
         }
         const startedAt = Date.now();
         const done = deferred();
         const prevStep = this.lastStepIndex;
-        this.turn = { done, startedAt, prevStep, toolCalls: 0 };
+        this.turn = {
+          done,
+          startedAt,
+          prevStep,
+          toolCalls: 0,
+          ...(suppressReplayUntilEcho
+            ? {
+                suppressReplayUntilEcho: true,
+                expectedPrompt: item.text,
+                hasImages: item.images.length > 0,
+              }
+            : {}),
+        };
         this.emitAll(this.mapper.startTurn(item.text, startedAt, item.images));
         try {
           // В `agy acp` при активном фоновом ожидании (`schedule`) сервер удерживает `session/prompt` открытым
@@ -1355,7 +1436,9 @@ class AgySession implements AgentSession {
           if (this.closed) break;
           if (this.turn === undefined || this.turn.done.settled) continue;
 
+          this.settleAllStaleQuestions();
           this.emitAll(this.mapper.finish(result, startedAt));
+          this.silentStepsEmittedSincePrompt = false;
           done.resolve();
         } catch (error) {
           if (this.closed || done.settled) break;
@@ -1363,6 +1446,7 @@ class AgySession implements AgentSession {
           if (error instanceof AcpRpcError && typeof error.code === 'number') {
             await this.syncParentTailer(true);
             const message = errorText(error);
+            this.settleAllStaleQuestions();
             this.emit({ type: 'error', fatal: false, message, code: String(error.code) });
             this.emitAll(this.mapper.failOpen(startedAt, Date.now(), message));
             done.resolve();
@@ -1452,6 +1536,7 @@ class AgySession implements AgentSession {
     if (!wt) return;
     if (wt.timer) clearTimeout(wt.timer);
     this.wakeupTurn = undefined;
+    this.settleAllStaleQuestions();
     this.emitAll(this.mapper.finish({ stopReason: 'end_turn' }, wt.startedAt));
   }
 
@@ -1482,6 +1567,39 @@ class AgySession implements AgentSession {
     }
 
     const turn = this.turn;
+    if (turn?.suppressReplayUntilEcho) {
+      if (kind === 'user_message_chunk') {
+        const isEcho = turn.expectedPrompt
+          ? chunkText(update) === turn.expectedPrompt
+          : Boolean(turn.hasImages && record(record(update)?.content)?.type === 'image');
+        if (isEcho) {
+          turn.suppressReplayUntilEcho = false;
+          this.silentStepsEmittedSincePrompt = false;
+        }
+      }
+      return;
+    }
+
+    if (this.pendingQuestions.size > 0) {
+      const updateRow = record(update);
+      const toolCallId = typeof updateRow?.toolCallId === 'string' ? updateRow.toolCallId : undefined;
+      const status = typeof updateRow?.status === 'string' ? updateRow.status : undefined;
+      if (
+        kind === 'tool_call_update' &&
+        toolCallId &&
+        (status === 'completed' || status === 'failed') &&
+        this.pendingQuestions.has(toolCallId)
+      ) {
+        this.settleStaleQuestion(toolCallId);
+      } else if (
+        kind === 'agent_thought_chunk' ||
+        kind === 'agent_message_chunk' ||
+        (kind === 'tool_call' && (!toolCallId || !this.pendingQuestions.has(toolCallId)))
+      ) {
+        this.settleAllStaleQuestions();
+      }
+    }
+
     if (turn && !turn.done.settled) {
       if (kind === 'tool_call') {
         turn.toolCalls++;
@@ -1593,6 +1711,28 @@ class AgySession implements AgentSession {
     return true;
   }
 
+  private settleStaleQuestion(toolUseId: string): void {
+    if (!this.pendingQuestions.has(toolUseId)) return;
+    this.pendingQuestions.delete(toolUseId);
+    this.emit({
+      type: 'permission.resolved',
+      toolUseId,
+      decision: 'deny',
+      by: 'abort',
+    });
+    if (this.wakeupTurn && this.pendingPermissions.size === 0 && this.pendingQuestions.size === 0) {
+      this.scheduleWakeupFinish();
+    }
+  }
+
+  private settleAllStaleQuestions(): void {
+    if (this.pendingQuestions.size === 0) return;
+    const ids = [...this.pendingQuestions.keys()];
+    for (const id of ids) {
+      this.settleStaleQuestion(id);
+    }
+  }
+
   private abortPending(): void {
     for (const [toolUseId, p] of this.pendingPermissions) {
       try {
@@ -1609,12 +1749,18 @@ class AgySession implements AgentSession {
     }
     this.pendingPermissions.clear();
 
-    for (const [, q] of this.pendingQuestions) {
+    for (const [toolUseId, q] of this.pendingQuestions) {
       try {
         this.client.respond(q.id, { action: 'cancel' });
       } catch {
         // client may be closed
       }
+      this.emit({
+        type: 'permission.resolved',
+        toolUseId,
+        decision: 'deny',
+        by: 'abort',
+      });
     }
     this.pendingQuestions.clear();
   }
@@ -1623,7 +1769,14 @@ class AgySession implements AgentSession {
   private fatal(error: unknown, reason: 'exit' | 'error' = 'error'): void {
     if (this.closed) return;
     const message = errorText(error);
-    this.log('error', `agy session failed: ${message}`);
+    const isColdTimeout =
+      this.loading &&
+      !this.sessionId &&
+      !this.resumeId &&
+      this.queue.length === 0 &&
+      !this.turn &&
+      /\btimed out\b/i.test(message);
+    this.log(isColdTimeout ? 'warn' : 'error', `agy session failed: ${message}`);
     this.abortPending();
     if (this.compacting && !this.compacting.done.settled) {
       this.compacting.done.resolve();
@@ -1718,6 +1871,9 @@ class AgySession implements AgentSession {
       this.config.model?.current,
     );
     if (this.closed) return;
+    if (res.events.length > 0 || res.lastStepIndex > this.lastStepIndex) {
+      this.silentStepsEmittedSincePrompt = true;
+    }
     if (res.lastStepIndex > this.lastStepIndex) {
       this.lastStepIndex = res.lastStepIndex;
     }
@@ -1960,12 +2116,14 @@ class AgySession implements AgentSession {
             .filter((p) => p.kind === 'agent' && p.seq < item.seq)
             .map((p) => p.input),
         ];
-        const sameEarlier = earlierAgentInputs.some(
-          (inp) =>
-            this.pickInputStr(inp, 'subagent_type', 'TypeName') === query.subagentType &&
-            this.pickInputStr(inp, 'description', 'Role') === query.description &&
-            this.pickInputStr(inp, 'prompt', 'Prompt') === query.prompt,
-        );
+        const sameEarlier = earlierAgentInputs.some((inp) => {
+          if (this.pickInputStr(inp, 'subagent_type', 'TypeName') !== query.subagentType) return false;
+          if (this.pickInputStr(inp, 'description', 'Role') !== query.description) return false;
+          const prevPrompt = this.pickInputStr(inp, 'prompt', 'Prompt');
+          if (prevPrompt === undefined && query.prompt === undefined) return true;
+          if (prevPrompt === undefined || query.prompt === undefined) return false;
+          return matchesPotentiallyTruncated(prevPrompt, query.prompt);
+        });
         const matched = sameEarlier
           ? undefined
           : this.parentToolReader.claimInvoke(query, earlierAgentInputs.length === 0);
@@ -2060,6 +2218,9 @@ class AgySession implements AgentSession {
               !this.wakeupTurn &&
               !this.compacting
             ) {
+              if (res.events.length > 0 || res.lastStepIndex > this.lastStepIndex) {
+                this.silentStepsEmittedSincePrompt = true;
+              }
               if (res.lastStepIndex > this.lastStepIndex) {
                 this.lastStepIndex = res.lastStepIndex;
               }

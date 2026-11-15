@@ -6,10 +6,11 @@ const OUT = 'Gemini Models\tWeekly Limit Remaining\t26%\t2026-10-12T16:21:42Z\n'
 function make(
   run: ReturnType<typeof vi.fn<(p: string) => Promise<string>>> = vi.fn(async () => OUT),
   exe: string | undefined = '/bin/agy',
+  lang: () => 'ru' | 'en' = () => 'ru',
 ) {
   let t = 1000;
   const warnings: string[] = [];
-  const svc = new AgyQuotaService(async () => exe, run, () => t, 600_000, (m) => warnings.push(m));
+  const svc = new AgyQuotaService(async () => exe, run, () => t, 600_000, (m) => warnings.push(m), lang);
   return { svc, run, warnings, advance: (ms: number) => (t += ms) };
 }
 
@@ -30,11 +31,11 @@ describe('AgyQuotaService', () => {
   });
 
   it('при ошибке сохраняет прежние строки и updatedAt, пишет warn, уведомляет listeners и ждёт короткий кулдаун 60с', async () => {
-    const eligErr = 'Eligibility check failed: Your current account is not eligible for Antigravity';
+    const transientErr = 'agy -p /usage: no answer';
     const run = vi
       .fn<(p: string) => Promise<string>>()
       .mockResolvedValueOnce(OUT)
-      .mockRejectedValueOnce(new Error(eligErr))
+      .mockRejectedValueOnce(new Error(transientErr))
       .mockResolvedValueOnce(OUT);
     const { svc, warnings, advance } = make(run);
     const seen: AgyQuotaSnapshot[] = [];
@@ -48,11 +49,11 @@ describe('AgyQuotaService', () => {
     const failed = await svc.refresh();
     expect(failed).toMatchObject({
       state: 'error',
-      error: eligErr,
+      error: transientErr,
       updatedAt: 1000,
     });
     expect(failed.rows).toHaveLength(1);
-    expect(warnings).toEqual([eligErr]);
+    expect(warnings).toEqual([transientErr]);
     expect(seen).toHaveLength(2);
     expect(seen[1]?.state).toBe('error');
 
@@ -67,6 +68,57 @@ describe('AgyQuotaService', () => {
     expect(run).toHaveBeenCalledTimes(3);
     expect(recovered.state).toBe('ok');
     expect(recovered.error).toBeUndefined();
+  });
+
+  it('при Eligibility check failed локализует ошибку, ждёт полный 10-мин интервал и дедуплицирует warn', async () => {
+    const rawElig =
+      'Eligibility check failed: Your current account is not eligible for Antigravity, because it is not currently available in your location.';
+    const localizedRu = 'Квота через agy /usage недоступна для этого региона или аккаунта (чат работает)';
+    const run = vi
+      .fn<(p: string) => Promise<string>>()
+      .mockRejectedValueOnce(new Error(rawElig))
+      .mockRejectedValueOnce(new Error(rawElig))
+      .mockRejectedValueOnce(new Error('agy -p /usage: no answer'))
+      .mockResolvedValueOnce(OUT)
+      .mockRejectedValueOnce(new Error(rawElig));
+    const { svc, warnings, advance } = make(run);
+
+    const failed1 = await svc.refresh();
+    expect(failed1.state).toBe('error');
+    expect(failed1.error).toBe(localizedRu);
+    expect(warnings).toEqual([localizedRu]);
+
+    // Через 60с ретрая нет — ждёт полный 10-минутный интервал
+    advance(AGY_QUOTA_ERROR_COOLDOWN_MS);
+    await svc.refresh();
+    expect(run).toHaveBeenCalledTimes(1);
+
+    // Через полный интервал (600_000) запрос происходит, но warn дедуплицируется
+    advance(600_000);
+    const failed2 = await svc.refresh();
+    expect(run).toHaveBeenCalledTimes(2);
+    expect(failed2.error).toBe(localizedRu);
+    expect(warnings).toEqual([localizedRu]);
+
+    // При смене текста ошибки пишется новый warn
+    advance(600_000);
+    const failed3 = await svc.refresh();
+    expect(run).toHaveBeenCalledTimes(3);
+    expect(failed3.error).toBe('agy -p /usage: no answer');
+    expect(warnings).toEqual([localizedRu, 'agy -p /usage: no answer']);
+
+    // Восстановление в ok
+    advance(AGY_QUOTA_ERROR_COOLDOWN_MS);
+    const recovered = await svc.refresh();
+    expect(run).toHaveBeenCalledTimes(4);
+    expect(recovered.state).toBe('ok');
+
+    // После восстановления повторный сбой снова пишет warn
+    advance(600_000);
+    const failedAgain = await svc.refresh();
+    expect(run).toHaveBeenCalledTimes(5);
+    expect(failedAgain.error).toBe(localizedRu);
+    expect(warnings).toEqual([localizedRu, 'agy -p /usage: no answer', localizedRu]);
   });
 
   it('refresh(true) обходит кулдаун для кнопки ↻, а при разлогине ставит signedOut', async () => {

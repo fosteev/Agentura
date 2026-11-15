@@ -185,6 +185,29 @@ export class KimiWireReader {
   }
 }
 
+export async function hasKimiSessionActivity(
+  sessionId: string,
+  env?: NodeJS.ProcessEnv,
+): Promise<boolean> {
+  const activeEnv = env ?? process.env;
+  let root = await findKimiSessionRoot(sessionId, kimiHome(activeEnv));
+  if (!root && !activeEnv.KIMI_CODE_HOME?.trim()) {
+    root = await findKimiSessionRoot(sessionId, join(homedir(), '.kimi'));
+  }
+  if (!root) return false;
+  const wirePath =
+    (await safeKimiFile(root, ['agents', 'main', 'wire.jsonl'])) ??
+    (await safeKimiFile(root, ['wire.jsonl']));
+  if (!wirePath) return false;
+  try {
+    const reader = new KimiWireReader(wirePath);
+    const read = await reader.read(64 * 1024);
+    return read.records.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 function compatibleProtocol(row: Record<string, unknown>): boolean {
   if (row.protocol_version !== KIMI_WIRE_PROTOCOL) return false;
   const min = row.min_protocol_version;

@@ -15,6 +15,7 @@ import {
   resetHud,
   type HudState,
 } from './hudState';
+import { agentTurns } from './agentViews';
 
 const logsDir = join(__dirname, '..', '..', 'spikes', 'sdk-probe', 'logs');
 
@@ -347,6 +348,83 @@ describe('таймлайн хода', () => {
     s = applyHud(s, ev({ type: 'turn.start', at: 20 }));
     expect(s.turns.map((t) => t.turnNo)).toEqual([1, 2, 2]);
     expect(s.turnNo).toBe(2);
+  });
+
+  it('сохраняет исходный startedAt хода пользователя при >= 6 реактивных turn.start без prompt, а agentTurns видит исходный старт', () => {
+    let s = initialHud();
+    // User turn starts at timestamp 1000
+    s = applyHud(s, ev({ type: 'turn.start', at: 1000, prompt: '/roadmap-run-agy' }));
+    s = applyHud(
+      s,
+      ev({
+        type: 'agent.start',
+        agentId: 'sub_1',
+        taskId: 'task-1',
+        description: 'Stage 1 Executor',
+        taskType: 'subagent',
+        background: true,
+        at: 1050,
+      }),
+    );
+    s = applyHud(
+      s,
+      ev({
+        type: 'tool.start',
+        agentId: 'sub_1',
+        toolUseId: 't1',
+        name: 'Bash',
+        input: { command: 'npm test' },
+        at: 1100,
+      }),
+    );
+    s = applyHud(
+      s,
+      ev({
+        type: 'agent.end',
+        agentId: 'sub_1',
+        taskId: 'task-1',
+        status: 'completed',
+        summary: 'Round 1 done',
+        at: 1500,
+      }),
+    );
+
+    // 6 reactive wakeups without prompt (turnNo remains 1)
+    for (let i = 1; i <= 6; i++) {
+      s = applyHud(s, ev({ type: 'turn.start', at: 2000 + i * 100 }));
+    }
+
+    expect(s.turnNo).toBe(1);
+    expect(s.turns).toHaveLength(3);
+    // Origin user turn at 1000 must be preserved at turns[0]
+    expect(s.turns[0]!.turnNo).toBe(1);
+    expect(s.turns[0]!.startedAt).toBe(1000);
+    expect(s.turns.some((t) => t.turnNo === 1 && t.startedAt === 1000)).toBe(true);
+
+    const groups = agentTurns(s, 'turn', { now: 3000 });
+    expect(groups).toHaveLength(1);
+    expect(groups[0]!.startedAt).toBe(1000);
+
+    // Reopen of subagent with original startedAt (as emitted by AgySubagentReader.reopen/buildStartEvent)
+    s = applyHud(
+      s,
+      ev({
+        type: 'agent.start',
+        agentId: 'sub_1',
+        taskId: 'task-1',
+        description: 'Stage 1 Executor',
+        taskType: 'subagent',
+        background: true,
+        at: 1050,
+      }),
+    );
+    expect(s.agents[0]!.status).toBe('running');
+    expect(s.agents[0]!.startedAt).toBe(1050);
+    expect(s.agents[0]!.endedAt).toBeUndefined();
+    expect(s.agents[0]!.summary).toBeUndefined();
+    // Segment from round 1 retains valid positive duration
+    expect(s.agents[0]!.segs[0]!.at).toBe(1100);
+    expect(s.agents[0]!.segs[0]!.at - s.agents[0]!.startedAt).toBe(50);
   });
 });
 

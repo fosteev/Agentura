@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { hostStrings, type Lang } from '../../shared/l10n';
 import { stripAgySpinnerLine } from './executable';
 
 export type AgyUsageWindow = 'fiveHour' | 'weekly';
@@ -93,14 +94,34 @@ export function cleanAgyUsageError(error: Error, stdout = '', stderr = ''): Erro
   return new Error(msg);
 }
 
-/** Признак явного разлогина/невалидной авторизации `agy` (не региональный отказ `Eligibility check failed` и не сеть). */
-export function isAgyAuthError(errOrOutput: unknown): boolean {
+/** Признак регионального отказа / недоступности аккаунта для Antigravity (`loadCodeAssist` / `printmode.go`). */
+export function isAgyEligibilityError(errOrOutput: unknown): boolean {
   const raw = errOrOutput instanceof Error ? errOrOutput.message : typeof errOrOutput === 'string' ? errOrOutput : '';
   const msg = cleanAgyCliText(raw);
   if (!msg) return false;
-  if (/eligibility check failed|not currently available in your location|not eligible for antigravity/i.test(msg)) {
+  return /eligibility check failed|not currently available in your location|not eligible for antigravity/i.test(msg);
+}
+
+/**
+ * Форматирует ошибку опроса квоты для показа в UI и записи в лог: региональный отказ сжимает в короткую
+ * локализованную строку, остальные ошибки отдаёт очищенным текстом.
+ */
+export function formatAgyQuotaError(errOrOutput: unknown, lang: Lang = 'ru'): string {
+  if (isAgyEligibilityError(errOrOutput)) {
+    return hostStrings(lang).agyQuotaIneligible;
+  }
+  const raw = errOrOutput instanceof Error ? errOrOutput.message : typeof errOrOutput === 'string' ? errOrOutput : '';
+  return cleanAgyCliText(raw);
+}
+
+/** Признак явного разлогина/невалидной авторизации `agy` (не региональный отказ `Eligibility check failed` и не сеть). */
+export function isAgyAuthError(errOrOutput: unknown): boolean {
+  if (isAgyEligibilityError(errOrOutput)) {
     return false;
   }
+  const raw = errOrOutput instanceof Error ? errOrOutput.message : typeof errOrOutput === 'string' ? errOrOutput : '';
+  const msg = cleanAgyCliText(raw);
+  if (!msg) return false;
   if (
     /i\/o timeout|tls handshake timeout|context deadline exceeded|client\.timeout|connection reset|econnreset|econnrefused|etimedout|enotfound|eai_again|enetunreach|ehostunreach|no such host|dial tcp|\beof\b/i.test(
       msg,

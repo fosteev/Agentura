@@ -2,7 +2,14 @@ import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import * as os from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { cleanAgyUsageError, isAgyAuthError, parseAgyUsage, runAgyUsage } from './quota';
+import {
+  cleanAgyUsageError,
+  formatAgyQuotaError,
+  isAgyAuthError,
+  isAgyEligibilityError,
+  parseAgyUsage,
+  runAgyUsage,
+} from './quota';
 
 const REAL_OLD =
   'Gemini Models\tWeekly Limit Remaining\t26%\t2026-10-12T16:21:42Z\n' +
@@ -135,5 +142,36 @@ describe('runAgyUsage & isAgyAuthError', () => {
     expect(isAgyAuthError(new Error('agy -p /usage: no answer'))).toBe(false);
     expect(isAgyAuthError(new Error('connect ECONNRESET'))).toBe(false);
     expect(isAgyAuthError('')).toBe(false);
+  });
+
+  it('isAgyEligibilityError определяет региональный отказ по ключевым паттернам', () => {
+    expect(
+      isAgyEligibilityError(
+        new Error(
+          'Eligibility check failed: Your current account is not eligible for Antigravity, because it is not currently available in your location.',
+        ),
+      ),
+    ).toBe(true);
+    expect(isAgyEligibilityError('Account is not currently available in your location.')).toBe(true);
+    expect(isAgyEligibilityError('user is not eligible for antigravity')).toBe(true);
+    expect(isAgyEligibilityError(new Error('connect ECONNRESET'))).toBe(false);
+    expect(isAgyEligibilityError(new Error('Error: not logged in'))).toBe(false);
+    expect(isAgyEligibilityError('')).toBe(false);
+  });
+
+  it('formatAgyQuotaError локализует Eligibility check failed и возвращает сырой текст для прочих ошибок', () => {
+    const err = new Error(
+      'Eligibility check failed: Your current account is not eligible for Antigravity, because it is not currently available in your location.',
+    );
+    expect(formatAgyQuotaError(err, 'ru')).toBe(
+      'Квота через agy /usage недоступна для этого региона или аккаунта (чат работает)',
+    );
+    expect(formatAgyQuotaError(err, 'en')).toBe(
+      'Quota via agy /usage is unavailable for this region or account (chat still works)',
+    );
+
+    const netErr = new Error('connect ECONNRESET 142.250.74.10:443');
+    expect(formatAgyQuotaError(netErr, 'ru')).toBe('connect ECONNRESET 142.250.74.10:443');
+    expect(formatAgyQuotaError(netErr, 'en')).toBe('connect ECONNRESET 142.250.74.10:443');
   });
 });

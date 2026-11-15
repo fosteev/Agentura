@@ -296,6 +296,7 @@ const ru = {
   agentResult: '_результат:_',
   agentThinking: '_думает:_',
   agentClipped: (chars: number) => `… (обрезано: ${chars} симв.)`,
+  agyQuotaIneligible: 'Квота через agy /usage недоступна для этого региона или аккаунта (чат работает)',
 };
 
 export type HostUi = typeof ru;
@@ -530,6 +531,7 @@ const en: HostUi = {
   agentResult: '_result:_',
   agentThinking: '_thinking:_',
   agentClipped: (chars) => `… (truncated: ${chars} chars)`,
+  agyQuotaIneligible: 'Quota via agy /usage is unavailable for this region or account (chat still works)',
 };
 
 export function hostStrings(lang: Lang): HostUi {

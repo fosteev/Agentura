@@ -368,9 +368,16 @@ export function applyHud(s: HudState, e: AgentEvent, now = Date.now()): HudState
       );
       // ход-пробуждение (без промпта) продолжает ход пользователя: его агенты — те же «за ход»
       const turnNo = e.prompt !== undefined || e.prompts ? s.turnNo + 1 : s.turnNo;
+      let turns = [...closed, { turnNo, startedAt: e.at, segs: [] }].slice(-KEEP_TURNS);
+      if (e.prompt === undefined && !e.prompts && turnNo > 0) {
+        const origin = closed.find((t) => t.turnNo === turnNo && t.startedAt > 0);
+        if (origin && !turns.some((t) => t.turnNo === turnNo && t.startedAt === origin.startedAt)) {
+          turns = [origin, ...turns.slice(1)];
+        }
+      }
       return {
         ...s,
-        turns: [...closed, { turnNo, startedAt: e.at, segs: [] }].slice(-KEEP_TURNS),
+        turns,
         turnNo,
       };
     }
