@@ -148,11 +148,9 @@ const ru = {
     cards: ['Карточки', 'каждый ход — карточка с лентой действий'],
   } as Record<string, [string, string]>,
   sidebarLimitsViews: {
-    stack: ['Стопка', 'карточка на движок, движок текущей вкладки помечен'],
-    switch: ['Переключатель', 'вкладки движков, один движок за раз'],
-    table: ['Таблица', 'все движки и их окна в одной таблице'],
-    active: ['Активный подробно', 'движок текущей вкладки целиком, остальные — по строке'],
-    header: ['В заголовке', 'худший лимит каждого движка мини-шкалой, подробности во всплывашке'],
+    tabs: ['A · Вкладки', 'адаптивные вкладки движков с акцентом активного'],
+    radar: ['B · Радар', 'плитки всех движков в один ряд, шкалы выбранного ниже'],
+    list: ['C · Список', 'вертикальный аккордеон со строкой и мини-шкалой на каждый движок'],
   } as Record<string, [string, string]>,
   taskSidebarViews: {
     groups: ['Группы', 'чаты вложены в список под ключом задачи'],
@@ -397,11 +395,9 @@ const en: HostUi = {
     cards: ['Cards', 'each turn is a card with a timeline of actions'],
   } as Record<string, [string, string]>,
   sidebarLimitsViews: {
-    stack: ['Stack', "a card per engine, the current tab's engine marked"],
-    switch: ['Switch', 'engine tabs, one engine at a time'],
-    table: ['Table', 'all engines and their windows in one table'],
-    active: ['Active in detail', "the current tab's engine in full, the others as one line each"],
-    header: ['In the header', 'the worst limit of each engine as a mini-gauge, details in a popup'],
+    tabs: ['A · Tabs', 'adaptive engine tabs with active accent'],
+    radar: ['B · Radar', 'row of engine tiles with worst percentage, selected below'],
+    list: ['C · List', 'vertical accordion with a row and mini-gauge per engine'],
   } as Record<string, [string, string]>,
   taskSidebarViews: {
     groups: ['Groups', 'chats nested in the list under the task key'],

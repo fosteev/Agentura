@@ -42,7 +42,40 @@ export const ENGINE_MARK_CLASS: Record<EngineId, string> = {
   kimi: 'kimi',
 };
 
+export const ENGINE_SHORT_NAME: Record<EngineId, string> = {
+  claude: 'Claude',
+  codex: 'Codex',
+  antigravity: 'AGY',
+  cursor: 'Cursor',
+  kimi: 'Kimi',
+};
+
 export const engineName = (e: EngineId): string => ui.sidebar.providerNames[e];
+
+export interface EngineSummaryBadge {
+  engine: EngineId;
+  name: string;
+  value: string;
+  text: string;
+  level: '' | 'warn' | 'hot' | 'err';
+}
+
+export function engineSummaryBadge(e: EngineView): EngineSummaryBadge {
+  const name = ENGINE_SHORT_NAME[e.engine] ?? engineName(e.engine);
+  if (e.state === 'error' || e.state === 'signedOut') {
+    return { engine: e.engine, name, value: '!', text: `${name} !`, level: 'err' };
+  }
+  if (e.state === 'loading' && !e.windows.length) {
+    return { engine: e.engine, name, value: '…', text: `${name} …`, level: '' };
+  }
+  const w = worstWindow(e);
+  if (w) {
+    const level = w.percent >= 85 ? 'hot' : w.percent >= 70 ? 'warn' : '';
+    return { engine: e.engine, name, value: `${w.percent}%`, text: `${name} ${w.percent}%`, level };
+  }
+  return { engine: e.engine, name, value: '—', text: `${name} —`, level: '' };
+}
+
 
 function claudeView(
   windows: readonly LimitWindowSummary[],

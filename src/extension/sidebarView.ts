@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import type { TaskPicker } from './taskPicker';
 import { postToWebview, type EngineLimitsSummary, type SessionSummary } from '../protocol';
-import { overriddenKeys, readSettings, writeSetting } from '../settings';
+import { isProvider, overriddenKeys, readSettings, writeSetting, type AgentProvider } from '../settings';
 import type { AccountService } from './account';
 import { ChatPanel } from './chatPanel';
 import type { SessionsService } from './sessionsService';
@@ -110,6 +110,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         case 'limits.refresh':
           void this.refreshUsage(true);
           break;
+        case 'sidebar.hideEngine':
+          void this.hideEngine(m.engine);
+          break;
         case 'engine.login':
           void this.openLogin(m.engine);
           break;
@@ -187,6 +190,15 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     });
   }
 
+  promptNewChat(): void {
+    const cfg = vscode.workspace.getConfiguration('agentura');
+    if (this.view?.visible && readSettings(cfg)['jira.source'] !== 'off') {
+      this.post({ type: 'task.picker.toggle' });
+    } else {
+      void vscode.commands.executeCommand('agentura.newSession');
+    }
+  }
+
   private pushView(): void {
     const v = readSettings(vscode.workspace.getConfiguration('agentura'));
     this.post({
@@ -194,11 +206,38 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       view: v['sessionList.view'],
       context: v['sessionList.context'],
       time: v['sessionList.time'],
-      top: v['sidebar.top'],
       limits: v['sidebar.limits'],
       hidden: v['sidebar.limitsHidden'],
       tasks: v['tasks.sidebar'],
     });
+  }
+
+  private async hideEngine(engine: AgentProvider): Promise<void> {
+    if (!isProvider(engine)) return;
+    const cfg = vscode.workspace.getConfiguration('agentura');
+    if (overriddenKeys(cfg).includes('sidebar.limitsHidden')) {
+      void vscode.window.showInformationMessage(hostStrings(currentLanguage()).overriddenView);
+      if (this.viewWrites === 0) this.pushView();
+      return;
+    }
+    const current = readSettings(cfg)['sidebar.limitsHidden'];
+    if (current.includes(engine)) return;
+    const next = [...current, engine];
+    this.viewWrites++;
+    try {
+      const checked = await writeSetting(
+        cfg,
+        'sidebar.limitsHidden',
+        next,
+        vscode.ConfigurationTarget.Global,
+      );
+      if (!checked.ok) this.log.warn(`agentura.sidebar.limitsHidden: ${checked.error}`);
+    } catch (e) {
+      this.log.warn(`не удалось записать agentura.sidebar.limitsHidden: ${String(e)}`);
+    } finally {
+      this.viewWrites--;
+    }
+    if (this.viewWrites === 0) this.pushView();
   }
 
   private async setListView(value: unknown): Promise<void> {

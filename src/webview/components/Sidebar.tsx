@@ -1,5 +1,6 @@
 import { SidebarTaskPicker } from './SidebarTaskPicker';
 import { signal } from '@preact/signals';
+import { Fragment } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
 import type { AgentProvider } from '../../agent/types';
 import type {
@@ -12,23 +13,21 @@ import type {
 import {
   DEFAULT_SESSION_LIST,
   DEFAULT_SIDEBAR_LIMITS,
-  DEFAULT_SIDEBAR_TOP,
   DEFAULT_TASK_SIDEBAR,
   nextSessionListMode,
   type SessionListMode,
   type SidebarLimitsMode,
-  type SidebarTopMode,
   type TaskSidebarMode,
 } from '../../settings';
-import { buildEngines, ENGINE_MARK, ENGINE_MARK_CLASS } from '../engineLimitsView';
-import { limitLevel } from '../hudView';
-import { ui, uiLang } from '../strings';
+import { buildEngines, engineSummaryBadge } from '../engineLimitsView';
+import { BrandIcon } from './BrandIcon';
+import { ui } from '../strings';
 import {
   blockEngines,
   ctxLabel,
+  displaySessionTitle,
   filterSessions,
   groupByDay,
-  limitRows,
   pillClass,
   rowClass,
   subLabel,
@@ -46,12 +45,7 @@ import {
   send,
   type SidebarFold,
 } from '../vscode';
-import {
-  EngineHeaderLimits,
-  EngineLimitsBody,
-  EnginePopup,
-  engineLimitsTitle,
-} from './EngineLimits';
+import { EngineLimitsBody } from './EngineLimits';
 
 const windows = signal<LimitWindowSummary[]>([]);
 const usage = signal<{ pending: boolean; updatedAt?: number; error?: string }>({ pending: false });
@@ -79,11 +73,6 @@ const project = signal('');
  */
 const listMode = signal<SessionListMode>(DEFAULT_SESSION_LIST);
 const listCols = signal({ context: true, time: true });
-/**
- * Вид верха (`agentura.sidebar.top`): `data-top` на `.sidebar`; элементы чужого вида не рендерятся, вёрстка —
- * в hud.css. Вид «подробно» — разметка как в прототипе sessions.html.
- */
-const topMode = signal<SidebarTopMode>(DEFAULT_SIDEBAR_TOP);
 /** Секундный/минутный тик: подписи «сейчас», «через 2 ч 08 мин», день в заголовках. */
 const now = signal(Date.now());
 /** Строка в режиме переименования (двойной клик): id сессии. */
@@ -97,78 +86,33 @@ const query = signal('');
 /** Одиночный клик — возобновить; ждём, не станет ли он двойным (переименование). */
 const CLICK_DELAY_MS = 250;
 
-function refreshUsage() {
-  if (usage.value.pending) return;
-  usage.value = { ...usage.value, pending: true };
-  send({ type: 'limits.refresh' });
-}
-
-function refreshTitle(): string {
-  const u = usage.value;
-  if (u.pending) return ui.sidebar.refreshing;
-  const parts: string[] = [ui.sidebar.refreshTitle];
-  if (u.updatedAt) {
-    parts.push(`${ui.sidebar.updatedAt} ${new Date(u.updatedAt).toLocaleTimeString(uiLang)}`);
-  }
-  if (u.error) parts.push(`${ui.sidebar.refreshFailed}: ${u.error}`);
-  return parts.join('\n');
-}
-
-function accountRows(a: AccountSummary | undefined): [string, string][] {
-  const L = ui.sidebar.accountLabels;
-  const dash = ui.sidebar.unknown;
-  return [
-    [L.account, a?.email ?? dash],
-    [L.plan, a?.plan ?? dash],
-    [L.login, a?.login ?? (a?.error ? `${ui.sidebar.loadError}: ${a.error}` : dash)],
-    [L.agent, a?.engine ? `${ui.sidebar.agentName} · ${a.engine}` : ui.sidebar.agentName],
-  ];
-}
-
-/** Аккаунт одной строкой (вид «компактно»): почта · план · движок; вход и агент — в подсказке. */
-function AccountLine({ a }: { a: AccountSummary | undefined }) {
-  const rows = accountRows(a);
-  const parts = [a?.plan, a?.engine].filter((x): x is string => !!x);
-  const ok = !!a?.login && !a.error;
-  return (
-    <div class="who" data-tip={rows.map(([k, v]) => `${k}: ${v}`).join('\n')}>
-      <b>{a?.email ?? ui.sidebar.unknown}</b>
-      {parts.map((x) => (
-        <span key={x}>· {x}</span>
-      ))}
-      {ok && <i class="okd" data-tip={ui.sidebar.loginOk} />}
-    </div>
-  );
-}
-
-/** Уровень цвета у лимита: до 70 % — цвет по умолчанию, дальше жёлтый и красный, как у поля ввода. */
-function levelClass(percent: number): string {
-  const lv = limitLevel(percent);
-  return lv === 'lim-hot' ? '' : lv;
-}
-
 function SessionRow({
   s,
   isCurrent,
   now: n,
   ctxCol,
-  mixed,
+  mixed: _mixed,
   nest,
   tag,
+  listMode = 'compact',
 }: {
   s: SessionSummary;
   isCurrent: boolean;
   now: number;
   ctxCol: boolean;
-  mixed: boolean;
-  /** Чат вложен в группу задачи (вид `groups`): отступ и метка движка в названии. */
+  mixed?: boolean;
+  /** Чат вложен в группу задачи (вид `groups`): отступ в названии. */
   nest?: boolean;
   /** Метка ключа задачи справа (вид `section`). */
   tag?: string;
+  listMode?: SessionListMode;
 }) {
+  void _mixed;
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const input = useRef<HTMLInputElement>(null);
   const isEditing = editing.value === s.id;
+  const disp = displaySessionTitle(s);
+
   useEffect(() => {
     if (isEditing) {
       input.current?.focus();
@@ -176,7 +120,8 @@ function SessionRow({
     }
   }, [isEditing]);
 
-  const cls = `${rowClass(s, isCurrent)}${nest ? ' nest' : ''}${tag ? ' tagged' : ''}`;
+  const cls = `${rowClass(s, isCurrent)}${disp.untitled ? ' untitled' : ''}${nest ? ' nest' : ''}${tag ? ' tagged' : ''}`;
+
   if (isEditing) {
     const finish = (save: boolean) => {
       const title = input.current?.value.trim() ?? '';
@@ -187,26 +132,55 @@ function SessionRow({
     };
     return (
       <div class={`${cls} editing`}>
-        <span class="dot" />
-        <span class="t">
+        <span class="s-ico">
+          <BrandIcon provider={s.provider ?? 'claude'} />
+        </span>
+        <span class="s-main t">
           <input
             ref={input}
-            class="rename"
-            value={s.title}
+            class="rename rename-inp"
+            value={disp.untitled ? '' : s.title}
+            placeholder={disp.untitled ? disp.text : ui.sidebar.renameHint}
             data-tip={ui.sidebar.renameHint}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.isComposing) finish(true);
-              else if (e.key === 'Escape') finish(false);
+              if (e.key === 'Enter') {
+                if (e.isComposing || e.keyCode === 229) return;
+                finish(true);
+              } else if (e.key === 'Escape') {
+                finish(false);
+              }
             }}
             onBlur={() => finish(true)}
           />
-          <small>{ui.sidebar.renameHint}</small>
+          <small class="s-sub">{ui.sidebar.renameHint}</small>
         </span>
-        <span class="ctx">{ctxLabel(s)}</span>
-        <span class="when">{whenLabel(s, n)}</span>
+        <span class="s-right">
+          <span class="ctx">{ctxLabel(s)}</span>
+          <span class="when s-time">{whenLabel(s, n)}</span>
+        </span>
       </div>
     );
   }
+
+  const badge =
+    s.state === 'live'
+      ? 'live'
+      : s.state === 'waiting'
+        ? 'wait'
+        : s.state === 'error' || s.state === 'limit'
+          ? 'err'
+          : undefined;
+  const badgeTitle =
+    s.state === 'live'
+      ? ui.sidebar.stateTag.live
+      : s.state === 'waiting'
+        ? ui.sidebar.stateTag.waiting
+        : s.state === 'error'
+          ? ui.sidebar.stateTag.error
+          : s.state === 'limit'
+            ? ui.sidebar.stateTag.limit
+            : undefined;
+
   return (
     <button
       class={cls}
@@ -218,7 +192,7 @@ function SessionRow({
         sessionArchived: !!s.archived,
         preventDefaultContextMenuItems: true,
       })}
-      data-tip={`${s.title}\n${subLabel(s, true, mixed)}\n${ui.sidebar.renameTitle}`}
+      data-tip={`${disp.text}\n${subLabel(s, true, true)}\n${ui.sidebar.renameTitle}`}
       onClick={() => {
         clearTimeout(timer.current);
         timer.current = setTimeout(
@@ -236,30 +210,27 @@ function SessionRow({
         editing.value = s.id;
       }}
     >
-      <span class="dot" />
-      <span class="t">
-        {nest && mixed && <EngineMark provider={s.provider} />}
-        {s.title}
-        <small>{subLabel(s, !ctxCol, mixed)}</small>
+      <span class="s-ico">
+        <BrandIcon provider={s.provider ?? 'claude'} />
+        {badge && <i class={`s-badge ${badge}`} title={badgeTitle} />}
       </span>
-      {tag && (
-        <span class="tag" data-tip={s.task?.title}>
-          {tag}
-        </span>
-      )}
-      <span class="ctx">{ctxLabel(s)}</span>
-      <span class="when">{whenLabel(s, n)}</span>
+      <span class="s-main t">
+        <span class="s-title">{disp.text}</span>
+        <small class="s-sub">{subLabel(s, !ctxCol, false)}</small>
+      </span>
+      <span class="s-right">
+        {tag && (
+          <span class="tag" data-tip={s.task?.title}>
+            {tag}
+          </span>
+        )}
+        {listMode === 'compact' && s.state === 'waiting' && (
+          <span class="s-pill wait">{ui.sidebar.waitPill}</span>
+        )}
+        <span class="ctx">{ctxLabel(s)}</span>
+        <span class="when s-time">{whenLabel(s, n)}</span>
+      </span>
     </button>
-  );
-}
-
-/** Метка движка `C` / `X` / `G`: в названии вложенного чата (когда в списке не только Claude) и в карточке задачи. */
-function EngineMark({ provider }: { provider: SessionSummary['provider'] }) {
-  const e = provider ?? 'claude';
-  return (
-    <i class={`mk ${ENGINE_MARK_CLASS[e]}`} data-tip={ui.sidebar.providerNames[e]}>
-      {ENGINE_MARK[e]}
-    </i>
   );
 }
 
@@ -308,6 +279,7 @@ function TaskGroup({
   ctxCol,
   mixed,
   current: cur,
+  listMode,
 }: {
   block: TaskBlock;
   open: boolean;
@@ -318,6 +290,7 @@ function TaskGroup({
   ctxCol: boolean;
   mixed: boolean;
   current: string | undefined;
+  listMode: SessionListMode;
 }) {
   const { group } = block;
   const L = ui.sidebar.tasks;
@@ -341,7 +314,16 @@ function TaskGroup({
       </div>
       {open &&
         block.rows.map((s) => (
-          <SessionRow key={s.id} s={s} isCurrent={cur === s.id} now={n} ctxCol={ctxCol} mixed={mixed} nest />
+          <SessionRow
+            key={s.id}
+            s={s}
+            isCurrent={cur === s.id}
+            now={n}
+            ctxCol={ctxCol}
+            mixed={mixed}
+            nest
+            listMode={listMode}
+          />
         ))}
     </div>
   );
@@ -378,7 +360,7 @@ function TaskCard({ block, isCurrent, now: n }: { block: TaskBlock; isCurrent: b
       </button>
       <span class="ri">
         {blockEngines(block.all).map((e) => (
-          <EngineMark key={e} provider={e} />
+          <BrandIcon key={e} provider={e} />
         ))}
         {L.chats(block.all.length)}
         <NewTaskChat taskKey={group.taskKey} />
@@ -455,7 +437,6 @@ export function Sidebar() {
           break;
         case 'sidebar.view':
           listMode.value = m.view;
-          topMode.value = m.top ?? DEFAULT_SIDEBAR_TOP;
           limitsMode.value = m.limits ?? DEFAULT_SIDEBAR_LIMITS;
           hiddenEngines.value = m.hidden ?? [];
           tasksMode.value = m.tasks ?? DEFAULT_TASK_SIDEBAR;
@@ -473,16 +454,48 @@ export function Sidebar() {
           break;
       }
     });
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
+      const el = (document.activeElement ?? e.target) as HTMLElement | null;
+      if (
+        el &&
+        typeof el.matches === 'function' &&
+        (el.matches('input, textarea') ||
+          el.isContentEditable ||
+          Boolean(el.closest && el.closest('[contenteditable="true"]')))
+      ) {
+        return;
+      }
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        typeof target.matches === 'function' &&
+        (target.matches('input, textarea') ||
+          target.isContentEditable ||
+          Boolean(target.closest && target.closest('[contenteditable="true"]')))
+      ) {
+        return;
+      }
+      const inputs = document.querySelectorAll<HTMLInputElement>('.search-wrap input');
+      const searchInp = Array.from(inputs).find((inp) => !inp.closest('[inert]'));
+      if (searchInp && document.activeElement !== searchInp) {
+        e.preventDefault();
+        searchInp.focus();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+
     return () => {
       clearInterval(id);
       off();
+      window.removeEventListener('keydown', onKeyDown);
     };
   }, []);
 
   return (
     <SidebarView
       look={{
-        top: topMode.value,
         list: listMode.value,
         context: listCols.value.context,
         time: listCols.value.time,
@@ -505,9 +518,8 @@ export function Sidebar() {
   );
 }
 
-/** Вид панели (`agentura.sidebar.top`, `agentura.sessionList.*`). */
+/** Вид панели (`agentura.sessionList.*`, `agentura.sidebar.limits`). */
 export interface SidebarLook {
-  top: SidebarTopMode;
   list: SessionListMode;
   context: boolean;
   time: boolean;
@@ -547,7 +559,6 @@ export interface SidebarData {
  * одним кодом — превью не расходится с панелью. Поиск и свёрнутые секции — общие сигналы (в превью не трогаются).
  */
 export function SidebarView({ look, data }: { look: SidebarLook; data: SidebarData }) {
-  const u = usage.value;
   const n = data.now;
   const q = query.value;
   // архивные строки живут только в блоке «Архив» внизу; всё остальное считается по активным
@@ -571,17 +582,9 @@ export function SidebarView({ look, data }: { look: SidebarLook; data: SidebarDa
   const archiveOpen = searching || folded.has(ARCHIVE_OPEN);
   const tasksOpen = searching || !folded.has(TASKS_FOLD);
   const f = fold.value;
-  const limits = limitRows(data.windows, n);
-  const top = look.top;
-  // установленных движков ≥ 2 (или остался один не-Claude) → вариант из настройки (`dense` — всегда в заголовке);
-  // один Claude — прежняя разметка; все скрыты — лимитов нет вовсе
   const engines = buildEngines(data.windows, data.account, data.engines, n, look.hidden);
   const none = engines.length === 0;
-  const multi = engines.length >= 2 || (engines.length === 1 && engines[0]!.engine !== 'claude');
-  const variant: SidebarLimitsMode =
-    top === 'dense' ? 'header' : (look.limits ?? DEFAULT_SIDEBAR_LIMITS);
-  const inHeader = multi && variant === 'header';
-  const refresh = { pending: u.pending, title: refreshTitle(), onClick: refreshUsage };
+  const variant: SidebarLimitsMode = look.limits ?? DEFAULT_SIDEBAR_LIMITS;
   // блок «Архив» — последний в списке; по умолчанию свёрнут, при поиске раскрыт (и без клика)
   const archiveBlock = archivedShown.length > 0 && (
     <div class="tgp none arch">
@@ -610,6 +613,7 @@ export function SidebarView({ look, data }: { look: SidebarLook; data: SidebarDa
                 ctxCol={look.context}
                 mixed={mixed}
                 nest
+                listMode={look.list}
               />
             ))}
           </>
@@ -623,119 +627,42 @@ export function SidebarView({ look, data }: { look: SidebarLook; data: SidebarDa
       data-list={look.list}
       data-ctx={look.context ? 'on' : 'off'}
       data-time={look.time ? 'on' : 'off'}
-      data-top={top}
       data-tasks={hasTasks ? tasksView : undefined}
     >
-      <div
-        class="head"
-        data-tip={
-          top === 'dense' && !multi && !none
-            ? accountRows(data.account)
-                .map(([k, v]) => `${k}: ${v}`)
-                .join('\n')
-            : undefined
-        }
-      >
-        <span>{ui.sidebar.head}</span>
-        {inHeader && <EngineHeaderLimits engines={engines} refresh={refresh} />}
-        {top === 'dense' && !multi && !none && (
-          <span class="hl">
-            {limits
-              .filter((l) => l.mini)
-              .map((l) => (
-                <span
-                  class={`m ${levelClass(l.percent)}`.trim()}
-                  key={l.key}
-                  data-tip={[l.label, l.note].filter(Boolean).join(' · ')}
-                >
-                  {l.mini}
-                  <i>
-                    <b style={{ width: `${l.percent}%` }} />
-                  </i>
-                  <span class="n">{l.percent} %</span>
-                </span>
-              ))}
-            <button
-              type="button"
-              class={u.pending ? 'refresh busy' : 'refresh'}
-              data-tip={refreshTitle()}
-              aria-label={ui.sidebar.refreshTitle}
-              aria-busy={u.pending}
-              disabled={u.pending}
-              onClick={refreshUsage}
-            >
-              {ui.sidebar.refresh}
-            </button>
-          </span>
-        )}
-        <button
-          type="button"
-          class="gear"
-          data-tip={ui.sidebar.settings}
-          aria-label={ui.sidebar.settings}
-          onClick={() => send({ type: 'settings.open' })}
-        >
-          {ui.sidebar.gear}
-        </button>
-      </div>
-      {inHeader && <EnginePopup engines={engines} />}
-      {!inHeader && !none && (
+      {!none && (
         <section
-          class={`sec acc${multi ? ' multi' : ''}${f.account ? ' folded' : ''}`}
-          data-limits={multi ? variant : undefined}
+          class={`sec acc${engines.length >= 2 ? ' multi' : ''}${f.account ? ' folded' : ''}`}
+          data-limits={variant}
         >
-          <h3 {...foldProps('account', multi ? engineLimitsTitle(variant) : ui.sidebar.account)}>
+          <h3 {...foldProps('account', ui.sidebar.limitsTitle)}>
             <span class="tri" />
-            {multi ? engineLimitsTitle(variant) : ui.sidebar.account}
-            <button
-              class={u.pending ? 'refresh busy' : 'refresh'}
-              data-tip={refreshTitle()}
-              aria-label={ui.sidebar.refreshTitle}
-              aria-busy={u.pending}
-              disabled={u.pending}
-              onClick={refreshUsage}
-            >
-              {ui.sidebar.refresh}
-            </button>
+            {ui.sidebar.limitsTitle}
+            {engines.length >= 2 && <span class="sec-meta">{ui.sidebar.engineCount(engines.length)}</span>}
+            <span class="sec-summary">
+              {engines.map((e, idx) => {
+                const b = engineSummaryBadge(e);
+                const badgeClass =
+                  b.level === 'hot'
+                    ? 'hot lim-full'
+                    : b.level === 'warn'
+                      ? 'warn lim-warn'
+                      : b.level === 'err'
+                        ? 'err'
+                        : undefined;
+                return (
+                  <Fragment key={e.engine}>
+                    {idx > 0 && <span class="sec-sep"> · </span>}
+                    <span class={badgeClass}>{b.text}</span>
+                  </Fragment>
+                );
+              })}
+            </span>
           </h3>
-          {multi ? (
-            <EngineLimitsBody
-              variant={variant as Exclude<SidebarLimitsMode, 'header'>}
-              engines={engines}
-              current={data.provider}
-            />
-          ) : (
-            <>
-              <div class="kv">
-                {accountRows(data.account).map(([k, v]) => (
-                  <>
-                    <span>{k}</span>
-                    <b data-tip={v}>{v}</b>
-                  </>
-                ))}
-              </div>
-              {top === 'compact' && <AccountLine a={data.account} />}
-              <div class="lim">
-                {limits.map((l) => (
-                  <div
-                    class="row"
-                    key={l.key}
-                    data-tip={[l.label, l.note].filter(Boolean).join(' · ')}
-                  >
-                    <span>{l.label}</span>
-                    <span class={l.full ? 'n full' : 'n'}>{l.percent} %</span>
-                    <span class="bar">
-                      <i class={l.full ? 'full' : ''} style={{ width: `${l.percent}%` }} />
-                    </span>
-                    {l.note && <small>{l.note}</small>}
-                    {top === 'compact' && l.reset && (
-                      <em class="rs">{ui.sidebar.resetShort(l.reset)}</em>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
+          <EngineLimitsBody
+            variant={variant}
+            engines={engines}
+            current={data.provider}
+          />
         </section>
       )}
       {asSection && layout && layout.blocks.length > 0 && (
@@ -757,37 +684,56 @@ export function SidebarView({ look, data }: { look: SidebarLook; data: SidebarDa
           <span class="r" style={{ color: 'var(--fg-mute)' }}>
             {data.project}
           </span>
-          {top !== 'detailed' && <SidebarTaskPicker />}
+          <SidebarTaskPicker />
           <ListModeButton cur={look.list} />
         </h3>
-        {top === 'detailed' && <SidebarTaskPicker detailed />}
       </section>
-      <div class="tools" hidden={f.sessions}>
+      <div class="search-wrap" hidden={f.sessions}>
+        <svg
+          class="s-ic"
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.6"
+          aria-hidden="true"
+        >
+          <circle cx="7" cy="7" r="4.6" />
+          <path d="m10.5 10.5 3.2 3.2" stroke-linecap="round" />
+        </svg>
         <input
           type="search"
           placeholder={hasTasks ? ui.sidebar.tasks.searchWithTasks : ui.sidebar.search}
           aria-label={hasTasks ? ui.sidebar.tasks.searchWithTasks : ui.sidebar.search}
           value={q}
+          autoComplete="off"
           onInput={(e) => (query.value = e.currentTarget.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Escape' && query.value) {
-              e.preventDefault();
-              query.value = '';
+            if (e.key === 'Escape') {
+              if (query.value) {
+                e.preventDefault();
+                query.value = '';
+              } else {
+                e.currentTarget.blur();
+              }
             }
           }}
         />
-        <button
-          type="button"
-          data-tip={q ? ui.sidebar.searchClear : ui.sidebar.searchFocus}
-          aria-label={q ? ui.sidebar.searchClear : ui.sidebar.searchFocus}
-          onClick={(e) => {
-            const input = e.currentTarget.previousElementSibling as HTMLInputElement | null;
-            if (query.value) query.value = '';
-            input?.focus();
-          }}
-        >
-          {q ? '✕' : '⚲'}
-        </button>
+        {!q && <kbd class="search-kbd">/</kbd>}
+        {q ? (
+          <button
+            type="button"
+            class="search-clear"
+            data-tip={ui.sidebar.searchClear}
+            aria-label={ui.sidebar.searchClear}
+            onClick={(e) => {
+              query.value = '';
+              const inp = e.currentTarget.parentElement?.querySelector<HTMLInputElement>('input');
+              inp?.focus();
+            }}
+          >
+            ✕
+          </button>
+        ) : null}
       </div>
       <div class="list" hidden={f.sessions}>
         {asGroups && layout ? (
@@ -824,6 +770,7 @@ export function SidebarView({ look, data }: { look: SidebarLook; data: SidebarDa
                   ctxCol={look.context}
                   mixed={mixed}
                   current={data.current}
+                  listMode={look.list}
                 />
               ))}
             {layout.free.length > 0 && (
@@ -855,6 +802,7 @@ export function SidebarView({ look, data }: { look: SidebarLook; data: SidebarDa
                           ctxCol={look.context}
                           mixed={mixed}
                           nest
+                          listMode={look.list}
                         />
                       ))}
                     </>
@@ -878,6 +826,7 @@ export function SidebarView({ look, data }: { look: SidebarLook; data: SidebarDa
                     now={n}
                     ctxCol={look.context}
                     mixed={mixed}
+                    listMode={look.list}
                     {...(asSection && s.task ? { tag: s.task.key } : {})}
                   />
                 ))}

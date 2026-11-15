@@ -1,4 +1,5 @@
 import type { ComponentChildren } from 'preact';
+import type { AgentProvider } from '../../agent/types';
 import type { FeedRow } from '../chatState';
 import type { SessionSummary, TaskGroupSummary } from '../../protocol';
 import type { AgentsView, ComposerLayout, FeedStyle, GitLayout, TaskCardMode, TaskTabMode } from '../../settings';
@@ -109,11 +110,13 @@ function feedRows(now: number): FeedRow[] {
 function sidebarData(now: number): SidebarData {
   const min = 60_000;
   const states: SessionSummary['state'][] = ['live', 'waiting', 'idle', 'idle', 'idle'];
+  const providers: AgentProvider[] = ['claude', 'codex', 'antigravity', 'kimi', 'claude'];
   const ago = [0, 96 * min, 3 * 60 * min, 4 * 60 * min, 26 * 60 * min];
   const ctx = [131_000, 44_000, 12_000, 27_000, 168_000];
   const sessions = TEXT.sessions.map((title, i): SessionSummary => ({
     id: `s${i}`,
     title,
+    provider: providers[i] ?? 'claude',
     turns: [14, 3, 2, 7, 31][i] ?? 1,
     costUsd: [1.84, 0.42, 0.11, 0.93, 6.2][i] ?? 0,
     state: states[i] ?? 'idle',
@@ -610,13 +613,13 @@ function taskFixture(sessions: SessionSummary[]): { sessions: SessionSummary[]; 
   };
 }
 
-/** Боковая панель: верх, лимиты нескольких движков, список сессий или задачи Jira (группы / секция). */
+/** Боковая панель: вся панель, лимиты нескольких движков, список сессий или задачи Jira (группы / секция). */
 export function SidebarPreview({
   look,
   part,
 }: {
   look: SidebarLook;
-  part: 'top' | 'limits' | 'list' | 'tasks';
+  part: 'full' | 'limits' | 'list' | 'tasks';
 }) {
   const data = sidebarData(Date.now());
   if (part === 'tasks') {
@@ -625,7 +628,7 @@ export function SidebarPreview({
     data.tasks = fx.tasks;
   }
   if (part === 'limits') {
-    data.provider = 'claude';
+    data.provider = 'codex';
     data.engines = [
       {
         engine: 'codex',
@@ -634,7 +637,7 @@ export function SidebarPreview({
         plan: 'Plus',
         windows: [
           { kind: 'fiveHour', percent: 78, resetsAt: data.now + 60 * 60_000 },
-          { kind: 'weekly', percent: 41, resetsAt: data.now + 2 * 24 * 60 * 60_000 },
+          { kind: 'weekly', percent: 92, resetsAt: data.now + 2 * 24 * 60 * 60_000 },
         ],
         updatedAt: data.now,
       },
@@ -643,6 +646,13 @@ export function SidebarPreview({
         state: 'ok',
         email: TEXT.account.email,
         windows: [{ kind: 'model', name: 'Gemini', percent: 23 }],
+        updatedAt: data.now,
+      },
+      {
+        engine: 'kimi',
+        state: 'ok',
+        email: TEXT.account.email,
+        windows: [{ kind: 'fiveHour', percent: 14, resetsAt: data.now + 180 * 60_000 }],
         updatedAt: data.now,
       },
     ];

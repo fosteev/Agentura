@@ -3,6 +3,8 @@ import type { SessionSummary } from '../protocol';
 import {
   costLabel,
   dayLabel,
+  displaySessionTitle,
+  extractSessionTag,
   filterSessions,
   groupByDay,
   limitRows,
@@ -168,13 +170,105 @@ describe('лимиты', () => {
   });
 });
 
+describe('displaySessionTitle', () => {
+  it('пустые заголовки и пробелы отображаются как «Без названия · #<хвост>» с untitled: true', () => {
+    const s1 = { id: 'session_a6b9fb6b-7f7d', title: '' };
+    expect(displaySessionTitle(s1)).toEqual({ text: 'Без названия · #a6b9', untitled: true });
+    expect(s1.title).toBe(''); // исходный заголовок не мутируется
+
+    const s2 = { id: 'session_a6b9fb6b-7f7d', title: '   ' };
+    expect(displaySessionTitle(s2)).toEqual({ text: 'Без названия · #a6b9', untitled: true });
+  });
+
+  it('сырые авто-ID: title === id, session_<hex>, голый UUID отображаются как «Без названия · #<хвост>»', () => {
+    const rawId = 'session_a6b9fb6b-7f7d-404e-9cd1-abc';
+    expect(displaySessionTitle({ id: rawId, title: rawId })).toEqual({
+      text: 'Без названия · #a6b9',
+      untitled: true,
+    });
+    expect(displaySessionTitle({ id: 'any', title: 'session_a6b9fb6b_other' })).toEqual({
+      text: 'Без названия · #a6b9',
+      untitled: true,
+    });
+    expect(
+      displaySessionTitle({
+        id: 'c1',
+        title: 'a6b9fb6b-7f7d-404e-9cd1-0123456789ab',
+      }),
+    ).toEqual({
+      text: 'Без названия · #a6b9',
+      untitled: true,
+    });
+    expect(displaySessionTitle({ id: 'custom-id', title: 'custom-id' })).toEqual({
+      text: 'Без названия · #cust',
+      untitled: true,
+    });
+  });
+
+  it('срезает ведущий https://github.com/ и http://github.com/ у авто-заголовков из ссылок', () => {
+    expect(
+      displaySessionTitle({ id: 'x', title: 'https://github.com/benjitaylor/skills' }),
+    ).toEqual({
+      text: 'benjitaylor/skills',
+      untitled: false,
+    });
+    expect(
+      displaySessionTitle({ id: 'x', title: 'http://github.com/benjitaylor/skills' }),
+    ).toEqual({
+      text: 'benjitaylor/skills',
+      untitled: false,
+    });
+    expect(
+      displaySessionTitle({
+        id: 'x',
+        title: 'https://github.com/benjitaylor/skills — что это за скилл',
+      }),
+    ).toEqual({
+      text: 'benjitaylor/skills — что это за скилл',
+      untitled: false,
+    });
+    // если после срезания осталась пустая строка — считается untitled
+    expect(displaySessionTitle({ id: 'session_a6b9fb6b', title: 'https://github.com/' })).toEqual({
+      text: 'Без названия · #a6b9',
+      untitled: true,
+    });
+  });
+
+  it('обычный заголовок возвращается как есть с untitled: false', () => {
+    expect(displaySessionTitle({ id: 'x', title: 'Сборка свитчера лимитов' })).toEqual({
+      text: 'Сборка свитчера лимитов',
+      untitled: false,
+    });
+  });
+
+  it('extractSessionTag возвращает 4 hex-символа или префикс id', () => {
+    expect(extractSessionTag('session_a6b9fb6b-7f7d')).toBe('a6b9');
+    expect(extractSessionTag('a6b9fb6b-7f7d')).toBe('a6b9');
+    expect(extractSessionTag('xyz')).toBe('xyz');
+  });
+});
+
 describe('поиск', () => {
-  const rows = [row({ id: 'a', title: 'Плашка «нет связи»' }), row({ id: 'b', title: 'Ёлка' })];
+  const rows = [
+    row({ id: 'a', title: 'Плашка «нет связи»' }),
+    row({ id: 'b', title: 'Ёлка' }),
+    row({ id: 'session_a6b9fb6b-7f7d', title: 'session_a6b9fb6b-7f7d' }),
+    row({ id: 'd', title: 'https://github.com/benjitaylor/skills' }),
+  ];
+
   it('без регистра, ё = е, пробелы по краям не считаются; пустой запрос — всё', () => {
     expect(filterSessions(rows, ' ПЛАШ ').map((r) => r.id)).toEqual(['a']);
     expect(filterSessions(rows, 'елк').map((r) => r.id)).toEqual(['b']);
     expect(filterSessions(rows, '  ')).toEqual(rows);
     expect(filterSessions(rows, 'нет такой')).toEqual([]);
+  });
+
+  it('находит сессию по отображаемому названию (Без названия, срезанный github), короткому хвосту и исходному id', () => {
+    expect(filterSessions(rows, 'Без названия').map((r) => r.id)).toEqual(['session_a6b9fb6b-7f7d']);
+    expect(filterSessions(rows, 'a6b9').map((r) => r.id)).toEqual(['session_a6b9fb6b-7f7d']);
+    expect(filterSessions(rows, '#a6b9').map((r) => r.id)).toEqual(['session_a6b9fb6b-7f7d']);
+    expect(filterSessions(rows, 'session_').map((r) => r.id)).toEqual(['session_a6b9fb6b-7f7d']);
+    expect(filterSessions(rows, 'benjitaylor').map((r) => r.id)).toEqual(['d']);
   });
 });
 

@@ -3,7 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { AgentProvider } from '../../agent/types';
 import { NEW_CHAT_PROMPT_LIMIT } from '../../shared/task';
 import type { TaskPickerError, TaskPickerResult } from '../../shared/taskPicker';
-import { ENGINE_MARK, ENGINE_MARK_CLASS } from '../engineLimitsView';
+import { BrandIcon } from './BrandIcon';
 import { ui, uiLang } from '../strings';
 import { onHostMessage, send } from '../vscode';
 
@@ -29,7 +29,7 @@ function Floating({ children }: { children: ComponentChildren }) {
   return null;
 }
 
-export function SidebarTaskPicker({ detailed = false }: { detailed?: boolean }) {
+export function SidebarTaskPicker() {
   const t = ui.sidebar.taskPicker;
   const [menu, setMenu] = useState(false);
   const [opened, setOpened] = useState(false);
@@ -58,6 +58,15 @@ export function SidebarTaskPicker({ detailed = false }: { detailed?: boolean }) 
   useEffect(
     () =>
       onHostMessage((m) => {
+        if (m.type === 'task.picker.toggle') {
+          if (trigger.current?.closest('[inert]')) return;
+          setAnchor({
+            left: Math.max(8, window.innerWidth - 248),
+            top: 8,
+          });
+          setMenu((prev) => !prev);
+          return;
+        }
         if (
           (m.type !== 'task.picker.result' && m.type !== 'task.picker.done') ||
           m.requestId !== request.current
@@ -194,7 +203,7 @@ export function SidebarTaskPicker({ detailed = false }: { detailed?: boolean }) 
       <button
         type="button"
         ref={trigger}
-        class={detailed ? 'new' : 'add'}
+        class="add"
         aria-label={t.add}
         aria-haspopup="menu"
         aria-expanded={menu}
@@ -209,14 +218,6 @@ export function SidebarTaskPicker({ detailed = false }: { detailed?: boolean }) 
         }}
       >
         <span class="plus">＋</span>
-        {detailed && (
-          <>
-            {t.add}
-            <span aria-hidden="true" style={{ marginLeft: 'auto' }}>
-              ▾
-            </span>
-          </>
-        )}
       </button>
       {menu && (
         <Floating>
@@ -224,7 +225,7 @@ export function SidebarTaskPicker({ detailed = false }: { detailed?: boolean }) 
             class="sp-menu"
             role="menu"
             ref={menuRef}
-            style={{ left: anchor.left, top: anchor.top }}
+            style={{ left: `${anchor.left}px`, top: `${anchor.top}px` }}
           >
             <button
               type="button"
@@ -350,9 +351,7 @@ export function SidebarTaskPicker({ detailed = false }: { detailed?: boolean }) 
                                 disabled={acting}
                                 onClick={() => act(c.id, c.provider)}
                               >
-                                <i class={`mk ${ENGINE_MARK_CLASS[c.provider]}`}>
-                                  {ENGINE_MARK[c.provider]}
-                                </i>
+                                <BrandIcon provider={c.provider} />
                                 <span class="sp-chat-copy">
                                   {c.title}
                                   <small>
@@ -383,7 +382,7 @@ export function SidebarTaskPicker({ detailed = false }: { detailed?: boolean }) 
                               class={p === provider ? 'on' : ''}
                               onClick={() => setProvider(p)}
                             >
-                              <i class={`mk ${ENGINE_MARK_CLASS[p]}`}>{ENGINE_MARK[p]}</i>
+                              <BrandIcon provider={p} />
                               {ui.sidebar.providerNames[p]}
                             </button>
                           ))}

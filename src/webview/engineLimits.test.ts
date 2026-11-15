@@ -5,7 +5,7 @@ import { h, render } from 'preact';
 import { act } from 'preact/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EngineLimitsSummary, ToWebview } from '../protocol';
-import type { SidebarLimitsMode, SidebarTopMode } from '../settings';
+import type { SidebarLimitsMode } from '../settings';
 import { Sidebar } from './components/Sidebar';
 import { resetEngineLimitsState } from './components/EngineLimits';
 import * as vscode from './vscode';
@@ -43,10 +43,10 @@ const agy = (over: Partial<EngineLimitsSummary> = {}): EngineLimitsSummary => ({
 
 interface Setup {
   limits?: SidebarLimitsMode;
-  top?: SidebarTopMode;
+  top?: string;
   engines?: EngineLimitsSummary[];
-  provider?: 'claude' | 'codex' | 'antigravity';
-  hidden?: ('claude' | 'codex' | 'antigravity')[];
+  provider?: 'claude' | 'codex' | 'antigravity' | 'kimi';
+  hidden?: ('claude' | 'codex' | 'antigravity' | 'kimi')[];
 }
 
 async function mount(o: Setup = {}) {
@@ -70,8 +70,7 @@ async function mount(o: Setup = {}) {
       view: 'compact',
       context: true,
       time: true,
-      top: o.top ?? 'compact',
-      limits: o.limits ?? 'stack',
+      limits: o.limits ?? 'tabs',
       ...(o.hidden ? { hidden: o.hidden } : {}),
     });
     msg({ type: 'engines.limits', engines: o.engines ?? [codex(), agy()] });
@@ -99,334 +98,327 @@ beforeEach(() => {
 });
 afterEach(() => vi.restoreAllMocks());
 
-describe('лимиты нескольких движков в боковой панели', () => {
-  it('один Claude (codex/agy не установлены) — прежняя разметка при любом значении настройки', async () => {
-    for (const limits of ['stack', 'switch', 'table', 'active', 'header'] as const) {
-      const host = await mount({
-        limits,
-        engines: [codex({ state: 'missing', windows: [] }), agy({ state: 'missing', windows: [] })],
-      });
-      expect(q(host, '.sec.acc.multi')).toBeNull();
-      expect(q(host, '.sec.acc .kv')).not.toBeNull();
-      expect(qa(host, '.sec.acc .lim .row').length).toBe(3);
-      expect(q(host, '.hx')).toBeNull();
-      render(null, host);
-    }
+describe('блок «Лимиты» в боковой панели (roadmap 42, этап 2)', () => {
+  it('одиночный движок (Claude): компактная карточка .panel-body без полосы переключения', async () => {
+    const host = await mount({
+      engines: [codex({ state: 'missing', windows: [] }), agy({ state: 'missing', windows: [] })],
+    });
+    expect(q(host, 'h3').textContent).toContain('Лимиты');
+    expect(q(host, '.eng-tabs')).toBeNull();
+    expect(q(host, '.radar-grid')).toBeNull();
+    expect(q(host, '.acc-list')).toBeNull();
+    expect(q(host, '.hx')).toBeNull();
+    expect(q(host, '.head')).toBeNull();
+
+    const panel = q(host, '.sec.acc .panel-body');
+    expect(panel).not.toBeNull();
+    expect(panel.querySelector('.acc-id')?.textContent).toBe('a@b.c');
+    expect(panel.querySelector('.plan-chip')?.textContent).toBe('Max 5×');
+    expect(panel.querySelector('.ver-txt')?.textContent).toBe('Claude 2.1.285');
+
+    const rows = qa(panel, '.g-row');
+    expect(rows.length).toBe(3);
+    expect(rows.map((r) => r.querySelector('.g-lbl')?.textContent)).toEqual([
+      'Окно 5 часов',
+      'Неделя',
+      'Неделя · Fable',
+    ]);
+    expect(rows.map((r) => r.querySelector('.g-pct')?.textContent)).toEqual(['62%', '34%', '8%']);
   });
 
-  it('A stack: блок на движок, метка «вкладка» у текущего, аккаунт и окна', async () => {
-    const host = await mount({ limits: 'stack', provider: 'codex' });
-    expect(q(host, 'h3').textContent).toContain('Аккаунты и лимиты');
-    const engs = qa(host, '.sec.acc .eng');
-    expect(engs.map((e) => e.getAttribute('data-engine'))).toEqual([
+  it('A tabs: адаптивные вкладки, активная по currentProvider, BrandIcon, индикаторы .st-pip', async () => {
+    const host = await mount({ limits: 'tabs', provider: 'codex' });
+    expect(q(host, 'h3').textContent).toContain('Лимиты');
+
+    const tabs = qa(host, '.eng-tabs [role="tab"]');
+    expect(tabs.length).toBe(3);
+    expect(tabs.map((t) => t.getAttribute('data-eng'))).toEqual(['claude', 'codex', 'antigravity']);
+    expect(tabs.map((t) => t.querySelector('.tab-lbl')?.textContent)).toEqual([
+      'Claude',
+      'Codex',
+      'Antigravity',
+    ]);
+
+    // Логотипы движков BrandIcon
+    expect(tabs[0]!.querySelector('.brand')?.className).toContain('brand-claude');
+    expect(tabs[1]!.querySelector('.brand')?.className).toContain('brand-codex');
+    expect(tabs[2]!.querySelector('.brand')?.className).toContain('brand-antigravity');
+
+    // Активная вкладка — Codex (currentProvider)
+    expect(tabs[1]!.getAttribute('aria-selected')).toBe('true');
+    expect(tabs[1]!.tabIndex).toBe(0);
+    expect(tabs[0]!.getAttribute('aria-selected')).toBe('false');
+    expect(tabs[0]!.tabIndex).toBe(-1);
+
+    // Точки .st-pip (dark cockpit: ok скрыта, warn при >=70%, hot при >=85%)
+    expect(tabs[0]!.querySelector('.st-pip')?.className).toContain('ok');
+    expect(tabs[1]!.querySelector('.st-pip')?.className).toContain('warn');
+    expect(tabs[2]!.querySelector('.st-pip')?.className).toContain('hot');
+
+    // Панели вкладок
+    const activePanel = q(host, '.eng-panels [role="tabpanel"]:not([hidden])');
+    expect(activePanel.getAttribute('data-panel')).toBe('codex');
+    expect(activePanel.querySelector('.acc-id')?.textContent).toBe('x@y.z');
+    expect(activePanel.querySelector('.plan-chip')?.textContent).toBe('Plus');
+    expect(qa(activePanel, '.g-row').length).toBe(2);
+
+    // Клик по другой вкладке переключает отображаемую панель
+    tabs[2]!.click();
+    await flush();
+    const agyPanel = q(host, '.eng-panels [role="tabpanel"]:not([hidden])');
+    expect(agyPanel.getAttribute('data-panel')).toBe('antigravity');
+    expect(tabs[2]!.getAttribute('aria-selected')).toBe('true');
+    expect(tabs[1]!.getAttribute('aria-selected')).toBe('false');
+
+    // Смена провайдера от хоста сбрасывает ручной выбор
+    msg({ type: 'sessions.update', sessions: [], project: 'p', currentProvider: 'claude' });
+    await flush();
+    const claudePanel = q(host, '.eng-panels [role="tabpanel"]:not([hidden])');
+    expect(claudePanel.getAttribute('data-panel')).toBe('claude');
+  });
+
+  it('A tabs: клавиатурная навигация ArrowLeft / ArrowRight / Home / End', async () => {
+    const host = await mount({ limits: 'tabs', provider: 'claude' });
+    const tabClaude = q(host, '[data-eng="claude"]');
+    const tabCodex = q(host, '[data-eng="codex"]');
+    const tabAgy = q(host, '[data-eng="antigravity"]');
+
+    expect(tabClaude.getAttribute('aria-selected')).toBe('true');
+
+    // ArrowRight: claude -> codex
+    tabClaude.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    await flush();
+    expect(tabCodex.getAttribute('aria-selected')).toBe('true');
+    expect(tabClaude.getAttribute('aria-selected')).toBe('false');
+
+    // ArrowRight: codex -> antigravity
+    tabCodex.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    await flush();
+    expect(tabAgy.getAttribute('aria-selected')).toBe('true');
+
+    // ArrowRight wrapping: antigravity -> claude
+    tabAgy.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    await flush();
+    expect(tabClaude.getAttribute('aria-selected')).toBe('true');
+
+    // ArrowLeft wrapping: claude -> antigravity
+    tabClaude.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+    await flush();
+    expect(tabAgy.getAttribute('aria-selected')).toBe('true');
+
+    // Home: antigravity -> claude
+    tabAgy.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+    await flush();
+    expect(tabClaude.getAttribute('aria-selected')).toBe('true');
+
+    // End: claude -> antigravity
+    tabClaude.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+    await flush();
+    expect(tabAgy.getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('B radar: микро-плитки всех движков + детали активного ниже', async () => {
+    const host = await mount({ limits: 'radar', provider: 'codex' });
+    expect(q(host, '.radar-grid')).not.toBeNull();
+    const tiles = qa(host, '.radar-grid .r-tile');
+    expect(tiles.length).toBe(3);
+    expect(tiles.map((t) => t.getAttribute('data-radar'))).toEqual([
       'claude',
       'codex',
       'antigravity',
     ]);
-    expect(qa(host, '.sec.acc .mk').map((e) => e.textContent)).toEqual(['C', 'X', 'G']);
-    expect(engs[1]!.querySelector('.now')?.textContent).toBe('вкладка');
-    expect(host.querySelectorAll('.sec.acc .now').length).toBe(1);
-    expect(engs[1]!.querySelector('.eh span')?.textContent).toBe('x@y.z · Plus');
-    expect(engs[1]!.querySelector('.eh')?.getAttribute('data-tip')).toContain('codex 0.160.0');
-    expect(engs[1]!.querySelectorAll('.L').length).toBe(2);
-    expect(engs[2]!.querySelectorAll('.L').length).toBe(2);
-    expect(engs[0]!.querySelectorAll('.L').length).toBe(3);
-    expect(engs[1]!.querySelector('.L.lim-warn .n')?.textContent).toBe('78 %');
-    expect(engs[2]!.querySelector('.L.lim-full .n')?.textContent).toBe('91 %');
-    expect(q(host, '.sec.acc .kv')).toBeNull();
-  });
 
-  it('B switch: сегменты, по умолчанию выбран движок вкладки, клик выбирает руками до смены вкладки', async () => {
-    const host = await mount({ limits: 'switch', provider: 'codex' });
-    expect(q(host, 'h3').textContent).toContain('Аккаунт и лимиты');
-    const sel = () =>
-      qa(host, '.seg [role="tab"]')
-        .filter((b) => b.getAttribute('aria-selected') === 'true')
-        .map((b) => b.getAttribute('data-engine'));
-    expect(qa(host, '.seg [role="tab"]').length).toBe(3);
-    expect(sel()).toEqual(['codex']);
-    expect(q(host, '.who b')?.textContent).toBe('x@y.z');
-    expect(qa(host, '.lims .L').length).toBe(2);
-    // точка худшего лимита: у Antigravity 91 % — красная
-    expect(q(host, '.seg [data-engine="antigravity"]').classList.contains('lim-full')).toBe(true);
-    q(host, '.seg [data-engine="antigravity"]').click();
-    await flush();
-    expect(sel()).toEqual(['antigravity']);
-    q(host, '.seg [data-engine="claude"]').click();
-    await flush();
-    expect(sel()).toEqual(['claude']);
-    expect(q(host, '.who b')?.textContent).toBe('a@b.c');
-    expect(qa(host, '.lims .L').length).toBe(3);
-    // сменился движок вкладки — ручной выбор сброшен
-    msg({ type: 'sessions.update', sessions: [], project: 'p', currentProvider: 'antigravity' });
-    await flush();
-    expect(sel()).toEqual(['antigravity']);
-  });
-
-  it('C table: строка на движок, до трёх ячеек, пустые — «—», Antigr., сброс в data-tip', async () => {
-    const host = await mount({ limits: 'table' });
-    expect(q(host, 'h3').textContent).toContain('Лимиты');
-    expect(qa(host, '.grid .nm').map((e) => e.textContent)).toEqual([
-      'C' + 'Claude',
-      'XCodex',
-      'GAntigr.',
+    expect(tiles.map((t) => t.querySelector('.r-val')?.textContent)).toEqual([
+      '62%',
+      '78%',
+      '91%',
     ]);
-    expect(qa(host, '.grid .c').length).toBe(9);
-    expect(qa(host, '.grid .c.none').length).toBe(2); // Codex и Antigravity — по два окна
-    expect(qa(host, '.grid .c em').map((e) => e.textContent)).toEqual([
-      '5 ч',
-      'нед',
-      'Fable',
-      '5 ч',
-      'нед',
-      'Gemini',
-      'Claude/GPT',
-    ]);
-    expect(q(host, '.grid .c.lim-warn')?.getAttribute('data-tip')).toContain('сброс');
-    expect(q(host, '.grid .c.lim-warn .n')?.textContent).toBe('78%');
-  });
+    expect(tiles[1]!.getAttribute('aria-selected')).toBe('true');
+    expect(tiles[1]!.className).toContain('warn');
+    expect(tiles[2]!.className).toContain('hot');
 
-  it('C table: отображает все 5 окон Antigravity с правильными подписями без обрезки', async () => {
-    const agy5 = agy({
-      windows: [
-        { kind: 'model', name: 'Gemini 5ч', percent: 3, resetsAt: soon },
-        { kind: 'model', name: 'Gemini 7д', percent: 1, resetsAt: soon },
-        { kind: 'model', name: 'Claude/GPT 5ч', percent: 0, resetsAt: soon },
-        { kind: 'model', name: 'Claude/GPT 7д', percent: 0, resetsAt: soon },
-        { kind: 'model', name: 'Gemini 4 Argon 7д', percent: 34, resetsAt: soon },
-      ],
-    });
-    const host = await mount({ limits: 'table', engines: [codex(), agy5] });
-    const agyCells = qa(host, '.grid .c em').slice(5);
-    expect(agyCells.map((e) => e.textContent)).toEqual([
-      'Gemini 5ч',
-      'Gemini 7д',
-      'Claude/GPT 5ч',
-      'Claude/GPT 7д',
-      'Gemini 4 Argon 7д',
-    ]);
-  });
+    const detail = q(host, '.radar-detail');
+    expect(detail.querySelector('.acc-id')?.textContent).toBe('x@y.z');
 
-  it('D active: текущий раскрыт, остальные строкой с худшим окном, клик раскрывает другой', async () => {
-    const host = await mount({ limits: 'active', provider: 'codex' });
-    expect(q(host, '.exp')?.getAttribute('data-engine')).toBe('codex');
-    expect(q(host, '.exp .one.hd .acc')?.textContent).toContain('x@y.z · Plus');
-    expect(qa(host, '.exp .L').length).toBe(2);
-    const rest = qa(host, '.one[role="button"]');
-    expect(rest.map((r) => r.getAttribute('data-engine'))).toEqual(['claude', 'antigravity']);
-    expect(rest[1]!.querySelector('.n')?.textContent).toBe('91 %'); // худший у Antigravity
-    expect(rest[1]!.classList.contains('lim-full')).toBe(true);
-    rest[1]!.click();
+    // Клик по плитке Antigravity переключает детальную панель
+    tiles[2]!.click();
     await flush();
-    expect(q(host, '.exp')?.getAttribute('data-engine')).toBe('antigravity');
-    expect(host.querySelectorAll('.exp').length).toBe(1); // раскрыт всегда один
-    expect(qa(host, '.one[role="button"]').map((r) => r.getAttribute('data-engine'))).toEqual([
+    expect(tiles[2]!.getAttribute('aria-selected')).toBe('true');
+    expect(tiles[1]!.getAttribute('aria-selected')).toBe('false');
+    expect(detail.querySelector('.ver-txt')?.textContent).toBe('agy 1.4');
+  });
+
+  it('C list: аккордеон с мини-шкалой и раскрытием окон движка', async () => {
+    const host = await mount({ limits: 'list', provider: 'codex' });
+    expect(q(host, '.acc-list')).not.toBeNull();
+    const items = qa(host, '.acc-list .acc-item');
+    expect(items.length).toBe(3);
+    expect(items.map((it) => it.getAttribute('data-acc'))).toEqual([
       'claude',
       'codex',
+      'antigravity',
     ]);
-    // сменилась вкладка — раскрыт текущий
-    msg({ type: 'sessions.update', sessions: [], project: 'p', currentProvider: 'claude' });
+
+    // По умолчанию раскрыт движок вкладки (codex)
+    expect(items[1]!.className).toContain('open');
+    expect(items[0]!.className).not.toContain('open');
+    expect(items[2]!.className).not.toContain('open');
+
+    expect(items[1]!.querySelector('.acc-sub .acc-id')?.textContent).toBe('x@y.z');
+    expect(qa(items[1]!, '.acc-sub .g-row').length).toBe(2);
+
+    // Клик по Claude раскрывает его
+    items[0]!.querySelector<HTMLButtonElement>('.acc-row-btn')!.click();
     await flush();
-    expect(q(host, '.exp')?.getAttribute('data-engine')).toBe('claude');
+    expect(items[0]!.className).toContain('open');
+    expect(qa(items[0]!, '.acc-sub .g-row').length).toBe(3);
+
+    // Повторный клик по Claude сворачивает его
+    items[0]!.querySelector<HTMLButtonElement>('.acc-row-btn')!.click();
+    await flush();
+    expect(items[0]!.className).not.toContain('open');
+    expect(items[0]!.querySelector('.acc-sub')).toBeNull();
   });
 
-  it('E header: мини-шкалы в заголовке, секции нет, всплывашка по клику, закрытие Esc / мимо / повтор', async () => {
-    const host = await mount({ limits: 'header' });
-    expect(q(host, '.sec.acc')).toBeNull();
-    expect(qa(host, '.head .hx .m').map((m) => m.querySelector('.n')?.textContent)).toEqual([
-      '62',
-      '78',
-      '91',
-    ]);
-    expect(q(host, '.head .hx .m.lim-full')?.getAttribute('data-engine')).toBe('antigravity');
-    expect(q(host, '.pop')).toBeNull();
-    await act(() => q(host, '.hx .mm').click());
-    expect(qa(host, '.pop .eng').length).toBe(3);
-    expect(q(host, '.pop .now')).toBeNull();
-    await act(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); });
-    expect(q(host, '.pop')).toBeNull();
-    await act(() => q(host, '.hx .mm').click());
-    await act(() => { document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); });
-    expect(q(host, '.pop')).toBeNull();
-    await act(() => q(host, '.hx .mm').click());
-    expect(q(host, '.pop')).not.toBeNull();
-    await act(() => {
-      q(host, '.hx .mm').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-      q(host, '.hx .mm').click();
-    });
-    expect(q(host, '.pop')).toBeNull();
-    // ↻ в заголовке просит обновить лимиты
-    q(host, '.hx .refresh').click();
-    expect(posted).toContainEqual({ type: 'limits.refresh' });
-  });
+  it('сворачивание секции и инлайн-сводка .sec-summary', async () => {
+    const host = await mount({ limits: 'tabs' });
+    const h3 = q(host, '.sec.acc h3');
 
-  it('скрыты Codex и Antigravity — прежняя разметка Claude', async () => {
-    const host = await mount({ limits: 'stack', hidden: ['codex', 'antigravity'] });
-    expect(q(host, '.sec.acc.multi')).toBeNull();
-    expect(q(host, '.sec.acc .kv')).not.toBeNull();
-    expect(qa(host, '.sec.acc .lim .row').length).toBe(3);
-  });
+    // В развёрнутом виде виден счетчик .sec-meta
+    expect(q(host, '.sec-meta')?.textContent).toBe('3 движка');
 
-  it('скрыт Claude — остальные движки карточками; один оставшийся не-Claude — тоже вариант из настройки', async () => {
-    let host = await mount({ limits: 'stack', hidden: ['claude'] });
-    expect(qa(host, '.sec.acc .eng').map((e) => e.getAttribute('data-engine'))).toEqual(['codex', 'antigravity']);
-    expect(q(host, '.sec.acc .kv')).toBeNull();
-    render(null, host);
-    host = await mount({ limits: 'stack', hidden: ['claude', 'antigravity'] });
-    expect(q(host, '.sec.acc.multi')).not.toBeNull();
-    expect(qa(host, '.sec.acc .eng').map((e) => e.getAttribute('data-engine'))).toEqual(['codex']);
-    expect(q(host, '.sec.acc .kv')).toBeNull();
-  });
+    // Сворачивание секции
+    h3.click();
+    await flush();
+    expect(q(host, '.sec.acc').className).toContain('folded');
 
-  it('скрыты все движки — нет ни секции лимитов, ни шкал в заголовке', async () => {
-    for (const top of ['compact', 'dense'] as const) {
-      const host = await mount({ top, limits: 'header', hidden: ['claude', 'codex', 'antigravity'] });
-      expect(q(host, '.sec.acc')).toBeNull();
-      expect(q(host, '.head .hx')).toBeNull();
-      expect(q(host, '.head .hl')).toBeNull();
-      expect(q(host, '.head')?.getAttribute('data-tip')).toBeNull();
-      render(null, host);
-    }
-  });
+    // Сводка .sec-summary выводит статус каждого движка
+    const summary = q(host, '.sec-summary');
+    expect(summary.textContent).toBe('Claude 62% · Codex 78% · AGY 91%');
+    expect(summary.querySelector('.hot')?.textContent).toBe('AGY 91%');
+    expect(summary.querySelector('.warn')?.textContent).toBe('Codex 78%');
 
-  it('top=dense при ≥ 2 движках рисует вариант header независимо от настройки', async () => {
-    const host = await mount({ limits: 'table', top: 'dense' });
-    expect(q(host, '.head .hx')).not.toBeNull();
-    expect(q(host, '.sec.acc')).toBeNull();
-    expect(q(host, '.head .hl')).toBeNull();
-  });
-
-  it('signedOut: «не вошли · войти» шлёт engine.login; loading — «обновляется…»; error — текст в data-tip', async () => {
-    const host = await mount({
-      limits: 'stack',
-      engines: [
-        codex({ state: 'signedOut', windows: [], email: undefined, plan: undefined }),
-        agy({ state: 'loading', windows: [] }),
-      ],
-    });
-    const cx = q(host, '.eng[data-engine="codex"]');
-    expect(cx.querySelector('.eh')?.textContent).toContain('не вошли');
-    expect(cx.querySelector('.L')).toBeNull();
-    cx.querySelector<HTMLElement>('.signin')!.click();
-    expect(posted).toContainEqual({ type: 'engine.login', engine: 'codex' });
-    expect(q(host, '.eng[data-engine="antigravity"] .wait')?.textContent).toBe('обновляется…');
+    // При ошибке Antigravity сводка показывает «AGY !»
     msg({
       type: 'engines.limits',
       engines: [
-        codex({ state: 'error', error: 'timeout' }),
+        codex(),
         agy({ state: 'error', windows: [], error: 'Eligibility check failed' }),
       ],
     });
     await flush();
-    expect(q(host, '.eng[data-engine="codex"] .eh')?.getAttribute('data-tip')).toContain('timeout');
-    expect(qa(host, '.eng[data-engine="codex"] .L').length).toBe(2); // последние известные окна
-    expect(q(host, '.eng[data-engine="antigravity"] .wait')?.textContent).toBe('Eligibility check failed');
-    expect(q(host, '.eng[data-engine="antigravity"] .eh')?.getAttribute('data-tip')).toContain(
-      'Eligibility check failed',
-    );
-    msg({
-      type: 'engines.limits',
-      engines: [
-        codex({ state: 'error', error: 'timeout' }),
-        agy({ state: 'missing', windows: [] }),
-      ],
-    });
-    await flush();
-    expect(host.querySelectorAll('.eng[data-engine="antigravity"]').length).toBe(0);
+    expect(q(host, '.sec-summary').textContent).toBe('Claude 62% · Codex 78% · AGY !');
+    expect(q(host, '.sec-summary .err')?.textContent).toBe('AGY !');
   });
 
-  it('Kimi signedOut показывает K и login без выдуманных email/plan/окон', async () => {
+  it('.diag-box для state=error: многострочный текст ошибки, Сменить аккаунт и Скрыть вкладку', async () => {
+    const errText =
+      'Eligibility check failed: Your current account is not eligible for Antigravity, because it is not currently available in your location.';
     const host = await mount({
-      limits: 'stack',
-      engines: [{ engine: 'kimi', state: 'signedOut', version: 'kimi 2.6.0', windows: [], updatedAt: Date.now() }],
+      limits: 'tabs',
+      provider: 'antigravity',
+      engines: [codex(), agy({ state: 'error', windows: [], error: errText })],
     });
-    const card = q(host, '.eng[data-engine="kimi"]');
-    expect(card.querySelector('.mk.kimi')?.textContent).toBe('K');
-    expect(card.textContent).toContain('не вошли');
-    expect(card.querySelector('.L')).toBeNull();
-    expect(card.textContent).not.toContain('@');
-    card.querySelector<HTMLElement>('.signin')!.click();
+
+    const diag = q(host, '.diag-box');
+    expect(diag).not.toBeNull();
+    expect(diag.querySelector('.diag-hd')?.textContent).toContain('Квота недоступна');
+    expect(diag.querySelector('.diag-hd')?.textContent).toContain('agy 1.4');
+    expect(diag.querySelector('.diag-msg')?.textContent).toBe(errText);
+
+    // Проверяем отсутствие обрезки в одну строку и отсутствие серой точки okd
+    expect(diag.querySelector('.okd')).toBeNull();
+
+    // Кнопка «Сменить аккаунт» отправляет engine.login
+    const loginBtn = diag.querySelector<HTMLButtonElement>('.act-login')!;
+    expect(loginBtn.textContent).toBe('Сменить аккаунт');
+    loginBtn.click();
+    expect(posted).toContainEqual({ type: 'engine.login', engine: 'antigravity' });
+
+    // Кнопка «Скрыть вкладку» отправляет sidebar.hideEngine
+    const hideBtn = diag.querySelector<HTMLButtonElement>('.act-hide')!;
+    expect(hideBtn.textContent).toBe('Скрыть вкладку');
+    hideBtn.click();
+    expect(posted).toContainEqual({ type: 'sidebar.hideEngine', engine: 'antigravity' });
+  });
+
+  it('.diag-box для state=signedOut: приглашение ко входу, Войти и Скрыть вкладку', async () => {
+    const host = await mount({
+      limits: 'tabs',
+      provider: 'codex',
+      engines: [
+        codex({ state: 'signedOut', windows: [], email: undefined, plan: undefined }),
+        agy(),
+      ],
+    });
+
+    const diag = q(host, '.diag-box');
+    expect(diag).not.toBeNull();
+    expect(diag.querySelector('.diag-hd')?.textContent).toContain('Вход не выполнен');
+
+    const loginBtn = diag.querySelector<HTMLButtonElement>('.act-login')!;
+    expect(loginBtn.textContent).toBe('Войти');
+    loginBtn.click();
+    expect(posted).toContainEqual({ type: 'engine.login', engine: 'codex' });
+
+    const hideBtn = diag.querySelector<HTMLButtonElement>('.act-hide')!;
+    hideBtn.click();
+    expect(posted).toContainEqual({ type: 'sidebar.hideEngine', engine: 'codex' });
+  });
+
+  it('Kimi signedOut в аккордеоне и радаре: показывает статус без выдуманных email/плана', async () => {
+    const host = await mount({
+      limits: 'radar',
+      provider: 'kimi',
+      engines: [
+        { engine: 'kimi', state: 'signedOut', version: 'kimi 2.6.0', windows: [], updatedAt: Date.now() },
+      ],
+    });
+
+    const tile = q(host, '.radar-grid .r-tile[data-radar="kimi"]');
+    expect(tile.className).toContain('err');
+    expect(tile.querySelector('.r-val')?.textContent).toBe('!');
+
+    const diag = q(host, '.radar-detail .diag-box');
+    expect(diag).not.toBeNull();
+    expect(diag.textContent).not.toContain('@');
+
+    diag.querySelector<HTMLButtonElement>('.act-login')!.click();
     expect(posted).toContainEqual({ type: 'engine.login', engine: 'kimi' });
   });
 
-  it('signedOut в таблице и в D', async () => {
-    const host = await mount({
-      limits: 'table',
-      engines: [codex({ state: 'signedOut', windows: [] }), agy({ state: 'loading', windows: [] })],
-    });
-    expect(q(host, '.grid .off .signin')).not.toBeNull();
-    expect(qa(host, '.grid .c.none').length).toBe(3); // у Antigravity (loading) три «—»; у Codex — «не вошли»
-    msg({
-      type: 'sidebar.view',
-      view: 'compact',
-      context: true,
-      time: true,
-      top: 'compact',
-      limits: 'active',
-    });
-    await flush();
-    expect(q(host, '.one[data-engine="codex"] .signin')).not.toBeNull();
-    expect(q(host, '.one[data-engine="antigravity"] .wait')?.textContent).toBe('обновляется…');
+  it('скрытие движков через hidden: отбрасывание из списка и скрытие всей секции', async () => {
+    let host = await mount({ hidden: ['codex', 'antigravity'] });
+    // Остался только Claude -> режим одиночного движка
+    expect(q(host, '.eng-tabs')).toBeNull();
+    expect(q(host, '.sec.acc .panel-body')).not.toBeNull();
+    render(null, host);
+
+    // Скрыты все движки -> секция отсутствует
+    host = await mount({ hidden: ['claude', 'codex', 'antigravity'] });
+    expect(q(host, '.sec.acc')).toBeNull();
   });
 
-  it('длинная ошибка движка: полный текст остаётся в data-tip во всех раскладках и не мешает переключать движки', async () => {
-    const longErr =
-      'Eligibility check failed: Your current account is not eligible for Antigravity, because it is not currently available in your location.';
-    const engines = [codex(), agy({ state: 'error', windows: [], error: longErr })];
-
-    const sw = await mount({ limits: 'switch', provider: 'antigravity', engines });
-    expect(q(sw, '.who .wait')?.textContent).toBe(longErr);
-    expect(q(sw, '.who')?.getAttribute('data-tip')).toContain(longErr);
-    expect(q(sw, '.seg [data-engine="antigravity"]')?.getAttribute('data-tip')).toContain(longErr);
-    q(sw, '.seg [data-engine="codex"]').click();
-    await flush();
-    expect(q(sw, '.who b')?.textContent).toBe('x@y.z');
-    expect(qa(sw, '.lims .L').length).toBe(2);
-
-    const tbl = await mount({ limits: 'table', engines });
-    expect(q(tbl, '.grid .off')?.getAttribute('data-tip')).toContain(longErr);
-
-    const hdr = await mount({ limits: 'header', engines });
-    expect(q(hdr, '.head .hx .m[data-engine="antigravity"]')?.getAttribute('data-tip')).toContain(longErr);
-  });
-
-  it('hud.css ограничивает ширину сетки .sidebar и обрезает .wait троеточием вместо растяжения панели', () => {
+  it('hud.css содержит container query, стили брендовых SVG и плавные переходы', () => {
     const css = readFileSync(join(__dirname, '..', '..', 'media', 'hud.css'), 'utf8');
-    expect(css).toMatch(/\.sidebar\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/);
-    expect(css).toMatch(/\.sidebar\s*>\s*\*\s*\{[^}]*min-width:\s*0/);
-    expect(css).toMatch(
-      /\.sidebar\s+\.wait\s*\{(?=[^}]*min-width:\s*0)(?=[^}]*overflow:\s*hidden)(?=[^}]*text-overflow:\s*ellipsis)(?=[^}]*white-space:\s*nowrap)[^}]*\}/,
-    );
-  });
 
-  it('hud.css задаёт плавные переходы для всех полос лимитов, шевронов и сегментов сайдбара', () => {
-    const css = readFileSync(join(__dirname, '..', '..', 'media', 'hud.css'), 'utf8');
-    const barSelectors = [
-      String.raw`\.sidebar\s+\.lim\s+\.row\s+\.bar\s+i`,
-      String.raw`\.sidebar\s+\.head\s+\.hl\s+\.m\s+i\s+b`,
-      String.raw`\.sidebar\s+\.L\s+\.bar\s+i`,
-      String.raw`\.sidebar\s+\.grid\s+\.c\s+\.bar\s+i`,
-      String.raw`\.sidebar\s+\.one\s+\.bar\s+i`,
-      String.raw`\.sidebar\s+\.hx\s+\.m\s+i\.b\s+b`,
-    ];
-    for (const sel of barSelectors) {
-      expect(css, sel).toMatch(
-        new RegExp(
-          `${sel}\\s*\\{[^}]*transition:\\s*width\\s+var\\(--dur\\)\\s+var\\(--ease-out\\),\\s*background-color\\s+var\\(--dur\\)\\s+ease;`,
-        ),
-      );
-    }
-    expect(css).toMatch(
-      /\.sidebar\s+\.sec\s+h3\s+\.tri\s*\{[^}]*transition:\s*transform\s+var\(--dur-fast\)\s+var\(--ease-out\);/,
-    );
-    expect(css).toMatch(
-      /\.sidebar\s+\.one\s+\.tw\s*\{(?=[^}]*border-left:\s*5px\s+solid\s+var\(--fg-mute\);)(?=[^}]*transform-origin:\s*25%\s+50%;)(?=[^}]*transition:\s*transform\s+var\(--dur-fast\)\s+var\(--ease-out\);)[^}]*\}/,
-    );
-    expect(css).toMatch(
-      /\.sidebar\s+\.one\s+\.tw\.open\s*\{(?=[^}]*border-left:\s*5px\s+solid\s+var\(--fg-mute\);)(?=[^}]*transform:\s*rotate\(90deg\);)(?![^}]*border-top:)[^}]*\}/,
-    );
-    expect(css).toMatch(
-      /\.sidebar\s+\.seg\s+button\s*\{[^}]*transition:\s*background-color\s+var\(--dur-fast\)\s+ease,\s*color\s+var\(--dur-fast\)\s+ease,\s*box-shadow\s+var\(--dur-fast\)\s+ease;/,
-    );
+    // Контейнерные запросы на .sidebar
+    expect(css).toMatch(/\.sidebar\s*\{[^}]*container:\s*sidebar\s*\/\s*inline-size/);
+    expect(css).toMatch(/@container\s+sidebar\s+\(max-width:\s*345px\)\s*\{[^}]*\.tab-lbl\s*\{[^}]*display:\s*none/);
+
+    // Брендовые SVG и переключение тёмной темы
+    expect(css).toMatch(/(?:\.sidebar|:is\([^)]*\.sidebar[^)]*\))\s+\.brand-claude\s*\{[^}]*claude-color\.svg/);
+    expect(css).toMatch(/(?:\.sidebar|:is\([^)]*\.sidebar[^)]*\))\s+\.brand-codex\s*\{[^}]*openai\.svg/);
+    expect(css).toMatch(/body\.vscode-dark[^{]*\.brand-codex\s*\{[^}]*openai-dark\.svg/);
+    expect(css).toMatch(/body\.vscode-dark[^{]*\.brand-kimi\s*\{[^}]*kimi-dark\.svg/);
+
+    // Плавные переходы для полос и шеврона
+    expect(css).toMatch(/\.sidebar\s+\.g-bar\s*>\s*i\s*\{[^}]*transition:\s*width\s+var\(--dur\)\s+var\(--ease-out\)/);
+    expect(css).toMatch(/\.sidebar\s+\.r-track\s*>\s*i\s*\{[^}]*transition:\s*width\s+var\(--dur\)\s+var\(--ease-out\)/);
+    expect(css).toMatch(/\.sidebar\s+\.acc-row-btn\s+\.g-bar\s*>\s*i\s*\{[^}]*transition:\s*width\s+var\(--dur\)\s+var\(--ease-out\)/);
+    expect(css).toMatch(/\.sidebar\s+\.sec\s+h3\s+\.tri\s*\{[^}]*transition:\s*transform\s+var\(--dur-fast\)\s+var\(--ease-out\)/);
+
+    // Многострочный текст ошибки
+    expect(css).toMatch(/\.sidebar\s+\.diag-msg\s*\{(?=[^}]*word-break:\s*break-word)(?=[^}]*white-space:\s*normal)[^}]*\}/);
   });
 });

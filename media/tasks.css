@@ -38,7 +38,6 @@
 /* «Архив» в списке без задач идёт сразу за строками — своя черта сверху (в группах её даёт .tgp + .tgp) */
 .sidebar .tgp.arch { border-top: 1px solid var(--line); }
 .sidebar .tgp .day { padding-left: 28px; }
-.sidebar .s.nest .t .mk { margin-right: 6px; vertical-align: -2px; }
 
 /* C · секция «Задачи» (tasks.sidebar = section) */
 .sidebar .sec.tasks { max-height: 45%; overflow: auto; }
@@ -55,11 +54,8 @@
 .sidebar[data-tasks="section"] > * { flex: none; }
 .sidebar[data-tasks="section"] > .list { flex: 1 1 0; min-height: 0; }
 
-/* метка ключа справа в строке сессии (section): ещё одна колонка перед контекстом и временем */
+/* метка ключа справа в строке сессии (section) */
 .sidebar .s .tag { font: 10.5px/15px var(--mono); padding: 0 4px; border-radius: 3px; background: var(--bg-code); color: var(--fg-mute); white-space: nowrap; align-self: center; }
-.sidebar .s.tagged { grid-template-columns: 10px 1fr auto auto auto; }
-.sidebar:is([data-ctx="off"], [data-time="off"]) .s.tagged { grid-template-columns: 10px 1fr auto auto; }
-.sidebar[data-ctx="off"][data-time="off"] .s.tagged { grid-template-columns: 10px 1fr auto; }
 
 /* ───── чат по задаче (roadmap 19, этап 5): полоска и вкладка «задача» правой панели.
    Эталон — prototype/screens/task-mode.html, prototype/shared/tasks.css (блок «режим задачи») ───── */

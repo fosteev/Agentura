@@ -1,444 +1,430 @@
 import { signal } from '@preact/signals';
-import { Fragment } from 'preact';
-import { useEffect } from 'preact/hooks';
+import { useId } from 'preact/hooks';
 import type { SidebarLimitsMode } from '../../settings';
-import { limitLevel } from '../hudView';
 import {
-  ENGINE_MARK,
-  ENGINE_MARK_CLASS,
   engineName,
   pickEngine,
   worstWindow,
   type EngineId,
   type EngineView,
-  type EngineWindowView,
 } from '../engineLimitsView';
 import { ui } from '../strings';
 import { send } from '../vscode';
+import { BrandIcon } from './BrandIcon';
 
 /**
- * Лимиты нескольких движков (roadmap 18): пять вариантов по `prototype/screens/limits-multi.html`. Здесь только
- * разметка вариантов; секция, заголовок и ↻ — в `Sidebar.tsx`. Состояние выбора живёт в сигналах и привязано к
- * движку открытой вкладки: сменился `currentProvider` — ручной выбор сбрасывается.
+ * Лимиты нескольких движков (roadmap 42, этап 2):
+ * - tabs: адаптивные вкладки с `interpolate-size: allow-keywords`, скрытием подписи на <345px, pip-точками и навигацией стрелками
+ * - radar: сетка микро-плиток всех движков + детали выбранного ниже
+ * - list: плотный вертикальный аккордеон с мини-шкалой в строке
+ * - .diag-box: читаемый блок для error и signedOut с кнопками «Сменить аккаунт»/«Войти» и «Скрыть вкладку»
  */
 
 interface Manual {
   engine: EngineId;
   base: EngineId | undefined;
 }
-/** B: движок, выбранный руками. */
+
+interface ListState {
+  base: EngineId | undefined;
+  open: Set<EngineId>;
+}
+
 const picked = signal<Manual | undefined>(undefined);
-/** D: движок, раскрытый кликом. */
-const expanded = signal<Manual | undefined>(undefined);
-/** E: всплывашка открыта. */
-const popOpen = signal(false);
+const listState = signal<ListState | undefined>(undefined);
 
-export function engineLimitsTitle(variant: SidebarLimitsMode): string {
-  return variant === 'table'
-    ? ui.sidebar.limitsTitle
-    : variant === 'switch'
-      ? ui.sidebar.account
-      : ui.sidebar.accounts;
+function getListOpenSet(engines: EngineView[], current: EngineId | undefined): Set<EngineId> {
+  const cur = listState.value;
+  if (cur && cur.base === current) {
+    return cur.open;
+  }
+  const def = pickEngine(engines, current, undefined);
+  return new Set<EngineId>(def ? [def] : []);
 }
 
-const lv = (percent: number | undefined): string =>
-  percent === undefined ? '' : limitLevel(percent);
-
-function Mark({ engine }: { engine: EngineId }) {
-  return <i class={`mk ${ENGINE_MARK_CLASS[engine]}`}>{ENGINE_MARK[engine]}</i>;
+export function engineLimitsTitle(variant?: SidebarLimitsMode): string {
+  void variant;
+  return ui.sidebar.limitsTitle;
 }
 
-/** `email · plan`; нет данных — пусто. */
 const whoText = (e: EngineView): string => [e.email, e.plan].filter(Boolean).join(' · ');
 
-/** Подсказка движка: аккаунт, план, версия; у `error` — текст ошибки. */
-function engineTip(e: EngineView): string | undefined {
-  const parts = [
-    whoText(e),
-    e.version,
-    e.state === 'error' && e.error ? ui.sidebar.engineError(e.error) : '',
-  ]
-    .filter(Boolean)
-    .join('\n');
-  return parts || undefined;
+function isLoginEngine(engine: EngineId): engine is 'codex' | 'antigravity' | 'kimi' {
+  return engine === 'codex' || engine === 'antigravity' || engine === 'kimi';
 }
 
-function SignIn({ engine }: { engine: EngineId }) {
-  if (engine !== 'codex' && engine !== 'antigravity' && engine !== 'kimi') return null;
+export function DiagBox({ e }: { e: EngineView }) {
+  const isSignedOut = e.state === 'signedOut';
+  const title = isSignedOut ? ui.sidebar.signedOutTitle : ui.sidebar.quotaUnavailable;
+  const msg = isSignedOut
+    ? ui.sidebar.signedOutMsg(engineName(e.engine))
+    : (e.error || ui.sidebar.quotaUnavailable);
+  const canLogin = isLoginEngine(e.engine);
+  const loginEngine = isLoginEngine(e.engine) ? e.engine : undefined;
+  const loginLabel = isSignedOut ? ui.sidebar.signIn : ui.sidebar.changeAccount;
+
   return (
-    <button
-      type="button"
-      class="signin"
-      data-tip={ui.sidebar.signInTip(engineName(engine))}
-      onClick={(ev) => {
-        ev.stopPropagation();
-        send({ type: 'engine.login', engine });
-      }}
-    >
-      {ui.sidebar.signIn}
-    </button>
+    <div class="diag-box" data-engine={e.engine}>
+      <div class="diag-hd">
+        <span>{title}</span>
+        {e.version && <span class="ver-txt">{e.version}</span>}
+      </div>
+      <p class="diag-msg">{msg}</p>
+      <div class="diag-acts">
+        {canLogin && loginEngine && (
+          <button
+            type="button"
+            class="act-login"
+            onClick={(ev) => {
+              ev.stopPropagation();
+              send({ type: 'engine.login', engine: loginEngine });
+            }}
+          >
+            {loginLabel}
+          </button>
+        )}
+        <button
+          type="button"
+          class="muted-act act-hide"
+          onClick={(ev) => {
+            ev.stopPropagation();
+            send({ type: 'sidebar.hideEngine', engine: e.engine });
+          }}
+        >
+          {ui.sidebar.hideTab}
+        </button>
+      </div>
+    </div>
   );
 }
 
-/** Состояние движка без окон: «не вошли · войти» или «обновляется…» (приглушённо). */
-function Status({ e }: { e: EngineView }) {
-  if (e.state === 'signedOut') {
+export function EnginePanelBody({ e }: { e: EngineView }) {
+  if (e.state === 'error' || e.state === 'signedOut') {
     return (
-      <>
-        <span>{ui.sidebar.signedOut}</span>
-        <SignIn engine={e.engine} />
-      </>
+      <div class="panel-body">
+        <DiagBox e={e} />
+      </div>
     );
   }
-  if (e.state === 'loading' && !e.windows.length)
-    return <span class="wait">{ui.sidebar.engineLoading}</span>;
-  if (e.state === 'error' && !e.windows.length && !whoText(e) && e.error)
-    return <span class="wait">{e.error}</span>;
-  return <span>{whoText(e)}</span>;
-}
 
-function LimitLine({ w }: { w: EngineWindowView }) {
+  if (e.state === 'loading' && !e.windows.length && !whoText(e)) {
+    return (
+      <div class="panel-body">
+        <span class="wait">{ui.sidebar.engineLoading}</span>
+      </div>
+    );
+  }
+
   return (
-    <div class={`L ${lv(w.percent)}`} data-tip={w.note}>
-      <span>{w.label}</span>
-      <span class="bar">
-        <i style={{ width: `${w.percent}%` }} />
-      </span>
-      <span class="n">{w.percent} %</span>
-      <em class="rs">{w.reset ? ui.sidebar.resetShort(w.reset) : ''}</em>
-    </div>
-  );
-}
-
-function Lims({ e }: { e: EngineView }) {
-  if (e.state === 'signedOut' || !e.windows.length) return null;
-  return (
-    <div class="lims">
-      {e.windows.map((w, i) => (
-        <LimitLine key={`${w.label}-${i}`} w={w} />
-      ))}
-    </div>
-  );
-}
-
-const Dot = ({ e }: { e: EngineView }) => <i class={e.state === 'ok' ? 'okd' : 'okd off'} />;
-
-/** A: блок на движок (и всплывашка варианта E — без метки «вкладка»). */
-function Stack({ engines, current }: { engines: EngineView[]; current: EngineId | undefined }) {
-  return (
-    <>
-      {engines.map((e) => (
-        <div class="eng" key={e.engine} data-engine={e.engine}>
-          <div class="eh" data-tip={engineTip(e)}>
-            <Mark engine={e.engine} />
-            <b>{engineName(e.engine)}</b>
-            <Status e={e} />
-            {current === e.engine && (
-              <em class="now" data-tip={ui.sidebar.tabMarkTip}>
-                {ui.sidebar.tabMark}
-              </em>
-            )}
-            <Dot e={e} />
-          </div>
-          <Lims e={e} />
+    <div class="panel-body">
+      {(e.email || e.plan || e.version) && (
+        <div class="acc-line">
+          {e.email && <span class="acc-id">{e.email}</span>}
+          {e.plan && <span class="plan-chip">{e.plan}</span>}
+          {e.version && <span class="ver-txt">{e.version}</span>}
         </div>
-      ))}
-    </>
+      )}
+      <div class="gauges">
+        {e.windows.map((w, i) => {
+          const rowClass = [
+            'g-row',
+            w.percent >= 85 ? 'hot lim-full' : w.percent >= 70 ? 'warn lim-warn' : '',
+          ]
+            .filter(Boolean)
+            .join(' ');
+          return (
+            <div class={rowClass} key={`${w.label}-${i}`} data-tip={w.note}>
+              <span class="g-lbl">{w.label}</span>
+              <span class="g-bar">
+                <i style={{ width: `${w.percent}%` }} />
+              </span>
+              <span class="g-pct">{w.percent}%</span>
+              <span class="g-rst">{w.reset ? ui.sidebar.resetShort(w.reset) : ''}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
-/** B: сегменты движков; ниже — аккаунт и окна выбранного. */
-function Switch({ engines, current }: { engines: EngineView[]; current: EngineId | undefined }) {
+function TabsView({
+  engines,
+  current,
+}: {
+  engines: EngineView[];
+  current: EngineId | undefined;
+}) {
+  const prefix = useId();
   const sel = pickEngine(engines, current, picked.value);
-  const e = engines.find((x) => x.engine === sel)!;
+
+  const onKeyDown = (e: KeyboardEvent, idx: number) => {
+    let nextIdx = -1;
+    if (e.key === 'ArrowRight') {
+      nextIdx = (idx + 1) % engines.length;
+    } else if (e.key === 'ArrowLeft') {
+      nextIdx = (idx - 1 + engines.length) % engines.length;
+    } else if (e.key === 'Home') {
+      nextIdx = 0;
+    } else if (e.key === 'End') {
+      nextIdx = engines.length - 1;
+    }
+    if (nextIdx >= 0) {
+      e.preventDefault();
+      const target = engines[nextIdx]!.engine;
+      picked.value = { engine: target, base: current };
+      const btn = (e.currentTarget as HTMLElement).parentElement?.querySelector<HTMLElement>(
+        `[data-eng="${target}"]`,
+      );
+      btn?.focus();
+    }
+  };
+
   return (
-    <>
-      <div class="seg" role="tablist" aria-label={ui.sidebar.engineTabs}>
-        {engines.map((x) => {
+    <div class="limits-tabs">
+      <div class="eng-tabs" role="tablist" aria-label={ui.sidebar.engineTabs}>
+        {engines.map((x, idx) => {
+          const isSelected = x.engine === sel;
           const w = worstWindow(x);
+          const tabId = `${prefix}-tab-${x.engine}`;
+          const panelId = `${prefix}-panel-${x.engine}`;
+          const pipClass =
+            x.state === 'error' || x.state === 'signedOut'
+              ? 'st-pip err'
+              : w && w.percent >= 85
+                ? 'st-pip hot'
+                : w && w.percent >= 70
+                  ? 'st-pip warn'
+                  : 'st-pip ok';
+
+          const tip = w
+            ? ui.sidebar.engineWorst(engineName(x.engine), w.percent)
+            : x.state === 'error' && x.error
+              ? ui.sidebar.engineError(x.error)
+              : engineName(x.engine);
+
+          return (
+            <button
+              type="button"
+              role="tab"
+              id={tabId}
+              aria-controls={panelId}
+              key={x.engine}
+              data-eng={x.engine}
+              data-engine={x.engine}
+              aria-selected={isSelected}
+              tabIndex={isSelected ? 0 : -1}
+              title={tip}
+              onClick={() => (picked.value = { engine: x.engine, base: current })}
+              onKeyDown={(e) => onKeyDown(e, idx)}
+            >
+              <BrandIcon provider={x.engine} />
+              <span class="tab-lbl">{engineName(x.engine)}</span>
+              <i class={pipClass} aria-hidden="true" />
+            </button>
+          );
+        })}
+      </div>
+
+      <div class="eng-panels">
+        {engines.map((x) => {
+          const isSelected = x.engine === sel;
+          const tabId = `${prefix}-tab-${x.engine}`;
+          const panelId = `${prefix}-panel-${x.engine}`;
+          return (
+            <div
+              key={x.engine}
+              role="tabpanel"
+              id={panelId}
+              aria-labelledby={tabId}
+              data-panel={x.engine}
+              tabIndex={isSelected ? 0 : -1}
+              hidden={!isSelected}
+            >
+              <EnginePanelBody e={x} />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function RadarView({
+  engines,
+  current,
+}: {
+  engines: EngineView[];
+  current: EngineId | undefined;
+}) {
+  const sel = pickEngine(engines, current, picked.value);
+  const activeEngine = engines.find((x) => x.engine === sel) ?? engines[0]!;
+
+  return (
+    <div class="limits-radar">
+      <div
+        class="radar-grid"
+        role="tablist"
+        aria-label={ui.sidebar.engineTabs}
+        style={{ gridTemplateColumns: `repeat(${engines.length}, minmax(0, 1fr))` }}
+      >
+        {engines.map((x) => {
+          const isSelected = x.engine === sel;
+          const w = worstWindow(x);
+          const isErr = x.state === 'error' || x.state === 'signedOut';
+          const isHot = !isErr && w && w.percent >= 85;
+          const isWarn = !isErr && w && w.percent >= 70 && w.percent < 85;
+
+          const tileCls = [
+            'r-tile',
+            isSelected && 'sel',
+            isErr && 'err',
+            isHot && 'hot lim-full',
+            isWarn && 'warn lim-warn',
+          ]
+            .filter(Boolean)
+            .join(' ');
+
+          const val = isErr ? '!' : w ? `${w.percent}%` : '—';
+          const trackWidth = isErr ? 100 : w ? w.percent : 0;
+
+          const tip = w
+            ? ui.sidebar.engineWorst(engineName(x.engine), w.percent)
+            : x.state === 'error' && x.error
+              ? ui.sidebar.engineError(x.error)
+              : engineName(x.engine);
+
           return (
             <button
               type="button"
               role="tab"
               key={x.engine}
-              aria-selected={x.engine === sel}
-              class={lv(w?.percent)}
+              class={tileCls}
+              data-radar={x.engine}
               data-engine={x.engine}
-              data-tip={
-                w
-                  ? ui.sidebar.engineWorst(engineName(x.engine), w.percent)
-                  : [engineName(x.engine), x.state === 'error' && x.error ? ui.sidebar.engineError(x.error) : '']
-                      .filter(Boolean)
-                      .join('\n')
-              }
+              aria-selected={isSelected}
+              title={tip}
               onClick={() => (picked.value = { engine: x.engine, base: current })}
             >
-              <Mark engine={x.engine} />
-              {engineName(x.engine)}
-              <i class="lv" />
+              <BrandIcon provider={x.engine} />
+              <span class="r-val">{val}</span>
+              <span class="r-track">
+                <i style={{ width: `${trackWidth}%` }} />
+              </span>
             </button>
           );
         })}
       </div>
-      <div class="who" data-tip={engineTip(e)}>
-        {e.state === 'ok' || (e.state === 'error' && (Boolean(whoText(e)) || e.windows.length > 0 || !e.error)) ? (
-          <>
-            <b>{e.email ?? ui.sidebar.unknown}</b>
-            {e.plan && <span>· {e.plan}</span>}
-            {e.version && <span>· {e.version}</span>}
-          </>
-        ) : (
-          <Status e={e} />
-        )}
-        <Dot e={e} />
+      <div class="radar-detail">
+        <EnginePanelBody e={activeEngine} />
       </div>
-      <Lims e={e} />
-    </>
-  );
-}
-
-/** C: строка на движок, до трёх ячеек окон. */
-function Table({ engines }: { engines: EngineView[] }) {
-  return (
-    <div class="grid">
-      {engines.map((e) => {
-        if (e.state === 'signedOut' || (e.state === 'error' && !e.windows.length && e.error)) {
-          return (
-            <Fragment key={e.engine}>
-              <span class="nm" data-tip={engineTip(e)}>
-                <Mark engine={e.engine} />
-                {ui.sidebar.tableShort[e.engine] ?? engineName(e.engine)}
-              </span>
-              <span class="off" data-tip={e.state === 'error' ? engineTip(e) : undefined}>
-                <Status e={e} />
-              </span>
-            </Fragment>
-          );
-        }
-        const chunks: (EngineWindowView | undefined)[][] = [];
-        for (let i = 0; i < Math.max(e.windows.length, 3); i += 3) {
-          chunks.push([e.windows[i], e.windows[i + 1], e.windows[i + 2]]);
-        }
-        return (
-          <Fragment key={e.engine}>
-            {chunks.map((chunk, chunkIdx) => (
-              <Fragment key={`${e.engine}-row-${chunkIdx}`}>
-                <span class={chunkIdx === 0 ? 'nm' : 'nm cont'} data-tip={chunkIdx === 0 ? engineTip(e) : undefined}>
-                  {chunkIdx === 0 && <Mark engine={e.engine} />}
-                  {chunkIdx === 0 ? (ui.sidebar.tableShort[e.engine] ?? engineName(e.engine)) : ''}
-                </span>
-                {chunk.map((w, colIdx) => {
-                  const globalIdx = chunkIdx * 3 + colIdx;
-                  return w ? (
-                    <span class={`c ${lv(w.percent)}`} key={`${e.engine}-${globalIdx}`} data-tip={w.note}>
-                      <em>{w.short}</em>
-                      <span class="n">{w.percent}%</span>
-                      <span class="bar">
-                        <i style={{ width: `${w.percent}%` }} />
-                      </span>
-                    </span>
-                  ) : (
-                    <span class="c none" key={`${e.engine}-${globalIdx}`}>
-                      {ui.sidebar.unknown}
-                    </span>
-                  );
-                })}
-              </Fragment>
-            ))}
-          </Fragment>
-        );
-      })}
     </div>
   );
 }
 
-/** D: текущий раскрыт, остальные — строкой с худшим окном. */
-function Active({ engines, current }: { engines: EngineView[]; current: EngineId | undefined }) {
-  const sel = pickEngine(engines, current, expanded.value);
-  const act = engines.find((x) => x.engine === sel)!;
-  const open = (id: EngineId) => (expanded.value = { engine: id, base: current });
+function ListView({
+  engines,
+  current,
+}: {
+  engines: EngineView[];
+  current: EngineId | undefined;
+}) {
+  const openSet = getListOpenSet(engines, current);
+
+  const toggle = (id: EngineId) => {
+    const next = new Set(openSet);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    listState.value = { base: current, open: next };
+  };
+
   return (
-    <>
-      <div class="exp" data-engine={act.engine}>
-        <div class="one hd" data-tip={engineTip(act)}>
-          <i class="tw open" />
-          <Mark engine={act.engine} />
-          <b>{engineName(act.engine)}</b>
-          <span class="acc">
-            <Status e={act} />
-            <Dot e={act} />
-          </span>
-        </div>
-        <Lims e={act} />
-      </div>
-      {engines
-        .filter((x) => x !== act)
-        .map((e) => {
-          const w = worstWindow(e);
+    <div class="limits-list">
+      <div class="acc-list">
+        {engines.map((x) => {
+          const isOpen = openSet.has(x.engine);
+          const w = worstWindow(x);
+          const isErr = x.state === 'error' || x.state === 'signedOut';
+          const isHot = !isErr && w && w.percent >= 85;
+          const isWarn = !isErr && w && w.percent >= 70 && w.percent < 85;
+
+          const barColor = isHot ? 'var(--full)' : isWarn ? 'var(--warn)' : undefined;
+          const pctColor = isHot ? 'var(--full)' : isWarn ? 'var(--warn)' : undefined;
+
           return (
             <div
-              class={`one ${lv(w?.percent)}`.trim()}
-              key={e.engine}
-              role="button"
-              tabIndex={0}
-              aria-expanded="false"
-              data-engine={e.engine}
-              data-tip={[engineTip(e), w?.note].filter(Boolean).join('\n') || undefined}
-              onClick={() => open(e.engine)}
-              onKeyDown={(ev) => {
-                if (ev.target === ev.currentTarget && (ev.key === 'Enter' || ev.key === ' ')) {
-                  ev.preventDefault();
-                  open(e.engine);
-                }
-              }}
+              key={x.engine}
+              class={`acc-item${isOpen ? ' open' : ''}`}
+              data-acc={x.engine}
+              data-engine={x.engine}
             >
-              <i class="tw" />
-              <Mark engine={e.engine} />
-              <b>{engineName(e.engine)}</b>
-              {e.state === 'signedOut' ? (
-                <span class="wl st">
-                  <Status e={e} />
-                </span>
-              ) : w ? (
-                <>
-                  <span class="bar">
-                    <i style={{ width: `${w.percent}%` }} />
+              <button
+                type="button"
+                class="acc-row-btn"
+                aria-expanded={isOpen}
+                onClick={() => toggle(x.engine)}
+              >
+                <BrandIcon provider={x.engine} />
+                <span class="nm">{engineName(x.engine)}</span>
+                {isErr ? (
+                  <span class="err-tag">
+                    {x.state === 'signedOut' ? ui.sidebar.signedOut : ui.sidebar.quotaHidden}
                   </span>
-                  <span class="n">{w.percent} %</span>
-                  <em class="rs">{w.reset ? ui.sidebar.resetShort(w.reset) : ''}</em>
-                </>
-              ) : (
-                <span class="wl st">
-                  <Status e={e} />
-                </span>
+                ) : w ? (
+                  <>
+                    <span class="g-bar">
+                      <i style={{ width: `${w.percent}%`, ...(barColor ? { background: barColor } : {}) }} />
+                    </span>
+                    <span class="g-pct" style={pctColor ? { color: pctColor } : undefined}>
+                      {w.percent}%
+                    </span>
+                  </>
+                ) : (
+                  <span class="err-tag">—</span>
+                )}
+              </button>
+              {isOpen && (
+                <div class="acc-sub">
+                  <EnginePanelBody e={x} />
+                </div>
               )}
             </div>
           );
         })}
-      <div class="gap" />
-    </>
+      </div>
+    </div>
   );
 }
 
-/** Тело секции «Аккаунты и лимиты» для вариантов A–D (E — в заголовке панели). */
 export function EngineLimitsBody({
   variant,
   engines,
   current,
 }: {
-  variant: Exclude<SidebarLimitsMode, 'header'>;
+  variant: SidebarLimitsMode;
   engines: EngineView[];
   current: EngineId | undefined;
 }) {
+  if (engines.length === 0) return null;
+  if (engines.length === 1) {
+    return <EnginePanelBody e={engines[0]!} />;
+  }
   switch (variant) {
-    case 'switch':
-      return <Switch engines={engines} current={current} />;
-    case 'table':
-      return <Table engines={engines} />;
-    case 'active':
-      return <Active engines={engines} current={current} />;
+    case 'tabs':
+      return <TabsView engines={engines} current={current} />;
+    case 'radar':
+      return <RadarView engines={engines} current={current} />;
+    case 'list':
+      return <ListView engines={engines} current={current} />;
     default:
-      return <Stack engines={engines} current={current} />;
+      return <TabsView engines={engines} current={current} />;
   }
 }
 
-export interface RefreshProps {
-  pending: boolean;
-  title: string;
-  onClick: () => void;
-}
-
-/** E: мини-шкала худшего лимита на движок в заголовке панели; клик открывает всплывашку. */
-export function EngineHeaderLimits({
-  engines,
-  refresh,
-}: {
-  engines: EngineView[];
-  refresh: RefreshProps;
-}) {
-  return (
-    <span class="hx">
-      <button
-        type="button"
-        class="mm"
-        aria-haspopup="true"
-        aria-expanded={popOpen.value}
-        onClick={() => (popOpen.value = !popOpen.value)}
-      >
-        {engines.map((e) => {
-          const w = worstWindow(e);
-          return (
-            <span
-              class={`m ${lv(w?.percent)}`.trim()}
-              key={e.engine}
-              data-engine={e.engine}
-              data-tip={[
-                engineName(e.engine),
-                w?.note ?? (e.state === 'error' && e.error ? ui.sidebar.engineError(e.error) : ''),
-              ]
-                .filter(Boolean)
-                .join(' · ')}
-            >
-              <Mark engine={e.engine} />
-              {w ? (
-                <>
-                  <i class="b">
-                    <b style={{ width: `${w.percent}%` }} />
-                  </i>
-                  <span class="n">{w.percent}</span>
-                </>
-              ) : (
-                <span class="n">{ui.sidebar.unknown}</span>
-              )}
-            </span>
-          );
-        })}
-      </button>
-      <button
-        type="button"
-        class={refresh.pending ? 'refresh busy' : 'refresh'}
-        data-tip={refresh.title}
-        aria-label={ui.sidebar.refreshTitle}
-        aria-busy={refresh.pending}
-        disabled={refresh.pending}
-        onClick={refresh.onClick}
-      >
-        {ui.sidebar.refresh}
-      </button>
-    </span>
-  );
-}
-
-/** E: всплывашка со стопкой движков; закрывается Esc, кликом мимо и повторным кликом по шкалам. */
-export function EnginePopup({ engines }: { engines: EngineView[] }) {
-  const open = popOpen.value;
-  useEffect(() => {
-    if (!open) return undefined;
-    const onKey = (ev: KeyboardEvent) => {
-      if (ev.key === 'Escape') popOpen.value = false;
-    };
-    const onDown = (ev: MouseEvent) => {
-      const t = ev.target as Element | null;
-      if (!t?.closest('.pop, .hx .mm')) popOpen.value = false;
-    };
-    document.addEventListener('keydown', onKey);
-    document.addEventListener('mousedown', onDown);
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      document.removeEventListener('mousedown', onDown);
-    };
-  }, [open]);
-  if (!open) return null;
-  return (
-    <div class="pop" role="dialog" aria-label={ui.sidebar.accounts}>
-      <Stack engines={engines} current={undefined} />
-    </div>
-  );
-}
-
-/** Для тестов: сброс выбора между сценариями. */
 export function resetEngineLimitsState(): void {
   picked.value = undefined;
-  expanded.value = undefined;
-  popOpen.value = false;
+  listState.value = undefined;
 }

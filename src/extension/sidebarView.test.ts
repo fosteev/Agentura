@@ -6,14 +6,32 @@ const h = vi.hoisted(() => ({
   message: undefined as ((m: FromWebview) => void) | undefined,
   createTerminal: vi.fn(),
   loadModels: vi.fn(async () => []),
+  executeCommand: vi.fn(),
+  showInformationMessage: vi.fn(),
+  configValues: {} as Record<string, unknown>,
+  inspectValues: {} as Record<string, unknown>,
+  configUpdate: vi.fn(async () => undefined),
 }));
 
 vi.mock('vscode', () => ({
   workspace: {
-    getConfiguration: () => ({ get: () => undefined }),
+    getConfiguration: () => ({
+      get: (k: string) => h.configValues[k],
+      inspect: (k: string) => h.inspectValues[k],
+      update: h.configUpdate,
+    }),
     onDidChangeConfiguration: () => ({ dispose: () => undefined }),
   },
-  window: { createTerminal: h.createTerminal },
+  window: {
+    createTerminal: h.createTerminal,
+    showInformationMessage: h.showInformationMessage,
+  },
+  commands: {
+    executeCommand: h.executeCommand,
+  },
+  ConfigurationTarget: {
+    Global: 1,
+  },
 }));
 vi.mock('./webviewHost', () => ({
   webviewOptions: () => ({}), userFontsDir: () => undefined, renderWebview: () => '', currentLanguage: () => 'ru',
@@ -36,12 +54,29 @@ vi.mock('../agent/kimi/models', async (actual) => ({
 
 import { SidebarProvider, type SidebarEngines } from './sidebarView';
 
-function setup(kimiResult: { path?: string; version?: string; problem?: string } = { path: '/x/kimi', version: '2.6.0' }) {
+function setup(
+  opts?:
+    | { kimiResult?: { path?: string; version?: string; problem?: string }; visible?: boolean }
+    | { path?: string; version?: string; problem?: string },
+) {
+  let kimiResult: { path?: string; version?: string; problem?: string } = { path: '/x/kimi', version: '2.6.0' };
+  let visible = true;
+  if (opts !== undefined) {
+    if ('visible' in opts) {
+      visible = opts.visible ?? true;
+      if (opts.kimiResult) kimiResult = opts.kimiResult;
+    } else {
+      kimiResult = opts as { path?: string; version?: string; problem?: string };
+    }
+  }
   h.message = undefined;
   h.createTerminal.mockReset();
   h.createTerminal.mockReturnValue({ show: vi.fn() });
   h.loadModels.mockReset();
   h.loadModels.mockResolvedValue([]);
+  h.executeCommand.mockReset();
+  h.showInformationMessage.mockReset();
+  h.configUpdate.mockReset();
   const posted: { type: string; engines?: EngineLimitsSummary[] }[] = [];
   const engine = (result: object) => ({
     locate: vi.fn(async () => result), available: vi.fn(async () => false),
@@ -64,6 +99,7 @@ function setup(kimiResult: { path?: string; version?: string; problem?: string }
     engines,
   );
   provider.resolveWebviewView({
+    visible,
     webview: { postMessage: (m: { type: string; engines?: EngineLimitsSummary[] }) => { posted.push(m); return Promise.resolve(true); } },
     onDidDispose: () => undefined,
   } as never);
@@ -99,5 +135,64 @@ describe('SidebarProvider: Kimi', () => {
     await missing.provider.refreshUsage();
     expect(missing.posted.filter((m) => m.type === 'engines.limits').at(-1)?.engines?.find((e) => e.engine === 'kimi'))
       .toMatchObject({ state: 'missing', windows: [] });
+  });
+});
+
+describe('SidebarProvider: promptNewChat', () => {
+  it('при видимой панели и активной Jira (jira.source != off) шлёт task.picker.toggle', () => {
+    h.configValues = { 'jira.source': 'auto' };
+    const t = setup({ visible: true });
+    t.provider.promptNewChat();
+    expect(t.posted).toContainEqual({ type: 'task.picker.toggle' });
+    expect(h.executeCommand).not.toHaveBeenCalledWith('agentura.newSession');
+  });
+
+  it('при скрытой панели вызывает agentura.newSession', () => {
+    h.configValues = { 'jira.source': 'auto' };
+    const t = setup({ visible: false });
+    t.provider.promptNewChat();
+    expect(t.posted.filter((m) => m.type === 'task.picker.toggle')).toHaveLength(0);
+    expect(h.executeCommand).toHaveBeenCalledWith('agentura.newSession');
+  });
+
+  it('при jira.source: off вызывает agentura.newSession даже если панель видима', () => {
+    h.configValues = { 'jira.source': 'off' };
+    const t = setup({ visible: true });
+    t.provider.promptNewChat();
+    expect(t.posted.filter((m) => m.type === 'task.picker.toggle')).toHaveLength(0);
+    expect(h.executeCommand).toHaveBeenCalledWith('agentura.newSession');
+  });
+});
+
+describe('SidebarProvider: sidebar.hideEngine', () => {
+  it('добавляет движок в sidebar.limitsHidden через writeSetting в Global', async () => {
+    h.configValues = { 'sidebar.limitsHidden': ['claude'] };
+    h.inspectValues = {};
+    setup();
+    h.message!({ type: 'sidebar.hideEngine', engine: 'codex' });
+    await vi.waitFor(() => expect(h.configUpdate).toHaveBeenCalled());
+    expect(h.configUpdate).toHaveBeenCalledWith(
+      'sidebar.limitsHidden',
+      ['claude', 'codex'],
+      1,
+    );
+  });
+
+  it('не дублирует движок, если он уже в sidebar.limitsHidden', async () => {
+    h.configValues = { 'sidebar.limitsHidden': ['codex'] };
+    h.inspectValues = {};
+    setup();
+    h.message!({ type: 'sidebar.hideEngine', engine: 'codex' });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(h.configUpdate).not.toHaveBeenCalled();
+  });
+
+  it('при перекрытии sidebar.limitsHidden в workspace показывает предупреждение overriddenView и не пишет в Global', async () => {
+    h.configValues = { 'sidebar.limitsHidden': [] };
+    h.inspectValues = { 'sidebar.limitsHidden': { workspaceValue: ['claude'] } };
+    setup();
+    h.message!({ type: 'sidebar.hideEngine', engine: 'codex' });
+    await vi.waitFor(() => expect(h.showInformationMessage).toHaveBeenCalled());
+    expect(h.configUpdate).not.toHaveBeenCalled();
   });
 });

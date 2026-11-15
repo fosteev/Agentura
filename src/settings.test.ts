@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   nextSessionListMode,
   overriddenKeys,
+  readSessionListMode,
   readSettings,
+  readSidebarLimitsMode,
   readTaskCardMode,
   resolveLanguage,
   resolveDefaultEffort,
@@ -128,20 +130,47 @@ describe('validateSetting', () => {
 });
 
 describe('sessionList', () => {
-  it('вид — только detailed, compact, dense; кнопка ходит по кругу; колонки — булевы', () => {
-    expect(validateSetting('sessionList.view', 'dense')).toEqual({ ok: true, value: 'dense' });
+  it('вид — только compact и detailed; кнопка переключает compact ↔ detailed; колонки — булевы', () => {
+    expect(validateSetting('sessionList.view', 'compact')).toEqual({ ok: true, value: 'compact' });
+    expect(validateSetting('sessionList.view', 'detailed')).toEqual({ ok: true, value: 'detailed' });
+    expect(validateSetting('sessionList.view', 'dense').ok).toBe(false);
     expect(validateSetting('sessionList.view', 'tree').ok).toBe(false);
     expect(validateSetting('sessionList.time', false)).toEqual({ ok: true, value: false });
     expect(validateSetting('sessionList.context', 'on').ok).toBe(false);
+    expect(nextSessionListMode('compact')).toBe('detailed');
     expect(nextSessionListMode('detailed')).toBe('compact');
-    expect(nextSessionListMode('compact')).toBe('dense');
-    expect(nextSessionListMode('dense')).toBe('detailed');
   });
-  it('вид верха боковой панели — detailed, compact, dense', () => {
-    expect(validateSetting('sidebar.top', 'dense')).toEqual({ ok: true, value: 'dense' });
-    expect(validateSetting('sidebar.top', 'mini').ok).toBe(false);
-    expect(validateSetting('sidebar.limits', 'table')).toEqual({ ok: true, value: 'table' });
+
+  it('чтение sessionList.view: устаревшее dense мягко превращается в compact, мусор — в default', () => {
+    expect(readSessionListMode('compact')).toBe('compact');
+    expect(readSessionListMode('detailed')).toBe('detailed');
+    expect(readSessionListMode('dense')).toBe('compact');
+    expect(readSessionListMode('tree')).toBe('compact');
+    expect(readSessionListMode(undefined)).toBe('compact');
+  });
+
+  it('вид лимитов боковой панели — tabs, radar, list; старые значения читаются мягко', () => {
+    expect(validateSetting('sidebar.limits', 'tabs')).toEqual({ ok: true, value: 'tabs' });
+    expect(validateSetting('sidebar.limits', 'radar')).toEqual({ ok: true, value: 'radar' });
+    expect(validateSetting('sidebar.limits', 'list')).toEqual({ ok: true, value: 'list' });
+    expect(validateSetting('sidebar.limits', 'table').ok).toBe(false);
+    expect(validateSetting('sidebar.limits', 'stack').ok).toBe(false);
+    expect(validateSetting('sidebar.limits', 'switch').ok).toBe(false);
+    expect(validateSetting('sidebar.limits', 'active').ok).toBe(false);
+    expect(validateSetting('sidebar.limits', 'header').ok).toBe(false);
     expect(validateSetting('sidebar.limits', 'grid').ok).toBe(false);
+
+    expect(readSidebarLimitsMode('tabs')).toBe('tabs');
+    expect(readSidebarLimitsMode('radar')).toBe('radar');
+    expect(readSidebarLimitsMode('list')).toBe('list');
+    expect(readSidebarLimitsMode('switch')).toBe('tabs');
+    expect(readSidebarLimitsMode('table')).toBe('radar');
+    expect(readSidebarLimitsMode('stack')).toBe('radar');
+    expect(readSidebarLimitsMode('header')).toBe('radar');
+    expect(readSidebarLimitsMode('active')).toBe('list');
+    expect(readSidebarLimitsMode('invalid')).toBe('tabs');
+    expect(readSidebarLimitsMode(null)).toBe('tabs');
+
     expect(validateSetting('sidebar.limitsHidden', ['antigravity', 'claude'])).toEqual({
       ok: true,
       value: ['claude', 'antigravity'],
@@ -362,7 +391,6 @@ describe('readSettings', () => {
         usagePollMinutes: 'z',
         'sessionList.view': 'tree',
         'sessionList.context': 'x',
-        'sidebar.top': 'mini',
         'sidebar.limits': 'grid',
         'sidebar.limitsHidden': ['codex', 'gemini', 'codex'],
         'tasks.sidebar': 'tree',
@@ -381,8 +409,7 @@ describe('readSettings', () => {
       'sessionList.view': 'compact',
       'sessionList.context': true,
       'sessionList.time': true,
-      'sidebar.top': 'detailed',
-      'sidebar.limits': 'active',
+      'sidebar.limits': 'tabs',
       'sidebar.limitsHidden': ['codex'],
       'tasks.sidebar': 'groups',
       'tasks.card': 'tab',
@@ -406,6 +433,32 @@ describe('readSettings', () => {
       'limits.readKeychain': true,
     });
   });
+
+  it('readSettings мягко мигрирует legacy значения sidebar.limits и sessionList.view', () => {
+    const v = readSettings(
+      cfgOf({
+        'sidebar.limits': 'switch',
+        'sessionList.view': 'dense',
+      }),
+    );
+    expect(v['sidebar.limits']).toBe('tabs');
+    expect(v['sessionList.view']).toBe('compact');
+
+    const v2 = readSettings(
+      cfgOf({
+        'sidebar.limits': 'table',
+      }),
+    );
+    expect(v2['sidebar.limits']).toBe('radar');
+
+    const v3 = readSettings(
+      cfgOf({
+        'sidebar.limits': 'active',
+      }),
+    );
+    expect(v3['sidebar.limits']).toBe('list');
+  });
+
   it('кривые, но числовые пороги показываются как есть (ошибку покажет поле)', () => {
     expect(readSettings(cfgOf({ contextThresholds: [300, 100] })).contextThresholds).toEqual([
       300, 100,

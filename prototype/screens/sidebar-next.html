@@ -1,0 +1,1539 @@
+<!doctype html>
+<html lang="ru" data-theme="dark" data-width="vscode" data-sb-mode="compare" data-limits="a" data-density="compact" data-jira="off">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agentura · левая панель (новый макет)</title>
+<link rel="stylesheet" href="../shared/tokens.css">
+<link rel="stylesheet" href="../shared/preview.css">
+<style>
+  /* ── Обёртка предпросмотра и режимы сравнения ── */
+  .preview-bar { gap: 10px; }
+  .preview-bar .grp button { font-size: 11.5px; padding: 3px 8px; }
+  .preview-stage { align-items: flex-start; }
+
+  .frame {
+    display: flex;
+    height: 760px;
+    max-width: 100%;
+    border: 1px solid #333;
+    border-radius: 6px;
+    overflow: hidden;
+    background: var(--bg);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, .5);
+  }
+  :root[data-theme="light"] .frame { border-color: #ccc; box-shadow: 0 16px 44px rgba(0, 0, 0, .14); }
+
+  /* Activity Bar VS Code */
+  .actbar {
+    width: 44px;
+    flex: none;
+    background: var(--bg-side);
+    border-right: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 10px 0;
+    gap: 14px;
+    color: var(--fg-faint);
+  }
+  .actbar .ic {
+    width: 24px; height: 24px;
+    display: grid; place-items: center;
+    border-radius: 4px;
+    position: relative;
+  }
+  .actbar .ic.on { color: var(--fg); }
+  .actbar .ic.on::before {
+    content: "";
+    position: absolute;
+    left: -10px; top: 2px; bottom: 2px;
+    width: 2px;
+    background: var(--accent);
+    border-radius: 1px;
+  }
+  .actbar svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 1.6; }
+
+  /* Ширина тестируемой панели */
+  .sb-host {
+    width: 292px;
+    flex: none;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    border-right: 1px solid var(--line);
+    background: var(--bg-side);
+    transition: width .16s ease;
+  }
+  html[data-sb-mode="260"] .sb-host { width: 260px; }
+  html[data-sb-mode="310"] .sb-host { width: 310px; }
+  html[data-sb-mode="380"] .sb-host { width: 380px; }
+  html[data-width="380"] .actbar,
+  html[data-width="380"] .right-stage { display: none; }
+  html[data-width="380"] .frame { width: 380px; }
+  html[data-width="380"] .sb-host { width: 100%; border-right: 0; }
+  html[data-width="900"] .frame { width: 900px; }
+  html[data-width="vscode"] .frame { width: 1120px; }
+
+  /* ── Нативная шапка контейнера VS Code (вместо дубля AGENTURA внутри webview) ── */
+  .vsc-titlebar {
+    height: 34px;
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    padding: 0 8px 0 12px;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--fg-mute);
+    user-select: none;
+  }
+  .vsc-titlebar .title-txt { margin-right: auto; color: var(--fg-mute); font-weight: 600; }
+  .icon-btn {
+    width: 22px; height: 22px;
+    display: inline-grid; place-items: center;
+    border-radius: 4px;
+    color: var(--fg-mute);
+    flex: none;
+  }
+  .icon-btn:hover { background: var(--bg-hover); color: var(--fg); }
+  .icon-btn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.65; stroke-linecap: round; stroke-linejoin: round; }
+  .icon-btn.spin svg { animation: spin .7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Сам новый сайдбар (Container Queries по собственной ширине) ── */
+  .sb-next {
+    container: sidebar / inline-size;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-side);
+    color: var(--fg);
+    font-size: 13px;
+  }
+
+  /* Брендовые SVG-логотипы (единые с вкладками и композером) */
+  .brand {
+    width: 15px; height: 15px;
+    display: inline-block;
+    flex: none;
+    background: center / contain no-repeat;
+  }
+  .brand-claude { background-image: url('../shared/brands/claude-color.svg'); }
+  .brand-codex { background-image: url('../shared/brands/openai.svg'); }
+  .brand-antigravity { background-image: url('../shared/brands/antigravity.svg'); }
+  .brand-cursor { background-image: url('../shared/brands/cursor.svg'); }
+  .brand-kimi { background-image: url('../shared/brands/kimi.svg'); }
+  :root:not([data-theme="light"]) .brand-codex { background-image: url('../shared/brands/openai-dark.svg'); }
+  :root:not([data-theme="light"]) .brand-kimi { background-image: url('../shared/brands/kimi-dark.svg'); }
+
+  /* Секционные заголовки — спокойный sentence-case без капслок-крика */
+  .sec-block { border-top: 1px solid var(--line); }
+  .sec-hd {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 28px;
+    padding: 0 10px 0 12px;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--fg-mute);
+    user-select: none;
+  }
+  .sec-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: inherit;
+    font-weight: 600;
+    padding: 2px 0;
+    border-radius: 3px;
+    min-width: 0;
+  }
+  .sec-toggle:hover { color: var(--fg); }
+  .chev {
+    width: 12px; height: 12px;
+    display: inline-grid; place-items: center;
+    transition: transform .14s ease;
+    flex: none;
+  }
+  .chev svg { width: 10px; height: 10px; stroke: currentColor; fill: none; stroke-width: 1.8; }
+  .sec-block.folded .chev { transform: rotate(-90deg); }
+  .sec-block.folded .sec-body { display: none; }
+
+  .sec-summary {
+    display: none;
+    margin-left: auto;
+    font: 11px/1 var(--mono);
+    font-variant-numeric: tabular-nums;
+    color: var(--fg-mute);
+    gap: 8px;
+    align-items: center;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .sec-block.folded .sec-summary { display: inline-flex; }
+  .sec-block.folded .sec-meta { display: none; }
+  .sec-meta {
+    margin-left: auto;
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--fg-faint);
+    white-space: nowrap;
+  }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     ВАРИАНТ A · Адаптивные вкладки движков (не режут иконки ни на 240px, ни на 5 движках)
+     ════════════════════════════════════════════════════════════════════════ */
+  .limits-view { display: none; }
+  html[data-limits="a"] .limits-a,
+  html[data-limits="b"] .limits-b,
+  html[data-limits="c"] .limits-c { display: block; }
+
+  .eng-tabs {
+    display: flex;
+    gap: 2px;
+    margin: 0 12px 8px;
+    padding: 2px;
+    background: color-mix(in srgb, var(--bg) 55%, #000 45%);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    interpolate-size: allow-keywords;
+  }
+  :root[data-theme="light"] .eng-tabs {
+    background: color-mix(in srgb, var(--bg-side) 55%, var(--line) 45%);
+  }
+  .eng-tabs [role="tab"] {
+    position: relative;
+    flex: 1 1 0;
+    min-inline-size: 34px;
+    height: 26px;
+    padding: 0 7px;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--fg-mute);
+    white-space: nowrap;
+    transition: background-color .14s ease, color .14s ease, min-inline-size .16s ease;
+  }
+  .eng-tabs [role="tab"]:hover { color: var(--fg); background: var(--bg-hover); }
+  /* Выбранная вкладка поднята над треком и всегда держит полную ширину названия */
+  .eng-tabs [role="tab"][aria-selected="true"] {
+    flex: 1.4 0 auto;
+    min-inline-size: max-content;
+    padding-inline: 10px;
+    background: var(--bg-input);
+    color: var(--fg);
+    font-weight: 500;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, .2);
+  }
+  :root[data-theme="light"] .eng-tabs [role="tab"][aria-selected="true"] {
+    background: #ffffff;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, .06);
+  }
+  /* Индикатор активной вкладки формой (линия снизу), не только цветом — работает и в forced-colors */
+  .eng-tabs [role="tab"][aria-selected="true"]::after {
+    content: "";
+    position: absolute;
+    inset: auto 7px 0;
+    border-block-end: 2px solid var(--accent);
+    border-radius: 1px;
+  }
+  .eng-tabs .tab-lbl {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+  }
+  /* Принцип тёмной кабины: точка горит только при перегреве или ошибке, норма не шумит */
+  .st-pip {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    flex: none;
+  }
+  .st-pip.ok { display: none; }
+  .st-pip.warn { background: var(--warn); }
+  .st-pip.hot { background: var(--full); }
+  .st-pip.err { background: var(--warn); border-radius: 1px; transform: rotate(45deg); width: 5.5px; height: 5.5px; }
+
+  /* В узком сайдбаре (<345px) неактивные вкладки показывают чистый логотип + сигнал статуса без обрезки букв */
+  @container sidebar (max-width: 345px) {
+    .eng-tabs [role="tab"]:not([aria-selected="true"]) .tab-lbl { display: none; }
+    .eng-tabs [role="tab"]:not([aria-selected="true"]) { padding-inline: 5px; gap: 5px; }
+  }
+
+  /* Панели вкладок: hidden="until-found" не использует display:none, поэтому отступы — только на .panel-body */
+  .eng-panels { display: grid; }
+  .eng-panels > [role="tabpanel"] { grid-area: 1 / 1; min-width: 0; }
+  .eng-panels > [role="tabpanel"][hidden] { visibility: hidden; height: 0; overflow: hidden; pointer-events: none; }
+  .panel-body { padding: 0 12px 10px; display: grid; gap: 6px; }
+
+  /* Строка аккаунта выбранного движка */
+  .acc-line {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    min-width: 0;
+  }
+  .acc-id {
+    color: var(--fg);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+  .plan-chip {
+    font: 10.5px/1.3 var(--mono);
+    color: var(--fg-mute);
+    background: var(--bg-input);
+    border: 1px solid var(--line);
+    padding: 1px 5px;
+    border-radius: 3px;
+    flex: none;
+  }
+  .ver-txt {
+    margin-left: auto;
+    font: 11px/1 var(--mono);
+    color: var(--fg-faint);
+    flex: none;
+  }
+
+  /* Шкалы лимитов */
+  .gauges { display: grid; gap: 5px; }
+  .g-row {
+    display: grid;
+    grid-template-columns: 58px minmax(48px, 1fr) 3.8ch 7.5ch;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+  }
+  @container sidebar (max-width: 275px) {
+    .g-row { grid-template-columns: 48px minmax(40px, 1fr) 3.6ch 6.5ch; gap: 6px; }
+  }
+  .g-lbl { color: var(--fg-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .g-bar {
+    height: 5px;
+    background: var(--bg-input);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .g-bar > i {
+    display: block;
+    height: 100%;
+    border-radius: 3px;
+    background: var(--fg-mute);
+  }
+  .g-row.warn .g-bar > i { background: var(--warn); }
+  .g-row.hot .g-bar > i { background: var(--full); }
+  .g-pct {
+    font: 11.5px/1 var(--mono);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    color: var(--fg);
+  }
+  .g-row.warn .g-pct { color: var(--warn); }
+  .g-row.hot .g-pct { color: var(--full); font-weight: 600; }
+  .g-rst {
+    font: 11px/1 var(--mono);
+    font-variant-numeric: tabular-nums;
+    color: var(--fg-faint);
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  /* Понятный блок ошибки вместо обрезанного "Eligibility check failed: Your current account is not... •" */
+  .diag-box {
+    border: 1px solid var(--line);
+    border-left: 2px solid var(--warn);
+    border-radius: 5px;
+    padding: 7px 9px;
+    background: var(--bg);
+    display: grid;
+    gap: 3px;
+  }
+  .diag-hd {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--fg);
+    white-space: nowrap;
+  }
+  .diag-msg {
+    margin: 0;
+    font-size: 11.5px;
+    line-height: 1.4;
+    color: var(--fg-mute);
+  }
+  .diag-acts {
+    display: flex;
+    gap: 10px;
+    margin-top: 2px;
+    font-size: 11.5px;
+  }
+  .diag-acts button { color: var(--link); }
+  .diag-acts button:hover { text-decoration: underline; }
+  .diag-acts .muted-act { color: var(--fg-mute); }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     ВАРИАНТ B · Радар: все 4 движка видны сразу + детали активного ниже
+     ════════════════════════════════════════════════════════════════════════ */
+  .radar-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 4px;
+    padding: 0 12px 8px;
+  }
+  .r-tile {
+    position: relative;
+    display: grid;
+    grid-template-columns: 15px 1fr;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 6px 8px;
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    background: var(--bg);
+    min-width: 0;
+  }
+  .r-tile:hover { background: var(--bg-hover); }
+  .r-tile[aria-selected="true"] {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 8%, var(--bg));
+  }
+  .r-val {
+    font: 500 11px/1 var(--mono);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    color: var(--fg-mute);
+  }
+  .r-tile.hot .r-val { color: var(--full); font-weight: 600; }
+  .r-tile.err .r-val { color: var(--warn); }
+  .r-track {
+    position: absolute;
+    left: 5px; right: 5px; bottom: 3px;
+    height: 2.5px;
+    background: var(--bg-input);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .r-track > i { display: block; height: 100%; background: var(--fg-mute); }
+  .r-tile.hot .r-track > i { background: var(--full); }
+  .r-tile.err .r-track > i { background: var(--warn); }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     ВАРИАНТ C · Плотный список-аккордеон
+     ════════════════════════════════════════════════════════════════════════ */
+  .acc-list { padding: 0 6px 8px; display: grid; gap: 1px; }
+  .acc-item { border-radius: 4px; }
+  .acc-row-btn {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 15px minmax(0, 1fr) 54px 4ch;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 6px;
+    border-radius: 4px;
+    text-align: left;
+    font-size: 12px;
+  }
+  .acc-row-btn:hover { background: var(--bg-hover); }
+  .acc-item.open .acc-row-btn { font-weight: 500; background: var(--bg-hover); }
+  .acc-row-btn .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .acc-row-btn .err-tag {
+    grid-column: 3 / 5;
+    font-size: 11px;
+    color: var(--warn);
+    text-align: right;
+    white-space: nowrap;
+  }
+  .acc-sub { padding: 5px 6px 6px 29px; display: none; }
+  .acc-item.open .acc-sub { display: block; }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     СЕССИИ · Поиск и список
+     ════════════════════════════════════════════════════════════════════════ */
+  .sess-sec {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    border-top: 1px solid var(--line);
+  }
+  .proj-pill {
+    margin-left: auto;
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--fg-mute);
+    max-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .hd-acts { display: inline-flex; gap: 2px; align-items: center; margin-left: 4px; }
+
+  /* Единое поле поиска с лупой и очисткой внутри (без висящего ⚲ справа) */
+  .search-wrap {
+    position: relative;
+    margin: 2px 12px 6px;
+    display: flex;
+    align-items: center;
+  }
+  .search-wrap .s-ic {
+    position: absolute;
+    left: 8px;
+    width: 13px; height: 13px;
+    color: var(--fg-faint);
+    pointer-events: none;
+  }
+  .search-wrap input {
+    width: 100%;
+    height: 28px;
+    padding: 0 30px 0 27px;
+    background: var(--bg-input);
+    border: 1px solid var(--line-strong);
+    border-radius: 5px;
+    font-size: 12px;
+    color: var(--fg);
+  }
+  .search-wrap input::placeholder { color: var(--fg-faint); }
+  .search-wrap input:focus { outline: none; border-color: var(--accent); }
+  .search-wrap input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
+  .search-kbd {
+    position: absolute;
+    right: 7px;
+    font: 10.5px/1.2 var(--mono);
+    color: var(--fg-faint);
+    border: 1px solid var(--line-strong);
+    border-radius: 3px;
+    padding: 1px 4px;
+    pointer-events: none;
+  }
+  .search-clear {
+    position: absolute;
+    right: 4px;
+    width: 20px; height: 20px;
+    border-radius: 3px;
+    display: grid; place-items: center;
+    color: var(--fg-mute);
+    font-size: 12px;
+  }
+  .search-clear:hover { background: var(--bg-hover); color: var(--fg); }
+  .search-clear[hidden] { display: none; }
+
+  /* Прокручиваемый список сессий */
+  .s-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 0 6px 12px;
+  }
+  .day-hd {
+    padding: 8px 6px 3px;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--fg-faint);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* Группы Jira (по переключателю в превью) */
+  .jira-group { display: none; margin-bottom: 4px; }
+  html[data-jira="on"] .jira-group { display: block; }
+  .jg-hd {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+    text-align: left;
+  }
+  .jg-hd:hover { background: var(--bg-hover); }
+  .jg-key {
+    font: 500 11px/1.3 var(--mono);
+    color: var(--fg);
+    background: var(--bg-input);
+    border: 1px solid var(--line-strong);
+    padding: 1px 5px;
+    border-radius: 3px;
+    flex: none;
+  }
+  .jg-st {
+    font-size: 10.5px;
+    color: var(--info);
+    background: color-mix(in srgb, var(--info) 12%, transparent);
+    padding: 1px 5px;
+    border-radius: 3px;
+    flex: none;
+  }
+  .jg-title {
+    color: var(--fg-mute);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+  .jg-rows { padding-left: 10px; border-left: 1px solid var(--line); margin-left: 11px; }
+
+  /* Строка сессии: логотип провайдера всегда на месте левой колонки (никаких пустых дыр!) */
+  .s-row {
+    --row-bg: var(--bg-side);
+    position: relative;
+    width: 100%;
+    display: grid;
+    grid-template-columns: 18px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    min-height: 30px;
+    padding: 4px 7px;
+    border-radius: 5px;
+    text-align: left;
+    color: var(--fg);
+  }
+  .s-row + .s-row { margin-top: 1px; }
+  .s-row:hover {
+    --row-bg: var(--bg-hover);
+    background: var(--bg-hover);
+  }
+  .s-row.cur {
+    --row-bg: color-mix(in srgb, var(--sel) 45%, var(--bg-side));
+    background: var(--row-bg);
+    box-shadow: inset 2px 0 0 var(--accent);
+  }
+
+  /* Слот иконки движка + угловой бейдж живого статуса с вырезом */
+  .s-ico {
+    position: relative;
+    width: 16px; height: 16px;
+    display: grid; place-items: center;
+    flex: none;
+  }
+  .s-ico .brand { opacity: .82; }
+  .s-row:hover .s-ico .brand,
+  .s-row.cur .s-ico .brand { opacity: 1; }
+  .s-badge {
+    position: absolute;
+    right: -2px; bottom: -2px;
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    box-shadow: 0 0 0 1.5px var(--row-bg);
+  }
+  .s-badge.live { background: var(--info); }
+  .s-badge.wait { background: var(--warn); }
+  .s-badge.err { background: var(--full); }
+
+  .s-main { min-width: 0; }
+  .s-title {
+    display: block;
+    font-size: 12.5px;
+    line-height: 1.32;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .s-row.cur .s-title { font-weight: 500; }
+  .s-row.untitled .s-title { color: var(--fg-mute); }
+
+  /* Вторая строка видна ТОЛЬКО когда включён подробный режим (ровный ритм у всех строк!) */
+  .s-sub {
+    display: none;
+    margin-top: 1px;
+    font: 11px/1.3 var(--mono);
+    font-variant-numeric: tabular-nums;
+    color: var(--fg-faint);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  html[data-density="detailed"] .s-row { align-items: start; padding-block: 6px; }
+  html[data-density="detailed"] .s-ico { margin-top: 2px; }
+  html[data-density="detailed"] .s-sub { display: block; }
+
+  .s-right {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    flex: none;
+  }
+  .s-pill {
+    font-size: 10.5px;
+    line-height: 1.25;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-weight: 500;
+  }
+  .s-pill.wait { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
+  .s-pill.live { color: var(--info); background: color-mix(in srgb, var(--info) 14%, transparent); }
+  .s-time {
+    font: 11px/1 var(--mono);
+    font-variant-numeric: tabular-nums;
+    color: var(--fg-faint);
+    white-space: nowrap;
+  }
+  .s-row.live .s-time { color: var(--info); }
+
+  /* Инлайн-переименование по двойному клику */
+  .rename-inp {
+    width: 100%;
+    background: var(--bg-input);
+    border: 1px solid var(--accent);
+    border-radius: 3px;
+    padding: 1px 5px;
+    font-size: 12.5px;
+    color: var(--fg);
+    outline: none;
+  }
+
+  .empty-search {
+    padding: 20px 10px;
+    text-align: center;
+    font-size: 12px;
+    color: var(--fg-faint);
+  }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     ПРАВАЯ ОБЛАСТЬ · Сравнение «Было (0.24)» и пояснения / макет редактора
+     ════════════════════════════════════════════════════════════════════════ */
+  .right-stage {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    background: var(--bg);
+    overflow: hidden;
+  }
+
+  .compare-pane {
+    display: none;
+    flex: 1;
+    min-width: 0;
+    padding: 20px 24px;
+    gap: 24px;
+    align-items: flex-start;
+    overflow: auto;
+  }
+  html[data-sb-mode="compare"] .compare-pane { display: flex; }
+  html:not([data-sb-mode="compare"]) .editor-mock { display: flex; }
+
+  .old-card {
+    width: 292px;
+    flex: none;
+    border: 1px solid var(--line-strong);
+    border-radius: 6px;
+    background: var(--bg-side);
+    overflow: hidden;
+    opacity: .92;
+  }
+  .old-tag {
+    padding: 5px 12px;
+    font: 600 10.5px/1.3 var(--mono);
+    color: var(--full);
+    background: color-mix(in srgb, var(--full) 10%, var(--bg));
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    justify-content: space-between;
+  }
+  .old-vsc { padding: 8px 14px 4px; font-size: 11.5px; font-weight: 600; color: var(--fg-mute); }
+  .old-head { display: flex; align-items: center; padding: 7px 14px 6px; font-size: 11px; font-weight: 700; letter-spacing: .04em; color: var(--fg-mute); border-bottom: 1px solid var(--line); }
+  .old-head span:last-child { margin-left: auto; font-size: 15px; }
+  .old-sec-h { display: flex; align-items: center; gap: 7px; padding: 8px 14px 6px; font-size: 11px; font-weight: 700; letter-spacing: .04em; color: var(--fg-mute); }
+  .old-sec-h i { margin-left: auto; font-style: normal; }
+  .old-seg { display: flex; gap: 2px; margin: 0 14px 8px; padding: 2px; background: var(--bg-input); border-radius: 4px; min-width: 0; }
+  .old-seg > span { flex: 1; display: flex; gap: 5px; align-items: center; justify-content: center; padding: 3px 3px; border-radius: 3px; font-size: 12px; color: var(--fg-mute); min-width: 0; overflow: hidden; white-space: nowrap; }
+  .old-seg > span.on { background: var(--bg-raise); color: var(--fg); box-shadow: 0 0 0 1px var(--line-strong); }
+  .old-mk { display: inline-grid; place-items: center; width: 14px; height: 14px; border-radius: 3px; font: 700 9px/1 var(--mono); color: #fff; flex: none; }
+  .old-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; background: var(--fg-faint); }
+  .old-err { display: flex; align-items: center; gap: 6px; padding: 0 14px 8px; font-size: 12px; font-style: italic; color: var(--fg-faint); border-bottom: 1px solid var(--line); min-width: 0; }
+  .old-err span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .old-tools { display: flex; gap: 6px; align-items: center; padding: 6px 10px; border-bottom: 1px solid var(--line); }
+  .old-tools div { flex: 1; background: var(--bg-input); border: 1px solid var(--line-strong); border-radius: 3px; padding: 3px 8px; font-size: 12px; color: var(--fg-faint); }
+  .old-row { display: grid; grid-template-columns: 10px 1fr; gap: 8px; padding: 5px 14px; font-size: 12.5px; align-items: center; }
+  .old-row.sel { background: #2c2c2c; }
+  :root[data-theme="light"] .old-row.sel { background: #e4e6f1; }
+  .old-row .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .old-row small { display: block; font: 11px var(--mono); color: var(--fg-mute); }
+
+  .diff-notes {
+    flex: 1;
+    min-width: 240px;
+    max-width: 440px;
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--fg-mute);
+  }
+  .diff-notes h2 { margin: 0 0 10px; font-size: 16px; font-weight: 600; color: var(--fg); }
+  .diff-notes ol { margin: 0; padding-left: 18px; display: grid; gap: 8px; }
+  .diff-notes b { color: var(--fg); font-weight: 500; }
+  .diff-notes code { font-size: 11px; background: var(--bg-code); padding: 1px 4px; border-radius: 3px; color: var(--fg); }
+  .try-hint {
+    margin-top: 14px;
+    padding: 9px 11px;
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    background: var(--bg-side);
+    font-size: 12px;
+  }
+
+  .editor-mock {
+    display: none;
+    flex: 1;
+    min-width: 0;
+    flex-direction: column;
+  }
+  .ed-tabs {
+    height: 35px;
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    padding: 0 14px;
+    gap: 8px;
+    font-size: 12px;
+    background: var(--bg-side);
+  }
+  .ed-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 100%;
+    padding: 0 12px;
+    background: var(--bg);
+    border-right: 1px solid var(--line);
+    border-top: 1px solid var(--accent);
+    color: var(--fg);
+  }
+  .ed-body {
+    flex: 1;
+    padding: 28px 32px;
+    color: var(--fg-mute);
+    max-width: 620px;
+  }
+  .ed-body h3 { margin: 0 0 8px; font-size: 16px; color: var(--fg); font-weight: 600; }
+  .ed-body p { margin: 0 0 10px; font-size: 13px; line-height: 1.55; }
+</style>
+</head>
+<body>
+
+<div class="preview-bar">
+  <b>Левая панель · макет</b>
+  <span class="grp" role="group" aria-label="Вид лимитов">
+    <button type="button" data-opt="limits" data-val="a" aria-pressed="true">A · Вкладки</button>
+    <button type="button" data-opt="limits" data-val="b" aria-pressed="false">B · Радар</button>
+    <button type="button" data-opt="limits" data-val="c" aria-pressed="false">C · Список</button>
+  </span>
+  <span class="grp" role="group" aria-label="Ширина и сравнение">
+    <button type="button" data-opt="sb-mode" data-val="compare" aria-pressed="true">Было → Стало</button>
+    <button type="button" data-opt="sb-mode" data-val="260" aria-pressed="false">260 px</button>
+    <button type="button" data-opt="sb-mode" data-val="310" aria-pressed="false">310 px</button>
+    <button type="button" data-opt="sb-mode" data-val="380" aria-pressed="false">380 px</button>
+  </span>
+  <span class="grp" role="group" aria-label="Плотность списка">
+    <button type="button" data-opt="density" data-val="compact" aria-pressed="true">1 стр.</button>
+    <button type="button" data-opt="density" data-val="detailed" aria-pressed="false">2 стр.</button>
+  </span>
+  <span class="grp">
+    <button type="button" id="jira-toggle" aria-pressed="false">+ Jira</button>
+  </span>
+  <span class="grp" role="group" aria-label="Тема">
+    <button type="button" data-set-theme="dark" aria-pressed="true">Тёмная</button>
+    <button type="button" data-set-theme="light" aria-pressed="false">Светлая</button>
+  </span>
+  <a href="../index.html">← оглавление</a>
+</div>
+
+<div class="preview-stage">
+  <div class="frame">
+
+    <!-- Activity Bar VS Code -->
+    <aside class="actbar" aria-hidden="true">
+      <span class="ic"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 4v16"/></svg></span>
+      <span class="ic"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg></span>
+      <span class="ic on" title="Agentura"><svg viewBox="0 0 24 24"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7a2.5 2.5 0 0 1-2.5 2.5H10l-4.5 3.5V16H6.5A2.5 2.5 0 0 1 4 13.5z"/></svg></span>
+      <span class="ic"><svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="8" r="2.5"/><circle cx="8" cy="18" r="2.5"/><path d="M8 7.5 16 8M7 8.5l1 7"/></svg></span>
+    </aside>
+
+    <!-- НОВАЯ ЛЕВАЯ ПАНЕЛЬ -->
+    <div class="sb-host">
+      <div class="vsc-titlebar">
+        <span class="title-txt">Agentura</span>
+        <button type="button" class="icon-btn" id="btn-new" title="Новая сессия (⌘⇧N)" aria-label="Новая сессия">
+          <svg viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></svg>
+        </button>
+        <button type="button" class="icon-btn" id="btn-refresh" title="Обновить лимиты · обновлено в 19:22" aria-label="Обновить лимиты">
+          <svg viewBox="0 0 16 16"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><path d="M13.5 2.5v3h-3"/></svg>
+        </button>
+        <button type="button" class="icon-btn" title="Настройки Agentura" aria-label="Настройки Agentura">
+          <svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v1.5M8 12.7v1.5M1.8 8h1.5M12.7 8h1.5M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M12.4 3.6l-1.1 1.1M4.7 11.3l-1.1 1.1"/></svg>
+        </button>
+      </div>
+
+      <aside class="sb-next sidebar" aria-label="Боковая панель Agentura">
+
+        <!-- ── СЕКЦИЯ ЛИМИТОВ ── -->
+        <section class="sec-block" id="sec-limits">
+          <div class="sec-hd">
+            <button type="button" class="sec-toggle" id="fold-limits" aria-expanded="true">
+              <span class="chev"><svg viewBox="0 0 12 12"><path d="m2.5 4.2 3.5 3.6 3.5-3.6"/></svg></span>
+              <span>Лимиты</span>
+            </button>
+            <span class="sec-meta" id="limits-sub">4 движка</span>
+            <span class="sec-summary">
+              <span>Claude 42%</span>
+              <span style="color:var(--full)">Codex 92%</span>
+              <span style="color:var(--warn)">AGY !</span>
+            </span>
+          </div>
+
+          <div class="sec-body">
+
+            <!-- ВАРИАНТ A: Адаптивные вкладки -->
+            <div class="limits-view limits-a">
+              <div class="eng-tabs" role="tablist" aria-label="Движки">
+                <button type="button" role="tab" id="tab-claude" data-eng="claude" aria-selected="false" tabindex="-1" title="Claude · худшее окно 68%">
+                  <span class="brand brand-claude" aria-hidden="true"></span>
+                  <span class="tab-lbl">Claude</span>
+                  <i class="st-pip ok" aria-hidden="true"></i>
+                </button>
+                <button type="button" role="tab" id="tab-codex" data-eng="codex" aria-selected="false" tabindex="-1" title="Codex · 5 часов: 92%">
+                  <span class="brand brand-codex" aria-hidden="true"></span>
+                  <span class="tab-lbl">Codex</span>
+                  <i class="st-pip hot" aria-hidden="true"></i>
+                </button>
+                <button type="button" role="tab" id="tab-antigravity" data-eng="antigravity" aria-selected="true" tabindex="0" title="Antigravity · ошибка проверки квоты">
+                  <span class="brand brand-antigravity" aria-hidden="true"></span>
+                  <span class="tab-lbl">Antigravity</span>
+                  <i class="st-pip err" aria-hidden="true"></i>
+                </button>
+                <button type="button" role="tab" id="tab-kimi" data-eng="kimi" aria-selected="false" tabindex="-1" title="Kimi Code · 5 часов: 18%">
+                  <span class="brand brand-kimi" aria-hidden="true"></span>
+                  <span class="tab-lbl">Kimi Code</span>
+                  <i class="st-pip ok" aria-hidden="true"></i>
+                </button>
+              </div>
+
+              <div class="eng-panels">
+                <div role="tabpanel" aria-labelledby="tab-claude" data-panel="claude" hidden="until-found">
+                  <div class="panel-body">
+                    <div class="acc-line">
+                      <span class="acc-id">fost@pilot-gps.ru</span>
+                      <span class="plan-chip">Max 5x</span>
+                      <span class="ver-txt">2.1.4</span>
+                    </div>
+                    <div class="gauges">
+                      <div class="g-row">
+                        <span class="g-lbl">5 часов</span>
+                        <span class="g-bar"><i style="width:42%"></i></span>
+                        <span class="g-pct">42%</span>
+                        <span class="g-rst">до 17:00</span>
+                      </div>
+                      <div class="g-row">
+                        <span class="g-lbl">7 дней</span>
+                        <span class="g-bar"><i style="width:68%"></i></span>
+                        <span class="g-pct">68%</span>
+                        <span class="g-rst">пт 09:00</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div role="tabpanel" aria-labelledby="tab-codex" data-panel="codex" hidden="until-found">
+                  <div class="panel-body">
+                    <div class="acc-line">
+                      <span class="acc-id">fost@pilot-gps.ru</span>
+                      <span class="plan-chip">Plus</span>
+                      <span class="ver-txt">0.46.0</span>
+                    </div>
+                    <div class="gauges">
+                      <div class="g-row hot">
+                        <span class="g-lbl">5 часов</span>
+                        <span class="g-bar"><i style="width:92%"></i></span>
+                        <span class="g-pct">92%</span>
+                        <span class="g-rst">до 20:15</span>
+                      </div>
+                      <div class="g-row">
+                        <span class="g-lbl">7 дней</span>
+                        <span class="g-bar"><i style="width:54%"></i></span>
+                        <span class="g-pct">54%</span>
+                        <span class="g-rst">вс 12:00</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div role="tabpanel" aria-labelledby="tab-antigravity" data-panel="antigravity" tabindex="0">
+                  <div class="panel-body">
+                    <div class="diag-box">
+                      <div class="diag-hd">
+                        <span>Квота недоступна</span>
+                        <span class="ver-txt">agy 0.9.4</span>
+                      </div>
+                      <p class="diag-msg">Eligibility check failed: текущий аккаунт Google не привязан к плану с видимыми лимитами.</p>
+                      <div class="diag-acts">
+                        <button type="button">Сменить аккаунт</button>
+                        <button type="button" class="muted-act">Скрыть вкладку</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div role="tabpanel" aria-labelledby="tab-kimi" data-panel="kimi" hidden="until-found">
+                  <div class="panel-body">
+                    <div class="acc-line">
+                      <span class="acc-id">kimi-cli · moonshot</span>
+                      <span class="plan-chip">Pro</span>
+                      <span class="ver-txt">1.4.0</span>
+                    </div>
+                    <div class="gauges">
+                      <div class="g-row">
+                        <span class="g-lbl">5 часов</span>
+                        <span class="g-bar"><i style="width:18%"></i></span>
+                        <span class="g-pct">18%</span>
+                        <span class="g-rst">до 22:00</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- ВАРИАНТ B: Радар (все 4 движка видны сразу плитками) -->
+            <div class="limits-view limits-b">
+              <div class="radar-grid" role="tablist" aria-label="Сводка лимитов">
+                <button type="button" role="tab" class="r-tile" data-radar="claude" aria-selected="false" title="Claude · 68% за 7 дней">
+                  <span class="brand brand-claude"></span>
+                  <span class="r-val">68%</span>
+                  <span class="r-track"><i style="width:68%"></i></span>
+                </button>
+                <button type="button" role="tab" class="r-tile hot" data-radar="codex" aria-selected="true" title="Codex · 92% за 5 часов">
+                  <span class="brand brand-codex"></span>
+                  <span class="r-val">92%</span>
+                  <span class="r-track"><i style="width:92%"></i></span>
+                </button>
+                <button type="button" role="tab" class="r-tile err" data-radar="antigravity" aria-selected="false" title="Antigravity · ошибка проверки">
+                  <span class="brand brand-antigravity"></span>
+                  <span class="r-val">!</span>
+                  <span class="r-track"><i style="width:100%"></i></span>
+                </button>
+                <button type="button" role="tab" class="r-tile" data-radar="kimi" aria-selected="false" title="Kimi Code · 18%">
+                  <span class="brand brand-kimi"></span>
+                  <span class="r-val">18%</span>
+                  <span class="r-track"><i style="width:18%"></i></span>
+                </button>
+              </div>
+              <div class="panel-body" id="radar-detail"></div>
+            </div>
+
+            <!-- ВАРИАНТ C: Плотный список-аккордеон -->
+            <div class="limits-view limits-c">
+              <div class="acc-list">
+                <div class="acc-item" data-acc="claude">
+                  <button type="button" class="acc-row-btn">
+                    <span class="brand brand-claude"></span>
+                    <span class="nm">Claude</span>
+                    <span class="g-bar"><i style="width:68%"></i></span>
+                    <span class="g-pct">68%</span>
+                  </button>
+                  <div class="acc-sub">
+                    <div class="gauges">
+                      <div class="g-row"><span class="g-lbl">5 часов</span><span class="g-bar"><i style="width:42%"></i></span><span class="g-pct">42%</span><span class="g-rst">17:00</span></div>
+                      <div class="g-row"><span class="g-lbl">7 дней</span><span class="g-bar"><i style="width:68%"></i></span><span class="g-pct">68%</span><span class="g-rst">пт 09:00</span></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="acc-item open" data-acc="codex">
+                  <button type="button" class="acc-row-btn">
+                    <span class="brand brand-codex"></span>
+                    <span class="nm">Codex</span>
+                    <span class="g-bar"><i style="width:92%;background:var(--full)"></i></span>
+                    <span class="g-pct" style="color:var(--full)">92%</span>
+                  </button>
+                  <div class="acc-sub">
+                    <div class="gauges">
+                      <div class="g-row hot"><span class="g-lbl">5 часов</span><span class="g-bar"><i style="width:92%"></i></span><span class="g-pct">92%</span><span class="g-rst">20:15</span></div>
+                      <div class="g-row"><span class="g-lbl">7 дней</span><span class="g-bar"><i style="width:54%"></i></span><span class="g-pct">54%</span><span class="g-rst">вс 12:00</span></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="acc-item" data-acc="antigravity">
+                  <button type="button" class="acc-row-btn">
+                    <span class="brand brand-antigravity"></span>
+                    <span class="nm">Antigravity</span>
+                    <span class="err-tag">квота скрыта</span>
+                  </button>
+                  <div class="acc-sub">
+                    <p class="diag-msg">Eligibility check failed: аккаунт Google не привязан к тарифу с видимыми лимитами.</p>
+                  </div>
+                </div>
+                <div class="acc-item" data-acc="kimi">
+                  <button type="button" class="acc-row-btn">
+                    <span class="brand brand-kimi"></span>
+                    <span class="nm">Kimi Code</span>
+                    <span class="g-bar"><i style="width:18%"></i></span>
+                    <span class="g-pct">18%</span>
+                  </button>
+                  <div class="acc-sub">
+                    <div class="gauges">
+                      <div class="g-row"><span class="g-lbl">5 часов</span><span class="g-bar"><i style="width:18%"></i></span><span class="g-pct">18%</span><span class="g-rst">22:00</span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </section>
+
+        <!-- ── СЕКЦИЯ СЕССИЙ ── -->
+        <section class="sess-sec">
+          <div class="sec-hd">
+            <span>Сессии</span>
+            <span class="proj-pill" title="Рабочая папка: ~/Projects/Agentura">Agentura</span>
+            <div class="hd-acts">
+              <button type="button" class="icon-btn" id="density-btn" title="Переключить плотность списка (1 / 2 строки)" aria-label="Плотность списка">
+                <svg viewBox="0 0 16 16"><path d="M2.5 4h11M2.5 8h11M2.5 12h7"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="search-wrap">
+            <svg class="s-ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+              <circle cx="7" cy="7" r="4.6"/><path d="m10.5 10.5 3.2 3.2" stroke-linecap="round"/>
+            </svg>
+            <label for="sess-search" hidden>Поиск сессий и задач</label>
+            <input id="sess-search" type="search" placeholder="Поиск сессий и задач…" autocomplete="off">
+            <kbd class="search-kbd" id="search-kbd">/</kbd>
+            <button type="button" class="search-clear" id="search-clear" aria-label="Очистить поиск" hidden>✕</button>
+          </div>
+
+          <div class="s-list list" id="session-list">
+
+            <div class="jira-group">
+              <div class="day-hd"><span>Задачи Jira</span><span>1</span></div>
+              <button type="button" class="jg-hd" id="jg-btn" aria-expanded="true">
+                <span class="jg-key">AGENT-42</span>
+                <span class="jg-st">In Progress</span>
+                <span class="jg-title">Редизайн левой панели</span>
+              </button>
+              <div class="jg-rows" id="jg-rows">
+                <button type="button" class="s-row" data-search="claude редизайн свитчера лимитов agent-42">
+                  <span class="s-ico">
+                    <span class="brand brand-claude"></span>
+                    <i class="s-badge wait" title="Ждёт разрешения"></i>
+                  </span>
+                  <span class="s-main">
+                    <span class="s-title">Сборка вариантов свитчера лимитов</span>
+                    <span class="s-sub">6 ходов · $0.38 · 84k ctx</span>
+                  </span>
+                  <span class="s-right">
+                    <span class="s-pill wait">ждёт</span>
+                    <span class="s-time">19:20</span>
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            <div class="day-hd"><span>Сегодня</span><span>5</span></div>
+
+            <button type="button" class="s-row cur" data-search="antigravity github skills repository overview and prototype">
+              <span class="s-ico">
+                <span class="brand brand-antigravity"></span>
+              </span>
+              <span class="s-main">
+                <span class="s-title">GitHub Skills Repository Overview and Prototype</span>
+                <span class="s-sub">Antigravity · 62k ctx</span>
+              </span>
+              <span class="s-right">
+                <span class="s-time">19:22</span>
+              </span>
+            </button>
+
+            <button type="button" class="s-row live" data-search="kimi code benjitaylor skills что это за скилл">
+              <span class="s-ico">
+                <span class="brand brand-kimi"></span>
+                <i class="s-badge live" title="Идёт ответ"></i>
+              </span>
+              <span class="s-main">
+                <span class="s-title">benjitaylor/skills — что это за скилл и тест</span>
+                <span class="s-sub">Kimi Code · отвечает · 48k ctx</span>
+              </span>
+              <span class="s-right">
+                <span class="s-time">сейчас</span>
+              </span>
+            </button>
+
+            <button type="button" class="s-row untitled" data-search="claude без названия a6b9 session">
+              <span class="s-ico">
+                <span class="brand brand-claude"></span>
+              </span>
+              <span class="s-main">
+                <span class="s-title">Без названия · #a6b9</span>
+                <span class="s-sub">1 ход · $0.04 · двойной клик — назвать</span>
+              </span>
+              <span class="s-right">
+                <span class="s-time">19:05</span>
+              </span>
+            </button>
+
+            <button type="button" class="s-row" data-search="claude запусти дочерних агентов с промтом ревью">
+              <span class="s-ico">
+                <span class="brand brand-claude"></span>
+              </span>
+              <span class="s-main">
+                <span class="s-title">Запусти дочерних агентов с промтом ревью</span>
+                <span class="s-sub">14 ходов · $1.26 · 142k ctx</span>
+              </span>
+              <span class="s-right">
+                <span class="s-time">18:41</span>
+              </span>
+            </button>
+
+            <button type="button" class="s-row" data-search="codex запусти roadmap 39 kimi code как пятый движок">
+              <span class="s-ico">
+                <span class="brand brand-codex"></span>
+              </span>
+              <span class="s-main">
+                <span class="s-title">Запусти roadmap 39 «Kimi Code как пятый движок»</span>
+                <span class="s-sub">Codex · 118k ctx</span>
+              </span>
+              <span class="s-right">
+                <span class="s-time">17:58</span>
+              </span>
+            </button>
+
+            <div class="day-hd"><span>Вчера</span><span>2</span></div>
+
+            <button type="button" class="s-row" data-search="antigravity реактивные цепочки обрывы стрима компакции">
+              <span class="s-ico">
+                <span class="brand brand-antigravity"></span>
+              </span>
+              <span class="s-main">
+                <span class="s-title">Реактивные цепочки после обрывов стрима</span>
+                <span class="s-sub">Antigravity · 95k ctx</span>
+              </span>
+              <span class="s-right">
+                <span class="s-time">вчера</span>
+              </span>
+            </button>
+
+            <button type="button" class="s-row" data-search="cursor масштабирование холста графа агентов">
+              <span class="s-ico">
+                <span class="brand brand-cursor"></span>
+              </span>
+              <span class="s-main">
+                <span class="s-title">Масштабирование холста графа агентов</span>
+                <span class="s-sub">Cursor · 71k ctx</span>
+              </span>
+              <span class="s-right">
+                <span class="s-time">вчера</span>
+              </span>
+            </button>
+
+            <div class="empty-search" id="empty-msg" hidden>Ничего не найдено</div>
+          </div>
+        </section>
+
+      </aside>
+    </div>
+
+    <!-- ПРАВАЯ СЦЕНА -->
+    <div class="right-stage">
+
+      <div class="compare-pane">
+        <div class="old-card" aria-label="Старая панель 0.24 для сравнения">
+          <div class="old-tag"><span>БЫЛО (v0.24 · та же ширина 292px)</span><span>6 дефектов</span></div>
+          <div class="old-vsc">Agentura</div>
+          <div class="old-head"><span>AGENTURA</span><span>⚙</span></div>
+          <div class="old-sec-h"><span>▾ АККАУНТ И ЛИМИТЫ</span><i>↻</i></div>
+          <div class="old-seg">
+            <span><b class="old-mk" style="background:#c96442">C</b>Claude<i class="old-dot"></i></span>
+            <span><b class="old-mk" style="background:#6b6bd6">X</b>Codex<i class="old-dot" style="background:var(--full)"></i></span>
+            <span class="on"><b class="old-mk" style="background:#2f7de1">G</b>Antigravity</span>
+            <span><b class="old-mk" style="background:var(--line);color:var(--fg)">K</b>Kimi Code</span>
+          </div>
+          <div class="old-err">
+            <span>Eligibility check failed: Your current account is not...</span>
+            <i class="old-dot"></i>
+          </div>
+          <div class="old-sec-h"><span>▾ СЕССИИ</span><i style="font-weight:400;color:var(--fg-mute)">Agentura ＋ ☰</i></div>
+          <div class="old-tools"><div>Поиск по названию</div><span style="color:var(--fg-mute)">⚲</span></div>
+          <div class="day-hd" style="padding:8px 14px 2px"><span>Сегодня</span></div>
+          <div class="old-row sel"><span></span><div class="t">GitHub Skills Repository Overview An...<small>Antigravity</small></div></div>
+          <div class="old-row"><span></span><div class="t">session_a6b9fb6b-7f7d-404e-9cd1-...</div></div>
+          <div class="old-row"><span class="old-dot" style="background:var(--info)"></span><div class="t">https://github.com/benjitaylor/skills --...<small>Kimi Code</small></div></div>
+          <div class="old-row"><span></span><div class="t">Запусти дочерних агентов с промт...</div></div>
+        </div>
+
+        <div class="diff-notes">
+          <h2>Что исправлено в новом макете</h2>
+          <ol>
+            <li><b>Убрана двойная шапка <code>Agentura</code> → <code>AGENTURA ⚙</code>.</b> Действия (<code>+</code>, <code>↻</code>, <code>⚙</code>) вынесены в нативный <code>view/title</code> VS Code — сразу +32px полезной высоты.</li>
+            <li><b>Свитчер на 4–5 движков больше не режет кнопки.</b> Активный таб держит полную ширину названия (<code>min-inline-size: max-content</code>), неактивные в узкой панели компактно показывают логотип и сигнал статуса без обрезки букв.</li>
+            <li><b>Настоящие брендовые SVG</b> из <code>media/brands/</code> вместо цветных квадратов <code>C / X / G / K</code> — единый язык с вкладками и полем ввода.</li>
+            <li><b>Читаемая диагностика вместо обрезанного курсива.</b> Ошибка квоты Antigravity раскрыта в 2 строки с действиями («Сменить аккаунт» / «Скрыть вкладку») и без бессмысленной серой точки справа.</li>
+            <li><b>Ровный ритм строк в «Сессиях».</b> Вместо пустой 10px-дыры слева у каждой строки стоит логотип её движка (статус <code>live</code>/<code>wait</code> — угловым бейджем на иконке), поэтому высота строк не пляшет.</li>
+            <li><b>Чистка заголовков и поиска.</b> <code>session_a6b9...</code> превращён в аккуратный <code>Без названия · #a6b9</code> (двойной клик — переименовать), <code>https://github.com/</code> срезан, а булавка <code>⚲</code> снаружи заменена лупой и <code>/</code> внутри инпута.</li>
+          </ol>
+          <div class="try-hint">
+            <b>Интерактивно в макете слева:</b> покликай вкладки движков (Claude / Codex / AGY / Kimi), переключи режимы <b>A / B / C</b> и ширину <b>260 px</b> сверху, сверни «Лимиты», введи текст в поиск или дважды кликни по любой сессии для переименования.
+          </div>
+        </div>
+      </div>
+
+      <div class="editor-mock">
+        <div class="ed-tabs">
+          <span class="ed-tab">
+            <span class="brand brand-antigravity"></span>
+            <span>GitHub Skills Repository Overview and Prototype</span>
+          </span>
+        </div>
+        <div class="ed-body">
+          <h3>Проверка адаптивности сайдбара</h3>
+          <p>Слева показана реальная ширина боковой панели (сейчас выбран режим без карточки сравнения). Контейнерные правила <code>@container sidebar</code> подстраивают вкладки движков и шкалы под фактическую ширину панели VS Code, а не под ширину окна.</p>
+          <p>Переключай варианты <b>A · Вкладки</b>, <b>B · Радар</b> и <b>C · Список</b> в верхней полосе, чтобы сравнить подачу лимитов на узких 260 px и широких 380 px.</p>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+</div>
+
+<script src="../shared/preview.js"></script>
+<script>
+(function () {
+  const html = document.documentElement;
+
+  document.querySelectorAll('[data-opt]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const opt = btn.getAttribute('data-opt');
+      const val = btn.getAttribute('data-val');
+      html.setAttribute('data-' + opt, val);
+      document.querySelectorAll('[data-opt="' + opt + '"]').forEach((b) => {
+        b.setAttribute('aria-pressed', String(b === btn));
+      });
+    });
+  });
+
+  const densityBtn = document.getElementById('density-btn');
+  densityBtn.addEventListener('click', () => {
+    const next = html.getAttribute('data-density') === 'detailed' ? 'compact' : 'detailed';
+    html.setAttribute('data-density', next);
+    document.querySelectorAll('[data-opt="density"]').forEach((b) => {
+      b.setAttribute('aria-pressed', String(b.getAttribute('data-val') === next));
+    });
+  });
+
+  const jiraToggle = document.getElementById('jira-toggle');
+  jiraToggle.addEventListener('click', () => {
+    const on = html.getAttribute('data-jira') !== 'on';
+    html.setAttribute('data-jira', on ? 'on' : 'off');
+    jiraToggle.setAttribute('aria-pressed', String(on));
+  });
+
+  const jgBtn = document.getElementById('jg-btn');
+  const jgRows = document.getElementById('jg-rows');
+  jgBtn.addEventListener('click', () => {
+    const open = jgRows.hidden;
+    jgRows.hidden = !open;
+    jgBtn.setAttribute('aria-expanded', String(open));
+  });
+
+  const secLimits = document.getElementById('sec-limits');
+  const foldLimits = document.getElementById('fold-limits');
+  foldLimits.addEventListener('click', () => {
+    const folded = secLimits.classList.toggle('folded');
+    foldLimits.setAttribute('aria-expanded', String(!folded));
+  });
+
+  const refreshBtn = document.getElementById('btn-refresh');
+  refreshBtn.addEventListener('click', () => {
+    refreshBtn.classList.add('spin');
+    setTimeout(() => refreshBtn.classList.remove('spin'), 650);
+  });
+
+  const tabs = Array.from(document.querySelectorAll('.eng-tabs [role="tab"]'));
+  const panels = Array.from(document.querySelectorAll('.eng-panels [role="tabpanel"]'));
+
+  function selectEngine(eng, focusTab) {
+    tabs.forEach((t) => {
+      const sel = t.getAttribute('data-eng') === eng;
+      t.setAttribute('aria-selected', String(sel));
+      t.tabIndex = sel ? 0 : -1;
+      if (sel && focusTab) t.focus();
+    });
+    panels.forEach((p) => {
+      const sel = p.getAttribute('data-panel') === eng;
+      if (sel) {
+        p.removeAttribute('hidden');
+        p.tabIndex = 0;
+      } else {
+        p.setAttribute('hidden', 'until-found');
+        p.removeAttribute('tabindex');
+      }
+    });
+  }
+
+  tabs.forEach((tab, idx) => {
+    tab.addEventListener('click', () => selectEngine(tab.getAttribute('data-eng'), false));
+    tab.addEventListener('keydown', (e) => {
+      let next = -1;
+      if (e.key === 'ArrowRight') next = (idx + 1) % tabs.length;
+      else if (e.key === 'ArrowLeft') next = (idx - 1 + tabs.length) % tabs.length;
+      else if (e.key === 'Home') next = 0;
+      else if (e.key === 'End') next = tabs.length - 1;
+      if (next >= 0) {
+        e.preventDefault();
+        selectEngine(tabs[next].getAttribute('data-eng'), true);
+      }
+    });
+  });
+
+  panels.forEach((panel) => {
+    panel.addEventListener('beforematch', () => selectEngine(panel.getAttribute('data-panel'), false));
+  });
+
+  const radarTiles = Array.from(document.querySelectorAll('[data-radar]'));
+  const radarDetail = document.getElementById('radar-detail');
+  function renderRadar(eng) {
+    radarTiles.forEach((t) => t.setAttribute('aria-selected', String(t.getAttribute('data-radar') === eng)));
+    const src = document.querySelector('[data-panel="' + eng + '"] .panel-body');
+    if (src && radarDetail) radarDetail.innerHTML = src.innerHTML;
+  }
+  renderRadar('codex');
+  radarTiles.forEach((t) => t.addEventListener('click', () => renderRadar(t.getAttribute('data-radar'))));
+
+  document.querySelectorAll('[data-acc] .acc-row-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const item = btn.closest('[data-acc]');
+      item.classList.toggle('open');
+    });
+  });
+
+  const searchInput = document.getElementById('sess-search');
+  const searchClear = document.getElementById('search-clear');
+  const searchKbd = document.getElementById('search-kbd');
+  const emptyMsg = document.getElementById('empty-msg');
+
+  function applySearch() {
+    const q = searchInput.value.trim().toLowerCase().replace(/ё/g, 'е');
+    searchClear.hidden = !q;
+    searchKbd.hidden = !!q;
+    let visibleCount = 0;
+    document.querySelectorAll('#session-list .s-row').forEach((row) => {
+      const hay = (row.getAttribute('data-search') + ' ' + row.textContent).toLowerCase().replace(/ё/g, 'е');
+      const match = !q || hay.includes(q);
+      row.hidden = !match;
+      if (match) visibleCount++;
+    });
+    emptyMsg.hidden = visibleCount > 0;
+  }
+
+  searchInput.addEventListener('input', applySearch);
+  searchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && searchInput.value) {
+      e.preventDefault();
+      searchInput.value = '';
+      applySearch();
+    }
+  });
+  searchClear.addEventListener('click', () => {
+    searchInput.value = '';
+    applySearch();
+    searchInput.focus();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === '/' && document.activeElement !== searchInput && !e.target.matches('input, textarea')) {
+      e.preventDefault();
+      searchInput.focus();
+    }
+  });
+
+  let clickTimer;
+  document.querySelectorAll('#session-list .s-row').forEach((row) => {
+    row.addEventListener('click', (e) => {
+      if (e.target.matches('input')) return;
+      clearTimeout(clickTimer);
+      clickTimer = setTimeout(() => {
+        document.querySelectorAll('#session-list .s-row.cur').forEach((r) => r.classList.remove('cur'));
+        row.classList.add('cur');
+      }, 200);
+    });
+
+    row.addEventListener('dblclick', () => {
+      clearTimeout(clickTimer);
+      const titleEl = row.querySelector('.s-title');
+      if (!titleEl || row.querySelector('.rename-inp')) return;
+      const oldText = titleEl.textContent;
+      const inp = document.createElement('input');
+      inp.type = 'text';
+      inp.className = 'rename-inp';
+      inp.value = oldText;
+      titleEl.replaceWith(inp);
+      inp.focus();
+      inp.select();
+
+      let done = false;
+      const finish = (save) => {
+        if (done) return;
+        done = true;
+        const span = document.createElement('span');
+        span.className = 's-title';
+        const nextVal = inp.value.trim();
+        span.textContent = save && nextVal ? nextVal : oldText;
+        if (save && nextVal) row.classList.remove('untitled');
+        inp.replaceWith(span);
+      };
+
+      inp.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter') {
+          ev.preventDefault();
+          if (ev.isComposing || eventKey229(ev)) return;
+          finish(true);
+        } else if (ev.key === 'Escape') {
+          ev.preventDefault();
+          finish(false);
+        }
+      });
+      inp.addEventListener('blur', () => finish(true));
+    });
+  });
+
+  function eventKey229(ev) { return ev.keyCode === 229; }
+
+  // Хэш-пресеты: #a | #b | #c, -claude|-codex|-kimi, -260|-310|-380, -detailed, -jira, -light
+  function applyHash() {
+    const raw = location.hash.slice(1);
+    if (!raw) return;
+    const parts = raw.split('-');
+    for (const p of parts) {
+      if (p === 'a' || p === 'b' || p === 'c') {
+        document.querySelector('[data-opt="limits"][data-val="' + p + '"]')?.click();
+      } else if (p === '260' || p === '310' || p === '380' || p === 'compare') {
+        document.querySelector('[data-opt="sb-mode"][data-val="' + p + '"]')?.click();
+      } else if (p === 'detailed' || p === 'compact') {
+        document.querySelector('[data-opt="density"][data-val="' + p + '"]')?.click();
+      } else if (p === 'jira' && html.getAttribute('data-jira') !== 'on') {
+        jiraToggle.click();
+      } else if (p === 'light' || p === 'dark') {
+        document.querySelector('[data-set-theme="' + p + '"]')?.click();
+      } else if (p === 'claude' || p === 'codex' || p === 'antigravity' || p === 'kimi') {
+        selectEngine(p, false);
+        renderRadar(p);
+      }
+    }
+  }
+  applyHash();
+  window.addEventListener('hashchange', applyHash);
+})();
+</script>
+</body>
+</html>

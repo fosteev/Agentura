@@ -61,18 +61,84 @@ export function groupByDay(
   return out;
 }
 
+/** 4 символа hex-хвоста из `session_<hex>` / UUID / `id` (или префикс id). */
+export function extractSessionTag(idOrTitle: string): string {
+  const withoutPrefix = idOrTitle.replace(/^session_/i, '');
+  const hex = withoutPrefix.replace(/[^0-9a-f]/gi, '');
+  if (hex.length >= 4) return hex.slice(0, 4).toLowerCase();
+  return (withoutPrefix || idOrTitle).slice(0, 4).toLowerCase();
+}
+
+export interface DisplaySessionTitle {
+  text: string;
+  untitled: boolean;
+}
+
 /**
- * Поиск по названию (и по ключу и названию задачи, если чат в задаче — вид `section`): без регистра, «ё» = «е»,
- * пустой запрос — весь список.
+ * Отображаемое название сессии (roadmap 42, этап 3):
+ * - пустые заголовки, сырые auto-ID (title === id, session_<hex>, голый UUID) отображаются как
+ *   «Без названия · #<короткий_хвост>» («Untitled · #...» в EN) с `untitled: true`;
+ * - ведущий `https://github.com/` и `http://github.com/` срезается, сохраняя остальной текст (`untitled: false`);
+ * - исходный `s.title` не мутируется.
  */
-export function filterSessions<T extends Pick<SessionSummary, 'title' | 'task'>>(
-  rows: readonly T[],
-  query: string,
-): T[] {
-  const norm = (x: string) => x.toLowerCase().replace(/ё/g, 'е');
+export function displaySessionTitle(s: Pick<SessionSummary, 'id' | 'title'>): DisplaySessionTitle {
+  const raw = (s.title ?? '').trim();
+  const stripped = raw.replace(/^https?:\/\/github\.com\//i, '').trim();
+  const isUntitled =
+    !stripped ||
+    stripped === s.id.trim() ||
+    /^session_[a-z0-9_-]{6,}$/i.test(stripped) ||
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(stripped);
+
+  if (isUntitled) {
+    const source =
+      /^session_[a-z0-9_-]{6,}$/i.test(stripped) ||
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(stripped)
+        ? stripped
+        : s.id || stripped;
+    const tag = extractSessionTag(source);
+    return {
+      text: `${ui.sidebar.untitled} · #${tag}`,
+      untitled: true,
+    };
+  }
+
+  return {
+    text: stripped,
+    untitled: false,
+  };
+}
+
+const norm = (x: string): string => x.toLowerCase().replace(/ё/g, 'е');
+
+function sessionSearchText(s: Pick<SessionSummary, 'title'> & Partial<Pick<SessionSummary, 'id'>>): string {
+  const disp = displaySessionTitle({ id: s.id ?? '', title: s.title });
+  const id = s.id ?? '';
+  const tag = id ? extractSessionTag(id) : '';
+  return `${s.title} ${disp.text} ${id} ${tag ? `#${tag} ${tag}` : ''}`;
+}
+
+function sessionMatches(
+  s: Pick<SessionSummary, 'title'> & Partial<Pick<SessionSummary, 'id'>>,
+  normalizedQuery: string,
+): boolean {
+  return norm(sessionSearchText(s)).includes(normalizedQuery);
+}
+
+/**
+ * Поиск по названию (исходному и отображаемому displaySessionTitle), ID/хвосту и по ключу/названию задачи:
+ * без регистра, «ё» = «е», пустой запрос — весь список.
+ */
+export function filterSessions<
+  T extends Pick<SessionSummary, 'title'> & Partial<Pick<SessionSummary, 'id' | 'task'>>,
+>(rows: readonly T[], query: string): T[] {
   const q = norm(query.trim());
-  const text = (s: T) => (s.task ? `${s.title} ${s.task.key} ${s.task.title}` : s.title);
-  return q ? rows.filter((s) => norm(text(s)).includes(q)) : [...rows];
+  if (!q) return [...rows];
+  return rows.filter((s) => {
+    if (sessionMatches(s, q)) return true;
+    if (s.task && norm(`${s.task.key} ${s.task.title}`).includes(q)) return true;
+    return false;
+  });
 }
 
 /** `131k`, `950`, `1.2M` — контекст в строке списка. */
@@ -111,12 +177,11 @@ export function costLabel(s: Pick<SessionSummary, 'costUsd' | 'costPartial'>): s
 
 /**
  * Подпись под названием и подсказка строки: `14 ходов · $1.84 · 131k` и тег состояния (ждёт ответа, ошибка,
- * лимит). `withCtx: false` — контекст уже показан колонкой справа, во второй строке его нет.
+ * лимит). При наличии постоянной иконки слева имя Claude не дублируется во второй строке списка,
+ * но сохраняется для подсказки data-tip (`includeEngine = true`) или для сторонних движков без ходов/цены.
  */
-export function subLabel(s: SessionSummary, withCtx = true, mixed = false): string {
-  // метка движка — только когда в списке есть и Codex (список одного Claude остаётся как был)
-  const parts: string[] = mixed || foreignProvider(s) ? [providerName(s)] : [];
-  // у Codex-треда и беседы Antigravity ходов и стоимости нет (списки их не отдают) — не показываем «0 ходов · —»
+export function subLabel(s: SessionSummary, withCtx = true, includeEngine = false): string {
+  const parts: string[] = includeEngine || foreignProvider(s) ? [providerName(s)] : [];
   if (!foreignProvider(s)) parts.push(ui.empty.turns(s.turns), costLabel(s));
   if (withCtx && s.contextTokens !== undefined && s.contextTokens > 0)
     parts.push(tokensLabel(s.contextTokens));
@@ -224,8 +289,6 @@ export interface TaskLayout {
   free: SessionSummary[];
 }
 
-const norm = (x: string): string => x.toLowerCase().replace(/ё/g, 'е');
-
 /**
  * Раскладка списка сессий по группам задач (`sessions.update.tasks`). Группа без чатов в списке не показывается;
  * поиск — по названию чата, ключу и названию задачи (совпала задача — видны все её чаты, иначе только совпавшие).
@@ -248,12 +311,12 @@ export function taskLayout(
     if (mine.length === 0) continue;
     for (const s of mine) grouped.add(s.id);
     const taskHit = !q || norm(`${g.meta.key} ${g.meta.title}`).includes(q);
-    const shown = taskHit ? mine : mine.filter((s) => norm(s.title).includes(q));
+    const shown = taskHit ? mine : mine.filter((s) => sessionMatches(s, q));
     if (shown.length === 0) continue;
     blocks.push({ group: g, rows: shown, all: mine, updatedAt: Math.max(...mine.map((s) => s.updatedAt)) });
   }
   blocks.sort((a, b) => b.updatedAt - a.updatedAt);
-  const free = sessions.filter((s) => !grouped.has(s.id) && (!q || norm(s.title).includes(q)));
+  const free = sessions.filter((s) => !grouped.has(s.id) && (!q || sessionMatches(s, q)));
   return { blocks, free };
 }
 

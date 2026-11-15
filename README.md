@@ -110,12 +110,11 @@ The ✦ button asks Sonnet to write the commit message from the staged diff.
 
 ### Sidebar and settings
 
-`agentura.sessionList.view`: `detailed`, `compact`, `dense`. With more than one engine installed,
-`agentura.sidebar.limits` lays out their limits: `active` (default — the current tab's engine expanded), `stack`,
-`switch`, `table`, `header`. `agentura.sidebar.limitsHidden` lists engines whose limits the sidebar hides (and stops
-polling). `agentura.ui.animations` turns subtle interface transitions and micro-animations on or off (`prefers-reduced-motion`
-always disables them). All settings are also on a settings tab (⚙ in the sidebar),
-with live previews.
+The sidebar header features native VS Code action buttons: new chat (`+`), refresh limits (`↻`), and open settings (`⚙`).
+
+`agentura.sessionList.view`: `compact` (default — everything on one line) and `detailed` (two lines: title, with turns and cost below). It can also be switched directly via the view button in the “Sessions” header.
+
+With more than one engine installed, `agentura.sidebar.limits` lays out their limits: `tabs` (default — adaptive tabs with active engine accent), `radar` (a tile per engine with worst percentage and selected engine below), or `list` (vertical accordion list). The mode can also be switched with `Agentura: Engine Limits View…` (`agentura.sidebarLimits`). `agentura.sidebar.limitsHidden` lists engines whose limits the sidebar hides (and stops polling; each engine also has a “Hide tab” button in its diagnostics box). `agentura.ui.animations` turns subtle interface transitions and micro-animations on or off (`prefers-reduced-motion` always disables them). All settings are also on the settings tab with live previews.
 
 ![Session list views](docs/images/session-list.png)
 

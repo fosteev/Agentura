@@ -25,7 +25,7 @@ beforeEach(async () => {
   vi.spyOn(vscode, 'send').mockImplementation((m) => void sent.push(m));
   host = document.createElement('div');
   document.body.append(host);
-  render(h(SidebarTaskPicker, { detailed: false }), host);
+  render(h(SidebarTaskPicker, {}), host);
   await flush();
 });
 afterEach(() => {
@@ -63,6 +63,7 @@ it('existing task lists archived chats; open does not ask to create', async () =
   post({ type: 'task.picker.result', requestId: id, result: found });
   await flush();
   expect(get('.sp-chats').textContent).toContain('в архиве');
+  expect(get('.sp-chats button .brand.brand-codex')).not.toBeNull();
   expect(document.querySelector('.sp-create')).toBeNull();
   get('.ft .go').click();
   expect(sent.at(-1)).toEqual({ type: 'task.picker.act', requestId: id, mode: 'open' });
@@ -111,18 +112,42 @@ it('new chat in existing task is explicit and preserves user input', async () =>
   await flush();
   expect(get<HTMLTextAreaElement>('#sp-prompt').value).toBe('Review this');
 });
-it('new task provider list includes Kimi with K and sends kimi', async () => {
+it('new task provider list includes Kimi with BrandIcon and sends kimi', async () => {
   await open();
   const id = await find();
   post({ type: 'task.picker.result', requestId: id, result: { ...found, existing: false, chats: [] } });
   await flush();
   const engines = [...document.querySelectorAll<HTMLButtonElement>('.engines button')];
   const kimi = engines.find((b) => b.textContent?.includes('Kimi Code'))!;
-  expect(kimi.querySelector('.mk.kimi')?.textContent).toBe('K');
+  expect(kimi.querySelector('.brand.brand-kimi')).not.toBeNull();
   kimi.click();
   await flush();
   get('.ft .go').click();
   expect(sent.at(-1)).toMatchObject({ type: 'task.picker.act', mode: 'create', provider: 'kimi' });
+});
+
+it('task.picker.toggle message opens and closes the popup menu at top right', async () => {
+  expect(document.querySelector('.sp-menu')).toBeNull();
+  post({ type: 'task.picker.toggle' });
+  await flush();
+  const menu = document.querySelector<HTMLElement>('.sp-menu');
+  expect(menu).not.toBeNull();
+  expect(menu?.style.top).toBe('8px');
+  expect(menu?.style.left).toBe(`${Math.max(8, window.innerWidth - 248)}px`);
+  post({ type: 'task.picker.toggle' });
+  await flush();
+  expect(document.querySelector('.sp-menu')).toBeNull();
+});
+
+it('task.picker.toggle ignores message when picker is inside [inert]', async () => {
+  render(null, host);
+  host.setAttribute('inert', '');
+  render(h(SidebarTaskPicker, {}), host);
+  await flush();
+
+  post({ type: 'task.picker.toggle' });
+  await flush();
+  expect(document.querySelector('.sp-menu')).toBeNull();
 });
 it('new task shows settings immediately; stale replies and edited query cannot enable actions', async () => {
   await open();

@@ -4,6 +4,7 @@
  * Источник правды — настройки VS Code: вкладка настроек только читает и пишет их.
  */
 import type { AgentProvider, EffortLevel, PermissionMode } from './agent/types';
+export type { AgentProvider, EffortLevel, PermissionMode };
 import { isAgentToolsSetting, readAgentTools, type AgentToolsSetting } from './shared/jiraTools';
 
 export const EFFORT_LEVELS: readonly EffortLevel[] = ['low', 'medium', 'high', 'xhigh', 'max'];
@@ -21,28 +22,26 @@ export const MIN_POLL_MINUTES = 5;
 export const MAX_POLL_MINUTES = 1440;
 export const DEFAULT_THRESHOLDS: [number, number] = [120_000, 150_000];
 /**
- * Вид списка сессий в боковой панели (`sessionList.view`): `detailed` — две строки (название, ходы и цена),
- * `compact` — в одну, кроме текущей, идущей и ждущих ответа, `dense` — все в одну. Подробности — в подсказке.
+ * Вид списка сессий в боковой панели (`sessionList.view`, roadmap 42): `compact` — в одну строку,
+ * `detailed` — две строки (название, ходы и цена). Устаревшее значение `dense` при чтении превращается
+ * в `compact` (`readSessionListMode`).
  * Колонки контекста и времени справа включаются отдельно: `sessionList.context`, `sessionList.time`.
  */
-export const SESSION_LIST_MODES = ['detailed', 'compact', 'dense'] as const;
+export const SESSION_LIST_MODES = ['compact', 'detailed'] as const;
 export type SessionListMode = (typeof SESSION_LIST_MODES)[number];
 export const DEFAULT_SESSION_LIST: SessionListMode = 'compact';
+const LEGACY_SESSION_LIST: readonly string[] = ['dense'];
+
 /**
- * Вид верха боковой панели (`sidebar.top`): `detailed` — аккаунт таблицей, у лимитов шкала и строка сброса;
- * `compact` — аккаунт и каждый лимит в строку, «Новая сессия» — кнопкой ＋ в заголовке «Сессии»;
- * `dense` — секции аккаунта нет, лимиты мини-шкалами в заголовке панели, аккаунт — в подсказке.
+ * Вид лимитов всех движков (`sidebar.limits`, roadmap 42): `tabs` — адаптивные сегментированные вкладки (A),
+ * `radar` — ряд микро-плиток всех движков (B), `list` — плотный вертикальный аккордеон (C).
+ * Старые значения roadmap 18 (`switch` → `tabs`, `table`|`stack`|`header` → `radar`, `active` → `list`)
+ * читаются через `readSidebarLimitsMode`.
  */
-export const SIDEBAR_TOP_MODES = ['detailed', 'compact', 'dense'] as const;
-export type SidebarTopMode = (typeof SIDEBAR_TOP_MODES)[number];
-export const DEFAULT_SIDEBAR_TOP: SidebarTopMode = 'detailed';
-/**
- * Вид лимитов всех движков (`sidebar.limits`, roadmap 18), когда установлено ≥ 2 движков: `stack` — стопка карточек,
- * `switch` — переключатель движков, `table` — таблица, `active` — активный движок подробно, `header` — в заголовке.
- */
-export const SIDEBAR_LIMITS_MODES = ['stack', 'switch', 'table', 'active', 'header'] as const;
+export const SIDEBAR_LIMITS_MODES = ['tabs', 'radar', 'list'] as const;
 export type SidebarLimitsMode = (typeof SIDEBAR_LIMITS_MODES)[number];
-export const DEFAULT_SIDEBAR_LIMITS: SidebarLimitsMode = 'active';
+export const DEFAULT_SIDEBAR_LIMITS: SidebarLimitsMode = 'tabs';
+const LEGACY_SIDEBAR_LIMITS_RADAR: readonly string[] = ['table', 'stack', 'header'];
 /**
  * Где в боковой панели задачи Jira (`tasks.sidebar`, roadmap 19): `groups` — группы задач внутри списка сессий
  * (чаты вложены под ключом задачи), `section` — секция «Задачи» над «Сессиями», в строке сессии метка ключа справа.
@@ -200,7 +199,6 @@ export type SettingKey =
   | 'sessionList.view'
   | 'sessionList.context'
   | 'sessionList.time'
-  | 'sidebar.top'
   | 'sidebar.limits'
   | 'sidebar.limitsHidden'
   | 'tasks.sidebar'
@@ -261,7 +259,6 @@ export const SETTING_KEYS: readonly SettingKey[] = [
   'sessionList.view',
   'sessionList.context',
   'sessionList.time',
-  'sidebar.top',
   'sidebar.limits',
   'sidebar.limitsHidden',
   'tasks.sidebar',
@@ -345,7 +342,6 @@ export interface SettingsValues {
   'sessionList.view': SessionListMode;
   'sessionList.context': boolean;
   'sessionList.time': boolean;
-  'sidebar.top': SidebarTopMode;
   'sidebar.limits': SidebarLimitsMode;
   /** Движки, чьи лимиты не показывать в боковой панели; пусто — все. */
   'sidebar.limitsHidden': AgentProvider[];
@@ -420,8 +416,23 @@ export function isSessionListMode(v: unknown): v is SessionListMode {
   return typeof v === 'string' && (SESSION_LIST_MODES as readonly string[]).includes(v);
 }
 
+/** Значение `sessionList.view` из настроек: устаревшее `dense` → `compact`, мусор → по умолчанию. */
+export function readSessionListMode(v: unknown): SessionListMode {
+  if (isSessionListMode(v)) return v;
+  return typeof v === 'string' && LEGACY_SESSION_LIST.includes(v) ? 'compact' : DEFAULT_SESSION_LIST;
+}
+
 export function isSidebarLimitsMode(v: unknown): v is SidebarLimitsMode {
   return typeof v === 'string' && (SIDEBAR_LIMITS_MODES as readonly string[]).includes(v);
+}
+
+/** Значение `sidebar.limits` из настроек: мягкая миграция старых значений roadmap 18. */
+export function readSidebarLimitsMode(v: unknown): SidebarLimitsMode {
+  if (isSidebarLimitsMode(v)) return v;
+  if (v === 'switch') return 'tabs';
+  if (v === 'active') return 'list';
+  if (typeof v === 'string' && LEGACY_SIDEBAR_LIMITS_RADAR.includes(v)) return 'radar';
+  return DEFAULT_SIDEBAR_LIMITS;
 }
 
 /** Скрытые движки из settings.json: незнакомые имена отбрасываются, порядок — как в `PROVIDERS`. */
@@ -445,10 +456,6 @@ export function readTaskCardMode(v: unknown): TaskCardMode {
 
 export function isTaskTabMode(v: unknown): v is TaskTabMode {
   return typeof v === 'string' && (TASK_TAB_MODES as readonly string[]).includes(v);
-}
-
-export function isSidebarTopMode(v: unknown): v is SidebarTopMode {
-  return typeof v === 'string' && (SIDEBAR_TOP_MODES as readonly string[]).includes(v);
 }
 
 export function isComposerLayout(v: unknown): v is ComposerLayout {
@@ -501,10 +508,9 @@ export function resolveLanguage(raw: unknown, envLanguage: string): 'ru' | 'en' 
   return envLanguage.toLowerCase().startsWith('ru') ? 'ru' : 'en';
 }
 
-/** Следующий вид по кнопке в заголовке «Сессии»: подробно → компактно → плотно → подробно. */
+/** Следующий вид по кнопке в заголовке «Сессии»: компактно ↔ подробно. */
 export function nextSessionListMode(m: SessionListMode): SessionListMode {
-  const i = SESSION_LIST_MODES.indexOf(m);
-  return SESSION_LIST_MODES[(i + 1) % SESSION_LIST_MODES.length] ?? DEFAULT_SESSION_LIST;
+  return m === 'compact' ? 'detailed' : 'compact';
 }
 
 export function isEffort(v: unknown): v is EffortLevel {
@@ -674,10 +680,6 @@ export function validateSetting(key: SettingKey, value: unknown, lang: ErrLang =
       return isSessionListMode(value)
         ? { ok: true, value }
         : bad(t.allowed(SESSION_LIST_MODES.join(', ')));
-    case 'sidebar.top':
-      return isSidebarTopMode(value)
-        ? { ok: true, value }
-        : bad(t.allowed(SIDEBAR_TOP_MODES.join(', ')));
     case 'sidebar.limits':
       return isSidebarLimitsMode(value)
         ? { ok: true, value }
@@ -739,7 +741,6 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
   const th = cfg.get<unknown>('contextThresholds');
   const poll = cfg.get<unknown>('usagePollMinutes');
   const list = cfg.get<unknown>('sessionList.view');
-  const top = cfg.get<unknown>('sidebar.top');
   const limits = cfg.get<unknown>('sidebar.limits');
   const taskSb = cfg.get<unknown>('tasks.sidebar');
   const taskCard = cfg.get<unknown>('tasks.card');
@@ -791,11 +792,10 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
     cursorExecutable: str('cursorExecutable'),
     kimiExecutable: str('kimiExecutable'),
     defaultProvider: isProvider(provider) ? provider : DEFAULT_PROVIDER,
-    'sessionList.view': isSessionListMode(list) ? list : DEFAULT_SESSION_LIST,
+    'sessionList.view': readSessionListMode(list),
     'sessionList.context': cfg.get<unknown>('sessionList.context') !== false,
     'sessionList.time': cfg.get<unknown>('sessionList.time') !== false,
-    'sidebar.top': isSidebarTopMode(top) ? top : DEFAULT_SIDEBAR_TOP,
-    'sidebar.limits': isSidebarLimitsMode(limits) ? limits : DEFAULT_SIDEBAR_LIMITS,
+    'sidebar.limits': readSidebarLimitsMode(limits),
     'sidebar.limitsHidden': readHiddenEngines(cfg.get<unknown>('sidebar.limitsHidden')),
     'tasks.sidebar': isTaskSidebarMode(taskSb) ? taskSb : DEFAULT_TASK_SIDEBAR,
     'tasks.card': readTaskCardMode(taskCard),

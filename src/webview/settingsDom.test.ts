@@ -68,8 +68,7 @@ const values: SettingsValues = {
   'sessionList.view': 'compact',
   'sessionList.context': true,
   'sessionList.time': true,
-  'sidebar.top': 'detailed',
-  'sidebar.limits': 'active',
+  'sidebar.limits': 'tabs',
   'sidebar.limitsHidden': [],
   'tasks.sidebar': 'groups',
   'tasks.card': 'tab',
@@ -138,12 +137,50 @@ beforeEach(() => {
 });
 afterEach(() => vi.restoreAllMocks());
 
-describe('⚙ в боковой панели', () => {
-  it('клик отправляет settings.open', async () => {
+describe('действия боковой панели', () => {
+  it('клик по кнопке вида переключает плотность списка и отправляет settings.set', async () => {
     const host = mount(Sidebar);
     await flush();
-    host.querySelector<HTMLButtonElement>('.head .gear')!.click();
-    expect(posted).toContainEqual({ type: 'settings.open' });
+    const btn = host.querySelector<HTMLButtonElement>('.sec .view')!;
+    expect(btn).not.toBeNull();
+    btn.click();
+    expect(posted).toContainEqual({
+      type: 'settings.set',
+      key: 'sessionList.view',
+      value: 'detailed',
+    });
+  });
+
+  it('клик по «Скрыть вкладку» в .diag-box отправляет sidebar.hideEngine', async () => {
+    const host = mount(Sidebar);
+    await flush();
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: {
+          type: 'engines.limits',
+          engines: [
+            {
+              engine: 'codex',
+              state: 'signedOut',
+              windows: [],
+              updatedAt: Date.now(),
+            },
+          ],
+        },
+      }),
+    );
+    await flush();
+    const codexTab = host.querySelector<HTMLButtonElement>('.eng-tabs [data-engine="codex"]')!;
+    expect(codexTab).not.toBeNull();
+    codexTab.click();
+    await flush();
+    const hideBtn = host.querySelector<HTMLButtonElement>('.diag-box .act-hide')!;
+    expect(hideBtn).not.toBeNull();
+    hideBtn.click();
+    expect(posted).toContainEqual({
+      type: 'sidebar.hideEngine',
+      engine: 'codex',
+    });
   });
 });
 
@@ -383,7 +420,6 @@ describe('вкладка настроек', () => {
       'agentura.contextThresholds',
       'agentura.usagePollMinutes · не меньше 5',
       'agentura.limits.readKeychain',
-      'agentura.sidebar.top',
       'agentura.sidebar.limits',
       'agentura.sidebar.limitsHidden',
       'agentura.tasks.sidebar',
@@ -580,46 +616,39 @@ describe('вкладка настроек', () => {
     expect(gitl.querySelectorAll('.pv [data-git="unified"] .rgrp').length).toBeGreaterThan(2);
     gitl.querySelector<HTMLButtonElement>('[data-value="unified"]')!.click();
     expect(sets().at(-1)).toEqual({ type: 'settings.set', key: 'git.layout', value: 'unified' });
-    const top = group('sidebar.top');
-    expect(
-      [...top.querySelectorAll('.pv .sidebar')].map((e) => e.getAttribute('data-top')),
-    ).toEqual(['detailed', 'compact', 'dense']);
     const list = group('sessionList.view');
     expect(
       [...list.querySelectorAll('.pv .sidebar')].map((e) => e.getAttribute('data-list')),
-    ).toEqual(['detailed', 'compact', 'dense']);
+    ).toEqual(['compact', 'detailed']);
+    list.querySelector<HTMLButtonElement>('[data-value="detailed"]')!.click();
+    expect(sets().at(-1)).toEqual({ type: 'settings.set', key: 'sessionList.view', value: 'detailed' });
     expect(
       host.querySelector('[data-key="agentura.feed.fontSize"] .pv-one .pv-sized .log'),
     ).not.toBeNull();
   });
 
-  it('лимиты движков: пять разных превью даже при плотном верхе; выбор пишет настройку', async () => {
+  it('лимиты движков: три превью; выбор пишет настройку', async () => {
     const host = mount(Settings);
-    state({ 'sidebar.top': 'dense' });
+    state({ 'sidebar.limits': 'tabs' });
     await flush();
     const row = host.querySelector('[data-key="agentura.sidebar.limits"]')!;
     expect(row.querySelector('select')).toBeNull();
     const cards = [...row.querySelectorAll<HTMLElement>('[role="radio"]')];
-    expect(cards.map((c) => c.dataset.value)).toEqual(['stack', 'switch', 'table', 'active', 'header']);
+    expect(cards.map((c) => c.dataset.value)).toEqual(['tabs', 'radar', 'list']);
     for (const card of cards) {
       expect(card.querySelector('.pv[inert][aria-hidden="true"]')).not.toBeNull();
-      if (card.dataset.value === 'header') {
-        expect(card.querySelectorAll('.head .hx .m')).toHaveLength(3);
-        expect(card.querySelector('.sec.acc')).toBeNull();
-      } else {
-        expect(card.querySelector('.sec.acc')?.getAttribute('data-limits')).toBe(card.dataset.value);
-        expect(card.textContent).toContain('Claude');
-        expect(card.textContent).toContain('Codex');
-        expect(card.querySelector('.mk.agy')).not.toBeNull();
-      }
     }
-    expect(row.querySelector('[aria-checked="true"]')?.getAttribute('data-value')).toBe('active');
-    cards[0]!.click();
-    expect(sets().at(-1)).toEqual({ type: 'settings.set', key: 'sidebar.limits', value: 'stack' });
-    state({ 'sidebar.limits': 'stack' });
+    const [tabsCard, radarCard, listCard] = cards as [HTMLElement, HTMLElement, HTMLElement];
+    expect(tabsCard.querySelector('.eng-tabs')).not.toBeNull();
+    expect(radarCard.querySelector('.radar-grid')).not.toBeNull();
+    expect(listCard.querySelector('.acc-list')).not.toBeNull();
+    expect(row.querySelector('[aria-checked="true"]')?.getAttribute('data-value')).toBe('tabs');
+    cards[1]!.click();
+    expect(sets().at(-1)).toEqual({ type: 'settings.set', key: 'sidebar.limits', value: 'radar' });
+    state({ 'sidebar.limits': 'radar' });
     await flush();
-    cards[0]!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
-    expect(sets().at(-1)).toEqual({ type: 'settings.set', key: 'sidebar.limits', value: 'switch' });
+    cards[1]!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    expect(sets().at(-1)).toEqual({ type: 'settings.set', key: 'sidebar.limits', value: 'list' });
   });
 
   it('чьи лимиты показывать: флажок на движок, снятый пишет список скрытых', async () => {

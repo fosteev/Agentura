@@ -15,7 +15,6 @@ import {
   TASK_TAB_MODES,
   TASK_REFRESH_MODES,
   TASK_SIDEBAR_MODES,
-  SIDEBAR_TOP_MODES,
   COMPOSER_LAYOUTS,
   FEED_STYLES,
   AGENTS_VIEWS,
@@ -863,7 +862,6 @@ export function Settings() {
       )
     : T.sample;
   const look = {
-    top: v['sidebar.top'],
     list: v['sessionList.view'],
     context: v['sessionList.context'],
     time: v['sessionList.time'],
@@ -1141,23 +1139,6 @@ export function Settings() {
             'sidebar',
             <>
               <Row
-                name={T.sidebarTop.name}
-                isNew
-                desc={T.sidebarTop.desc}
-                k="sidebar.top"
-                below={
-                  <ChoiceCards
-                    label={T.sidebarTop.name}
-                    value={v['sidebar.top']}
-                    options={cardOptions(SIDEBAR_TOP_MODES, T.sidebarTop.options)}
-                    preview={(top) => <SidebarPreview look={{ ...look, top }} part="top" />}
-                    onPick={(top) => commit('sidebar.top', top)}
-                  />
-                }
-              >
-                {null}
-              </Row>
-              <Row
                 name={T.sidebarLimits.name}
                 isNew
                 desc={T.sidebarLimits.desc}
@@ -1168,7 +1149,7 @@ export function Settings() {
                     value={v['sidebar.limits']}
                     options={cardOptions(SIDEBAR_LIMITS_MODES, T.sidebarLimits.options)}
                     preview={(limits) => (
-                      <SidebarPreview look={{ ...look, top: 'detailed', limits }} part="limits" />
+                      <SidebarPreview look={{ ...look, limits }} part="limits" />
                     )}
                     onPick={(limits) => commit('sidebar.limits', limits)}
                   />
@@ -1407,7 +1388,7 @@ export function Settings() {
                     />
                     <div class="pv-one pv-panels" style={trialVars}>
                       <span class="pv-cap">{trialCap}</span>
-                      <SidebarPreview look={look} part="top" />
+                      <SidebarPreview look={look} part="full" />
                     </div>
                   </>
                 }

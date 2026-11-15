@@ -1,6 +1,4 @@
 // @vitest-environment jsdom
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { h, render } from 'preact';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgentEvent } from '../agent/types';
@@ -11,19 +9,6 @@ import { Sidebar } from './components/Sidebar';
 import { initialHud } from './hudState';
 import { chat, currentSession, handleHostMessage, hudState, recent } from './store';
 import * as vscode from './vscode';
-
-const screen = (name: string) =>
-  new DOMParser().parseFromString(
-    readFileSync(join(__dirname, '..', '..', 'prototype', 'screens', `${name}.html`), 'utf8'),
-    'text/html',
-  );
-
-/** Теги и классы без текстов — как в markup.test.ts. */
-function skeleton(el: Element): string {
-  const cls = [...el.classList].sort().join('.');
-  const kids = [...el.children].map(skeleton).filter((k, i, all) => k !== all[i - 1]);
-  return `${el.tagName.toLowerCase()}${cls ? `.${cls}` : ''}${kids.length ? `[${kids.join(',')}]` : ''}`;
-}
 
 const posted: Record<string, unknown>[] = [];
 const flush = () => new Promise((r) => setTimeout(r, 30));
@@ -125,42 +110,48 @@ describe('боковая панель (sessions.html)', () => {
       ],
     });
     await flush();
-    const proto = screen('sessions').querySelector('.sidebar')!;
-    const part = (root: Element, sel: string) => skeleton(root.querySelector(sel)!);
-    for (const sel of [
-      '.head',
-      'section.sec',
-      '.kv',
-      '.lim .row',
-      '.tools',
-      'section.sec + section.sec',
-      '.list .s.cur',
-      '.list .s.wait',
-      '.list .s:not(.cur):not(.wait)',
-    ]) {
-      expect(part(host, sel), sel).toBe(part(proto, sel));
-    }
-    expect([...host.querySelectorAll('.sidebar > *')].map((e) => e.className || e.tagName)).toEqual(
-      [...proto.querySelectorAll(':scope > *')].map((e) => e.className || e.tagName),
-    );
-    const kv = [...host.querySelectorAll('.kv b')].map((b) => b.textContent);
-    expect(kv).toEqual(['a@b.c', 'Max 5×', 'через CLI · ок', 'Claude · claude 2.1.285']);
-    const rows = [...host.querySelectorAll('.lim .row')].map(
-      (r) => r.querySelector('span')!.textContent,
+
+    expect(host.querySelector('section.sec.acc')).not.toBeNull();
+    expect(host.querySelector('.acc-line .acc-id')?.textContent).toBe('a@b.c');
+    expect(host.querySelector('.acc-line .plan-chip')?.textContent).toBe('Max 5×');
+    const rows = [...host.querySelectorAll('.gauges .g-row')].map(
+      (r) => r.querySelector('.g-lbl')!.textContent,
     );
     expect(rows).toEqual(['Окно 5 часов', 'Неделя', 'Неделя · Fable']);
+    expect(host.querySelector('.search-wrap')).not.toBeNull();
+    expect(host.querySelector('.search-wrap .s-ic')).not.toBeNull();
+    expect(host.querySelector('.search-wrap .search-kbd')?.textContent).toBe('/');
+    expect(host.querySelector('input[type=search]')!.hasAttribute('disabled')).toBe(false);
+
     expect([...host.querySelectorAll('.day')].map((d) => d.textContent)).toEqual([
       'Сегодня',
       'Вчера',
     ]);
     const s = [...host.querySelectorAll('.list .s')];
     expect(s.map((x) => x.className)).toEqual(['s cur live', 's wait', 's']);
-    // контекст — колонкой справа (agentura.sessionList.context по умолчанию), во второй строке его нет
+    // левый слот .s-ico с BrandIcon и угловым бейджем
+    expect(s[0]!.querySelector('.s-ico .brand.brand-claude')).not.toBeNull();
+    expect(s[0]!.querySelector('.s-ico .s-badge.live')).not.toBeNull();
+    expect(s[1]!.querySelector('.s-ico .s-badge.wait')).not.toBeNull();
+    expect(s[2]!.querySelector('.s-ico .s-badge')).toBeNull();
+
+    // контекст — колонкой справа, во второй строке его нет
     expect(s[0]!.querySelector('small')!.textContent).toBe('14 ходов · $1.84');
     expect(s[0]!.querySelector('.ctx')!.textContent).toBe('131k ctx');
     expect(s[0]!.querySelector('.when')!.textContent).toBe('сейчас');
     expect(s[1]!.querySelector('small')!.textContent).toContain('ждёт ответа');
-    expect(host.querySelector('input[type=search]')!.hasAttribute('disabled')).toBe(false);
+
+    // в компактном режиме у waiting справа пилюля «ждёт»
+    sidebarMessages({
+      type: 'sidebar.view',
+      view: 'compact',
+      context: true,
+      time: true,
+      limits: 'tabs',
+    });
+    await flush();
+    const sCompact = [...host.querySelectorAll('.list .s')];
+    expect(sCompact[1]!.querySelector('.s-right .s-pill.wait')?.textContent).toBe('ждёт');
     void push;
   });
 
@@ -211,7 +202,7 @@ describe('боковая панель (sessions.html)', () => {
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     await flush();
     expect(posted.some((m) => m.type === 'session.rename')).toBe(false);
-    (host.querySelector('.new') as HTMLElement).click();
+    (host.querySelector('button.add') as HTMLElement).click();
     await flush();
     (document.querySelector('.sp-menu button') as HTMLElement).click();
     expect(host.querySelector('h3 button.r')).toBeNull();
@@ -225,18 +216,17 @@ describe('боковая панель (sessions.html)', () => {
     expect([bar.dataset.list, bar.dataset.ctx, bar.dataset.time]).toEqual(['compact', 'on', 'on']);
     sidebarMessages({
       type: 'sidebar.view',
-      view: 'dense',
+      view: 'compact',
       context: true,
       time: false,
-      top: 'detailed',
-      limits: 'active',
+      limits: 'tabs',
     });
     sidebarMessages({
       type: 'sessions.update',
       sessions: [session({ id: 'a', turns: 3, costUsd: 0.42, contextTokens: 173_000 })],
     });
     await flush();
-    expect([bar.dataset.list, bar.dataset.ctx, bar.dataset.time]).toEqual(['dense', 'on', 'off']);
+    expect([bar.dataset.list, bar.dataset.ctx, bar.dataset.time]).toEqual(['compact', 'on', 'off']);
     const row = host.querySelector('.list .s') as HTMLElement;
     expect(row.getAttribute('data-tip')).toContain('3 хода · $0.42 · 173k');
     expect(row.querySelector('.ctx')?.textContent).toBe('173k ctx');
@@ -250,67 +240,103 @@ describe('боковая панель (sessions.html)', () => {
     expect(bar.dataset.list).toBe('detailed');
   });
 
-  it('вид верха: sidebar.view ставит data-top; аккаунт строкой, короткий сброс, мини-шкалы в заголовке, ＋ — новая сессия', async () => {
+  it('горячая клавиша / фокусирует строку поиска, Esc очищает или снимает фокус', async () => {
     const host = mount(Sidebar);
     await flush();
-    const bar = host.querySelector('.sidebar') as HTMLElement;
-    expect(bar.dataset.top).toBe('detailed');
+    const input = host.querySelector<HTMLInputElement>('.search-wrap input')!;
+    expect(document.activeElement).not.toBe(input);
+
+    // нажатие / вне полей ввода фокусирует поиск
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: '/', bubbles: true }));
+    expect(document.activeElement).toBe(input);
+
+    // модификаторы (Ctrl, Meta, Alt) игнорируются
+    input.blur();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: '/', ctrlKey: true, bubbles: true }));
+    expect(document.activeElement).not.toBe(input);
+
+    // если фокус уже в другом input, нажатие / не перехватывается
+    const otherInp = document.createElement('input');
+    document.body.append(otherInp);
+    otherInp.focus();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: '/', bubbles: true }));
+    expect(document.activeElement).toBe(otherInp);
+    otherInp.remove();
+
+    // поле внутри [inert] (напр. превью в настройках) не выбирается
+    const inertParent = document.createElement('div');
+    inertParent.setAttribute('inert', '');
+    const inertInp = document.createElement('input');
+    const inertWrap = document.createElement('div');
+    inertWrap.className = 'search-wrap';
+    inertWrap.append(inertInp);
+    inertParent.append(inertWrap);
+    document.body.prepend(inertParent);
+
+    input.blur();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: '/', bubbles: true }));
+    expect(document.activeElement).toBe(input);
+    inertParent.remove();
+  });
+
+  it('инлайн-переименование: IME-safe Enter (isComposing / keyCode 229), untitled сессия с placeholder', async () => {
+    const host = mount(Sidebar);
+    await flush();
     sidebarMessages({
-      type: 'sidebar.view',
-      view: 'compact',
-      context: true,
-      time: true,
-      top: 'compact',
-      limits: 'active',
-    });
-    sidebarMessages({
-      type: 'account.info',
-      email: 'a@b.c',
-      plan: 'Max 5×',
-      login: 'через CLI · ок',
-      engine: 'claude 2.1.285',
-    });
-    const at = new Date();
-    at.setHours(23, 30, 0, 0);
-    sidebarMessages({
-      type: 'limits.update',
-      updatedAt: Date.now(),
-      windows: [
-        { kind: 'five-hour', percent: 91, resetsAt: at.getTime() },
-        { kind: 'weekly', percent: 34, resetsAt: Date.now() + 2 * 86_400_000 },
-        { kind: 'weekly-model', model: 'Fable', percent: 12 },
+      type: 'sessions.update',
+      sessions: [
+        session({ id: 'session_a6b9fb6b-7f7d', title: 'session_a6b9fb6b-7f7d' }),
+        session({ id: 's2', title: 'https://github.com/benjitaylor/skills' }),
       ],
     });
     await flush();
-    expect(bar.dataset.top).toBe('compact');
-    const who = host.querySelector('.who') as HTMLElement;
-    expect(who.textContent).toBe('a@b.c· Max 5×· claude 2.1.285');
-    expect(who.getAttribute('data-tip')).toContain('Вход: через CLI · ок');
-    expect(who.querySelector('.okd')).not.toBeNull();
-    expect(host.querySelector('.lim .row .rs')?.textContent).toBe('→ 23:30');
-    sidebarMessages({
-      type: 'sidebar.view',
-      view: 'compact',
-      context: true,
-      time: true,
-      top: 'dense',
-      limits: 'active',
+
+    const rows = [...host.querySelectorAll<HTMLElement>('.list .s')];
+    // session_<hex> отображается как «Без названия · #a6b9» с классом untitled
+    expect(rows[0]!.classList.contains('untitled')).toBe(true);
+    expect(rows[0]!.querySelector('.s-title')!.textContent).toBe('Без названия · #a6b9');
+    // https://github.com/ срезан
+    expect(rows[1]!.querySelector('.s-title')!.textContent).toBe('benjitaylor/skills');
+
+    // двойной клик на untitled строке открывает пустой input с placeholder
+    rows[0]!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    await flush();
+    const renameInp = host.querySelector<HTMLInputElement>('input.rename')!;
+    expect(renameInp.value).toBe('');
+    expect(renameInp.placeholder).toBe('Без названия · #a6b9');
+
+    // IME composition (isComposing / keyCode 229) не подтверждает переименование
+    renameInp.value = 'новое';
+    renameInp.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true } as KeyboardEventInit));
+    await flush();
+    expect(posted.some((m) => m.type === 'session.rename')).toBe(false);
+    expect(host.querySelector('input.rename')).not.toBeNull();
+
+    renameInp.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 229, which: 229, bubbles: true } as KeyboardEventInit));
+    await flush();
+    expect(posted.some((m) => m.type === 'session.rename')).toBe(false);
+    expect(host.querySelector('input.rename')).not.toBeNull();
+
+    // обычный Enter сохраняет
+    renameInp.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await flush();
+    expect(posted.at(-1)).toEqual({
+      type: 'session.rename',
+      sessionId: 'session_a6b9fb6b-7f7d',
+      title: 'новое',
     });
+  });
+
+  it('сообщение task.picker.toggle открывает и закрывает меню у триггера', async () => {
+    mount(Sidebar);
     await flush();
-    expect(bar.dataset.top).toBe('dense');
-    expect(host.querySelector('.who')).toBeNull();
-    // мини-шкалы — только 5 часов и неделя; 91 % — красный уровень
-    const minis = [...host.querySelectorAll('.head .hl .m')] as HTMLElement[];
-    expect(minis.map((m) => m.textContent)).toEqual(['5 ч91 %', 'нед34 %']);
-    expect(minis[0]!.className).toBe('m lim-full');
-    expect(minis[1]!.className).toBe('m');
-    expect(minis[0]!.getAttribute('data-tip')).toContain('Окно 5 часов · сброс в 23:30');
-    expect(host.querySelector('.head')!.getAttribute('data-tip')).toContain('Аккаунт: a@b.c');
-    (host.querySelector('.head .hl .refresh') as HTMLElement).click();
-    (host.querySelector('.sec h3 button.add') as HTMLElement).click();
+    expect(document.querySelector('.sp-menu')).toBeNull();
+    sidebarMessages({ type: 'task.picker.toggle' });
     await flush();
-    (document.querySelector('.sp-menu button') as HTMLElement).click();
-    expect(posted.map((m) => m.type)).toEqual(['limits.refresh', 'session.new']);
+    expect(document.querySelector('.sp-menu')).not.toBeNull();
+    sidebarMessages({ type: 'task.picker.toggle' });
+    await flush();
+    expect(document.querySelector('.sp-menu')).toBeNull();
   });
 
   it('поиск по названию фильтрует список, ✕ и Esc сбрасывают; пусто — «Ничего не найдено»', async () => {
@@ -324,7 +350,7 @@ describe('боковая панель (sessions.html)', () => {
       ],
     });
     await flush();
-    const input = host.querySelector<HTMLInputElement>('.tools input')!;
+    const input = host.querySelector<HTMLInputElement>('.search-wrap input')!;
     const titles = () =>
       [...host.querySelectorAll('.list .s .t')].map((t) => t.firstChild!.textContent);
     const type = async (v: string) => {
@@ -336,7 +362,7 @@ describe('боковая панель (sessions.html)', () => {
     expect(titles()).toEqual(['Плашка «нет связи»']);
     await type('елка');
     expect(titles()).toEqual(['ёлка в шапке']);
-    const btn = host.querySelector<HTMLButtonElement>('.tools button')!;
+    const btn = host.querySelector<HTMLButtonElement>('.search-wrap .search-clear')!;
     expect(btn.textContent).toBe('✕');
     btn.click();
     await flush();
@@ -354,9 +380,6 @@ describe('боковая панель (sessions.html)', () => {
     await flush();
     const [acc, ses] = [...host.querySelectorAll<HTMLElement>('section.sec')];
     const h = (sec: HTMLElement) => sec.querySelector<HTMLElement>('h3')!;
-    h(acc!).querySelector<HTMLButtonElement>('.refresh')!.click();
-    await flush();
-    expect(acc!.classList.contains('folded')).toBe(false);
     posted.length = 0;
     h(acc!).click();
     await flush();
@@ -365,7 +388,7 @@ describe('боковая панель (sessions.html)', () => {
     h(ses!).dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     await flush();
     expect(ses!.classList.contains('folded')).toBe(true);
-    expect(host.querySelector('.tools')!.hasAttribute('hidden')).toBe(true);
+    expect(host.querySelector('.search-wrap')!.hasAttribute('hidden')).toBe(true);
     expect(host.querySelector('.list')!.hasAttribute('hidden')).toBe(true);
     h(acc!).click();
     h(ses!).click();
@@ -385,9 +408,9 @@ describe('боковая панель (sessions.html)', () => {
     });
     await flush();
     expect(host.querySelector('.list .day')!.textContent).toBe('В этом проекте пока нет сессий.');
-    const row = host.querySelector('.lim .row')!;
-    expect(row.querySelector('.n')!.textContent).toBe('0 %');
-    expect(row.querySelector('small')).toBeNull();
+    const row = host.querySelector('.gauges .g-row')!;
+    expect(row.querySelector('.g-pct')!.textContent).toBe('0%');
+    expect(row.querySelector('.g-lbl')!.textContent).toBe('Окно 5 часов');
   });
 
   describe('задачи Jira (roadmap 19, этап 4)', () => {
@@ -397,8 +420,7 @@ describe('боковая панель (sessions.html)', () => {
         view: 'compact',
         context: true,
         time: true,
-        top: 'detailed',
-        limits: 'active',
+        limits: 'tabs',
         ...over,
       } as ToWebview);
     const meta = (key: string, title: string, status?: string, cat?: 'new' | 'indeterminate' | 'done') => ({
@@ -445,7 +467,7 @@ describe('боковая панель (sessions.html)', () => {
       expect(head.querySelector('.hit .plus')).toBeNull();
       expect(head.querySelector(':scope > button.plus')).not.toBeNull();
       expect(first.classList.contains('sel')).toBe(true); // в группе открыта текущая вкладка
-      expect([...first.querySelectorAll('.s')].map((r) => r.querySelector('.t')!.textContent!.replace(/[CX]?(?=почему|восст)/, '').slice(0, 9))).toEqual(['почему не', 'восстанов']);
+      expect([...first.querySelectorAll('.s')].map((r) => r.querySelector('.t .s-title')!.textContent!.slice(0, 9))).toEqual(['почему не', 'восстанов']);
       expect(first.querySelectorAll('.s.nest')).toHaveLength(2);
       expect(first.querySelector('.s.cur')).not.toBeNull();
       // GARM-8: статуса нет — пилюли нет
@@ -455,8 +477,8 @@ describe('боковая панель (sessions.html)', () => {
       expect(free.querySelector('.tg-h.nokey b')!.textContent).toBe('Без задачи');
       expect(free.querySelectorAll('.s')).toHaveLength(1);
       expect(host.querySelector('.list > .day')).toBeNull();
-      // в mixed-списке (есть Codex) у вложенного чата метка движка
-      expect(first.querySelector('.s .t .mk.codex')!.textContent).toBe('X');
+      // в mixed-списке (есть Codex) у вложенного чата иконка бренда
+      expect(first.querySelector('.s .s-ico .brand.brand-codex')).not.toBeNull();
     });
 
     it('groups: «＋» — новый чат по задаче и не сворачивает группу; кнопка заголовка сворачивает, состояние пишется в state webview', async () => {
@@ -520,7 +542,7 @@ describe('боковая панель (sessions.html)', () => {
       view({ tasks: 'groups' });
       sidebarMessages({ type: 'sessions.update', sessions: rows, tasks });
       await flush();
-      const search = host.querySelector('.tools input') as HTMLInputElement;
+      const search = host.querySelector('.search-wrap input') as HTMLInputElement;
       expect(search.placeholder).toContain('ключу задачи');
       const hit = () => host.querySelector('.tgp[data-task="jira:x:NEWMFC-1"] .tg-h .hit') as HTMLElement;
       hit().click(); // свернули
@@ -580,7 +602,7 @@ describe('боковая панель (sessions.html)', () => {
       expect(host.querySelector('.tgp')).toBeNull();
       expect(host.querySelector('.list .day')).not.toBeNull();
       expect((host.querySelector('.sidebar') as HTMLElement).dataset.tasks).toBeUndefined();
-      expect(host.querySelector('.tools input')!.getAttribute('placeholder')).toBe('Поиск по названию');
+      expect(host.querySelector('.search-wrap input')!.getAttribute('placeholder')).toBe('Поиск по названию');
     });
 
     it('section: группы без чатов в списке — ни секции, ни data-tasks, ни метки ключа (вид как до задач)', async () => {
@@ -612,7 +634,10 @@ describe('боковая панель (sessions.html)', () => {
       expect(host.querySelector('.sec.tasks h3 .count')!.textContent).toBe('· 2');
       const c0 = cards[0]!;
       expect(c0.querySelector('.pill.wip')!.textContent).toBe('В работе');
-      expect([...c0.querySelectorAll('.ri .mk')].map((m) => m.textContent)).toEqual(['C', 'X']);
+      expect([...c0.querySelectorAll('.ri .brand')].map((m) => m.getAttribute('class'))).toEqual([
+        'brand brand-claude',
+        'brand brand-codex',
+      ]);
       expect(c0.querySelector('.ri')!.textContent).toContain('2 чата');
       expect(c0.querySelector('.tt')!.textContent).toBe('Талон не печатается');
       expect(c0.querySelector('.sub')!.textContent).toContain('последний чат:');
@@ -637,7 +662,7 @@ describe('боковая панель (sessions.html)', () => {
       view({ tasks: 'section' });
       sidebarMessages({ type: 'sessions.update', sessions: rows, tasks });
       await flush();
-      const search = host.querySelector('.tools input') as HTMLInputElement;
+      const search = host.querySelector('.search-wrap input') as HTMLInputElement;
       search.value = 'garm-8';
       search.dispatchEvent(new Event('input', { bubbles: true }));
       await flush();
@@ -654,21 +679,19 @@ describe('боковая панель (sessions.html)', () => {
       await flush();
     });
 
-    it('все три вида списка и три вида верха рисуют группы', async () => {
+    it('режимы списка рисуют группы', async () => {
       const host = mount(Sidebar);
       await flush();
-      for (const list of ['detailed', 'compact', 'dense']) {
-        for (const top of ['detailed', 'compact', 'dense']) {
-          view({ tasks: 'groups', view: list, top });
-          sidebarMessages({ type: 'sessions.update', sessions: rows, tasks });
-          await flush();
-          const bar = host.querySelector('.sidebar') as HTMLElement;
-          expect([bar.dataset.list, bar.dataset.top]).toEqual([list, top]);
-          expect(host.querySelectorAll('.list .tgp')).toHaveLength(3);
-          expect(host.querySelectorAll('.list .tgp .s')).toHaveLength(4);
-        }
+      for (const list of ['detailed', 'compact']) {
+        view({ tasks: 'groups', view: list });
+        sidebarMessages({ type: 'sessions.update', sessions: rows, tasks });
+        await flush();
+        const bar = host.querySelector('.sidebar') as HTMLElement;
+        expect(bar.dataset.list).toBe(list);
+        expect(host.querySelectorAll('.list .tgp')).toHaveLength(3);
+        expect(host.querySelectorAll('.list .tgp .s')).toHaveLength(4);
       }
-      view({ view: 'compact', top: 'detailed' });
+      view({ view: 'compact' });
     });
 
     it('строка сессии несёт контекст меню VS Code: sessionId и признак привязки к задаче', async () => {
@@ -690,7 +713,8 @@ describe('боковая панель (sessions.html)', () => {
       const listKids = (host: HTMLElement) => [...host.querySelectorAll('.list > .tgp')].map((g) => g.getAttribute('data-task') ?? (g.classList.contains('arch') ? 'arch' : 'free'));
       const head = (host: HTMLElement) => host.querySelector('.tgp.arch > .tg-h')!;
       const search = (v: string) => {
-        const input = document.querySelector('.tools input') as HTMLInputElement;
+        const input = (document.querySelector('.search-wrap input') ??
+          document.querySelector('.tools input')) as HTMLInputElement;
         input.value = v;
         input.dispatchEvent(new Event('input', { bubbles: true }));
       };

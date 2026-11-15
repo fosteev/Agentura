@@ -119,9 +119,16 @@
         "category": "Agentura"
       },
       {
+        "command": "agentura.sidebarNewChat",
+        "title": "%command.sidebarNewChat.title%",
+        "category": "Agentura",
+        "icon": "$(add)"
+      },
+      {
         "command": "agentura.refreshUsage",
         "title": "%command.refreshUsage.title%",
-        "category": "Agentura"
+        "category": "Agentura",
+        "icon": "$(refresh)"
       },
       {
         "command": "agentura.openSettings",
@@ -215,6 +222,10 @@
       ],
       "commandPalette": [
         {
+          "command": "agentura.sidebarNewChat",
+          "when": "false"
+        },
+        {
           "command": "agentura.archiveSession",
           "when": "false"
         },
@@ -225,6 +236,23 @@
         {
           "command": "agentura.debug.showState",
           "when": "agentura.debug"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "agentura.sidebarNewChat",
+          "when": "view == agentura.sidebar",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentura.refreshUsage",
+          "when": "view == agentura.sidebar",
+          "group": "navigation@2"
+        },
+        {
+          "command": "agentura.openSettings",
+          "when": "view == agentura.sidebar",
+          "group": "navigation@3"
         }
       ],
       "editor/title": [
@@ -459,14 +487,12 @@
         "agentura.sessionList.view": {
           "type": "string",
           "enum": [
-            "detailed",
             "compact",
-            "dense"
+            "detailed"
           ],
           "enumDescriptions": [
-            "%config.sessionList.view.enum.detailed%",
             "%config.sessionList.view.enum.compact%",
-            "%config.sessionList.view.enum.dense%"
+            "%config.sessionList.view.enum.detailed%"
           ],
           "default": "compact",
           "description": "%config.sessionList.view.description%"
@@ -481,38 +507,19 @@
           "default": true,
           "description": "%config.sessionList.time.description%"
         },
-        "agentura.sidebar.top": {
-          "type": "string",
-          "enum": [
-            "detailed",
-            "compact",
-            "dense"
-          ],
-          "enumDescriptions": [
-            "%config.sidebar.top.enum.detailed%",
-            "%config.sidebar.top.enum.compact%",
-            "%config.sidebar.top.enum.dense%"
-          ],
-          "default": "detailed",
-          "description": "%config.sidebar.top.description%"
-        },
         "agentura.sidebar.limits": {
           "type": "string",
           "enum": [
-            "stack",
-            "switch",
-            "table",
-            "active",
-            "header"
+            "tabs",
+            "radar",
+            "list"
           ],
           "enumDescriptions": [
-            "%config.sidebar.limits.enum.stack%",
-            "%config.sidebar.limits.enum.switch%",
-            "%config.sidebar.limits.enum.table%",
-            "%config.sidebar.limits.enum.active%",
-            "%config.sidebar.limits.enum.header%"
+            "%config.sidebar.limits.enum.tabs%",
+            "%config.sidebar.limits.enum.radar%",
+            "%config.sidebar.limits.enum.list%"
           ],
-          "default": "active",
+          "default": "tabs",
           "description": "%config.sidebar.limits.description%"
         },
         "agentura.sidebar.limitsHidden": {

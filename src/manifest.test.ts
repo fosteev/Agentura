@@ -6,11 +6,13 @@ import {
   COMPOSER_LAYOUTS,
   DEFAULT_AGENTS_VIEW,
   DEFAULT_COMPOSER_LAYOUT, DEFAULT_GIT_LAYOUT,
+  DEFAULT_SESSION_LIST,
   DEFAULT_SIDEBAR_LIMITS,
   GIT_LAYOUTS,
   DEFAULT_JIRA_SOURCE,
   DEFAULT_TASK_REFRESH,
   JIRA_SOURCES,
+  SESSION_LIST_MODES,
   TASK_REFRESH_MODES,
   SIDEBAR_LIMITS_MODES,
   TASK_SIDEBAR_MODES,
@@ -162,6 +164,67 @@ describe('agentura.sidebar.limits', () => {
 
   it('команда выбора вида объявлена', () => {
     expect(pkg.contributes.commands.map((c) => c.command)).toContain('agentura.sidebarLimits');
+  });
+});
+
+describe('боковая панель: sessionList.view, отсутствие sidebar.top, действия view/title', () => {
+  const pkg = read('package.json') as {
+    contributes: {
+      configuration: { properties: Record<string, { enum?: string[]; enumDescriptions?: string[]; default?: string }> };
+      commands: { command: string; icon?: string }[];
+      menus: {
+        commandPalette: { command: string; when?: string }[];
+        'view/title': { command: string; when?: string; group?: string }[];
+      };
+    };
+  };
+
+  it('agentura.sessionList.view: enum и дефолт соответствуют коду, у каждого значения есть описание', () => {
+    const prop = pkg.contributes.configuration.properties['agentura.sessionList.view']!;
+    expect(prop.enum).toEqual([...SESSION_LIST_MODES]);
+    expect(prop.default).toBe(DEFAULT_SESSION_LIST);
+    expect(prop.enumDescriptions).toHaveLength(SESSION_LIST_MODES.length);
+  });
+
+  it('agentura.sidebar.top удалена из схемы настроек', () => {
+    expect(pkg.contributes.configuration.properties['agentura.sidebar.top']).toBeUndefined();
+  });
+
+  it('команда agentura.sidebarNewChat зарегистрирована, имеет иконку $(add) и скрыта из палитры', () => {
+    const cmd = pkg.contributes.commands.find((c) => c.command === 'agentura.sidebarNewChat');
+    expect(cmd).toBeDefined();
+    expect(cmd?.icon).toBe('$(add)');
+    const pal = pkg.contributes.menus.commandPalette.find((m) => m.command === 'agentura.sidebarNewChat');
+    expect(pal).toBeDefined();
+    expect(pal?.when).toBe('false');
+  });
+
+  it('agentura.refreshUsage и agentura.openSettings имеют нужные иконки', () => {
+    const refresh = pkg.contributes.commands.find((c) => c.command === 'agentura.refreshUsage');
+    expect(refresh?.icon).toBe('$(refresh)');
+    const settings = pkg.contributes.commands.find((c) => c.command === 'agentura.openSettings');
+    expect(settings?.icon).toBe('$(gear)');
+  });
+
+  it('menus["view/title"] содержит sidebarNewChat, refreshUsage и openSettings для view == agentura.sidebar', () => {
+    const vt = pkg.contributes.menus['view/title'];
+    expect(vt).toEqual([
+      {
+        command: 'agentura.sidebarNewChat',
+        when: 'view == agentura.sidebar',
+        group: 'navigation@1',
+      },
+      {
+        command: 'agentura.refreshUsage',
+        when: 'view == agentura.sidebar',
+        group: 'navigation@2',
+      },
+      {
+        command: 'agentura.openSettings',
+        when: 'view == agentura.sidebar',
+        group: 'navigation@3',
+      },
+    ]);
   });
 });
 

@@ -55,7 +55,6 @@ import type {
   SidebarLimitsMode,
   TaskCardMode,
   TaskSidebarMode,
-  SidebarTopMode,
   SettingsValues,
   McpView,
   HighlightTheme,
@@ -315,16 +314,14 @@ export type ToWebview =
       mcpReplay?: true;
     }
   /**
-   * Вид боковой панели (`agentura.sessionList.*`, `agentura.sidebar.top`): строк на сессию, колонки контекста и
-   * времени, вид верха. На `ready` и при правке настройки.
+   * Вид боковой панели (`agentura.sessionList.*`, `agentura.sidebar.limits`): строк на сессию, колонки контекста и
+   * времени, вид лимитов. На `ready` и при правке настройки.
    */
   | {
       type: 'sidebar.view';
       view: SessionListMode;
       context: boolean;
       time: boolean;
-      /** Вид верха панели (`agentura.sidebar.top`). */
-      top: SidebarTopMode;
       /** Вид лимитов всех движков при ≥ 2 установленных (`agentura.sidebar.limits`). */
       limits: SidebarLimitsMode;
       /** Движки, чьи лимиты не показывать (`agentura.sidebar.limitsHidden`); нет — все. */
@@ -332,6 +329,8 @@ export type ToWebview =
       /** Где задачи Jira: группы в списке или секция (`agentura.tasks.sidebar`, roadmap 19). */
       tasks?: TaskSidebarMode;
     }
+  /** Открыть/закрыть меню выбора типа чата (Новый чат / По задаче Jira) в шапке боковой панели. */
+  | { type: 'task.picker.toggle' }
   /** Этап 6: аккаунт для боковой панели. */
   | ({ type: 'account.info' } & AccountSummary)
   /** Этап 6: команда из боковой панели (`/status`) — выполнить в этой вкладке. */
@@ -504,6 +503,8 @@ export type FromWebview =
   | { type: 'log.show' }
   /** Этап 3 roadmap 0.2: ⚙ в боковой панели открывает вкладку настроек. */
   | { type: 'settings.open'; /** Раздел, на котором открыть настройки; неизвестный отбрасывается хостом. */ section?: SettingsSection }
+  /** Roadmap 42: скрыть лимиты движка из боковой панели (кнопка в .diag-box). */
+  | { type: 'sidebar.hideEngine'; engine: AgentProvider }
   /** Вкладка настроек: записать настройку (в пользовательские настройки VS Code). */
   | { type: 'settings.set'; key: SettingKey; value: unknown }
   /** «проверить»: найти claude по этому пути (пусто — системный) и показать версию и источник. */
@@ -670,6 +671,7 @@ const FROM_WEBVIEW_TYPES: Record<FromWebview['type'], true> = {
   'task.newChat': true,
   'engine.set': true,
   'limits.refresh': true,
+  'sidebar.hideEngine': true,
   'engine.login': true,
   'session.resume': true,
   'session.rename': true,
@@ -743,6 +745,8 @@ const FIELD_CHECKS: Partial<Record<FromWebview['type'], (m: Record<string, unkno
   'codex.settings': (m) => str(m.sessionId) && isCodexSettingsChange(m.change),
   'engine.set': (m) =>
     m.provider === 'claude' || m.provider === 'codex' || m.provider === 'antigravity' || m.provider === 'cursor' || m.provider === 'kimi',
+  'sidebar.hideEngine': (m) =>
+    m.engine === 'claude' || m.engine === 'codex' || m.engine === 'antigravity' || m.engine === 'cursor' || m.engine === 'kimi',
   'engine.login': (m) => m.engine === 'codex' || m.engine === 'antigravity' || m.engine === 'kimi',
   'agents.openGraph': (m) => m.agentId === undefined || typeof m.agentId === 'string',
   'agents.snapshot': (m) => typeof m.sessionId === 'string' && isAgentGraphView(m.graph),

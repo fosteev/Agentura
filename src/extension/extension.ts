@@ -492,6 +492,7 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
           });
       }
     }),
+    vscode.commands.registerCommand('agentura.sidebarNewChat', () => sidebar.promptNewChat()),
     vscode.commands.registerCommand('agentura.feedStyle', () => pickFeedStyle()),
     vscode.commands.registerCommand('agentura.composerLayout', () => pickComposerLayout()),
     vscode.commands.registerCommand('agentura.sidebarLimits', () => pickSidebarLimits()),
