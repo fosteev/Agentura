@@ -136,7 +136,7 @@ Cursor и Kimi Code: см. разделы [Codex](#codex), [Cursor](#cursor),
 `~/.claude/local` и Homebrew (на Windows — `claude.exe`). Другой путь задаётся в `agentura.claudeExecutable`.
 
 ```
-code --install-extension agentura-0.24.0.vsix
+code --install-extension agentura-0.25.0.vsix
 ```
 
 Сборка из исходников:
@@ -144,7 +144,7 @@ code --install-extension agentura-0.24.0.vsix
 ```
 npm ci
 npm run check      # типы, линтер, юнит-тесты, сборка
-npm run package    # agentura-0.23.0.vsix
+npm run package    # agentura-0.25.0.vsix
 ```
 
 ## Codex

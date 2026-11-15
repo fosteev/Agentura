@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.25.0 — 2026-11-15
+
+### Added
+
+- **Left sidebar redesign, native `view/title` actions and 3 limits layouts.** Replaced the duplicate in-webview `AGENTURA` header with native VS Code `view/title` icons (`+`, `↻`, `⚙`), unified brand SVGs across Claude, Codex, Antigravity, Cursor and Kimi Code, introduced three non-clipping `agentura.sidebar.limits` modes (`tabs`, `radar`, `list`) with readable `.diag-box` quota diagnostics (`Sign in` / `Change account` / `Hide tab`) and folded summary chips, normalized session rows to two uniform densities (`compact` 1-line, `detailed` 2-line) with cleaned auto-ID titles (`Untitled · #<short>`), and added a dedicated Sidebar settings page with live previews and soft migration of legacy settings.
+
+### Fixed
+
+- **ACP interactive questions and pending-card settlement (`elicitation/create`, Kimi plans).** Answering or declining `question.request` in Antigravity ACP and Kimi ACP (and approving/refining plans in Kimi) now emits `permission.resolved`, and server-side tool timeouts (`failed` / `Timed out`) or turn completion automatically settle unanswered question cards instead of leaving sessions stuck in `waiting`.
+- **Antigravity live subagents and silent reactive turns.** Fixed ACP replay duplication after silent `parentTailer` steps via transparent `respawnTransport()` cursor sync (or pre-echo replay suppression while background subagents run), added `at` and `durationMs` tracking to `AgyAcpMapper`, matched truncated `invoke_subagent` prompts (`truncated_fields: ["tool_calls"]`), stripped outer `<SYSTEM_MESSAGE>` preambles from subagent summaries, prevented `AgySubagentReader.reopen` from leaving completed subagents stuck in `running` or resetting call timestamps, and preserved initial user turn `startedAt` in `hudState.turns`.
+- **Kimi ACP startup storm and empty draft sessions.** Held `loading` across initial `model` / `effort` / `permissionMode` setup in `KimiSession.handshake` so opening a tab emits a single `session.init`, and filtered unstarted empty `session_<uuid>` drafts out of `KimiAdapter.listSessions`.
+- **Cold-start timeouts and quota warning noise.** Reduced background `listSessions` timeouts in Antigravity and Cursor from `120 s` to `20 s`, deferred cold-start `session/new` timeouts in untouched (`pristine`) chat tabs until the first user message instead of showing an immediate fatal card, localized `Eligibility check failed` in `AgyQuotaService` without 1-minute retry loops, and deduplicated repeated quota/limits warnings in `AgyQuotaService` and `UsageService`.
+
 ## 0.24.0 — 2026-11-14
 
 ### Added
