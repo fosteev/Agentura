@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.26.0 — 2026-11-17
+
+### Added
+
+- **Cross-provider managed child agents (`agentura_agents`).** Host `ChildSessionManager` and loopback HTTP MCP server (`agents_catalog`, `agent_spawn`, `agent_status`, `agent_wait`, `agent_send`, `agent_stop`) with cryptographic per-session `SessionBinding`, idempotency keys (`IDEMPOTENCY_CONFLICT`), explicit context delivery (`task`, `selectedText`, `files`, `notes`; `fork_turns="all"` rejected), policy ceiling enforcement (`POLICY_ESCALATION_DENIED`), shared-workspace write ownership locks (`WRITE_OWNERSHIP_CONFLICT`) and `git worktree` isolation, tree depth/concurrency/total limits with `agent_wait` slot release, recursive and idempotent `agent_stop`, atomic persistence in `~/.local/share/agentura/child-agents` (`unknown_after_restart` without automatic re-execution), and full `Agents` / `AgentsGraph` integration (`provider`, `requestedModel -> model`, `Stop`, `Transcript`, resume replay). Connected across Claude, Codex, Kimi Code, Antigravity and Cursor.
+- **Gemini CLI (`gemini`) and ZCode (`zcode`) engine adapters.** Added native `gemini --acp --skip-trust` (`--approval-mode`, `--list-models`, HTTP `mcpServers`) and `zcode app-server --stdio` (ZCode Protocol v1 NDJSON, isolated `ZCODE_SESSION_DB_PATH` inspection, `provider/testModelConnectivity`) adapters, executable locators, settings and UI wiring, surfacing real authentication/tier blockers (`IneligibleTierError`, `1113` / `project_token_login_failed`) and `canDelegateViaMcp: false` on ZCode without silent engine substitution.
+
 ## 0.25.0 — 2026-11-15
 
 ### Added

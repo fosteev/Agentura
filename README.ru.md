@@ -16,6 +16,11 @@ Cursor и Kimi Code: см. разделы [Codex](#codex), [Cursor](#cursor),
 Личный проект, в Marketplace его нет. Ставится из `.vsix` (см. [Установка](#установка)). Скриншоты — с английским
 интерфейсом, русский включается в `agentura.language`.
 
+> **0.26 — межпровайдерные дочерние агенты (`agentura_agents`), Gemini CLI и ZCode.** Запуск, ожидание, уточнения
+> и остановка управляемых хостом дочерних сессий между движками через единый HTTP MCP (`agents_catalog`, `agent_spawn`,
+> `agent_status`, `agent_wait`, `agent_send`, `agent_stop`) с вложенным деревом в графе агентов, а также нативные
+> адаптеры `gemini --acp` и `zcode app-server`. Подробнее: [docs/cross-provider-agents.md](docs/cross-provider-agents.md).
+>
 > **Kimi Code по ACP.** Во вкладке работает `kimi acp`: согласование плана, вопросы, картинки, контекст,
 > история, живой и восстановленный граф агентов с read-only транскриптами. Границы первой версии — в разделе
 > [Kimi Code](#kimi-code).
@@ -137,7 +142,7 @@ Cursor и Kimi Code: см. разделы [Codex](#codex), [Cursor](#cursor),
 `~/.claude/local` и Homebrew (на Windows — `claude.exe`). Другой путь задаётся в `agentura.claudeExecutable`.
 
 ```
-code --install-extension agentura-0.25.0.vsix
+code --install-extension agentura-0.26.0.vsix
 ```
 
 Сборка из исходников:
@@ -145,7 +150,7 @@ code --install-extension agentura-0.25.0.vsix
 ```
 npm ci
 npm run check      # типы, линтер, юнит-тесты, сборка
-npm run package    # agentura-0.25.0.vsix
+npm run package    # agentura-0.26.0.vsix
 ```
 
 ## Codex

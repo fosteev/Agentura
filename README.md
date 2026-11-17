@@ -15,6 +15,11 @@ are available as additional engines (see [Codex](#codex), [Cursor](#cursor),
 
 Personal project, not on the Marketplace. Install it from a `.vsix` (see [Install](#install)).
 
+> **0.26 — cross-provider child agents (`agentura_agents`), Gemini CLI & ZCode.** Spawn, monitor, steer and stop
+> host-managed child sessions across engines through one loopback HTTP MCP interface (`agents_catalog`, `agent_spawn`,
+> `agent_status`, `agent_wait`, `agent_send`, `agent_stop`) with nested delegation rendered in the Agents graph, plus
+> native `gemini --acp` and `zcode app-server` adapters. See [docs/cross-provider-agents.md](docs/cross-provider-agents.md).
+>
 > **Kimi Code ACP.** Native `kimi acp` sessions with plan review, questions, images, context, session history,
 > and live/restored subagent graphs with read-only transcripts. See [Kimi Code](#kimi-code) for the v1 boundaries.
 >
@@ -135,7 +140,7 @@ The extension does not ship the engine binary (200+ MB). It finds the system `cl
 `~/.claude/local` or Homebrew (on Windows it looks for `claude.exe`). To point it somewhere else, set `agentura.claudeExecutable`.
 
 ```
-code --install-extension agentura-0.25.0.vsix
+code --install-extension agentura-0.26.0.vsix
 ```
 
 To build from source:
@@ -143,7 +148,7 @@ To build from source:
 ```
 npm ci
 npm run check      # types, lint, unit tests, build
-npm run package    # agentura-0.25.0.vsix
+npm run package    # agentura-0.26.0.vsix
 ```
 
 ## Codex
