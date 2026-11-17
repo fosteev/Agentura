@@ -8,6 +8,8 @@ import { CODEX_NOT_FOUND, resolveCodexExecutable } from '../agent/codex/executab
 import { CURSOR_NOT_FOUND, resolveCursorExecutable } from '../agent/cursor/executable';
 import { KIMI_NOT_FOUND, resolveKimiExecutable } from '../agent/kimi/executable';
 import { loadKimiModels } from '../agent/kimi/models';
+import { GEMINI_NOT_FOUND, resolveGeminiExecutable } from '../agent/gemini/executable';
+import { ZCODE_NOT_FOUND, resolveZCodeExecutable } from '../agent/zcode/executable';
 import { postToWebview, type SettingsSection } from '../protocol';
 import { hostStrings } from '../shared/l10n';
 import type { JiraRuntime } from './jira/setup';
@@ -101,7 +103,19 @@ export class SettingsPanel {
                         ? { ...c, problem: hostStrings(currentLanguage()).kimiNotFound }
                         : c,
                     )
-                  : await resolveExecutable(path.trim(), { lang: currentLanguage() });
+                  : engine === 'gemini'
+                    ? await resolveGeminiExecutable(path.trim()).then((c) =>
+                        c.problem === GEMINI_NOT_FOUND
+                          ? { ...c, problem: hostStrings(currentLanguage()).geminiNotFound }
+                          : c,
+                      )
+                    : engine === 'zcode'
+                      ? await resolveZCodeExecutable(path.trim()).then((c) =>
+                          c.problem === ZCODE_NOT_FOUND
+                            ? { ...c, problem: hostStrings(currentLanguage()).zcodeNotFound }
+                            : c,
+                        )
+                      : await resolveExecutable(path.trim(), { lang: currentLanguage() });
         return {
           ok: r.version !== undefined,
           source: r.source,

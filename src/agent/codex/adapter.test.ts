@@ -1682,4 +1682,67 @@ describe('Codex native planning and independent session policies', () => {
     expect(opened.events.some((e) => e.type === 'session.settings')).toBe(false);
   });
 
+  it('hostMcpServers passes per-session config.mcp_servers in thread/start & thread/resume, marks builtin and blocks toggle', async () => {
+    const s = server().handle('mcpServerStatus/list', () => ({
+      data: [
+        {
+          name: 'agentura_agents',
+          runtimeStatus: 'connected',
+          serverInfo: { name: 'agentura_agents', version: '1.0.0' },
+          tools: { agent_spawn: {} },
+          toolsError: null,
+          pluginId: null,
+        },
+      ],
+      nextCursor: null,
+    }));
+    const { adapter } = open(s);
+    const hostMcpServers = [
+      {
+        name: 'agentura_agents',
+        url: 'http://127.0.0.1:4567/mcp/tok-123',
+        headers: { Authorization: 'Bearer secret' },
+        builtin: true,
+      },
+    ];
+    const session = await adapter.createSession({ cwd: '/work', hostMcpServers, mcpWatch: true });
+    const events = collect(session);
+    session.send('hello');
+    await until(() => events.some((e) => e.type === 'mcp.status'), 'mcp.status');
+    expect(s.paramsOf('thread/start')).toMatchObject({
+      config: {
+        mcp_servers: {
+          agentura_agents: {
+            url: 'http://127.0.0.1:4567/mcp/tok-123',
+            http_headers: { Authorization: 'Bearer secret' },
+          },
+        },
+      },
+    });
+    const mcpEv = events.find((e) => e.type === 'mcp.status');
+    expect(mcpEv && mcpEv.type === 'mcp.status' && mcpEv.servers[0]).toMatchObject({
+      name: 'agentura_agents',
+      status: 'connected',
+      builtin: true,
+    });
+    await session.mcpToggle!('agentura_agents', false);
+    const errEv = events.find((e) => e.type === 'error');
+    expect(errEv && errEv.type === 'error' && errEv.message).toContain('non-builtin MCP servers can be toggled');
+    session.dispose();
+
+    const s2 = server();
+    const resumed = await open(s2).adapter.resumeSession(THREAD, { cwd: '/work', hostMcpServers });
+    await until(() => s2.methods().includes('thread/resume'), 'thread/resume');
+    expect(s2.paramsOf('thread/resume')).toMatchObject({
+      config: {
+        mcp_servers: {
+          agentura_agents: {
+            url: 'http://127.0.0.1:4567/mcp/tok-123',
+          },
+        },
+      },
+    });
+    resumed.dispose();
+  });
+
 });

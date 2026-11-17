@@ -144,7 +144,10 @@ export class CodexEventMapper {
   /** `mcpServerStatus/list` в пути (`mcpListStart`): уведомления, пришедшие до ответа. */
   private readonly mcpListings = new Set<McpListing>();
 
-  constructor(private readonly now: () => number = Date.now) {
+  constructor(
+    private readonly now: () => number = Date.now,
+    private readonly builtinMcpServers: ReadonlySet<string> = new Set(['agentura_agents']),
+  ) {
     this.tools = new CodexToolMapper(now);
   }
 
@@ -338,6 +341,7 @@ export class CodexEventMapper {
       if (s.serverInfo?.version) info.version = s.serverInfo.version;
       if (s.tools && typeof s.tools === 'object') info.tools = Object.keys(s.tools).length;
       if (s.pluginId) info.scope = 'plugin';
+      if (this.builtinMcpServers.has(s.name)) info.builtin = true;
       // уведомление пришло, пока список был в пути: снимок мог быть снят раньше — статус берём из уведомления
       const fresh = listing?.get(s.name);
       if (fresh) {
@@ -378,7 +382,12 @@ export class CodexEventMapper {
               ? 'failed'
               : 'pending';
     const i = this.mcp.findIndex((s) => s.name === m.name);
-    const next: McpServerInfo = { ...(i >= 0 ? this.mcp[i] : undefined), name: m.name, status };
+    const next: McpServerInfo = {
+      ...(i >= 0 ? this.mcp[i] : undefined),
+      name: m.name,
+      status,
+      ...(this.builtinMcpServers.has(m.name) ? { builtin: true } : {}),
+    };
     if (m.error) next.error = m.error;
     else delete next.error;
     if (i >= 0) this.mcp[i] = next;

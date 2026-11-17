@@ -14,6 +14,7 @@ import {
   currentCall,
   detailRows,
   elapsed,
+  isManagedAgent,
   isSubagent,
   mainRow,
   mapRow,
@@ -130,7 +131,8 @@ function agentLine(
   cwd?: string,
   parentId?: string,
 ): AgentLine {
-  const modelTag = [a.model ? shortModel(a.model) : '', a.reasoningEffort ?? '']
+  const rawModel = a.model || a.requestedModel || '';
+  const modelTag = [rawModel ? shortModel(rawModel) : '', a.reasoningEffort ?? '']
     .filter(Boolean)
     .join(' · ');
   return {
@@ -592,7 +594,7 @@ export function cardView(a: AgentNode, now: number, cwd?: string, hasSession = t
     ...(promptExcerpt ? { promptExcerpt } : {}),
     kind: [
       a.subagentType ?? a.taskType,
-      a.model ? shortModel(a.model) : '',
+      a.model || a.requestedModel ? shortModel(a.model || a.requestedModel!) : '',
       a.reasoningEffort ?? '',
     ]
       .filter(Boolean)
@@ -686,8 +688,12 @@ export function agentsViewPane(
   },
 ): ViewsPane {
   const groups = agentTurns(h, scope, { now: o.now, ...(o.cwd ? { cwd: o.cwd } : {}) });
+  const managedById = new Map<string, boolean>();
   for (const group of groups) {
-    for (const row of [...group.agents, ...group.tasks]) agentActions(row, o.actions);
+    for (const node of group.nodes) managedById.set(node.agentId, isManagedAgent(node));
+    for (const row of [...group.agents, ...group.tasks]) {
+      agentActions(row, o.actions, managedById.get(row.agentId) === true);
+    }
   }
   const selectedId = pickSelected(groups, o.selected);
   const node = selectedId
@@ -702,13 +708,14 @@ export function agentsViewPane(
     groups,
     ...(selectedId ? { selectedId } : {}),
     ...(node && mode !== 'cards'
-      ? { open: agentActions(agentOpen(node, o.now, o.cwd, o.hasSession ?? true), o.actions) }
+      ? { open: agentActions(agentOpen(node, o.now, o.cwd, o.hasSession ?? true), o.actions, isManagedAgent(node)) }
       : {}),
     laneOf: lazy((i) => (groups[i] ? laneView(h, groups[i], o.now) : undefined)),
     cardsOf: lazy((i) =>
       groups[i] ? cardList(groups[i], o.now, o.cwd, o.hasSession ?? true).map((card) => {
-        agentActions(card.line, o.actions);
-        return agentActions(card, o.actions);
+        const managed = managedById.get(card.line.agentId) === true;
+        agentActions(card.line, o.actions, managed);
+        return agentActions(card, o.actions, managed);
       }) : [],
     ),
     tokens: groups.some((g) => g.nodes.some((a) => a.tokens === undefined))

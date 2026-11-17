@@ -66,6 +66,8 @@ export interface AgentNode {
   prompt?: string;
   /** Модель субагента — из его `usage.message`. */
   model?: string;
+  provider?: string;
+  requestedModel?: string | null;
   reasoningEffort?: string;
   launchRecord?: AgentLaunchRecord;
   /** Итог, возвращённый основному (`task_notification.summary`); у упавшего — текст ошибки. */
@@ -253,6 +255,8 @@ export function applyHud(s: HudState, e: AgentEvent, now = Date.now()): HudState
           ...(e.parentAgentId ? { parentAgentId: e.parentAgentId } : {}),
           ...(e.prompt ? { prompt: e.prompt } : {}),
           ...(e.model ? { model: e.model } : {}),
+          ...(e.provider ? { provider: e.provider } : {}),
+          ...(e.requestedModel !== undefined ? { requestedModel: e.requestedModel } : {}),
           ...(e.reasoningEffort ? { reasoningEffort: e.reasoningEffort } : {}),
           ...(e.launchRecord !== undefined ? { launchRecord: e.launchRecord ?? undefined } : {}),
         }),

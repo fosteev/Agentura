@@ -648,4 +648,73 @@ describe('агенты', () => {
     );
     expect(s.agents[0]?.lastTool).toBe('⏳ Edit');
   });
+
+  it('managed_agent: сохраняет provider, requestedModel и обновляет model из session.init без потери метаданных', () => {
+    let s = initialHud();
+    s = applyHud(s, ev({ type: 'turn.start', prompt: 'run child', at: 10 }), 10);
+    s = applyHud(
+      s,
+      ev({
+        type: 'agent.start',
+        agentId: 'ch_1',
+        taskId: 'ch_1',
+        description: 'Kimi inspect',
+        taskType: 'managed_agent',
+        subagentType: 'kimi',
+        provider: 'kimi',
+        requestedModel: 'k3.1',
+        model: 'k3.1',
+        background: true,
+        prompt: 'Inspect repo',
+        at: 20,
+      }),
+      20,
+    );
+    expect(s.agents[0]).toMatchObject({
+      agentId: 'ch_1',
+      taskType: 'managed_agent',
+      provider: 'kimi',
+      requestedModel: 'k3.1',
+      model: 'k3.1',
+    });
+
+    // session.init уточняет фактическую модель, не затирая requestedModel/provider
+    s = applyHud(
+      s,
+      ev({
+        type: 'agent.start',
+        agentId: 'ch_1',
+        taskId: 'ch_1',
+        description: 'Kimi inspect',
+        taskType: 'managed_agent',
+        subagentType: 'kimi',
+        provider: 'kimi',
+        requestedModel: 'k3.1',
+        model: 'kimi-code/k3.1-pro',
+        background: true,
+        prompt: 'Inspect repo',
+      }),
+      30,
+    );
+    expect(s.agents[0]).toMatchObject({
+      provider: 'kimi',
+      requestedModel: 'k3.1',
+      model: 'kimi-code/k3.1-pro',
+    });
+
+    s = applyHud(
+      s,
+      ev({
+        type: 'agent.end',
+        agentId: 'ch_1',
+        taskId: 'ch_1',
+        status: 'failed',
+        summary: 'Host restarted while child agent was running; outcome is unknown and task was not re-executed.',
+        at: 100,
+      }),
+      100,
+    );
+    expect(s.agents[0]?.status).toBe('failed');
+    expect(s.agents[0]?.summary).toContain('not re-executed');
+  });
 });

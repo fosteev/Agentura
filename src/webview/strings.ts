@@ -484,6 +484,12 @@ const ru = {
     missingTitleKimi: 'Kimi Code не найден или устарел',
     missingHintKimi:
       'Нужен Kimi Code CLI 2.6.0 или новее. Выполните вход (kimi acp --login) или укажите путь к kimi в настройках ⚙ (agentura.kimiExecutable).',
+    missingTitleGemini: 'Gemini CLI не найден или не настроен',
+    missingHintGemini:
+      'Установите Gemini CLI (gemini --acp) или укажите путь в настройках ⚙ (agentura.geminiExecutable).',
+    missingTitleZcode: 'ZCode CLI не найден или не настроен',
+    missingHintZcode:
+      'Установите ZCode CLI (zcode app-server) или укажите путь в настройках ⚙ (agentura.zcodeExecutable).',
     missingRecheck: 'Проверить снова',
     missingChecking: 'проверяю…',
     openLog: 'Открыть журнал расширения',
@@ -912,6 +918,8 @@ const ru = {
     antigravityVia: (version?: string) => `через agy (Antigravity CLI)${version ? ` · ${version}` : ''}`,
     cursorVia: 'через agent acp',
     kimiVia: (version?: string) => `через kimi acp (Kimi Code CLI)${version ? ` · kimi ${version}` : ''}`,
+    geminiVia: 'через gemini --acp',
+    zcodeVia: 'через zcode app-server',
     agentLocked: 'Сменить агента можно в новом чате.',
     agentCurrent: 'Агент этого чата',
     agentChoose: 'Выберите агента',
@@ -1230,6 +1238,8 @@ const ru = {
       kimiModelDesc: 'Модели из kimi provider list --json. Пусто — наследовать CLI; восстановленные сессии не перезаписываются.',
       kimiEffortDesc: 'Только реальные effort выбранной модели. Пусто — наследовать CLI; boolean on/off здесь не имитируются.',
       kimiNoModels: 'Kimi не вернул моделей. Проверь CLI и вход, затем обнови список.',
+      geminiModelDesc: 'ID модели новых чатов Gemini CLI из gemini --list-models. Пусто — выбор CLI.',
+      zcodeModelDesc: 'ID модели новых чатов ZCode (providerId/modelId). Пусто — выбор CLI.',
       unavailable: 'недоступно',
       approval: 'Подтверждения Codex',
       approvalDesc: 'Когда Codex запрашивает разрешение на действие.',
@@ -1422,7 +1432,7 @@ const ru = {
     limitsHidden: {
       name: 'Чьи лимиты показывать',
       desc: 'Снятый флажок прячет лимиты движка из боковой панели и выключает их опрос. Снять все — секции лимитов не будет. Лимиты в шапке чата не меняются.',
-      engines: { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity', cursor: 'Cursor', kimi: 'Kimi Code' },
+      engines: { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity', cursor: 'Cursor', kimi: 'Kimi Code', gemini: 'Gemini CLI', zcode: 'ZCode' },
     },
     feedStyle: {
       name: 'Вид ленты чата',
@@ -1536,7 +1546,7 @@ const ru = {
     provider: {
       name: 'Движок по умолчанию',
       desc: 'Движок новых вкладок. Меняется и меню «агент» в поле ввода (пустая вкладка); начатая сессия остаётся на своём движке.',
-      options: { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity', cursor: 'Cursor', kimi: 'Kimi Code' },
+      options: { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity', cursor: 'Cursor', kimi: 'Kimi Code', gemini: 'Gemini CLI', zcode: 'ZCode' },
     },
     exe: {
       name: 'Путь к claude',
@@ -1561,6 +1571,16 @@ const ru = {
     exeKimi: {
       name: 'Путь к kimi (Kimi Code)',
       desc: 'Пусто — PATH, ~/.kimi-code/bin, ~/.local/bin, Homebrew. Нужен Kimi Code CLI 2.6.0+, вход: kimi acp --login.',
+      placeholder: 'пусто — искать системный',
+    },
+    exeGemini: {
+      name: 'Путь к gemini (Gemini CLI)',
+      desc: 'Пусто — PATH, ~/.local/bin, Homebrew. Нужен Gemini CLI с флагом --acp.',
+      placeholder: 'пусто — искать системный',
+    },
+    exeZcode: {
+      name: 'Путь к zcode (ZCode)',
+      desc: 'Пусто — PATH, ~/.local/bin, Homebrew. Нужен ZCode CLI с app-server.',
       placeholder: 'пусто — искать системный',
     },
   },
@@ -1635,7 +1655,7 @@ const ru = {
     fold: (name: string, folded: boolean) => `${folded ? 'Развернуть' : 'Свернуть'}: ${name}`,
     accountLabels: { account: 'Аккаунт', plan: 'План', login: 'Вход', agent: 'Агент' },
     agentName: 'Claude',
-    providerNames: { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity', cursor: 'Cursor', kimi: 'Kimi Code' },
+    providerNames: { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity', cursor: 'Cursor', kimi: 'Kimi Code', gemini: 'Gemini CLI', zcode: 'ZCode' },
     unknown: '—',
     loadError: 'не удалось получить',
     limitFive: 'Окно 5 часов',

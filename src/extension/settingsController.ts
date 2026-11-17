@@ -55,7 +55,15 @@ export class SettingsController {
   private kimiModelsSeq = 0;
   private kimiModelsPath: string | undefined;
   /** Номер последней «проверить» — ответ приходит только на неё. */
-  private checkSeq: Record<AgentProvider, number> = { claude: 0, codex: 0, antigravity: 0, cursor: 0, kimi: 0 };
+  private checkSeq: Record<AgentProvider, number> = {
+    claude: 0,
+    codex: 0,
+    antigravity: 0,
+    cursor: 0,
+    kimi: 0,
+    gemini: 0,
+    zcode: 0,
+  };
 
   /** Webview прислал `ready` и получил первое состояние: раздел можно слать сразу. */
   private ready = false;
@@ -178,7 +186,12 @@ export class SettingsController {
       case 'settings.checkEngine': {
         // проверки асинхронные (до 5 с): ответ устаревшей не должен перебить ответ последней
         const engine: AgentProvider =
-          m.engine === 'codex' || m.engine === 'antigravity' || m.engine === 'cursor' || m.engine === 'kimi'
+          m.engine === 'codex' ||
+          m.engine === 'antigravity' ||
+          m.engine === 'cursor' ||
+          m.engine === 'kimi' ||
+          m.engine === 'gemini' ||
+          m.engine === 'zcode'
             ? m.engine
             : 'claude';
         const seq = ++this.checkSeq[engine];

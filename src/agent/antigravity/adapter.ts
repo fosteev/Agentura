@@ -1,7 +1,9 @@
 import { spawn } from 'node:child_process';
 import { realpathSync } from 'node:fs';
 import type { Lang } from '../../shared/l10n';
-import { AcpRpcClient, AcpRpcError, MAX_LINE_BYTES, PERMISSION_METHOD, type RpcId, type RpcProcess } from '../acp/client';
+import { acpHttpMcpServers, AcpRpcClient, AcpRpcError, MAX_LINE_BYTES, PERMISSION_METHOD, type RpcId, type RpcProcess } from '../acp/client';
+import { isAgenturaAgentsTool } from '../children/policy';
+import { CHILD_MCP_SERVER } from '../children/types';
 import { EventHub } from '../stream';
 import type {
   AccountInfo,
@@ -11,6 +13,7 @@ import type {
   AgentSession,
   DiffPreview,
   EffortLevel,
+  HostMcpServer,
   PermissionMode,
   PromptFile,
   PromptImage,
@@ -615,20 +618,28 @@ class AgySession implements AgentSession {
   private subagentPollPromise: Promise<void> | undefined;
   private silentWatchUntil = 0;
 
+  private readonly mcpServers: readonly string[];
+  private readonly hostMcpServers: readonly HostMcpServer[];
+
   constructor(
     private readonly config0: AntigravityAdapterConfig,
     private readonly executable: string,
     options: SessionOptions,
     private readonly onTier: (name: string | undefined) => void,
     private readonly index: AgySessionIndex,
-    private readonly mcpServers: readonly string[],
+    knownMcpServers: readonly string[],
     private readonly onSubagentMeta: (childUuid: string, meta: AgySubagentMeta) => void,
     private readonly resumeId?: string,
   ) {
+    this.hostMcpServers = options.hostMcpServers ?? [];
+    const mergedMcp = Array.from(
+      new Set([...knownMcpServers, ...this.hostMcpServers.map((s) => s.name)]),
+    ).sort((a, b) => b.length - a.length || a.localeCompare(b));
+    this.mcpServers = mergedMcp;
     this.log = config0.log ?? (() => {});
     this.mapper = new AgyAcpMapper({
       ...(config0.lang ? { lang: config0.lang } : {}),
-      mcpServers,
+      mcpServers: mergedMcp,
     });
     this.cwd = options.cwd;
     this.allowBypass = options.allowBypassPermissions === true;
@@ -1110,10 +1121,11 @@ class AgySession implements AgentSession {
       const init = await this.client.request('initialize', initializeParams(this.config0));
       if (this.closed) return;
       this.agentVersion = agentVersionOf(init) ?? this.agentVersion;
+      const mcpServers = acpHttpMcpServers(this.hostMcpServers);
       const result = await this.client.request('session/resume', {
         sessionId: this.sessionId,
         cwd: this.cwd,
-        mcpServers: [],
+        mcpServers,
       });
       if (this.closed) return;
       this.config = parseConfig(result);
@@ -1165,9 +1177,10 @@ class AgySession implements AgentSession {
   private async handshake(requestedModel: string | undefined): Promise<void> {
     const init = await this.client.request('initialize', initializeParams(this.config0));
     this.agentVersion = agentVersionOf(init);
+    const mcpServers = acpHttpMcpServers(this.hostMcpServers);
     const result = this.resumeId
-      ? await this.client.request('session/resume', { sessionId: this.resumeId, cwd: this.cwd, mcpServers: [] })
-      : await this.client.request('session/new', { cwd: this.cwd, mcpServers: [] });
+      ? await this.client.request('session/resume', { sessionId: this.resumeId, cwd: this.cwd, mcpServers })
+      : await this.client.request('session/new', { cwd: this.cwd, mcpServers });
     if (this.closed) return;
     const sessionId = this.resumeId ?? sessionIdOf(result);
     if (!sessionId) throw new Error('Antigravity ACP session/new returned no sessionId.');
@@ -1664,6 +1677,13 @@ class AgySession implements AgentSession {
     const rawInput = toolInput(call ?? {});
     const mapped = mapAgyTool(rawName, rawInput, this.mcpServers);
     const title = typeof call?.title === 'string' ? call.title : undefined;
+    if (
+      this.hostMcpServers.some((s) => s.name === CHILD_MCP_SERVER && s.builtin !== false) &&
+      isAgenturaAgentsTool(mapped.name, title ?? rawName)
+    ) {
+      this.client.respond(id, { outcome: { outcome: 'selected', optionId: 'allow' } });
+      return true;
+    }
 
     let diff: DiffPreview | undefined;
     if (mapped.name === 'Edit') {

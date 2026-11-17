@@ -42,6 +42,8 @@ export interface GraphAgent {
   turnNo: number;
   prompt?: string;
   model?: string;
+  provider?: string;
+  requestedModel?: string | null;
   reasoningEffort?: string;
   launchRecord?: AgentLaunchRecord;
   summary?: string;
@@ -94,6 +96,8 @@ function isGraphAgent(v: unknown): v is GraphAgent {
     optStr(v.parentAgentId) &&
     optStr(v.prompt) &&
     optStr(v.model) &&
+    optStr(v.provider) &&
+    (v.requestedModel === undefined || v.requestedModel === null || typeof v.requestedModel === 'string') &&
     optStr(v.reasoningEffort) &&
     (v.launchRecord === undefined || (isObj(v.launchRecord) && v.launchRecord.source === 'parent' &&
       typeof v.launchRecord.prompt === 'string' && typeof v.launchRecord.taskName === 'string' &&

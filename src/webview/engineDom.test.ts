@@ -450,7 +450,8 @@ describe('Выбор движка', () => {
     const agy = items(host).find((i) => i.textContent?.startsWith('Antigravity'))!;
     expect(agy.textContent).not.toMatch(/скоро|soon/);
     expect(agy.getAttribute('aria-disabled')).toBeNull();
-    expect(items(host).some((i) => i.textContent?.startsWith('Gemini'))).toBe(false);
+    expect(items(host).some((i) => i.textContent?.startsWith('Gemini'))).toBe(true);
+    expect(items(host).some((i) => i.textContent?.startsWith('ZCode'))).toBe(true);
     codex.click();
     expect(posted).toContainEqual({ type: 'engine.set', provider: 'codex' });
   });

@@ -15,6 +15,10 @@ import { CursorAdapter } from '../agent/cursor/adapter';
 import { CURSOR_NOT_FOUND, resolveCursorExecutable } from '../agent/cursor/executable';
 import { KimiAdapter } from '../agent/kimi/adapter';
 import { KIMI_NOT_FOUND, resolveKimiExecutable } from '../agent/kimi/executable';
+import { GeminiAdapter } from '../agent/gemini/adapter';
+import { GEMINI_NOT_FOUND, resolveGeminiExecutable } from '../agent/gemini/executable';
+import { ZCodeAdapter } from '../agent/zcode/adapter';
+import { ZCODE_NOT_FOUND, resolveZCodeExecutable } from '../agent/zcode/executable';
 import type { AgyStateStore } from '../agent/antigravity/sessionIndex';
 import type { AgentAdapter, AgentProvider, SessionRef } from '../agent/types';
 import { readOAuthToken, type LimitsSource } from '../data/limits';
@@ -111,6 +115,10 @@ export interface ChatServices {
   cursorAdapter: () => AgentAdapter;
   /** Адаптер Kimi (лениво); процесс ACP создаётся только операцией выбранного движка. */
   kimiAdapter: () => AgentAdapter;
+  /** Адаптер Gemini CLI (лениво). */
+  geminiAdapter: () => AgentAdapter;
+  /** Адаптер ZCode CLI (лениво). */
+  zcodeAdapter: () => AgentAdapter;
   live: LiveSessions;
   transcripts: TranscriptCache;
   usage: UsageService;
@@ -143,8 +151,14 @@ export interface ChatServices {
   cursorEngine: EngineLocator;
   /** Поиск `kimi` без прогрева и без общего с Claude/Codex кэша ошибок. */
   kimiEngine: EngineLocator;
+  /** Поиск `gemini` без прогрева. */
+  geminiEngine: EngineLocator;
+  /** Поиск `zcode` без прогрева. */
+  zcodeEngine: EngineLocator;
   /** Вкладка «git» (roadmap 12): репозитории рабочей папки над API встроенного git. */
   git: GitService;
+  /** Хост межпровайдерных дочерних агентов через общий MCP (`agentura_agents`). */
+  childAgents?: import('../agent/children/host').ChildAgentsHost;
 }
 
 export function createAdapter(
@@ -161,11 +175,15 @@ export function createAdapter(
   cursorAdapter: () => AgentAdapter;
   /** Kimi-адаптер и его globalState index создаются лениво, `kimi acp` — ещё позже. */
   kimiAdapter: () => AgentAdapter;
+  geminiAdapter: () => AgentAdapter;
+  zcodeAdapter: () => AgentAdapter;
   engine: EngineLocator;
   codexEngine: EngineLocator;
   antigravityEngine: EngineLocator;
   cursorEngine: EngineLocator;
   kimiEngine: EngineLocator;
+  geminiEngine: EngineLocator;
+  zcodeEngine: EngineLocator;
 } {
   const cfg = () => vscode.workspace.getConfiguration('agentura');
   // `.vsix` без бинарника движка: настройка → системный `claude` (с проверкой версии). Поиск асинхронный
@@ -229,6 +247,28 @@ export function createAdapter(
     warn: (m) => log.warn(m),
     lang: currentLanguage,
   });
+  const geminiEngine = new EngineLocator({
+    setting: () => cfg().get<string>('geminiExecutable') ?? '',
+    resolve: async (s) => {
+      const r = await resolveGeminiExecutable(s);
+      return r.problem === GEMINI_NOT_FOUND ? { ...r, problem: hostStrings(currentLanguage()).geminiNotFound } : r;
+    },
+    name: 'gemini',
+    info: (m) => log.info(m),
+    warn: (m) => log.warn(m),
+    lang: currentLanguage,
+  });
+  const zcodeEngine = new EngineLocator({
+    setting: () => cfg().get<string>('zcodeExecutable') ?? '',
+    resolve: async (s) => {
+      const r = await resolveZCodeExecutable(s);
+      return r.problem === ZCODE_NOT_FOUND ? { ...r, problem: hostStrings(currentLanguage()).zcodeNotFound } : r;
+    },
+    name: 'zcode',
+    info: (m) => log.info(m),
+    warn: (m) => log.warn(m),
+    lang: currentLanguage,
+  });
   const adapter = new ClaudeAdapter({
     executablePath: () => engine.path(),
     clientApp: 'agentura',
@@ -273,17 +313,35 @@ export function createAdapter(
       ...(clientVersion ? { clientVersion } : {}),
       ...(state ? { state } : {}),
     }));
+  let gemini: AgentAdapter | undefined;
+  const geminiAdapter = (): AgentAdapter =>
+    (gemini ??= new GeminiAdapter({
+      executablePath: () => geminiEngine.path(),
+      log: (level, message) => log[level](message),
+      ...(clientVersion ? { clientVersion } : {}),
+    }));
+  let zcode: AgentAdapter | undefined;
+  const zcodeAdapter = (): AgentAdapter =>
+    (zcode ??= new ZCodeAdapter({
+      executablePath: () => zcodeEngine.path(),
+      log: (level, message) => log[level](message),
+      ...(clientVersion ? { clientVersion } : {}),
+    }));
   return {
     adapter,
     codexAdapter,
     antigravityAdapter,
     cursorAdapter,
     kimiAdapter,
+    geminiAdapter,
+    zcodeAdapter,
     engine,
     codexEngine,
     antigravityEngine,
     cursorEngine,
     kimiEngine,
+    geminiEngine,
+    zcodeEngine,
   };
 }
 
@@ -853,6 +911,8 @@ export class ChatPanel {
             model: values['kimi.defaultModel'] || undefined,
             effort: values['kimi.defaultEffort'] || undefined,
           },
+          geminiDefaultModel: values['gemini.defaultModel'] || undefined,
+          zcodeDefaultModel: values['zcode.defaultModel'] || undefined,
           allowBypass: cfg.get<boolean>('allowBypassPermissions', false),
           // кривые пороги из settings.json (вкладка настроек такие не пишет) — по умолчанию
           contextThresholds: ((th) => (thresholdsError(th) ? [...DEFAULT_THRESHOLDS] : th))(
@@ -1039,6 +1099,7 @@ export class ChatPanel {
         services.account.noteEngine(v);
         services.memory.setEngineVersion(`claude ${v}`);
       },
+      ...(services.childAgents ? { childAgents: services.childAgents } : {}),
     });
 
     // вкладка «код» задачи (roadmap 24): git — через встроенное расширение VS Code, история чатов — адаптеры движков
@@ -1321,6 +1382,8 @@ export function adapterOf(services: ChatServices, p: AgentProvider | undefined):
   if (p === 'antigravity') return services.antigravityAdapter();
   if (p === 'cursor') return services.cursorAdapter();
   if (p === 'kimi') return services.kimiAdapter();
+  if (p === 'gemini') return services.geminiAdapter();
+  if (p === 'zcode') return services.zcodeAdapter();
   return services.adapter;
 }
 
@@ -1330,6 +1393,8 @@ export function engineOf(services: ChatServices, p: AgentProvider | undefined): 
   if (p === 'antigravity') return services.antigravityEngine;
   if (p === 'cursor') return services.cursorEngine;
   if (p === 'kimi') return services.kimiEngine;
+  if (p === 'gemini') return services.geminiEngine;
+  if (p === 'zcode') return services.zcodeEngine;
   return undefined;
 }
 

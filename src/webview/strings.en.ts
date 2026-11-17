@@ -479,6 +479,12 @@ export const en: Ui = {
     missingTitleKimi: 'Kimi Code not found or too old',
     missingHintKimi:
       'Kimi Code CLI 2.6.0 or newer is required. Sign in (kimi acp --login) or set the kimi path in settings ⚙ (agentura.kimiExecutable).',
+    missingTitleGemini: 'Gemini CLI not found or unavailable',
+    missingHintGemini:
+      'Install Gemini CLI (gemini --acp) and sign in, or set the path in settings ⚙ (agentura.geminiExecutable).',
+    missingTitleZcode: 'ZCode CLI not found or unavailable',
+    missingHintZcode:
+      'Install ZCode CLI (zcode app-server) or set the path in settings ⚙ (agentura.zcodeExecutable).',
     missingRecheck: 'Check again',
     missingChecking: 'checking…',
     openLog: 'Open extension log',
@@ -901,6 +907,8 @@ export const en: Ui = {
     antigravityVia: (version?: string) => `via agy (Antigravity CLI)${version ? ` · ${version}` : ''}`,
     cursorVia: 'via agent acp',
     kimiVia: (version?: string) => `via kimi acp (Kimi Code CLI)${version ? ` · kimi ${version}` : ''}`,
+    geminiVia: 'via gemini --acp',
+    zcodeVia: 'via zcode app-server',
     agentLocked: 'You can change the agent in a new chat.',
     agentCurrent: 'Agent for this chat',
     agentChoose: 'Choose an agent',
@@ -1209,6 +1217,8 @@ export const en: Ui = {
       kimiModelDesc: 'Models from kimi provider list --json. Empty inherits the CLI; resumed sessions are not overwritten.',
       kimiEffortDesc: 'Only actual effort levels of the selected model. Empty inherits the CLI; boolean on/off values are not emulated.',
       kimiNoModels: 'Kimi returned no models. Check the CLI and sign-in, then refresh the list.',
+      geminiModelDesc: 'Model ID for new Gemini CLI chats from gemini --list-models. Empty uses the CLI default.',
+      zcodeModelDesc: 'Model ID for new ZCode chats (providerId/modelId). Empty uses the CLI default.',
       unavailable: 'unavailable',
       approval: 'Codex approvals',
       approvalDesc: 'When Codex asks for permission to perform an action.',
@@ -1401,7 +1411,7 @@ export const en: Ui = {
     limitsHidden: {
       name: 'Show limits for',
       desc: 'Unchecking an engine hides its limits from the sidebar and stops polling them. Uncheck all to drop the limits section. Limits in the chat header are unaffected.',
-      engines: { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity', cursor: 'Cursor', kimi: 'Kimi Code' },
+      engines: { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity', cursor: 'Cursor', kimi: 'Kimi Code', gemini: 'Gemini CLI', zcode: 'ZCode' },
     },
     feedStyle: {
       name: 'Chat feed style',
@@ -1515,7 +1525,7 @@ export const en: Ui = {
     provider: {
       name: 'Default engine',
       desc: 'Engine for new tabs. The “agent” menu in the input box (empty tab) changes it too; a started session keeps its engine.',
-      options: { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity', cursor: 'Cursor', kimi: 'Kimi Code' },
+      options: { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity', cursor: 'Cursor', kimi: 'Kimi Code', gemini: 'Gemini CLI', zcode: 'ZCode' },
     },
     exe: {
       name: 'Path to claude',
@@ -1540,6 +1550,16 @@ export const en: Ui = {
     exeKimi: {
       name: 'Path to kimi (Kimi Code)',
       desc: 'Empty — PATH, ~/.kimi-code/bin, ~/.local/bin, Homebrew. Requires Kimi Code CLI 2.6.0+; sign in with kimi acp --login.',
+      placeholder: 'empty — look for the system one',
+    },
+    exeGemini: {
+      name: 'Path to gemini (Gemini CLI)',
+      desc: 'Empty — PATH, ~/.local/bin, Homebrew. Requires Gemini CLI with --acp support.',
+      placeholder: 'empty — look for the system one',
+    },
+    exeZcode: {
+      name: 'Path to zcode (ZCode)',
+      desc: 'Empty — PATH, ~/.local/bin, Homebrew. Requires ZCode CLI with app-server support.',
       placeholder: 'empty — look for the system one',
     },
   },
@@ -1614,7 +1634,7 @@ export const en: Ui = {
     fold: (name: string, folded: boolean) => `${folded ? 'Expand' : 'Collapse'}: ${name}`,
     accountLabels: { account: 'Account', plan: 'Plan', login: 'Login', agent: 'Agent' },
     agentName: 'Claude',
-    providerNames: { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity', cursor: 'Cursor', kimi: 'Kimi Code' },
+    providerNames: { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity', cursor: 'Cursor', kimi: 'Kimi Code', gemini: 'Gemini CLI', zcode: 'ZCode' },
     unknown: '—',
     loadError: 'could not load',
     limitFive: '5-hour window',

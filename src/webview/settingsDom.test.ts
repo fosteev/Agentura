@@ -48,6 +48,8 @@ const values: SettingsValues = {
   'cursor.defaultModel': '',
   'antigravity.defaultModel': '',
   'kimi.defaultModel': '',
+  'gemini.defaultModel': '',
+  'zcode.defaultModel': '',
   'codex.defaultEffort': '',
   'antigravity.defaultEffort': '',
   'kimi.defaultEffort': '',
@@ -64,6 +66,8 @@ const values: SettingsValues = {
   antigravityExecutable: '',
   cursorExecutable: '',
   kimiExecutable: '',
+  geminiExecutable: '',
+  zcodeExecutable: '',
   defaultProvider: 'claude',
   'sessionList.view': 'compact',
   'sessionList.context': true,
@@ -271,7 +275,15 @@ describe('вкладка настроек', () => {
     const host = mount(Settings);
     state({ defaultModel: 'opus', 'codex.defaultModel': 'gpt-test' });
     await flush();
-    expect([...host.querySelectorAll('.ns-providers strong')].map((e) => e.textContent)).toEqual(['Claude', 'Codex', 'Cursor', 'Antigravity', 'Kimi Code']);
+    expect([...host.querySelectorAll('.ns-providers strong')].map((e) => e.textContent)).toEqual([
+      'Claude',
+      'Codex',
+      'Cursor',
+      'Antigravity',
+      'Kimi Code',
+      'Gemini CLI',
+      'ZCode',
+    ]);
     expect(host.querySelector<HTMLInputElement>('[aria-label="defaultModel"]')!.value).toBe('opus');
     expect(host.querySelector<HTMLInputElement>('[aria-label="codex.defaultModel"]')!.value).toBe('gpt-test');
     change(host.querySelector('[aria-label="codex.defaultApproval"]')!, 'never');
@@ -417,6 +429,8 @@ describe('вкладка настроек', () => {
       'agentura.cursor.defaultModel',
       'agentura.kimi.defaultModel',
       'agentura.kimi.defaultEffort',
+      'agentura.gemini.defaultModel',
+      'agentura.zcode.defaultModel',
       'agentura.contextThresholds',
       'agentura.usagePollMinutes · не меньше 5',
       'agentura.limits.readKeychain',
@@ -462,6 +476,8 @@ describe('вкладка настроек', () => {
       'agentura.antigravityExecutable · только эта машина',
       'agentura.cursorExecutable · только эта машина',
       'agentura.kimiExecutable · только эта машина',
+      'agentura.geminiExecutable · только эта машина',
+      'agentura.zcodeExecutable · только эта машина',
     ].sort());
   });
 
@@ -658,7 +674,7 @@ describe('вкладка настроек', () => {
     const boxes = [
       ...host.querySelectorAll<HTMLInputElement>('[data-key="agentura.sidebar.limitsHidden"] input[type="checkbox"]'),
     ];
-    expect(boxes.map((b) => b.checked)).toEqual([true, false, true, true, true]);
+    expect(boxes.map((b) => b.checked)).toEqual([true, false, true, true, true, true, true]);
     boxes[2]!.click();
     expect(sets().at(-1)).toEqual({
       type: 'settings.set',

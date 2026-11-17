@@ -22,6 +22,7 @@ import type {
   CommandOption,
   CompletionRequest,
   EffortLevel,
+  HostMcpServer,
   ModelOption,
   PermissionDecision,
   PermissionMode,
@@ -39,6 +40,8 @@ import type {
 } from '../types';
 import { AsyncQueue, EventHub } from '../stream';
 import { BROWSER_ARGS, BROWSER_COMMAND, BROWSER_SERVER } from '../browserMcp';
+import { isAgenturaAgentsTool } from '../children/policy';
+import { CHILD_MCP_SERVER } from '../children/types';
 import type { Lang } from '../../shared/l10n';
 import { ClaudeEventMapper } from './mapper';
 import { PermissionBroker } from './permissions';
@@ -384,6 +387,23 @@ export class ClaudeAdapter implements AgentAdapter {
    * Ответа нет за `timeoutMs` — ошибка; процесс закрывается в любом случае (`close()` и `abort`).
    */
   async accountInfo(cwd: string, timeoutMs = ACCOUNT_INFO_TIMEOUT_MS): Promise<AccountInfo> {
+    const { account } = await this.queryControlSnapshot(cwd, false, timeoutMs);
+    return account;
+  }
+
+  /** Снимок аккаунта и реальных моделей CLI через control API без запуска хода. */
+  async inspectCapabilities(
+    cwd: string,
+    timeoutMs = ACCOUNT_INFO_TIMEOUT_MS,
+  ): Promise<{ account: AccountInfo; models: ModelOption[] }> {
+    return this.queryControlSnapshot(cwd, true, timeoutMs);
+  }
+
+  private async queryControlSnapshot(
+    cwd: string,
+    includeModels: boolean,
+    timeoutMs: number,
+  ): Promise<{ account: AccountInfo; models: ModelOption[] }> {
     const sdk = await this.loadSdk();
     const input = new AsyncQueue<SDKUserMessage>();
     const abort = new AbortController();
@@ -393,11 +413,12 @@ export class ClaudeAdapter implements AgentAdapter {
     });
     let timer: ReturnType<typeof setTimeout> | undefined;
     // проигравший гонку с таймаутом запрос отклонится на `close()` — без обработчика это unhandled rejection
-    const request = q.accountInfo();
-    request.catch(() => undefined);
+    const accountReq = q.accountInfo();
+    accountReq.catch(() => undefined);
+    const modelsReq = includeModels ? q.supportedModels().catch(() => []) : Promise.resolve([]);
     try {
-      const a = await Promise.race([
-        request,
+      const [a, rawModels] = await Promise.race([
+        Promise.all([accountReq, modelsReq]),
         new Promise<never>((_, reject) => {
           timer = setTimeout(
             () => reject(new Error(`движок не ответил на accountInfo за ${timeoutMs} мс`)),
@@ -405,13 +426,21 @@ export class ClaudeAdapter implements AgentAdapter {
           );
         }),
       ]);
-      const info: AccountInfo = {};
-      if (a.email) info.email = a.email;
-      if (a.organization) info.organization = a.organization;
-      if (a.subscriptionType) info.subscriptionType = a.subscriptionType;
-      if (a.apiProvider) info.apiProvider = a.apiProvider;
-      if (a.tokenSource) info.tokenSource = a.tokenSource;
-      return info;
+      const account: AccountInfo = {};
+      if (a.email) account.email = a.email;
+      if (a.organization) account.organization = a.organization;
+      if (a.subscriptionType) account.subscriptionType = a.subscriptionType;
+      if (a.apiProvider) account.apiProvider = a.apiProvider;
+      if (a.tokenSource) account.tokenSource = a.tokenSource;
+      const models: ModelOption[] = [];
+      for (const m of rawModels) {
+        const option: ModelOption = { value: m.value, displayName: m.displayName };
+        if (m.description) option.description = m.description;
+        if (m.supportsEffort !== undefined) option.supportsEffort = m.supportsEffort;
+        if (m.supportedEffortLevels) option.effortLevels = m.supportedEffortLevels as EffortLevel[];
+        models.push(option);
+      }
+      return { account, models };
     } finally {
       if (timer !== undefined) clearTimeout(timer);
       input.end();
@@ -558,6 +587,7 @@ class ClaudeSession implements AgentSession {
   /** Номер последнего `mcpServerStatus()` и «ответ обязан дать событие» (`refreshMcp`). */
   private mcpSeq = 0;
   private mcpForce = false;
+  private readonly hostMcpServers: readonly HostMcpServer[];
 
   constructor(
     sdk: SdkModule,
@@ -579,9 +609,14 @@ class ClaudeSession implements AgentSession {
     this.model = options.model;
     this.mcpWatch = options.mcpWatch === true;
     this.browser = options.browser === true;
+    this.hostMcpServers = options.hostMcpServers ?? [];
+    const builtinMcpServers = new Set(
+      this.hostMcpServers.filter((s) => s.builtin !== false).map((s) => s.name),
+    );
     this.mapper = new ClaudeEventMapper({
       baselineCostUsd: resume ? options.baselineCostUsd : 0,
       ...(config.lang ? { lang: config.lang } : {}),
+      ...(builtinMcpServers.size ? { builtinMcpServers } : {}),
     });
     this.broker = new PermissionBroker(
       (e) => this.emit(e),
@@ -657,6 +692,13 @@ class ClaudeSession implements AgentSession {
    * `AUTO_COMMENTS` за `AUTO_WINDOW_MS` — остальное тоже карточкой.
    */
   private autoAllow(toolName: string, input: Record<string, unknown>, server?: { name: string; source: string }): boolean {
+    if (
+      this.hostMcpServers.some((s) => s.name === CHILD_MCP_SERVER && s.builtin !== false) &&
+      isAgenturaAgentsTool(toolName) &&
+      (!server || server.name === CHILD_MCP_SERVER)
+    ) {
+      return true;
+    }
     if (toolName !== JIRA_COMMENT_TOOL || !this.jiraSig || this.mode === 'plan' || !ClaudeSession.ownServer(server)) return false;
     const issue = input['issue'];
     const own = this.taskTools?.spec()?.issue;
@@ -672,12 +714,16 @@ class ClaudeSession implements AgentSession {
   }
 
   /**
-   * Весь набор SDK-серверов сессии: `agentura_jira` (по спецификации задачи) и `browser` (по флагу). `setMcpServers`
+   * Весь набор SDK-серверов сессии: `agentura_jira` (по спецификации задачи), `browser` (по флагу)
+   * и встроенные HTTP MCP-серверы хоста (`hostMcpServers`, например `agentura_agents`). `setMcpServers`
    * заменяет только серверы, добавленные через SDK (серверы из настроек не трогает), но заменяет их ВСЕ — поэтому
    * начальные опции, `syncTaskTools` и `setBrowser` собирают набор одной функцией, и ни один не сносит чужое.
    */
   private sdkServers(spec: TaskToolsSpec | undefined): Record<string, McpServerConfig> {
     const servers: Record<string, McpServerConfig> = {};
+    for (const s of this.hostMcpServers) {
+      servers[s.name] = { type: 'http', url: s.url, alwaysLoad: true };
+    }
     if (this.kit && this.taskTools && spec) servers[JIRA_SERVER] = buildJiraServer(this.kit, spec, this.taskTools);
     if (this.browser) servers[BROWSER_SERVER] = { type: 'stdio', command: BROWSER_COMMAND, args: [...BROWSER_ARGS] };
     return servers;
@@ -825,6 +871,11 @@ class ClaudeSession implements AgentSession {
   /** Тумблер сервера: `toggleMcpServer`, затем свежий статус (ответ всегда приходит `mcp.status`). */
   async mcpToggle(name: string, enabled: boolean): Promise<void> {
     if (this.closed) return;
+    if (this.hostMcpServers.some((s) => s.name === name && s.builtin !== false)) {
+      this.log('warn', `toggleMcpServer(${name}, ${enabled}): встроенный сервер хоста нельзя отключить`);
+      await this.refreshMcp(true);
+      return;
+    }
     try {
       await this.q.toggleMcpServer(name, enabled);
     } catch (error) {

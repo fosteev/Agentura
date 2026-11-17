@@ -13,6 +13,8 @@ const ENGINES: readonly { id: AgentProvider; name: string }[] = [
   { id: 'antigravity', name: 'Antigravity' },
   { id: 'cursor', name: 'Cursor' },
   { id: 'kimi', name: 'Kimi Code' },
+  { id: 'gemini', name: 'Gemini CLI' },
+  { id: 'zcode', name: 'ZCode' },
 ];
 
 /**

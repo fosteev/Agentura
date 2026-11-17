@@ -1435,6 +1435,8 @@ function AgentItems({ close }: { close: () => void }) {
     { id: 'antigravity', label: 'Antigravity', small: ui.compose.antigravityVia(cur === 'antigravity' ? s.engineVersion : undefined) },
     { id: 'cursor', label: 'Cursor', small: ui.compose.cursorVia },
     { id: 'kimi', label: 'Kimi Code', small: ui.compose.kimiVia(cur === 'kimi' ? s.engineVersion : undefined) },
+    { id: 'gemini', label: 'Gemini CLI', small: ui.compose.geminiVia },
+    { id: 'zcode', label: 'ZCode', small: ui.compose.zcodeVia },
   ] as const;
   const ordered = locked ? [...agents.filter((a) => a.id === cur), ...agents.filter((a) => a.id !== cur)] : agents;
   return (

@@ -752,7 +752,7 @@ describe('меню агента — вариант A', () => {
     host.querySelector<HTMLButtonElement>('.agent, .engine')!.click();
     await flush();
     const rows = [...host.querySelectorAll<HTMLButtonElement>('.agent-row')];
-    expect(rows).toHaveLength(5);
+    expect(rows).toHaveLength(7);
     expect(rows[0]!.textContent).toContain('Antigravity');
     expect(rows[0]!.textContent).toContain('1.5.3');
     expect(rows[0]!.getAttribute('aria-checked')).toBe('true');

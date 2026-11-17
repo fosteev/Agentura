@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { isAbsolute } from 'node:path';
 import { resolveFrom } from './pathKey';
 import type {
@@ -7,10 +8,13 @@ import type {
   AgentEvent,
   AgentSession,
   EffortLevel,
+  HostMcpServer,
   PermissionMode,
   RetryPoint,
   TaskTools,
 } from '../agent/types';
+import type { ChildAgentsHost } from '../agent/children/host';
+import type { ChildAccessMode } from '../agent/children/types';
 import {
   nextStatus,
   tabTitle,
@@ -98,6 +102,8 @@ export interface ChatDeps {
     antigravityDefaults?: { model?: string; effort?: import('../agent/types').EffortLevel };
     /** Только новые вкладки Kimi; пустые значения наследуют CLI, resume их не получает. */
     kimiDefaults?: { model?: string; effort?: import('../agent/types').EffortLevel };
+    geminiDefaultModel?: string;
+    zcodeDefaultModel?: string;
     defaultModel?: string;
     /** `agentura.cursor.defaultModel`: ACP modelId новых чатов Cursor; пусто — выбор движка. */
     cursorDefaultModel?: string;
@@ -212,6 +218,53 @@ export interface ChatDeps {
   openGraph?(agentId?: string): void;
   /** Снимок карты агентов от webview чата — в его вкладку графа (если она открыта). */
   graphSnapshot?(m: Extract<FromWebview, { type: 'agents.snapshot' }>): void;
+  /** Хост межпровайдерных дочерних агентов (MCP `agentura_agents`). */
+  childAgents?: ChildAgentsHost;
+}
+
+function childAccessFromMode(
+  provider: AgentProvider,
+  mode: PermissionMode | string | undefined,
+  codexSandbox: string | undefined,
+  allowBypass: boolean,
+): ChildAccessMode {
+  if (providerFeatures(provider).modes) {
+    if (mode === 'plan') return 'read_only';
+    if (mode === 'bypassPermissions' && allowBypass) return 'full_access';
+    return 'workspace_write';
+  }
+  if (codexSandbox === 'read-only' || codexSandbox === 'readOnly') return 'read_only';
+  if ((codexSandbox === 'danger-full-access' || codexSandbox === 'dangerFullAccess') && allowBypass) {
+    return 'full_access';
+  }
+  return 'workspace_write';
+}
+
+function mergeChildRestoredEvents(
+  base: readonly AgentEvent[],
+  restored: readonly AgentEvent[],
+): AgentEvent[] {
+  if (restored.length === 0) return [...base];
+  const existingKeys = new Set(
+    base.map((e) => {
+      if (e.type === 'agent.start') return `start:${e.agentId}:${e.at ?? ''}`;
+      if (e.type === 'agent.end') return `end:${e.agentId}:${e.at ?? ''}`;
+      return '';
+    }),
+  );
+  const next = [...base];
+  for (const ev of restored) {
+    const key =
+      ev.type === 'agent.start'
+        ? `start:${ev.agentId}:${ev.at ?? ''}`
+        : ev.type === 'agent.end'
+          ? `end:${ev.agentId}:${ev.at ?? ''}`
+          : '';
+    if (key && existingKeys.has(key)) continue;
+    if (key) existingKeys.add(key);
+    next.push(ev);
+  }
+  return next;
 }
 
 export interface OpenDiff {
@@ -324,6 +377,10 @@ export class ChatController {
   private resumeToken = 0;
   /** Движок сессии вкладки. Меняется только в пустой вкладке (`setProvider`) и при `resume` чужой сессии. */
   private engineProvider: AgentProvider;
+  private childTreeId: string | undefined;
+  private childBindingToken: string | undefined;
+  private unsubscribeChildTree: (() => void) | undefined;
+  private codexSandbox: string | undefined;
   /** Идёт чтение истории для `resume`: до его конца сессию движка не поднимаем (нужны модель и режим). */
   private loading: Promise<void> | undefined;
   /** История возобновлённой сессии и то, с чем её продолжать (модель, режим, база стоимости). */
@@ -571,6 +628,15 @@ export class ChatController {
     const title = await titleP;
     // пока читали, вкладку успели переключить (другой resume, /clear) — эта история уже не нужна
     if (token !== this.resumeToken) return;
+    if (deps.childAgents) {
+      const restoredTreeId =
+        deps.childAgents.findTreeIdBySession(this.engineProvider, id) ?? `${this.engineProvider}:${id}`;
+      this.childTreeId = restoredTreeId;
+      const childRestored = deps.childAgents.restoredEvents(restoredTreeId);
+      if (childRestored.length > 0) {
+        history = { ...history, events: mergeChildRestoredEvents(history.events, childRestored) };
+      }
+    }
     this.resumed = { history, ...(title ? { title } : {}) };
     this.historyDirty = false;
     this.attached = history.attach ?? { pdfPages: 0, chars: 0 };
@@ -665,10 +731,19 @@ export class ChatController {
     if (this.reseedBuffer === buffer) this.reseedBuffer = undefined;
     // вкладку закрыли или сменили в ней сессию, пока читали, — эта история и события уже не нужны
     if (this.disposed || this.teardowns !== teardowns) return;
-    const merged = mergeReplay(
+    let merged = mergeReplay(
       history?.events ?? [],
       buffer.map((b) => b.event),
     );
+    if (history && this.deps.childAgents && this.childTreeId) {
+      const childRestored = this.deps.childAgents.restoredEvents(this.childTreeId);
+      if (childRestored.length > 0) {
+        merged = {
+          ...merged,
+          history: mergeChildRestoredEvents(merged.history, childRestored),
+        };
+      }
+    }
     if (history) {
       const resolvedTitle = this.resumed?.title ?? this.title;
       if (needReload && !this.inTurn && buffer.length === 0) {
@@ -883,6 +958,17 @@ export class ChatController {
         return;
       case 'agent.transcript': {
         if (m.sessionId && this.sessionId && m.sessionId !== this.sessionId) return;
+        const treeId = this.childTreeId;
+        if (treeId && deps.childAgents?.hasManagedAgent(treeId, m.taskId)) {
+          if (!deps.openText) return;
+          const text = deps.childAgents.renderTranscript(treeId, m.taskId);
+          if (text === undefined) {
+            this.log.warn(`транскрипт дочернего агента ${m.taskId}: записи нет`);
+            return;
+          }
+          await deps.openText({ key: `agent-${m.taskId}`, name: `agent-${m.taskId}.md`, text });
+          return;
+        }
         if (!providerFeatures(this.engineProvider).agentTranscript) {
           this.log.warn(`agent.transcript: unsupported by ${this.engineProvider}`);
           return;
@@ -1172,6 +1258,10 @@ export class ChatController {
         const nativeSession = await this.ensureSession();
         if (!nativeSession?.setCodexSettings || m.sessionId !== nativeSession.id) return;
         await nativeSession.setCodexSettings(m.change);
+        if (m.change.kind === 'sandbox') {
+          this.codexSandbox = String(m.change.value);
+          this.syncChildBinding();
+        }
       } catch (error) {
         if (!this.disposed) this.forward(this.current?.id ?? '', { type: 'error', fatal: false, message: String(error) });
       } finally {
@@ -1185,10 +1275,20 @@ export class ChatController {
       this.log.warn(`${m.type}: unsupported by ${this.engineProvider}`);
       return;
     }
-    if (m.type === 'agent.stop' && (!providerFeatures(this.engineProvider).agentStop ||
-        !m.taskId || (m.sessionId && m.sessionId !== this.sessionId))) {
-      this.log.warn(`agent.stop: unsupported or stale request for ${this.engineProvider}`);
-      return;
+    if (m.type === 'agent.stop') {
+      if (!m.taskId || (m.sessionId && this.sessionId && m.sessionId !== this.sessionId)) {
+        this.log.warn(`agent.stop: unsupported or stale request for ${this.engineProvider}`);
+        return;
+      }
+      const treeId = this.childTreeId;
+      if (treeId && deps.childAgents?.hasManagedAgent(treeId, m.taskId)) {
+        await deps.childAgents.stopFromHost(treeId, m.taskId);
+        return;
+      }
+      if (!providerFeatures(this.engineProvider).agentStop) {
+        this.log.warn(`agent.stop: unsupported or stale request for ${this.engineProvider}`);
+        return;
+      }
     }
     const session = await this.ensureSession();
     if (!session) {
@@ -1229,6 +1329,7 @@ export class ChatController {
           if (this.defaults) this.defaults = { ...this.defaults, mode: m.mode as PermissionMode };
           if (this.lastInit)
             this.lastInit = { ...this.lastInit, permissionMode: m.mode as PermissionMode };
+          this.syncChildBinding();
           return;
         case 'model.set': {
           // отвергнутая модель (исключение из setModel) не должна попасть в lastInit
@@ -1774,8 +1875,8 @@ export class ChatController {
   /** Лимиты подписки → webview (`limits.update`). Не чаще кулдауна `UsageService`. */
   private async refreshLimits(force = false): Promise<void> {
     const { usage, post, agyQuota } = this.deps;
-    // Kimi не сообщает subscription limits: не запрашивать ради него чужой Claude account.
-    if (this.engineProvider === 'kimi') return;
+    // Kimi, Gemini CLI и ZCode не сообщают subscription limits Claude: не запрашивать чужой Claude account.
+    if (this.engineProvider === 'kimi' || this.engineProvider === 'gemini' || this.engineProvider === 'zcode') return;
     if (this.engineProvider === 'antigravity') {
       // квота Antigravity вместо лимитов Claude: у agy своих окон 5ч/неделя нет
       if (!agyQuota) return;
@@ -1846,8 +1947,47 @@ export class ChatController {
         // браузер агента (roadmap 27): только у движков с MCP-сервером `browser`; Claude меняет на ходу, Codex — со следующего процесса
         ...(providerFeatures(provider).browser && s.browser === true ? { browser: true } : {}),
       };
-      const open = (): Promise<AgentSession> =>
-        resume
+      let childSetupPromise: Promise<HostMcpServer[]> | undefined;
+      if (deps.childAgents) {
+        const rootTreeId = resume
+          ? (deps.childAgents.findTreeIdBySession(provider, resume) ?? `${provider}:${resume}`)
+          : (this.childTreeId ??= `tree:${randomUUID()}`);
+        this.childTreeId = rootTreeId;
+        this.unsubscribeChildTree?.();
+        this.unsubscribeChildTree = deps.childAgents.subscribeTree(rootTreeId, (ev) =>
+          this.onChildTreeEvent(ev),
+        );
+        const sandbox = this.codexSandbox ?? s.codexDefaults?.sandbox;
+        const initialMode = resume
+          ? this.resumed?.history?.mode
+          : hasModes
+            ? resolveDefaultMode(s.defaultPermissionMode, s.allowBypass)
+            : 'default';
+        const maxAccess = childAccessFromMode(provider, initialMode, sandbox, s.allowBypass);
+        childSetupPromise = deps.childAgents
+          .bindSession({
+            rootTreeId,
+            cwd: deps.cwd,
+            maxAccess,
+            allowBypassPermissions: s.allowBypass,
+          })
+          .then(({ token, serverUrl }) => {
+            if (gen === this.generation && !this.disposed) {
+              this.childBindingToken = token;
+            }
+            return [{ name: 'agentura_agents', url: serverUrl, builtin: true }];
+          })
+          .catch((err) => {
+            this.log.warn(`childAgents bindSession failed: ${String(err)}`);
+            return [];
+          });
+      }
+      const open = (hostMcpServers: HostMcpServer[] = []): Promise<AgentSession> => {
+        const baseOpts = {
+          ...base,
+          ...(hostMcpServers.length > 0 ? { hostMcpServers } : {}),
+        };
+        return resume
           ? (() => {
               const h = this.resumed?.history;
               // режим и модель — с конца сессии: движок при `resume` берёт их из опций, а не из записи
@@ -1862,7 +2002,7 @@ export class ChatController {
               // занизила бы стоимость первого хода после `resume` (`turn.result.costUsd = итог − база`)
               const baseline = claude ? (h?.totalCostUsd ?? 0) : 0;
               return adapter.resumeSession(resume, {
-                ...base,
+                ...baseOpts,
                 permissionMode: mode,
                 ...(model ? { model } : {}),
                 baselineCostUsd: baseline,
@@ -1870,7 +2010,7 @@ export class ChatController {
               });
             })()
           : !hasModes
-            ? adapter.createSession({ ...base, permissionMode: 'default',
+            ? adapter.createSession({ ...baseOpts, permissionMode: 'default',
                 ...(s.codexDefaults ? { codexDefaults: s.codexDefaults, model: s.codexDefaults.model } : {}),
               })
             : (() => {
@@ -1896,26 +2036,39 @@ export class ChatController {
                     ? s.antigravityDefaults?.model
                     : provider === 'kimi'
                       ? s.kimiDefaults?.model
-                      : undefined;
+                      : provider === 'gemini'
+                        ? s.geminiDefaultModel
+                        : provider === 'zcode'
+                          ? s.zcodeDefaultModel
+                          : undefined;
               return adapter.createSession({
-                ...base,
+                ...baseOpts,
                 permissionMode: mode,
                 ...(model ? { model } : {}),
                 ...(effort ? { effort } : {}),
               });
             })();
+      };
       // без `claude` движок не запускаем: SDK в `.vsix` своего бинарника не имеет и упал бы невнятной ошибкой
       const engine = claude ? deps.engine : deps.engineFor?.(provider);
-      const opened = engine
-        ? engine.ready().then((ready) => {
-            // пока шёл поиск, сессию заменили (`/clear`, resume) или вкладку закрыли: не спавнить движок
-            // и не трогать чужие `resumed`/`retryDrop` — отказ этого поколения `catch` ниже проглотит
+      const runOpen = (hostMcpServers: HostMcpServer[]) =>
+        engine
+          ? engine.ready().then((ready) => {
+              // пока шёл поиск, сессию заменили (`/clear`, resume) или вкладку закрыли: не спавнить движок
+              // и не трогать чужие `resumed`/`retryDrop` — отказ этого поколения `catch` ниже проглотит
+              if (gen !== this.generation || this.disposed)
+                throw new Error('сессия заменена до старта');
+              if (!ready.ok) throw new EngineMissingError(ready.problem);
+              return open(hostMcpServers);
+            })
+          : open(hostMcpServers);
+      const opened = childSetupPromise
+        ? childSetupPromise.then((hostMcpServers) => {
             if (gen !== this.generation || this.disposed)
               throw new Error('сессия заменена до старта');
-            if (!ready.ok) throw new EngineMissingError(ready.problem);
-            return open();
+            return runOpen(hostMcpServers);
           })
-        : open();
+        : runOpen([]);
       this.session = opened.then((session) => {
         if (gen !== this.generation) {
           session.dispose();
@@ -1983,7 +2136,11 @@ export class ChatController {
     const deferInit =
       e.type === 'session.init' &&
       this.pristine &&
-      (this.engineProvider === 'antigravity' || this.engineProvider === 'cursor' || this.engineProvider === 'kimi');
+      (this.engineProvider === 'antigravity' ||
+        this.engineProvider === 'cursor' ||
+        this.engineProvider === 'kimi' ||
+        this.engineProvider === 'gemini' ||
+        this.engineProvider === 'zcode');
     if (e.type === 'session.init' && session.id && !deferInit) this.lastSessionId = session.id;
     this.log.debug(`← ${describeEvent(e)}`);
     if (
@@ -2085,7 +2242,10 @@ export class ChatController {
         break;
       case 'mode.changed':
         // пересев webview (`lastInit` уходит после истории) не должен вернуть меню к режиму начала сессии
-        if (!e.agentId && this.lastInit) this.lastInit = { ...this.lastInit, permissionMode: e.mode };
+        if (!e.agentId && this.lastInit) {
+          this.lastInit = { ...this.lastInit, permissionMode: e.mode };
+          this.syncChildBinding();
+        }
         break;
       case 'turn.result':
         // отказ resume с отбрасыванием приходит итогом `error_during_execution` (и, бывает, ещё `error`)
@@ -2185,7 +2345,31 @@ export class ChatController {
     if (!id || this.registeredId === id) return;
     this.registeredId = id;
     this.liveSet(id);
+    if (this.childTreeId) this.deps.childAgents?.linkSession(this.engineProvider, id, this.childTreeId);
     this.deps.onSession?.(id);
+  }
+
+  private syncChildBinding(): void {
+    if (!this.childBindingToken || !this.deps.childAgents) return;
+    const s = this.deps.settings();
+    const mode = this.lastInit?.permissionMode ?? this.defaults?.mode;
+    const sandbox = this.codexSandbox ?? s.codexDefaults?.sandbox;
+    this.deps.childAgents.updateBinding(this.childBindingToken, {
+      maxAccess: childAccessFromMode(this.engineProvider, mode, sandbox, s.allowBypass),
+      allowBypassPermissions: s.allowBypass,
+    });
+  }
+
+  private onChildTreeEvent(event: AgentEvent): void {
+    if (this.disposed) return;
+    const sid = this.sessionId || this.current?.id || '';
+    const out = event;
+    this.historyDirty = true;
+    this.streamTail.note(out);
+    if (this.reseedBuffer) this.reseedBuffer.push({ sessionId: sid, event: out });
+    else this.forward(sid, out);
+    this.tokenTally.note(out);
+    this.deps.onEvent?.(out);
   }
 
   /**
@@ -2241,6 +2425,14 @@ export class ChatController {
   }
 
   private teardown(): void {
+    this.unsubscribeChildTree?.();
+    this.unsubscribeChildTree = undefined;
+    if (this.childTreeId) {
+      const treeId = this.childTreeId;
+      this.childTreeId = undefined;
+      this.childBindingToken = undefined;
+      void this.deps.childAgents?.disposeTree(treeId);
+    }
     this.coldStartupDeferred = false;
     this.turnLog.end(Date.now());
     this.generation++;

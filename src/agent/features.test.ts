@@ -112,6 +112,23 @@ describe('providerFeatures', () => {
     expect(providerFeatures('kimi')).not.toEqual(providerFeatures('claude'));
   });
 
+  it('Gemini CLI и ZCode: honest capabilities без неподдержанных примитивов', () => {
+    expect(providerFeatures('gemini')).toMatchObject({
+      modes: true,
+      plan: true,
+      nativeSettings: false,
+      subagents: false,
+      mcp: false,
+    });
+    expect(providerFeatures('zcode')).toMatchObject({
+      modes: true,
+      plan: true,
+      nativeSettings: false,
+      subagents: false,
+      mcp: false,
+    });
+  });
+
   it('копия: правка результата не портит константы', () => {
     providerFeatures('codex').modes = true;
     expect(CODEX_FEATURES.modes).toBe(false);

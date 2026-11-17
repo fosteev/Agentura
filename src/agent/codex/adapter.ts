@@ -10,6 +10,7 @@ import type {
   AgentEvent,
   AgentSession,
   EffortLevel,
+  HostMcpServer,
   ModelOption,
   CommandOption,
   PromptFile,
@@ -124,6 +125,19 @@ function browserConfigArgs(): string[] {
     '-c',
     `mcp_servers.${BROWSER_SERVER}.args=${JSON.stringify(BROWSER_ARGS)}`,
   ];
+}
+
+function codexHostMcpConfig(servers: readonly HostMcpServer[]): Record<string, Record<string, unknown>> | undefined {
+  if (!servers.length) return undefined;
+  return Object.fromEntries(
+    servers.map((s) => [
+      s.name,
+      {
+        url: s.url,
+        ...(s.headers && Object.keys(s.headers).length ? { http_headers: s.headers } : {}),
+      },
+    ]),
+  );
 }
 
 function defaultSpawn(path: string, args: string[], options: CodexSpawnOptions): CodexProcess {
@@ -331,10 +345,12 @@ function isTimeout(error: unknown): boolean {
 
 class CodexSession implements AgentSession {
   readonly events: EventHub<AgentEvent>;
-  private readonly mapper = new CodexEventMapper();
+  private readonly mapper: CodexEventMapper;
   private readonly approvals: CodexApprovals;
   private readonly jira: CodexJiraTools;
   private readonly launches: CodexLaunchRecords;
+  private readonly hostMcpServers: readonly HostMcpServer[];
+  private readonly builtinMcpServers: ReadonlySet<string>;
   private readonly log: LogFn;
   private readonly proc: CodexProcess;
   private readonly client: CodexRpcClient;
@@ -382,6 +398,12 @@ class CodexSession implements AgentSession {
     this.model = options.model ?? this.newChatDefaults?.model;
     this.effort = options.effort ?? this.newChatDefaults?.effort;
     this.mcpWatch = options.mcpWatch === true;
+    this.hostMcpServers = options.hostMcpServers ?? [];
+    this.builtinMcpServers = new Set([
+      'agentura_agents',
+      ...this.hostMcpServers.filter((s) => s.builtin !== false).map((s) => s.name),
+    ]);
+    this.mapper = new CodexEventMapper(Date.now, this.builtinMcpServers);
     this.graceMs = config.graceMs ?? DEFAULT_GRACE_MS;
     this.events = new EventHub<AgentEvent>((e) =>
       this.log('error', `event subscriber failed: ${String(e)}`),
@@ -664,7 +686,9 @@ class CodexSession implements AgentSession {
           threadId: this.id, serverName: name, detail: 'toolsAndAuthOnly',
         });
         const server = result.data.find((s) => s.name === name);
-        if (!server || server.pluginId) throw new Error('Only configured, non-plugin MCP servers can be toggled.');
+        if (!server || server.pluginId || this.builtinMcpServers.has(name)) {
+          throw new Error('Only configured, non-plugin, non-builtin MCP servers can be toggled.');
+        }
         await setProjectMcpEnabled(this.cwd, name, enabled);
         if (!this.closed) await this.rpc('config/mcpServer/reload', undefined);
         if (!this.closed && !this.turn && !this.draining) {
@@ -716,12 +740,14 @@ class CodexSession implements AgentSession {
   /** `thread/start` (нет треда) или `thread/resume`; после него разрешён `turn/start`. */
   private async openThread(): Promise<void> {
     if (this.threadReady) return;
+    const mcpConfig = codexHostMcpConfig(this.hostMcpServers);
     const settings = {
       cwd: this.cwd,
       ...(this.model ? { model: this.model } : {}),
       ...(this.config.thread?.approvalPolicy ? { approvalPolicy: this.config.thread.approvalPolicy } : {}),
       ...(this.config.thread?.sandbox ? { sandbox: this.config.thread.sandbox } : {}),
       ...(this.newChatDefaults?.approval ? { approvalPolicy: this.newChatDefaults.approval } : {}),
+      ...(mcpConfig ? { config: { mcp_servers: mcpConfig } } : {}),
     };
     const session = this.resumedId
       ? await this.resumeThread(this.resumedId, settings)

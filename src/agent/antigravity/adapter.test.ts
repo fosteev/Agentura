@@ -3721,4 +3721,56 @@ describe('AntigravityAdapter (ACP)', () => {
       }
     });
   });
+
+  it('hostMcpServers: передаёт HTTP MCP в session/new и session/resume, нормализует mcp_agentura_agents_* и авто-разрешает agentura_agents', async () => {
+    const fake = createFakeAgyServer();
+    const { adapter } = setup(fake);
+    const mcpUrl = 'http://127.0.0.1:45555/mcp/deadbeef';
+    fake.handle('session/prompt', async () => {
+      fake.notify('session/update', {
+        sessionId: DEFAULT_SESSION_ID,
+        update: {
+          sessionUpdate: 'tool_call',
+          toolCallId: 'tc_agent_spawn',
+          title: 'mcp_agentura_agents_agent_spawn',
+          status: 'in_progress',
+          rawInput: { provider: 'codex', task: 'ping' },
+        },
+      });
+      fake.request('perm-1', 'session/request_permission', {
+        sessionId: DEFAULT_SESSION_ID,
+        toolCall: {
+          toolCallId: 'tc_agent_spawn',
+          title: 'mcp_agentura_agents_agent_spawn',
+          rawInput: { provider: 'codex', task: 'ping' },
+        },
+        options: [{ optionId: 'allow', kind: 'allow_once' }, { optionId: 'deny', kind: 'reject_once' }],
+      });
+      await until(() => fake.replies().length > 0, 'permission reply sent');
+      return { stopReason: 'end_turn' };
+    });
+
+    const session = await adapter.createSession({
+      cwd: '/w',
+      permissionMode: 'default',
+      hostMcpServers: [{ name: 'agentura_agents', url: mcpUrl, builtin: true }],
+    });
+    const events = collect(session);
+    session.send('spawn child');
+    await until(() => events.some((e) => e.type === 'turn.result'), 'turn done');
+
+    expect(fake.paramsOf('session/new')).toMatchObject({
+      cwd: '/w',
+      mcpServers: [{ type: 'http', name: 'agentura_agents', url: mcpUrl, headers: [] }],
+    });
+    expect(fake.replies()[0]).toMatchObject({
+      id: 'perm-1',
+      result: { outcome: { outcome: 'selected', optionId: 'allow' } },
+    });
+    expect(events.some((e) => e.type === 'permission.request')).toBe(false);
+    expect(
+      events.some((e) => e.type === 'tool.start' && e.name === 'mcp__agentura_agents__agent_spawn'),
+    ).toBe(true);
+    session.dispose();
+  });
 });

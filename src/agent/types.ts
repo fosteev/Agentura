@@ -37,7 +37,7 @@ export interface SessionPolicy {
 
 export type PermissionMode = 'default' | 'acceptEdits' | 'plan' | 'bypassPermissions';
 /** Внешний движок сессии. Во всех долговечных ссылках id хранится вместе с провайдером. */
-export type AgentProvider = 'claude' | 'codex' | 'antigravity' | 'cursor' | 'kimi';
+export type AgentProvider = 'claude' | 'codex' | 'antigravity' | 'cursor' | 'kimi' | 'gemini' | 'zcode';
 export interface SessionRef {
   provider: AgentProvider;
   id: string;
@@ -372,6 +372,8 @@ export type AgentEvent =
       background: boolean;
       prompt?: string;
       model?: string;
+      provider?: string;
+      requestedModel?: string | null;
       reasoningEffort?: string;
       launchRecord?: AgentLaunchRecord | null;
       /** Задачу запустил субагент (например, его фоновый Bash) — id этого субагента. */
@@ -458,6 +460,13 @@ export interface EventStream<T> extends AsyncIterable<T> {
   on(listener: (event: T) => void): Unsubscribe;
 }
 
+export interface HostMcpServer {
+  name: string;
+  url: string;
+  headers?: Record<string, string>;
+  builtin?: boolean;
+}
+
 export interface SessionOptions {
   /** Только для нового Codex-треда; resume сохраняет настройки существующего. */
   codexDefaults?: CodexNewChatDefaults;
@@ -471,6 +480,8 @@ export interface SessionOptions {
   allowBypassPermissions?: boolean;
   /** Jira хоста: Claude MCP или Codex dynamic tools нового треда. */
   taskTools?: TaskTools;
+  /** Пер-сессионные встроенные MCP-серверы хоста (например `agentura_agents` для дочерних агентов). */
+  hostMcpServers?: readonly HostMcpServer[];
   /**
    * Следить за статусом MCP (roadmap 21, решение 12): включено хотя бы одно статусное отображение. Движок сам
    * запрашивает статус после старта (Claude — и после каждого хода); выключено — только то, что приходит даром

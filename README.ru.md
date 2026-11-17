@@ -67,7 +67,8 @@ Cursor и Kimi Code: см. разделы [Codex](#codex), [Cursor](#cursor),
   - `git` — рабочее дерево: индекс, коммит, push. Файлы, которые правил агент, помечены.
   - `агенты` — субагенты хода.
 - **Граф агентов.** Открывается отдельной вкладкой редактора: кто кого запустил, какой промпт получил каждый агент и
-  какой итог вернул, плюс его живые вызовы и масштабирование холста (`⌘/Ctrl + колесо`, pinch, «вписать»).
+  какой итог вернул, плюс его живые вызовы и масштабирование холста (`⌘/Ctrl + колесо`, pinch, «вписать»). Поддерживает
+  нативных субагентов и межпровайдерных дочерних агентов через общий MCP `agentura_agents` ([архитектура и матрица проверок](docs/cross-provider-agents.md)).
 - **Вложения.** Скриншоты вставляются через `⌘V`. Файлы — через «+» или перетаскиванием с зажатым `⇧`.
   Поддержка документов и PDF зависит от выбранного движка.
 - **Вид.** Четыре стиля ленты, шесть раскладок поля ввода, пять видов агентов, три раскладки git, три плотности списка сессий, свои шрифты
@@ -437,7 +438,9 @@ git log --oneline origin/develop..feature/NEWMFC-1482           # коммиты
 | `agentura.cursorExecutable`       | пусто        | Путь к `agent` (Cursor); пусто — искать автоматически |
 | `agentura.kimiExecutable`         | пусто        | Путь к `kimi`; пусто — искать автоматически          |
 | `agentura.defaultProvider`        | `claude`     | Движок новых вкладок: `claude`, `codex`, `antigravity`, `cursor` или `kimi` |
-| `agentura.allowBypassPermissions` | `false`      | Разрешить `bypassPermissions` (Claude, Antigravity, Cursor, Kimi) и явный выбор Codex sandbox с полным доступом |
+| `agentura.allowBypassPermissions` | `false`      | Разрешить `bypassPermissions` (Claude, Antigravity, Cursor, Kimi, Gemini CLI, ZCode) и явный выбор Codex sandbox с полным доступом |
+| `agentura.geminiExecutable`       | пусто        | Путь к `gemini`; пусто — автопоиск             |
+| `agentura.zcodeExecutable`        | пусто        | Путь к `zcode`; пусто — автопоиск              |
 | `agentura.remoteControl`          | `false`      | Remote Control для каждой вкладки Claude            |
 | `agentura.remoteControlNamePrefix`| пусто        | Префикс имени сессии на claude.ai; пусто — имя машины |
 

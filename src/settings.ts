@@ -164,10 +164,18 @@ export const DEFAULT_HIGHLIGHT_THEME: HighlightTheme = 'github';
 export const MIN_DIFF_FONT_SIZE = 0;
 export const MAX_DIFF_FONT_SIZE = 40;
 
-export const PROVIDERS: readonly AgentProvider[] = ['claude', 'codex', 'antigravity', 'cursor', 'kimi'];
+export const PROVIDERS: readonly AgentProvider[] = ['claude', 'codex', 'antigravity', 'cursor', 'kimi', 'gemini', 'zcode'];
 export const DEFAULT_PROVIDER: AgentProvider = 'claude';
 export function isProvider(v: unknown): v is AgentProvider {
-  return v === 'claude' || v === 'codex' || v === 'antigravity' || v === 'cursor' || v === 'kimi';
+  return (
+    v === 'claude' ||
+    v === 'codex' ||
+    v === 'antigravity' ||
+    v === 'cursor' ||
+    v === 'kimi' ||
+    v === 'gemini' ||
+    v === 'zcode'
+  );
 }
 
 /** Ключи без префикса `agentura.` — те же, что в `getConfiguration('agentura')`. */
@@ -179,6 +187,8 @@ export type SettingKey =
   | 'cursor.defaultModel'
   | 'antigravity.defaultModel'
   | 'kimi.defaultModel'
+  | 'gemini.defaultModel'
+  | 'zcode.defaultModel'
   | 'codex.defaultEffort'
   | 'antigravity.defaultEffort'
   | 'kimi.defaultEffort'
@@ -195,6 +205,8 @@ export type SettingKey =
   | 'antigravityExecutable'
   | 'cursorExecutable'
   | 'kimiExecutable'
+  | 'geminiExecutable'
+  | 'zcodeExecutable'
   | 'defaultProvider'
   | 'sessionList.view'
   | 'sessionList.context'
@@ -239,6 +251,8 @@ export const SETTING_KEYS: readonly SettingKey[] = [
   'cursor.defaultModel',
   'antigravity.defaultModel',
   'kimi.defaultModel',
+  'gemini.defaultModel',
+  'zcode.defaultModel',
   'codex.defaultEffort',
   'antigravity.defaultEffort',
   'kimi.defaultEffort',
@@ -255,6 +269,8 @@ export const SETTING_KEYS: readonly SettingKey[] = [
   'antigravityExecutable',
   'cursorExecutable',
   'kimiExecutable',
+  'geminiExecutable',
+  'zcodeExecutable',
   'defaultProvider',
   'sessionList.view',
   'sessionList.context',
@@ -305,6 +321,8 @@ export const MACHINE_KEYS: readonly SettingKey[] = [
   'antigravityExecutable',
   'cursorExecutable',
   'kimiExecutable',
+  'geminiExecutable',
+  'zcodeExecutable',
   'defaultProvider',
 ];
 
@@ -319,6 +337,10 @@ export interface SettingsValues {
   'antigravity.defaultModel': string;
   /** Модель и effort только новых чатов Kimi; пусто — наследовать CLI. */
   'kimi.defaultModel': string;
+  /** ID модели новых чатов Gemini CLI; пусто — выбор CLI. */
+  'gemini.defaultModel': string;
+  /** ID модели новых чатов ZCode (providerId/modelId); пусто — выбор CLI. */
+  'zcode.defaultModel': string;
   'codex.defaultEffort': '' | EffortLevel;
   'antigravity.defaultEffort': '' | 'low' | 'medium' | 'high';
   'kimi.defaultEffort': '' | EffortLevel;
@@ -338,6 +360,8 @@ export interface SettingsValues {
   antigravityExecutable: string;
   cursorExecutable: string;
   kimiExecutable: string;
+  geminiExecutable: string;
+  zcodeExecutable: string;
   defaultProvider: AgentProvider;
   'sessionList.view': SessionListMode;
   'sessionList.context': boolean;
@@ -643,12 +667,16 @@ export function validateSetting(key: SettingKey, value: unknown, lang: ErrLang =
     case 'cursor.defaultModel':
     case 'antigravity.defaultModel':
     case 'kimi.defaultModel':
+    case 'gemini.defaultModel':
+    case 'zcode.defaultModel':
     case 'remoteControlNamePrefix':
     case 'claudeExecutable':
     case 'codexExecutable':
     case 'antigravityExecutable':
     case 'cursorExecutable':
     case 'kimiExecutable':
+    case 'geminiExecutable':
+    case 'zcodeExecutable':
       return typeof value === 'string' ? { ok: true, value: value.trim() } : bad(t.string);
     case 'font.interface':
     case 'font.panels':
@@ -770,6 +798,8 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
     'cursor.defaultModel': str('cursor.defaultModel'),
     'antigravity.defaultModel': str('antigravity.defaultModel'),
     'kimi.defaultModel': str('kimi.defaultModel'),
+    'gemini.defaultModel': str('gemini.defaultModel'),
+    'zcode.defaultModel': str('zcode.defaultModel'),
     'codex.defaultEffort': isEffort(codexEffort) ? codexEffort : '',
     'antigravity.defaultEffort':
       agyEffort === 'low' || agyEffort === 'medium' || agyEffort === 'high' ? agyEffort : '',
@@ -791,6 +821,8 @@ export function readSettings(cfg: Pick<ConfigLike, 'get'>): SettingsValues {
     antigravityExecutable: str('antigravityExecutable'),
     cursorExecutable: str('cursorExecutable'),
     kimiExecutable: str('kimiExecutable'),
+    geminiExecutable: str('geminiExecutable'),
+    zcodeExecutable: str('zcodeExecutable'),
     defaultProvider: isProvider(provider) ? provider : DEFAULT_PROVIDER,
     'sessionList.view': readSessionListMode(list),
     'sessionList.context': cfg.get<unknown>('sessionList.context') !== false,

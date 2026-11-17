@@ -367,4 +367,81 @@ describe('KimiAdapter ACP core', () => {
     expect(server.signals).toEqual(['SIGTERM', 'SIGKILL']);
     expect(server.methods()).toContain('session/close');
   });
+
+  it('hostMcpServers passes ACP HTTP mcpServers in session/new and session/resume', async () => {
+    const hostMcpServers = [
+      {
+        name: 'agentura_agents',
+        url: 'http://127.0.0.1:5678/mcp/kimi-tok',
+        headers: { 'X-Agentura': '1' },
+        builtin: true,
+      },
+    ];
+    const server1 = createFakeKimiServer();
+    const { adapter: a1 } = setup(server1);
+    const s1 = await a1.createSession({ cwd: '/work', hostMcpServers });
+    await s1.capabilities();
+    expect(server1.paramsOf('session/new')).toEqual({
+      cwd: '/work',
+      mcpServers: [
+        {
+          type: 'http',
+          name: 'agentura_agents',
+          url: 'http://127.0.0.1:5678/mcp/kimi-tok',
+          headers: [{ name: 'X-Agentura', value: '1' }],
+        },
+      ],
+    });
+    s1.dispose();
+
+    const server2 = createFakeKimiServer();
+    const { adapter: a2 } = setup(server2);
+    const s2 = await a2.resumeSession('existing-kimi', { cwd: '/work', hostMcpServers });
+    await s2.capabilities();
+    expect(server2.paramsOf('session/resume')).toEqual({
+      sessionId: 'existing-kimi',
+      cwd: '/work',
+      mcpServers: [
+        {
+          type: 'http',
+          name: 'agentura_agents',
+          url: 'http://127.0.0.1:5678/mcp/kimi-tok',
+          headers: [{ name: 'X-Agentura', value: '1' }],
+        },
+      ],
+    });
+    s2.dispose();
+  });
+
+  it('auto-allows agentura_agents permission requests when builtin host server is attached', async () => {
+    const server = createFakeKimiServer();
+    server.handle('session/prompt', (params) => {
+      server.request(77, 'session/request_permission', {
+        sessionId: params.sessionId,
+        toolCall: { toolCallId: 'call-mcp-1', title: 'agentura_agents:agent_spawn', name: 'mcp__agentura_agents__agent_spawn' },
+        options: [
+          { optionId: 'allow_once', kind: 'allow_once' },
+          { optionId: 'reject_once', kind: 'reject_once' },
+        ],
+      });
+      return { stopReason: 'end_turn' };
+    });
+    const { adapter } = setup(server);
+    const session = await adapter.createSession({
+      cwd: '/work',
+      permissionMode: 'default',
+      hostMcpServers: [{ name: 'agentura_agents', url: 'http://127.0.0.1:9999/mcp/tok', builtin: true }],
+    });
+    const events = collect(session);
+    await session.capabilities();
+    session.send('delegate');
+    await until(() => events.some((e) => e.type === 'turn.result'), 'turn.result');
+    expect(events.some((e) => e.type === 'permission.request')).toBe(false);
+    expect(server.replies()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 77, result: { outcome: { outcome: 'selected', optionId: 'allow_once' } } }),
+      ]),
+    );
+    session.dispose();
+  });
 });

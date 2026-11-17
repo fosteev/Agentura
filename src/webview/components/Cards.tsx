@@ -235,16 +235,38 @@ function EngineMissingCard({ c }: { c: FailCard }) {
   const codex = provider.value === 'codex';
   const agy = provider.value === 'antigravity';
   const kimi = provider.value === 'kimi';
+  const gemini = provider.value === 'gemini';
+  const zcode = provider.value === 'zcode';
   return (
     <div class="ask danger" role="alert">
       <div class="h">
-        {kimi ? ui.fail.missingTitleKimi : agy ? ui.fail.missingTitleAgy : codex ? ui.fail.missingTitleCodex : ui.fail.missingTitle}
+        {zcode
+          ? ui.fail.missingTitleZcode
+          : gemini
+            ? ui.fail.missingTitleGemini
+            : kimi
+              ? ui.fail.missingTitleKimi
+              : agy
+                ? ui.fail.missingTitleAgy
+                : codex
+                  ? ui.fail.missingTitleCodex
+                  : ui.fail.missingTitle}
         <span class="tag">{ui.fail.tag(c.at)}</span>
       </div>
       <div class="bd">
         <p>{c.message}</p>
         <p class="dim">
-          {kimi ? ui.fail.missingHintKimi : agy ? ui.fail.missingHintAgy : codex ? ui.fail.missingHintCodex : ui.fail.missingHint}
+          {zcode
+            ? ui.fail.missingHintZcode
+            : gemini
+              ? ui.fail.missingHintGemini
+              : kimi
+                ? ui.fail.missingHintKimi
+                : agy
+                  ? ui.fail.missingHintAgy
+                  : codex
+                    ? ui.fail.missingHintCodex
+                    : ui.fail.missingHint}
         </p>
       </div>
       <div class="acts">

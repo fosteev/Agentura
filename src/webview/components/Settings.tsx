@@ -38,6 +38,8 @@ import {
   codexCheck,
   cursorCheck,
   kimiCheck,
+  geminiCheck,
+  zcodeCheck,
   codexModels,
   antigravityModels,
   kimiModels,
@@ -81,6 +83,8 @@ const sessionProviders: readonly [AgentProvider, string, string][] = [
   ['claude', 'Claude', 'Anthropic'], ['codex', 'Codex', 'OpenAI'],
   ['cursor', 'Cursor', 'Cursor'], ['antigravity', 'Antigravity', 'Google'],
   ['kimi', 'Kimi Code', 'Moonshot AI'],
+  ['gemini', 'Gemini CLI', 'Google'],
+  ['zcode', 'ZCode', 'Z.ai'],
 ];
 const sessionKeys: Record<AgentProvider, SettingKey[]> = {
   claude: ['defaultModel', 'defaultEffort', 'defaultPermissionMode', 'remoteControl', 'remoteControlNamePrefix'],
@@ -88,6 +92,8 @@ const sessionKeys: Record<AgentProvider, SettingKey[]> = {
   cursor: ['cursor.defaultModel', 'defaultPermissionMode'],
   antigravity: ['antigravity.defaultModel', 'antigravity.defaultEffort', 'defaultPermissionMode'],
   kimi: ['kimi.defaultModel', 'kimi.defaultEffort', 'defaultPermissionMode'],
+  gemini: ['gemini.defaultModel', 'defaultPermissionMode'],
+  zcode: ['zcode.defaultModel', 'defaultPermissionMode'],
 };
 /** Ширина вкладки, с которой разделы — колонкой слева (уже — полосой вкладок над страницей). */
 const NAV_PX = 600;
@@ -668,15 +674,41 @@ const ENGINE_KEY: Record<EngineId, SettingKey> = {
   antigravity: 'antigravityExecutable',
   cursor: 'cursorExecutable',
   kimi: 'kimiExecutable',
+  gemini: 'geminiExecutable',
+  zcode: 'zcodeExecutable',
 };
 
 function EngineRow({ value, engine = 'claude' }: { value: string; engine?: EngineId }) {
   const [draft, setDraft] = useDraft(value);
   const k = ENGINE_KEY[engine];
   const text =
-    engine === 'codex' ? T.exeCodex : engine === 'antigravity' ? T.exeAgy : engine === 'cursor' ? T.exeCursor : engine === 'kimi' ? T.exeKimi : T.exe;
+    engine === 'codex'
+      ? T.exeCodex
+      : engine === 'antigravity'
+        ? T.exeAgy
+        : engine === 'cursor'
+          ? T.exeCursor
+          : engine === 'kimi'
+            ? T.exeKimi
+            : engine === 'gemini'
+              ? T.exeGemini
+              : engine === 'zcode'
+                ? T.exeZcode
+                : T.exe;
   const c = (
-    engine === 'codex' ? codexCheck : engine === 'antigravity' ? agyCheck : engine === 'cursor' ? cursorCheck : engine === 'kimi' ? kimiCheck : engineCheck
+    engine === 'codex'
+      ? codexCheck
+      : engine === 'antigravity'
+        ? agyCheck
+        : engine === 'cursor'
+          ? cursorCheck
+          : engine === 'kimi'
+            ? kimiCheck
+            : engine === 'gemini'
+              ? geminiCheck
+              : engine === 'zcode'
+                ? zcodeCheck
+                : engineCheck
   ).value;
   const r = c.result;
   const save = (text: string) => {
@@ -872,6 +904,8 @@ export function Settings() {
     ['antigravity', T.provider.options.antigravity],
     ['cursor', T.provider.options.cursor],
     ['kimi', T.provider.options.kimi],
+    ['gemini', T.provider.options.gemini],
+    ['zcode', T.provider.options.zcode],
   ];
   const languageModes = LANGUAGE_MODES.map((m): [string, string] => [
     m,
@@ -1094,6 +1128,24 @@ export function Settings() {
                   </Row>
                   <p>{S.sharedMode}</p>
                   <p class="note">{S.kimiAutoNote}</p>
+                  <button type="button" class="ns-link" onClick={() => selectProvider('claude')}>{S.openClaude}</button>
+                </div>
+              </div>
+              <div id="ns-panel-gemini" role="tabpanel" aria-labelledby="ns-tab-gemini" hidden={selectedProvider !== 'gemini'}>
+                <div class="ns-group"><h4>{S.modelGroup}</h4>
+                  <Row name={S.model} desc={T.newChat.geminiModelDesc} k="gemini.defaultModel">
+                    <TextField k="gemini.defaultModel" value={v['gemini.defaultModel']} placeholder="gemini-2.5-pro" />
+                  </Row>
+                  <p>{S.sharedMode}</p>
+                  <button type="button" class="ns-link" onClick={() => selectProvider('claude')}>{S.openClaude}</button>
+                </div>
+              </div>
+              <div id="ns-panel-zcode" role="tabpanel" aria-labelledby="ns-tab-zcode" hidden={selectedProvider !== 'zcode'}>
+                <div class="ns-group"><h4>{S.modelGroup}</h4>
+                  <Row name={S.model} desc={T.newChat.zcodeModelDesc} k="zcode.defaultModel">
+                    <TextField k="zcode.defaultModel" value={v['zcode.defaultModel']} placeholder="providerId/modelId" />
+                  </Row>
+                  <p>{S.sharedMode}</p>
                   <button type="button" class="ns-link" onClick={() => selectProvider('claude')}>{S.openClaude}</button>
                 </div>
               </div>
@@ -1457,6 +1509,8 @@ export function Settings() {
               <EngineRow engine="antigravity" value={v.antigravityExecutable} />
               <EngineRow engine="cursor" value={v.cursorExecutable} />
               <EngineRow engine="kimi" value={v.kimiExecutable} />
+              <EngineRow engine="gemini" value={v.geminiExecutable} />
+              <EngineRow engine="zcode" value={v.zcodeExecutable} />
             </>,
           )}
         </div>

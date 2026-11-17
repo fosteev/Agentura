@@ -72,7 +72,7 @@ export function panelSurface(
 }
 
 export function chatIcon(context: vscode.ExtensionContext, provider?: AgentProvider): { light: vscode.Uri; dark: vscode.Uri } {
-  if (provider) {
+  if (provider && provider !== 'gemini' && provider !== 'zcode') {
     const asset = provider === 'codex' ? 'openai' : provider === 'claude' ? 'claude-color' : provider;
     return {
       light: vscode.Uri.joinPath(context.extensionUri, 'media', 'brands', `${asset}.svg`),

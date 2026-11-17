@@ -3533,3 +3533,191 @@ describe('ChatController: контекст и смена модели (roadmap 3
     expect(events(t.posted, 'context.usage')).toEqual([usage(81_000, 0)]);
   });
 });
+
+describe('ChatController cross-provider childAgents', () => {
+  it('прокидывает hostMcpServers, ограничивает maxAccess по mode.set(plan), маршрутизирует stop/transcript и восстанавливает дерево без перезапуска', async () => {
+    const sessions: FakeSession[] = [];
+    const created: SessionOptions[] = [];
+    const treeListeners = new Map<string, Set<(ev: AgentEvent) => void>>();
+    const bindings: { token: string; maxAccess: string }[] = [];
+    const stoppedCalls: { treeId: string; agentId: string }[] = [];
+    const linked: { provider: string; sessionId: string; treeId: string }[] = [];
+    const disposedTrees: string[] = [];
+
+    const restoredEventsList: AgentEvent[] = [
+      {
+        type: 'agent.start',
+        agentId: 'ch_restored',
+        taskId: 'ch_restored',
+        description: 'Interrupted child',
+        taskType: 'managed_agent',
+        subagentType: 'codex',
+        provider: 'codex',
+        requestedModel: 'gpt-6-astra',
+        background: true,
+        prompt: 'Old work',
+        at: 100,
+      },
+      {
+        type: 'agent.end',
+        agentId: 'ch_restored',
+        taskId: 'ch_restored',
+        status: 'failed',
+        summary: 'Host restarted while child agent was running; outcome is unknown and task was not re-executed.',
+        at: 200,
+      },
+    ];
+
+    const childAgents = {
+      bindSession: vi.fn(async (p) => {
+        const tok = `tok-${bindings.length + 1}`;
+        bindings.push({ token: tok, maxAccess: p.maxAccess });
+        return { token: tok, serverUrl: `http://127.0.0.1:41234/mcp/${tok}` };
+      }),
+      updateBinding: vi.fn((token: string, updates: { maxAccess?: string }) => {
+        const b = bindings.find((x) => x.token === token);
+        if (b && updates.maxAccess) b.maxAccess = updates.maxAccess;
+      }),
+      subscribeTree: vi.fn((treeId: string, fn: (ev: AgentEvent) => void) => {
+        const set = treeListeners.get(treeId) ?? new Set();
+        set.add(fn);
+        treeListeners.set(treeId, set);
+        return () => set.delete(fn);
+      }),
+      linkSession: vi.fn((provider: string, sessionId: string, treeId: string) => {
+        linked.push({ provider, sessionId, treeId });
+      }),
+      findTreeIdBySession: vi.fn((provider: string, sessionId: string) =>
+        provider === 'kimi' && sessionId === 'kimi-prev' ? 'tree:restored' : undefined,
+      ),
+      hasManagedAgent: vi.fn((treeId: string, agentId: string) =>
+        agentId === 'ch_live' || (treeId === 'tree:restored' && agentId === 'ch_restored'),
+      ),
+      stopFromHost: vi.fn(async (treeId: string, agentId: string) => {
+        stoppedCalls.push({ treeId, agentId });
+        return { stopped_ids: [agentId], already_terminal: false };
+      }),
+      renderTranscript: vi.fn((_treeId: string, agentId: string) => `# Transcript for ${agentId}`),
+      restoredEvents: vi.fn((treeId: string) => (treeId === 'tree:restored' ? restoredEventsList : [])),
+      disposeTree: vi.fn(async (treeId: string) => {
+        disposedTrees.push(treeId);
+      }),
+      dispose: vi.fn(async () => {}),
+    };
+
+    const adapter = {
+      id: 'kimi',
+      createSession: async (o: SessionOptions) => {
+        created.push(o);
+        const s = new FakeSession();
+        s.id = 'kimi-live';
+        sessions.push(s);
+        return s;
+      },
+      resumeSession: async (id: string, o: SessionOptions) => {
+        created.push(o);
+        const s = new FakeSession();
+        s.id = id;
+        sessions.push(s);
+        return s;
+      },
+      loadHistory: async (): Promise<SessionHistory> => ({ events: [], turns: 0, skippedTurns: 0 }),
+    } as unknown as AgentAdapter;
+
+    const posted: ToWebview[] = [];
+    const openedTexts: { key: string; name: string; text: string }[] = [];
+    const controller = new ChatController({
+      adapter,
+      provider: 'kimi',
+      cwd: '/p',
+      project: 'p',
+      post: (m) => posted.push(m),
+      setTitle: vi.fn(),
+      log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      settings: () => ({ allowBypass: false }),
+      findFiles: async () => [],
+      pickFiles: async () => [],
+      readSelection: async () => '',
+      listRecent: async () => [],
+      showSessions: vi.fn(),
+      openText: async (d) => {
+        openedTexts.push(d);
+      },
+      childAgents,
+    });
+
+    controller.start();
+    await tick();
+    await tick();
+
+    expect(created[0]?.hostMcpServers).toEqual([
+      { name: 'agentura_agents', url: 'http://127.0.0.1:41234/mcp/tok-1', builtin: true },
+    ]);
+    expect(bindings[0]?.maxAccess).toBe('workspace_write');
+
+    // session.init в pristine-вкладке kimi отложен; после первого сообщения activateInit связывает (provider, sessionId) с деревом
+    sessions[0]!.emit({
+      type: 'session.init',
+      sessionId: 'kimi-live',
+      model: 'kimi-code/k3.1-pro',
+      cwd: '/p',
+      permissionMode: 'default',
+      tools: [],
+      slashCommands: [],
+      skills: [],
+      agents: [],
+      apiKeySource: 'none',
+      engineVersion: '2.6.0',
+    });
+    expect(linked).toHaveLength(0);
+    await controller.handle({ type: 'send', sessionId: '', text: 'spawn child' });
+    expect(linked).toHaveLength(1);
+
+    // mode.set -> plan сужает потолок maxAccess до read_only
+    await controller.handle({ type: 'mode.set', sessionId: 'kimi-live', mode: 'plan' });
+    expect(childAgents.updateBinding).toHaveBeenCalledWith('tok-1', {
+      maxAccess: 'read_only',
+      allowBypassPermissions: false,
+    });
+
+    // Трансляция события дерева в ленту webview
+    const treeId = linked[0]!.treeId;
+    for (const fn of treeListeners.get(treeId) ?? []) {
+      fn({
+        type: 'agent.start',
+        agentId: 'ch_live',
+        taskId: 'ch_live',
+        description: 'Live child',
+        taskType: 'managed_agent',
+        provider: 'codex',
+        requestedModel: 'gpt-6-astra',
+        background: true,
+        at: 500,
+      });
+    }
+    expect(posted.some((m) => m.type === 'agent.event' && m.event.type === 'agent.start' && m.event.agentId === 'ch_live')).toBe(true);
+
+    // Чужой sessionId отклоняется для stop/transcript
+    await controller.handle({ type: 'agent.stop', sessionId: 'other-session', taskId: 'ch_live' });
+    await controller.handle({ type: 'agent.transcript', sessionId: 'other-session', agentId: 'ch_live', taskId: 'ch_live' });
+    expect(stoppedCalls).toHaveLength(0);
+    expect(openedTexts).toHaveLength(0);
+
+    // Свой sessionId: даже при agentStop/agentTranscript=false у Kimi управляемый узел останавливается и открывает транскрипт
+    await controller.handle({ type: 'agent.stop', sessionId: 'kimi-live', taskId: 'ch_live' });
+    await controller.handle({ type: 'agent.transcript', sessionId: 'kimi-live', agentId: 'ch_live', taskId: 'ch_live' });
+    expect(stoppedCalls).toEqual([{ treeId, agentId: 'ch_live' }]);
+    expect(openedTexts).toEqual([
+      { key: 'agent-ch_live', name: 'agent-ch_live.md', text: '# Transcript for ch_live' },
+    ]);
+
+    // Возобновление сессии с сохранённым деревом подтягивает restoredEvents без автоперезапуска
+    await controller.resume('kimi-prev', false, 'kimi');
+    await controller.handle({ type: 'ready' });
+    expect(disposedTrees).toContain(treeId);
+    const seedMsg = posted.find((m) => m.type === 'session.history');
+    expect(seedMsg && seedMsg.type === 'session.history' ? seedMsg.events : []).toEqual(restoredEventsList);
+
+    controller.dispose();
+  });
+});

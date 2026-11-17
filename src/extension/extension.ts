@@ -32,6 +32,7 @@ import { GitService, countLines, runGit } from './git/gitService';
 import { getGitApi } from './git/gitApi';
 import { vscodeGitUi } from './git/gitUi';
 import type { AgentProvider, CompletionRequest } from '../agent/types';
+import { ChildAgentsService, createProviderRuntimes } from '../agent/children';
 import { isSettingsSection } from '../protocol';
 
 /** Что активация отдаёт интеграционным тестам (только при запуске из исходников). */
@@ -69,11 +70,15 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     antigravityAdapter,
     cursorAdapter,
     kimiAdapter,
+    geminiAdapter,
+    zcodeAdapter,
     engine,
     codexEngine,
     antigravityEngine,
     cursorEngine,
     kimiEngine,
+    geminiEngine,
+    zcodeEngine,
   } = createAdapter(log, String(context.extension.packageJSON.version), context.globalState);
   engine.warm();
   const folder = vscode.workspace.workspaceFolders?.[0];
@@ -105,6 +110,8 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     cursor: { adapter: cursorAdapter, available: () => cursorEngine.available() },
     // Kimi: такой же изолированный источник; его сбой не отменяет Promise.all чужих списков
     kimi: { adapter: kimiAdapter, available: () => kimiEngine.available() },
+    gemini: { adapter: geminiAdapter, available: () => geminiEngine.available() },
+    zcode: { adapter: zcodeAdapter, available: () => zcodeEngine.available() },
     cwd,
     // беседы Codex/agy своих worktree чатов задач (roadmap 26, Д2): их папки — в ссылках групп
     extraCwds: (p) => taskGroups.cwds(p),
@@ -152,12 +159,56 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     vscode.workspace.getConfiguration('agentura').get<number>('usagePollMinutes', 15);
   context.subscriptions.push(startLimitsPolling(() => sidebar.refreshUsage(), pollMinutes));
 
+  const extVersion = String(context.extension.packageJSON.version);
+  const childAgents = new ChildAgentsService({
+    providers: createProviderRuntimes({
+      claude: {
+        executableSetting: () => vscode.workspace.getConfiguration('agentura').get<string>('claudeExecutable') ?? '',
+        clientVersion: extVersion,
+        log: (level, m) => log[level](m),
+      },
+      codex: {
+        executableSetting: () => vscode.workspace.getConfiguration('agentura').get<string>('codexExecutable') ?? '',
+        clientVersion: extVersion,
+        log: (level, m) => log[level](m),
+      },
+      kimi: {
+        executableSetting: () => vscode.workspace.getConfiguration('agentura').get<string>('kimiExecutable') ?? '',
+        clientVersion: extVersion,
+        log: (level, m) => log[level](m),
+      },
+      antigravity: {
+        executableSetting: () => vscode.workspace.getConfiguration('agentura').get<string>('antigravityExecutable') ?? '',
+        clientVersion: extVersion,
+        log: (level, m) => log[level](m),
+      },
+      cursor: {
+        executableSetting: () => vscode.workspace.getConfiguration('agentura').get<string>('cursorExecutable') ?? '',
+        clientVersion: extVersion,
+        log: (level, m) => log[level](m),
+      },
+      gemini: {
+        executableSetting: () => vscode.workspace.getConfiguration('agentura').get<string>('geminiExecutable') ?? '',
+        clientVersion: extVersion,
+        log: (level, m) => log[level](m),
+      },
+      zcode: {
+        executableSetting: () => vscode.workspace.getConfiguration('agentura').get<string>('zcodeExecutable') ?? '',
+        clientVersion: extVersion,
+        log: (level, m) => log[level](m),
+      },
+    }),
+  });
+  context.subscriptions.push({ dispose: () => { void childAgents.dispose(); } });
+
   const services: ChatServices = {
     adapter,
     codexAdapter,
     antigravityAdapter,
     cursorAdapter,
     kimiAdapter,
+    geminiAdapter,
+    zcodeAdapter,
     live,
     transcripts,
     usage,
@@ -177,6 +228,8 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
     antigravityEngine,
     cursorEngine,
     kimiEngine,
+    geminiEngine,
+    zcodeEngine,
     git: new GitService({
       loadApi: getGitApi,
       ui: vscodeGitUi(),
@@ -189,6 +242,7 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
         ? { complete: (cwd: string, r: CompletionRequest) => adapter.complete!(cwd, r) }
         : {}),
     }),
+    childAgents,
   };
 
   sidebar.taskPicker = new TaskPicker({
@@ -229,7 +283,11 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
                 ? 'Cursor'
                 : r.provider === 'kimi'
                   ? 'Kimi Code'
-                  : `${t.turns(r.turns)}${r.costUsd !== undefined ? ` · $${r.costUsd.toFixed(2)}` : ''}`,
+                  : r.provider === 'gemini'
+                    ? 'Gemini CLI'
+                    : r.provider === 'zcode'
+                      ? 'ZCode'
+                      : `${t.turns(r.turns)}${r.costUsd !== undefined ? ` · $${r.costUsd.toFixed(2)}` : ''}`,
         detail: new Date(r.updatedAt).toLocaleString(t.locale),
         id: r.id,
         provider: r.provider ?? ('claude' as const),

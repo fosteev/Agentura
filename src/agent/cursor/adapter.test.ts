@@ -1179,4 +1179,73 @@ describe('Cursor list, history, account', () => {
     await expect(blank.accountInfo(dir)).resolves.toEqual({});
     await expect(new CursorAdapter().accountInfo(dir)).resolves.toEqual({});
   });
+
+  it('hostMcpServers: передаёт HTTP MCP в session/new и session/load, авто-разрешает agentura_agents', async () => {
+    const s = server();
+    let newParams: unknown;
+    let loadParams: unknown;
+    s.handle('session/new', (p) => {
+      newParams = p;
+      return { sessionId: SESSION, models: { currentModelId: 'default[]', availableModels: [{ modelId: 'default[]', name: 'Auto' }] } };
+    });
+    s.handle('session/load', (p) => {
+      loadParams = p;
+      return { models: { currentModelId: 'default[]', availableModels: [{ modelId: 'default[]', name: 'Auto' }] } };
+    });
+    s.handle('session/prompt', async () => {
+      s.request('perm-1', 'session/request_permission', {
+        sessionId: SESSION,
+        toolCall: { toolCallId: 'tc_spawn', title: 'mcp_agentura_agents_agent_spawn', kind: 'other' },
+        options: [{ optionId: 'allow-once', kind: 'allow_once' }, { optionId: 'reject-once', kind: 'reject_once' }],
+      });
+      await vi.waitFor(() => expect(s.replies().length).toBeGreaterThan(0));
+      return { stopReason: 'end_turn' };
+    });
+
+    const { adapter } = open(s);
+    const mcpUrl = 'http://127.0.0.1:46666/mcp/cafe1234';
+    const session = await adapter.createSession({
+      cwd: '/w',
+      permissionMode: 'default',
+      hostMcpServers: [{ name: 'agentura_agents', url: mcpUrl, builtin: true }],
+    });
+    const events = collect(session);
+    session.send('spawn child');
+    await vi.waitFor(() => {
+      expect(events.some((e) => e.type === 'turn.result')).toBe(true);
+    });
+
+    expect(newParams).toMatchObject({
+      cwd: '/w',
+      mcpServers: [{ type: 'http', name: 'agentura_agents', url: mcpUrl, headers: [] }],
+    });
+    expect(s.replies()[0]).toMatchObject({
+      id: 'perm-1',
+      result: { outcome: { outcome: 'selected', optionId: 'allow-once' } },
+    });
+    expect(events.some((e) => e.type === 'permission.request')).toBe(false);
+    session.dispose();
+
+    const resumedAdapter = open(
+      (() => {
+        const s2 = server();
+        s2.handle('session/load', (p) => {
+          loadParams = p;
+          return { models: { currentModelId: 'default[]', availableModels: [{ modelId: 'default[]', name: 'Auto' }] } };
+        });
+        return s2;
+      })(),
+    ).adapter;
+    const resumed = await resumedAdapter.resumeSession(SESSION, {
+      cwd: '/w',
+      hostMcpServers: [{ name: 'agentura_agents', url: mcpUrl, builtin: true }],
+    });
+    await vi.waitFor(() => expect(loadParams).toBeDefined());
+    expect(loadParams).toMatchObject({
+      sessionId: SESSION,
+      cwd: '/w',
+      mcpServers: [{ type: 'http', name: 'agentura_agents', url: mcpUrl, headers: [] }],
+    });
+    resumed.dispose();
+  });
 });

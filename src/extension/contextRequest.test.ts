@@ -100,7 +100,7 @@ describe('contextRequest', () => {
     });
     const bad = contextRequest({
       context: 'x',
-      provider: 'gemini',
+      provider: 'unknown',
       files: [{ name: '..', text: 'a' }, { name: 'a.md', text: ' ' }, { name: 'b.md' }, 'c', null],
       beside: 1,
     });

@@ -374,6 +374,16 @@
           "default": "",
           "description": "%config.kimi.defaultModel.description%"
         },
+        "agentura.gemini.defaultModel": {
+          "type": "string",
+          "default": "",
+          "description": "%config.gemini.defaultModel.description%"
+        },
+        "agentura.zcode.defaultModel": {
+          "type": "string",
+          "default": "",
+          "description": "%config.zcode.defaultModel.description%"
+        },
         "agentura.kimi.defaultEffort": {
           "type": "string",
           "enum": [
@@ -457,6 +467,18 @@
           "default": "",
           "description": "%config.kimiExecutable.description%"
         },
+        "agentura.geminiExecutable": {
+          "type": "string",
+          "scope": "machine",
+          "default": "",
+          "description": "%config.geminiExecutable.description%"
+        },
+        "agentura.zcodeExecutable": {
+          "type": "string",
+          "scope": "machine",
+          "default": "",
+          "description": "%config.zcodeExecutable.description%"
+        },
         "agentura.defaultProvider": {
           "type": "string",
           "scope": "application",
@@ -465,14 +487,18 @@
             "codex",
             "antigravity",
             "cursor",
-            "kimi"
+            "kimi",
+            "gemini",
+            "zcode"
           ],
           "enumDescriptions": [
             "Claude Code",
             "Codex",
             "Antigravity",
             "Cursor",
-            "Kimi Code"
+            "Kimi Code",
+            "Gemini CLI",
+            "ZCode"
           ],
           "default": "claude",
           "description": "%config.defaultProvider.description%"
@@ -531,14 +557,18 @@
               "codex",
               "antigravity",
               "cursor",
-              "kimi"
+              "kimi",
+              "gemini",
+              "zcode"
             ],
             "enumDescriptions": [
               "Claude Code",
               "Codex",
               "Antigravity",
               "Cursor",
-              "Kimi Code"
+              "Kimi Code",
+              "Gemini CLI",
+              "ZCode"
             ]
           },
           "uniqueItems": true,

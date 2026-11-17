@@ -559,7 +559,9 @@ describe('ChatController: выбор движка engine.set', () => {
   it('протокол: engine.set принимает только известные движки', () => {
     expect(isFromWebview({ type: 'engine.set', provider: 'codex' })).toBe(true);
     expect(isFromWebview({ type: 'engine.set', provider: 'cursor' })).toBe(true);
-    expect(isFromWebview({ type: 'engine.set', provider: 'gemini' })).toBe(false);
+    expect(isFromWebview({ type: 'engine.set', provider: 'gemini' })).toBe(true);
+    expect(isFromWebview({ type: 'engine.set', provider: 'zcode' })).toBe(true);
+    expect(isFromWebview({ type: 'engine.set', provider: 'unknown' })).toBe(false);
     expect(isFromWebview({ type: 'engine.set' })).toBe(false);
   });
 

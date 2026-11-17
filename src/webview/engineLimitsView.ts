@@ -33,13 +33,23 @@ export interface EngineView {
 }
 
 export const ENGINE_ORDER: readonly EngineId[] = ['claude', 'codex', 'antigravity', 'kimi'];
-export const ENGINE_MARK: Record<EngineId, string> = { claude: 'C', codex: 'X', antigravity: 'G', cursor: 'R', kimi: 'K' };
+export const ENGINE_MARK: Record<EngineId, string> = {
+  claude: 'C',
+  codex: 'X',
+  antigravity: 'G',
+  cursor: 'R',
+  kimi: 'K',
+  gemini: 'M',
+  zcode: 'Z',
+};
 export const ENGINE_MARK_CLASS: Record<EngineId, string> = {
   claude: 'claude',
   codex: 'codex',
   antigravity: 'agy',
   cursor: 'cursor',
   kimi: 'kimi',
+  gemini: 'gemini',
+  zcode: 'zcode',
 };
 
 export const ENGINE_SHORT_NAME: Record<EngineId, string> = {
@@ -48,6 +58,8 @@ export const ENGINE_SHORT_NAME: Record<EngineId, string> = {
   antigravity: 'AGY',
   cursor: 'Cursor',
   kimi: 'Kimi',
+  gemini: 'Gemini',
+  zcode: 'ZCode',
 };
 
 export const engineName = (e: EngineId): string => ui.sidebar.providerNames[e];

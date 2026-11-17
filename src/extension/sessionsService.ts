@@ -22,7 +22,7 @@ export interface ExtraSessionsSource {
 }
 export type CodexSessionsSource = ExtraSessionsSource;
 
-type ExtraProvider = 'codex' | 'antigravity' | 'cursor' | 'kimi';
+type ExtraProvider = 'codex' | 'antigravity' | 'cursor' | 'kimi' | 'gemini' | 'zcode';
 
 export interface SessionsServiceDeps {
   adapter: AgentAdapter;
@@ -34,6 +34,10 @@ export interface SessionsServiceDeps {
   cursor?: ExtraSessionsSource;
   /** Нет — без Kimi. Источник изолирован: сбой list/rename не подменяет маршрут на Claude. */
   kimi?: ExtraSessionsSource;
+  /** Нет — без Gemini CLI. */
+  gemini?: ExtraSessionsSource;
+  /** Нет — без ZCode CLI. */
+  zcode?: ExtraSessionsSource;
   cwd: string;
   /**
    * Свои рабочие папки чатов задач движка (worktree, roadmap 26, Д2): Codex и Antigravity фильтруют список по папке —
@@ -135,6 +139,8 @@ const EXTRA_NAMES: Record<ExtraProvider, string> = {
   antigravity: 'Antigravity',
   cursor: 'Cursor',
   kimi: 'Kimi Code',
+  gemini: 'Gemini CLI',
+  zcode: 'ZCode',
 };
 
 function defaultWatch(dir: string, onChange: () => void, onError: () => void): { close(): void } {
@@ -186,6 +192,8 @@ export class SessionsService {
     antigravity: newExtra(),
     cursor: newExtra(),
     kimi: newExtra(),
+    gemini: newExtra(),
+    zcode: newExtra(),
   };
 
   constructor(private readonly deps: SessionsServiceDeps) {}
@@ -256,12 +264,14 @@ export class SessionsService {
       this.extraRows('antigravity'),
       this.extraRows('cursor'),
       this.extraRows('kimi'),
+      this.extraRows('gemini'),
+      this.extraRows('zcode'),
     ])
-      .then(([claude, codex, agy, cursor, kimi]) => {
+      .then(([claude, codex, agy, cursor, kimi, gemini, zcode]) => {
         // Claude-строки как были; остальные движки — рядом, общий порядок по времени
         const rows =
-          codex.length || agy.length || cursor.length || kimi.length
-            ? [...claude, ...codex, ...agy, ...cursor, ...kimi]
+          codex.length || agy.length || cursor.length || kimi.length || gemini.length || zcode.length
+            ? [...claude, ...codex, ...agy, ...cursor, ...kimi, ...gemini, ...zcode]
             : claude;
         this.applyPins(claude);
         rows.sort((a, b) => b.updatedAt - a.updatedAt);
@@ -288,6 +298,8 @@ export class SessionsService {
     if (p === 'codex') return this.deps.codex;
     if (p === 'antigravity') return this.deps.antigravity;
     if (p === 'cursor') return this.deps.cursor;
+    if (p === 'gemini') return this.deps.gemini;
+    if (p === 'zcode') return this.deps.zcode;
     return this.deps.kimi;
   }
 
@@ -489,7 +501,7 @@ export class SessionsService {
 
   providerOf(sessionId: string): 'claude' | ExtraProvider {
     const row = this.rows.find((r) => r.id === sessionId);
-    for (const p of ['codex', 'antigravity', 'cursor', 'kimi'] as const) {
+    for (const p of ['codex', 'antigravity', 'cursor', 'kimi', 'gemini', 'zcode'] as const) {
       if (!this.source(p)) continue;
       // строки уже нет (список сбросили между кликом и переименованием) — id, однажды пришедший от движка,
       // всё равно не уходит Claude-адаптеру

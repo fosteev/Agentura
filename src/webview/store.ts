@@ -79,6 +79,7 @@ import type {
 import type { TabChatsMessage } from '../shared/taskTab';
 import type { GitOp, GitSnapshot } from '../shared/git';
 import { pushHistory } from './composer';
+import { isManagedAgent } from './agentsView';
 import { applyHud, contextMax, initialHud, resetHud, type HudState } from './hudState';
 import { cacheView, contextFullAt, contextView, kilo, limitsView } from './hudView';
 import { limitBlock, type LimitBlock } from './limitView';
@@ -757,7 +758,10 @@ export function compact(): void {
 }
 
 export function stopAgent(taskId: string): void {
-  if (!features.value.agentStop) return;
+  const managed = hudState.value.agents.some(
+    (a) => (a.taskId === taskId || a.agentId === taskId) && isManagedAgent(a),
+  );
+  if (!features.value.agentStop && !managed) return;
   send({ type: 'agent.stop', sessionId: chat.value.sessionId, taskId });
 }
 
@@ -771,7 +775,10 @@ export function stopAgents(taskIds: readonly string[]): void {
 
 /** Транскрипт субагента — документом только для чтения в редакторе (хост читает его с диска). */
 export function openAgentTranscript(agentId: string, taskId: string): void {
-  if (!features.value.agentTranscript) return;
+  const managed = hudState.value.agents.some(
+    (a) => (a.agentId === agentId || a.taskId === taskId) && isManagedAgent(a),
+  );
+  if (!features.value.agentTranscript && !managed) return;
   send({ type: 'agent.transcript', sessionId: chat.value.sessionId, agentId, taskId });
 }
 

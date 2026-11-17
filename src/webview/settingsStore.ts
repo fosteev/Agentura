@@ -24,12 +24,16 @@ export const codexCheck = signal<{ pending: boolean; result?: EngineCheck }>({ p
 export const agyCheck = signal<{ pending: boolean; result?: EngineCheck }>({ pending: false });
 export const cursorCheck = signal<{ pending: boolean; result?: EngineCheck }>({ pending: false });
 export const kimiCheck = signal<{ pending: boolean; result?: EngineCheck }>({ pending: false });
+export const geminiCheck = signal<{ pending: boolean; result?: EngineCheck }>({ pending: false });
+export const zcodeCheck = signal<{ pending: boolean; result?: EngineCheck }>({ pending: false });
 
 function checkSignal(engine: AgentProvider) {
   if (engine === 'codex') return codexCheck;
   if (engine === 'antigravity') return agyCheck;
   if (engine === 'cursor') return cursorCheck;
   if (engine === 'kimi') return kimiCheck;
+  if (engine === 'gemini') return geminiCheck;
+  if (engine === 'zcode') return zcodeCheck;
   return engineCheck;
 }
 

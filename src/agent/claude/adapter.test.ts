@@ -1100,4 +1100,67 @@ describe('ClaudeSession: статус MCP (roadmap 21)', () => {
     await tick();
     expect(s.control).toEqual(['status']);
   });
+
+  it('hostMcpServers: передаёт HTTP MCP с alwaysLoad, сохраняет при setBrowser, помечает builtin и авто-разрешает agentura_agents', async () => {
+    const updatedServers: unknown[] = [];
+    const s = setup({
+      status: async () => [{ name: 'agentura_agents', status: 'connected' }],
+    });
+    const fakeSdkWithMcp = fakeSdk({
+      mcpServerStatus: async () => {
+        s.control.push('status');
+        return [{ name: 'agentura_agents', status: 'connected' }];
+      },
+      toggleMcpServer: async (n: string, on: boolean) => {
+        s.control.push(`toggle:${n}:${on}`);
+      },
+      setMcpServers: async (srv: unknown) => {
+        updatedServers.push(srv);
+        return { errors: {} };
+      },
+    });
+    const mcpUrl = 'http://127.0.0.1:41111/mcp/tok123';
+    const adapter = new ClaudeAdapter({
+      loadSdk: async () => fakeSdkWithMcp.sdk,
+      log: (_l, m) => void s.log.push(m),
+    });
+    const session = await adapter.createSession({
+      cwd: '/w',
+      mcpWatch: true,
+      hostMcpServers: [{ name: 'agentura_agents', url: mcpUrl, builtin: true }],
+    });
+    const events: AgentEvent[] = [];
+    session.events.on((e) => events.push(e));
+
+    expect(fakeSdkWithMcp.calls[0]?.options['mcpServers']).toEqual({
+      agentura_agents: { type: 'http', url: mcpUrl, alwaysLoad: true },
+    });
+
+    const canUseTool = fakeSdkWithMcp.calls[0]?.options['canUseTool'] as CanUseTool;
+    const permRes = await canUseTool(
+      'mcp__agentura_agents__agent_spawn',
+      { provider: 'codex', task: 'ping' },
+      { mcpServer: { name: 'agentura_agents', source: 'http' } },
+    );
+    expect(permRes).toEqual({
+      behavior: 'allow',
+      updatedInput: { provider: 'codex', task: 'ping' },
+    });
+    expect(events.some((e) => e.type === 'permission.request')).toBe(false);
+
+    // toggle builtin host MCP server is blocked
+    await session.mcpToggle?.('agentura_agents', false);
+    expect(s.control.some((c) => c.startsWith('toggle:'))).toBe(false);
+    const mcpEv = events.filter((e): e is Extract<AgentEvent, { type: 'mcp.status' }> => e.type === 'mcp.status').at(-1);
+    expect(mcpEv?.servers).toEqual([{ name: 'agentura_agents', status: 'connected', builtin: true }]);
+
+    // setBrowser keeps hostMcpServers intact
+    session.setBrowser?.(true);
+    await tick();
+    expect(updatedServers.at(-1)).toMatchObject({
+      agentura_agents: { type: 'http', url: mcpUrl, alwaysLoad: true },
+      browser: expect.objectContaining({ type: 'stdio' }),
+    });
+    session.dispose();
+  });
 });

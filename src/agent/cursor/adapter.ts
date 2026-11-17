@@ -1,10 +1,14 @@
 import { spawn } from 'node:child_process';
 import { EventHub } from '../stream';
+import { acpHttpMcpServers } from '../acp/client';
+import { isAgenturaAgentsTool } from '../children/policy';
+import { CHILD_MCP_SERVER } from '../children/types';
 import type {
   AccountInfo,
   AgentAdapter,
   AgentEvent,
   AgentSession,
+  HostMcpServer,
   ModelOption,
   PermissionDecision,
   PermissionMode,
@@ -126,6 +130,20 @@ export class CursorAdapter implements AgentAdapter {
       }
       throw error;
     }
+  }
+
+  /** Список реальных ACP-моделей Cursor через краткий `agent acp`. */
+  async listModels(dir: string): Promise<{ models: ModelOption[]; defaultModel?: string }> {
+    return this.withAcp(
+      dir,
+      async (client) => {
+        const result = await client.request('session/new', { cwd: dir, mcpServers: [] });
+        const models = modelsFrom(result);
+        const def = currentModelId(result);
+        return { models, ...(def ? { defaultModel: def } : {}) };
+      },
+      CURSOR_LIST_SESSIONS_TIMEOUT_MS,
+    );
   }
 
   /**
@@ -303,6 +321,7 @@ class CursorSession implements AgentSession {
   /** Поколение хода, который уже ушёл в `session/prompt`. После Stop они расходятся, и поздний запрос — не карточка. */
   private turnGeneration = 0;
   private turn: { done: Deferred; prompt: string; startedAt: number } | undefined;
+  private readonly hostMcpServers: readonly HostMcpServer[];
 
   constructor(
     private readonly config: CursorAdapterConfig,
@@ -312,6 +331,7 @@ class CursorSession implements AgentSession {
   ) {
     this.log = config.log ?? (() => {});
     this.cwd = options.cwd;
+    this.hostMcpServers = options.hostMcpServers ?? [];
     this.allowBypass = options.allowBypassPermissions === true;
     const requested = options.permissionMode ?? 'default';
     this.permissionMode = requested === 'bypassPermissions' && !this.allowBypass ? 'default' : requested;
@@ -497,13 +517,14 @@ class CursorSession implements AgentSession {
       clientInfo: { name: 'agentura', version: this.config.clientVersion ?? '0.0.0' },
     });
     await this.client.request('authenticate', { methodId: AUTH_METHOD });
+    const mcpServers = acpHttpMcpServers(this.hostMcpServers);
     const result = this.resumeId
       ? await this.client.request('session/load', {
           sessionId: this.resumeId,
           cwd: this.cwd,
-          mcpServers: [],
+          mcpServers,
         })
-      : await this.client.request('session/new', { cwd: this.cwd, mcpServers: [] });
+      : await this.client.request('session/new', { cwd: this.cwd, mcpServers });
     if (this.closed) return;
     const sessionId = this.resumeId ?? sessionIdOf(result);
     if (!sessionId) throw new Error('Cursor ACP session/new returned no sessionId.');
@@ -651,6 +672,14 @@ class CursorSession implements AgentSession {
     if (!built || this.loading || this.generation !== this.turnGeneration) {
       this.log('warn', 'cursor: session/request_permission had no card; refusing');
       this.client.respond(id, built ? permissionOutcome(built.options, 'deny') : permissionRefusal());
+      return true;
+    }
+    if (
+      this.hostMcpServers.some((s) => s.name === CHILD_MCP_SERVER && s.builtin !== false) &&
+      built.event.type === 'permission.request' &&
+      isAgenturaAgentsTool(built.event.toolName, built.event.title)
+    ) {
+      this.client.respond(id, permissionOutcome(built.options, 'allow'));
       return true;
     }
     if (this.permissionMode === 'bypassPermissions' && this.allowBypass) {

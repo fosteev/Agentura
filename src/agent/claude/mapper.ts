@@ -63,6 +63,8 @@ export interface MapperOptions {
   baselineCostUsd?: number;
   /** Язык текстов для пользователя (плашка «повтор запроса»); по умолчанию русский. */
   lang?: () => Lang;
+  /** Встроенные MCP-серверы хоста (например, `agentura_agents`), которые всегда отмечаются как `builtin: true`. */
+  builtinMcpServers?: ReadonlySet<string>;
 }
 
 interface PendingUsage {
@@ -118,11 +120,13 @@ export class ClaudeEventMapper {
   private mcp: McpServerInfo[] | undefined;
   private mcpKey: string | undefined;
   private readonly lang: () => Lang;
+  private readonly builtinMcpServers: ReadonlySet<string>;
 
   constructor(options: MapperOptions = {}) {
     this.now = options.now ?? Date.now;
     this.lastTotalCost = options.baselineCostUsd;
     this.lang = options.lang ?? (() => 'ru');
+    this.builtinMcpServers = options.builtinMcpServers ?? new Set();
   }
 
   get sessionId(): string | undefined {
@@ -425,7 +429,7 @@ export class ClaudeEventMapper {
       }
       const info: McpServerInfo = { name, status };
       if (prev?.scope) info.scope = prev.scope;
-      if (item['source'] === 'sdk') info.builtin = true;
+      if (item['source'] === 'sdk' || this.builtinMcpServers.has(name)) info.builtin = true;
       servers.push(info);
     }
     const event = this.mcpEvent(servers, false);
@@ -451,7 +455,7 @@ export class ClaudeEventMapper {
       if (Array.isArray(item['tools'])) info.tools = item['tools'].length;
       const scope = str(item['scope']);
       if (scope) info.scope = scope;
-      if (item['source'] === 'sdk') info.builtin = true;
+      if (item['source'] === 'sdk' || this.builtinMcpServers.has(name)) info.builtin = true;
       servers.push(info);
     }
     return this.mcpEvent(servers, force);

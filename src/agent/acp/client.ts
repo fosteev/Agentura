@@ -344,5 +344,26 @@ export function redact(value: string): string {
     .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/g, 'Bearer [REDACTED]')
     .replace(/\bsk-[A-Za-z0-9_-]{16,}/g, '[REDACTED]')
     .replace(/\bya29\.[A-Za-z0-9._-]{8,}/g, '[REDACTED]')
-    .replace(/\bAIza[A-Za-z0-9_-]{16,}/g, '[REDACTED]');
+    .replace(/\bAIza[A-Za-z0-9_-]{16,}/g, '[REDACTED]')
+    .replace(/(\/mcp\/)[a-f0-9]{16,}/gi, '$1[REDACTED]');
+}
+
+export interface AcpHttpMcpServer {
+  type: 'http';
+  name: string;
+  url: string;
+  headers: { name: string; value: string }[];
+}
+
+/** Преобразует host MCP-серверы (Streamable HTTP) в формат ACP `session/new` / `session/resume` / `session/load`. */
+export function acpHttpMcpServers(
+  servers?: readonly { name: string; url: string; headers?: Record<string, string> }[],
+): AcpHttpMcpServer[] {
+  if (!servers?.length) return [];
+  return servers.map((s) => ({
+    type: 'http',
+    name: s.name,
+    url: s.url,
+    headers: Object.entries(s.headers ?? {}).map(([name, value]) => ({ name, value })),
+  }));
 }

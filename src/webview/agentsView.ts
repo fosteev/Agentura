@@ -17,10 +17,17 @@ import { formatDuration, shortModel, splitPath, toolView } from './toolView';
 
 export type AgentActions = Pick<ProviderFeatures, 'agentStop' | 'agentTranscript'>;
 
+export function isManagedAgent(a: AgentNode): boolean {
+  return a.taskType === 'managed_agent';
+}
+
 /** Ограничивает только действия; статус и данные агента остаются видимыми. */
 export function agentActions<T extends { stopTaskId?: string; transcript?: boolean }>(
-  view: T, actions?: AgentActions,
+  view: T,
+  actions?: AgentActions,
+  managed = false,
 ): T {
+  if (managed) return view;
   if (actions?.agentStop === false) delete view.stopTaskId;
   if (actions?.agentTranscript === false && 'transcript' in view) view.transcript = false;
   return view;
@@ -34,6 +41,7 @@ type ToolRow = Extract<FeedRow, { kind: 'tool' }>;
 /** Субагент (`Agent`/`Task`), а не фоновая задача основного (shell, monitor). */
 export function isSubagent(a: AgentNode): boolean {
   return (
+    a.taskType === 'managed_agent' ||
     a.taskType === 'local_agent' ||
     a.taskType === 'remote_agent' ||
     a.taskType === 'agent' ||
@@ -143,7 +151,10 @@ export function agentGroupView(
   actions?: AgentActions,
 ): GroupView {
   const byId = agentsById(h);
-  const views = rows.map((r) => agentActions(groupRow(r, byId.get(r.toolUseId), now, cwd), actions));
+  const views = rows.map((r) => {
+    const node = byId.get(r.toolUseId);
+    return agentActions(groupRow(r, node, now, cwd), actions, !!node && isManagedAgent(node));
+  });
   const nodes = rows.map((r) => byId.get(r.toolUseId)).filter((a): a is AgentNode => !!a);
   const count = (c: GroupRowView['cls']) => views.filter((v) => v.cls === c).length;
   const running = count('busy');
@@ -434,6 +445,7 @@ export function agentMapView(
 ): AgentMapView {
   const now = o.now;
   const shown = mapAgents(h, o.selected);
+  const byId = agentsById(h);
   const detail = detailAgent(h, o.selected);
   const ids = new Set(shown.map((a) => a.agentId));
 
@@ -479,17 +491,24 @@ export function agentMapView(
 
   return {
     heading,
-    rows: rows.map((row) => agentActions(row, o.actions)),
-    tasks: tasks.map((row) => agentActions(row, o.actions)),
+    rows: rows.map((row) => {
+      const node = row.agentId ? byId.get(row.agentId) : undefined;
+      return agentActions(row, o.actions, !!node && isManagedAgent(node));
+    }),
+    tasks: tasks.map((row) => {
+      const node = row.agentId ? byId.get(row.agentId) : undefined;
+      return agentActions(row, o.actions, !!node && isManagedAgent(node));
+    }),
     bar,
     totals,
-    ...(detail ? { detail: agentActions(agentDetail(detail, now, o.cwd, o.hasSession ?? true), o.actions) } : {}),
+    ...(detail ? { detail: agentActions(agentDetail(detail, now, o.cwd, o.hasSession ?? true), o.actions, isManagedAgent(detail)) } : {}),
   };
 }
 
 export function mapRow(a: AgentNode, depth: number, now: number, sel: boolean, cwd?: string): MapRowView {
   const time = formatDuration(elapsed(a, now));
-  const modelTag = [a.model ? shortModel(a.model) : '', a.reasoningEffort ?? '']
+  const rawModel = a.model || a.requestedModel || '';
+  const modelTag = [rawModel ? shortModel(rawModel) : '', a.reasoningEffort ?? '']
     .filter(Boolean)
     .join(' · ');
   const model = modelTag ? `${modelTag} · ` : '';
@@ -587,7 +606,14 @@ export function agentDetail(
           : ui.agents.detail.stopped(time);
   const calls = Math.max(a.calls, a.toolUses ?? 0);
   const meta: AgentDetailView['meta'] = [
-    ...(a.model ? [{ value: a.model }] : []),
+    ...(a.provider ? [{ label: 'provider', value: a.provider }] : []),
+    ...(a.requestedModel && a.model && a.requestedModel !== a.model
+      ? [{ value: `${a.requestedModel} → ${a.model}` }]
+      : a.model
+        ? [{ value: a.model }]
+        : a.requestedModel
+          ? [{ label: 'requested', value: a.requestedModel }]
+          : []),
     ...(a.reasoningEffort ? [{ label: 'effort', value: a.reasoningEffort }] : []),
     ...(a.tokens !== undefined
       ? [{ label: ui.agents.detail.tokens, value: compactTokens(a.tokens) }]

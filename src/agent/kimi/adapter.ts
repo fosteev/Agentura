@@ -1,6 +1,8 @@
 import { spawn } from 'node:child_process';
 import { realpathSync } from 'node:fs';
-import { AcpRpcClient, AcpRpcError, MAX_LINE_BYTES, PERMISSION_METHOD, type RpcId, type RpcProcess } from '../acp/client';
+import { acpHttpMcpServers, AcpRpcClient, AcpRpcError, MAX_LINE_BYTES, PERMISSION_METHOD, type RpcId, type RpcProcess } from '../acp/client';
+import { isAgenturaAgentsTool } from '../children/policy';
+import { CHILD_MCP_SERVER } from '../children/types';
 import { EventHub } from '../stream';
 import type {
   AccountInfo,
@@ -10,6 +12,7 @@ import type {
   AgentSession,
   CommandOption,
   EffortLevel,
+  HostMcpServer,
   PermissionDecision,
   PermissionMode,
   PlanDecision,
@@ -342,6 +345,7 @@ class KimiSession implements AgentSession {
   private readonly allowBypass: boolean;
   private readonly graceMs: number;
   private readonly interruptWaitMs: number;
+  private readonly hostMcpServers: readonly HostMcpServer[];
   private permissionMode: PermissionMode = 'default';
   private config: KimiConfig = {};
   private commands: CommandOption[] = [];
@@ -371,6 +375,7 @@ class KimiSession implements AgentSession {
     this.allowBypass = options.allowBypassPermissions === true;
     this.graceMs = config0.graceMs ?? DEFAULT_GRACE_MS;
     this.interruptWaitMs = config0.interruptWaitMs ?? INTERRUPT_WAIT_MS;
+    this.hostMcpServers = options.hostMcpServers ?? [];
     this.events = new EventHub<AgentEvent>((error) => this.log('error', `event subscriber failed: ${String(error)}`));
     this.proc = (config0.spawn ?? defaultSpawn)(executable, ['acp'], {
       cwd: options.cwd,
@@ -599,9 +604,10 @@ class KimiSession implements AgentSession {
   private async handshake(options: SessionOptions): Promise<void> {
     const init = await this.client.request('initialize', initializeParams(this.config0));
     this.agentVersion = agentVersionOf(init);
+    const mcpServers = acpHttpMcpServers(this.hostMcpServers);
     const result = this.resumeId
-      ? await this.client.request('session/resume', { sessionId: this.resumeId, cwd: this.cwd, mcpServers: [] })
-      : await this.client.request('session/new', { cwd: this.cwd, mcpServers: [] });
+      ? await this.client.request('session/resume', { sessionId: this.resumeId, cwd: this.cwd, mcpServers })
+      : await this.client.request('session/new', { cwd: this.cwd, mcpServers });
     if (this.closed) return;
     const sessionId = this.resumeId ?? sessionIdOf(result);
     if (!sessionId) throw new Error('Kimi ACP session/new returned no sessionId.');
@@ -925,13 +931,21 @@ class KimiSession implements AgentSession {
       });
       return true;
     }
+    const title = typeof call?.title === 'string' ? call.title : undefined;
+    if (
+      this.hostMcpServers.some((s) => s.name === CHILD_MCP_SERVER && s.builtin !== false) &&
+      isAgenturaAgentsTool(name, title)
+    ) {
+      const allow = permissionOption(options, 'allow_once');
+      this.client.respond(id, allow ? permissionOutcome(allow) : permissionRefusal(params));
+      return true;
+    }
     if (this.permissionMode === 'bypassPermissions' && this.allowBypass) {
       const allow = permissionOption(options, 'allow_once');
       this.client.respond(id, allow ? permissionOutcome(allow) : permissionRefusal(params));
       return true;
     }
     const input = mapToolInput(name, record(call?.rawInput) ?? record(call?.args) ?? {});
-    const title = typeof call?.title === 'string' ? call.title : undefined;
     const reason = contentTexts(call?.content).join('\n');
     const canAlwaysAllow = options.some((option) => option.kind === 'allow_always');
     this.track(toolUseId, { kind: 'permission', rpcId: id, options });

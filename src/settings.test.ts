@@ -175,7 +175,11 @@ describe('sessionList', () => {
       ok: true,
       value: ['claude', 'antigravity'],
     });
-    expect(validateSetting('sidebar.limitsHidden', ['gemini']).ok).toBe(false);
+    expect(validateSetting('sidebar.limitsHidden', ['gemini', 'zcode'])).toEqual({
+      ok: true,
+      value: ['gemini', 'zcode'],
+    });
+    expect(validateSetting('sidebar.limitsHidden', ['unknown']).ok).toBe(false);
     expect(validateSetting('sidebar.limitsHidden', 'codex').ok).toBe(false);
     expect(validateSetting('tasks.sidebar', 'section')).toEqual({ ok: true, value: 'section' });
     expect(validateSetting('tasks.sidebar', 'tree').ok).toBe(false);
@@ -392,7 +396,7 @@ describe('readSettings', () => {
         'sessionList.view': 'tree',
         'sessionList.context': 'x',
         'sidebar.limits': 'grid',
-        'sidebar.limitsHidden': ['codex', 'gemini', 'codex'],
+        'sidebar.limitsHidden': ['codex', 'unknown', 'codex'],
         'tasks.sidebar': 'tree',
         'tasks.card': 'grid',
         'tasks.tab': 'split',

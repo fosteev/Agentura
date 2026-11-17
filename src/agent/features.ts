@@ -187,6 +187,54 @@ export const KIMI_FEATURES: Readonly<ProviderFeatures> = {
   skills: true,
 };
 
+/** Gemini CLI (`gemini --acp`): ACP modes and tool approvals; no Agentura subagent/MCP status tabs. */
+export const GEMINI_FEATURES: Readonly<ProviderFeatures> = {
+  nativeSettings: false,
+  modes: true,
+  compact: false,
+  autoCompact: false,
+  context: false,
+  cost: false,
+  subagents: false,
+  agentStop: false,
+  agentTranscript: false,
+  plan: true,
+  questions: false,
+  images: false,
+  files: false,
+  remote: false,
+  browser: false,
+  mcp: false,
+  mcpReconnect: false,
+  mcpReloadAll: false,
+  mcpToggle: false,
+  skills: false,
+};
+
+/** ZCode (`zcode app-server --stdio`): ZCode Protocol v1 JSON-RPC; standalone OAuth/API billing and per-session mcpServers caveats apply. */
+export const ZCODE_FEATURES: Readonly<ProviderFeatures> = {
+  nativeSettings: false,
+  modes: true,
+  compact: false,
+  autoCompact: false,
+  context: false,
+  cost: false,
+  subagents: false,
+  agentStop: false,
+  agentTranscript: false,
+  plan: true,
+  questions: false,
+  images: false,
+  files: false,
+  remote: false,
+  browser: false,
+  mcp: false,
+  mcpReconnect: false,
+  mcpReloadAll: false,
+  mcpToggle: false,
+  skills: false,
+};
+
 export function providerFeatures(provider: AgentProvider): ProviderFeatures {
   return {
     ...(provider === 'codex'
@@ -197,6 +245,10 @@ export function providerFeatures(provider: AgentProvider): ProviderFeatures {
           ? CURSOR_FEATURES
           : provider === 'kimi'
             ? KIMI_FEATURES
-            : CLAUDE_FEATURES),
+            : provider === 'gemini'
+              ? GEMINI_FEATURES
+              : provider === 'zcode'
+                ? ZCODE_FEATURES
+                : CLAUDE_FEATURES),
   };
 }

@@ -740,13 +740,13 @@ const FIELD_CHECKS: Partial<Record<FromWebview['type'], (m: Record<string, unkno
   'task.picker.find': (m) => Number.isSafeInteger(m.requestId) && Number(m.requestId) > 0 && str(m.query) && m.query.length > 0 && m.query.length <= 2000 && (m.instanceId === undefined || str(m.instanceId) && /^[a-z0-9-]{1,200}$/i.test(m.instanceId)),
   'task.picker.act': (m) => Number.isSafeInteger(m.requestId) && Number(m.requestId) > 0 && (m.mode === 'open' || m.mode === 'create') &&
     (m.sessionId === undefined || str(m.sessionId) && m.sessionId.length > 0 && m.sessionId.length <= 200) &&
-    (m.provider === undefined ? m.mode === 'open' && m.sessionId === undefined : str(m.provider) && ['claude', 'codex', 'antigravity', 'cursor', 'kimi'].includes(m.provider)) &&
+    (m.provider === undefined ? m.mode === 'open' && m.sessionId === undefined : str(m.provider) && ['claude', 'codex', 'antigravity', 'cursor', 'kimi', 'gemini', 'zcode'].includes(m.provider)) &&
     (m.prompt === undefined || str(m.prompt) && m.prompt.length <= NEW_CHAT_PROMPT_LIMIT),
   'codex.settings': (m) => str(m.sessionId) && isCodexSettingsChange(m.change),
   'engine.set': (m) =>
-    m.provider === 'claude' || m.provider === 'codex' || m.provider === 'antigravity' || m.provider === 'cursor' || m.provider === 'kimi',
+    m.provider === 'claude' || m.provider === 'codex' || m.provider === 'antigravity' || m.provider === 'cursor' || m.provider === 'kimi' || m.provider === 'gemini' || m.provider === 'zcode',
   'sidebar.hideEngine': (m) =>
-    m.engine === 'claude' || m.engine === 'codex' || m.engine === 'antigravity' || m.engine === 'cursor' || m.engine === 'kimi',
+    m.engine === 'claude' || m.engine === 'codex' || m.engine === 'antigravity' || m.engine === 'cursor' || m.engine === 'kimi' || m.engine === 'gemini' || m.engine === 'zcode',
   'engine.login': (m) => m.engine === 'codex' || m.engine === 'antigravity' || m.engine === 'kimi',
   'agents.openGraph': (m) => m.agentId === undefined || typeof m.agentId === 'string',
   'agents.snapshot': (m) => typeof m.sessionId === 'string' && isAgentGraphView(m.graph),
@@ -780,7 +780,9 @@ const FIELD_CHECKS: Partial<Record<FromWebview['type'], (m: Record<string, unkno
       m.provider === 'codex' ||
       m.provider === 'antigravity' ||
       m.provider === 'cursor' ||
-      m.provider === 'kimi') &&
+      m.provider === 'kimi' ||
+      m.provider === 'gemini' ||
+      m.provider === 'zcode') &&
     (m.prompt === undefined || (str(m.prompt) && m.prompt.length <= NEW_CHAT_PROMPT_LIMIT)) &&
     (m.carry === undefined || isNewChatCarry(m.carry)) &&
     (m.where === undefined || m.where === 'same' || m.where === 'worktree') &&

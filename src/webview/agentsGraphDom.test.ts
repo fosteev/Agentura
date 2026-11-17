@@ -171,6 +171,69 @@ describe('вкладка графа', () => {
     expect(qa(host, '.gmap .gd .ac button')).toHaveLength(0);
   });
 
+  it('managed_agent in graph keeps Stop/Transcript when actions are disabled and shows provider + requested -> model', async () => {
+    await play();
+    const snap = graphSnapshot();
+    const managedChild = {
+      agentId: 'ch_managed_1',
+      taskId: 'ch_managed_1',
+      description: 'Kimi child agent',
+      taskType: 'managed_agent',
+      subagentType: 'kimi',
+      provider: 'kimi',
+      requestedModel: 'k3.1',
+      model: 'kimi-code/k3.1-pro',
+      background: true,
+      status: 'running' as const,
+      startedAt: Date.now() - 1000,
+      turnNo: 1,
+      prompt: 'Analyze repo structure',
+      segs: [],
+      calls: 0,
+    };
+    const managedGrand = {
+      agentId: 'ch_managed_2',
+      taskId: 'ch_managed_2',
+      description: 'Codex grandchild',
+      taskType: 'managed_agent',
+      subagentType: 'codex',
+      provider: 'codex',
+      requestedModel: 'gpt-6-astra',
+      model: 'gpt-6-astra',
+      background: true,
+      parentAgentId: 'ch_managed_1',
+      status: 'completed' as const,
+      startedAt: Date.now() - 500,
+      endedAt: Date.now(),
+      turnNo: 1,
+      prompt: 'Say OK',
+      summary: 'GRANDCHILD_OK',
+      segs: [],
+      calls: 0,
+    };
+    handleGraphMessage({
+      ...snap,
+      graph: {
+        ...snap.graph,
+        actions: { agentStop: false, agentTranscript: false },
+        agents: [managedChild, managedGrand],
+      },
+    });
+    const host = mountGraph();
+    await flush();
+
+    expect(qa(host, '.gmap .n[data-agent]')).toHaveLength(2);
+    expect(q(host, '.gmap .gd .hd .m').textContent).toContain('kimi');
+    expect(q(host, '.gmap .gd .hd .m').textContent).toContain('k3.1 → kimi-code/k3.1-pro');
+
+    q(host, '.gmap .gd .ac button.stop').click();
+    qa(host, '.gmap .gd .ac button')[0]!.click();
+    expect(posted).toEqual([
+      { type: 'agent.stop', sessionId: 'sess', taskId: 'ch_managed_1' },
+      { type: 'agent.transcript', sessionId: 'sess', agentId: 'ch_managed_1', taskId: 'ch_managed_1' },
+    ]);
+  });
+
   it('agents.focus выбирает агента (и до снимка, и после); смена сессии сбрасывает выбор', async () => {
     const { subs } = await play();
     handleGraphMessage({ type: 'agents.focus', agentId: subs[2]!.agentId });

@@ -240,6 +240,10 @@ const ru = {
     'Не найден Cursor CLI (agent). Установите его и выполните вход (agent login) либо укажите путь в настройке agentura.cursorExecutable.',
   kimiNotFound:
     'Не найден Kimi Code CLI (kimi). Установите его и выполните вход (kimi acp --login) либо укажите путь в настройке agentura.kimiExecutable.',
+  geminiNotFound:
+    'Не найден Gemini CLI (gemini). Установите его и выполните вход либо укажите путь в настройке agentura.geminiExecutable.',
+  zcodeNotFound:
+    'Не найден ZCode CLI (zcode). Установите ZCode либо укажите путь в настройке agentura.zcodeExecutable.',
   engineWrapper: (path: string) =>
     `${path} — npm-обёртка, движок через неё не запускается. Установите Claude Code нативным установщиком (claude.exe) или укажите путь к claude.exe в agentura.claudeExecutable.`,
   engineOld: (min: string, found: string, path: string) =>
@@ -507,6 +511,10 @@ const en: HostUi = {
     'Cursor CLI (agent) not found. Install it and sign in (agent login), or set the path in agentura.cursorExecutable.',
   kimiNotFound:
     'Kimi Code CLI (kimi) not found. Install it and sign in (kimi acp --login), or set the path in agentura.kimiExecutable.',
+  geminiNotFound:
+    'Gemini CLI (gemini) not found. Install it and sign in, or set the path in agentura.geminiExecutable.',
+  zcodeNotFound:
+    'ZCode CLI (zcode) not found. Install ZCode, or set the path in agentura.zcodeExecutable.',
   engineWrapper: (path) =>
     `${path} is an npm wrapper; the engine cannot run through it. Install Claude Code with the native installer (claude.exe) or set the path to claude.exe in agentura.claudeExecutable.`,
   engineOld: (min, found, path) =>

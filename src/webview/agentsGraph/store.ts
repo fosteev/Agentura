@@ -111,12 +111,22 @@ export function pickAgent(agentId: string): void {
 /** Действия — в сессию, которую граф показывает; хост сверит её с сессией чата. */
 export function stopGraphAgent(taskId: string): void {
   const s = graphSnap.value;
-  if (s && s.graph.actions?.agentStop !== false) send({ type: 'agent.stop', sessionId: s.sessionId, taskId });
+  if (!s) return;
+  const managed = s.graph.agents.some(
+    (a) => (a.taskId === taskId || a.agentId === taskId) && a.taskType === 'managed_agent',
+  );
+  if (s.graph.actions?.agentStop !== false || managed) send({ type: 'agent.stop', sessionId: s.sessionId, taskId });
 }
 
 export function openGraphTranscript(agentId: string, taskId: string): void {
   const s = graphSnap.value;
-  if (s && s.graph.actions?.agentTranscript !== false) send({ type: 'agent.transcript', sessionId: s.sessionId, agentId, taskId });
+  if (!s) return;
+  const managed = s.graph.agents.some(
+    (a) => (a.agentId === agentId || a.taskId === taskId) && a.taskType === 'managed_agent',
+  );
+  if (s.graph.actions?.agentTranscript !== false || managed) {
+    send({ type: 'agent.transcript', sessionId: s.sessionId, agentId, taskId });
+  }
 }
 
 /** Что-то идёт (основной или агенты) — часам есть смысл тикать. */

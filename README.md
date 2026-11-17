@@ -65,7 +65,8 @@ Personal project, not on the Marketplace. Install it from a `.vsix` (see [Instal
   - `git` is a working tree view where you stage, commit and push. Files the agent edited are marked.
   - `agents` shows the turn's subagents.
 - **Agents graph.** Opens in its own editor tab: who started whom, the prompt each agent got and the summary it
-  returned, plus its live calls and canvas zoom (`⌘/Ctrl + wheel`, pinch, `fit`).
+  returned, plus its live calls and canvas zoom (`⌘/Ctrl + wheel`, pinch, `fit`). Supports both native subagents and
+  cross-provider host-managed child agents via `agentura_agents` ([architecture & verification matrix](docs/cross-provider-agents.md)).
 - **Attachments.** Paste screenshots with `⌘V`. Attach files with "+" or by dragging them in with `⇧` held.
   Document and PDF support depends on the selected engine.
 - **Look.** Four feed styles, six input layouts, five agent views, three git layouts, three session list densities, your own fonts
@@ -433,7 +434,9 @@ user settings only, so a cloned repository can't change them through its `.vscod
 | `agentura.antigravityExecutable`  | empty    | Path to `agy`; empty means auto-detect           |
 | `agentura.cursorExecutable`       | empty    | Path to Cursor `agent`; empty means auto-detect  |
 | `agentura.kimiExecutable`         | empty    | Path to `kimi`; empty means auto-detect          |
-| `agentura.defaultProvider`        | `claude` | Engine for new tabs: `claude`, `codex`, `antigravity`, `cursor` or `kimi` |
+| `agentura.geminiExecutable`       | empty    | Path to `gemini`; empty means auto-detect        |
+| `agentura.zcodeExecutable`        | empty    | Path to `zcode`; empty means auto-detect         |
+| `agentura.defaultProvider`        | `claude` | Engine for new tabs: `claude`, `codex`, `antigravity`, `cursor`, `kimi`, `gemini` or `zcode` |
 | `agentura.allowBypassPermissions` | `false`  | Allow `bypassPermissions` (Claude, Antigravity, Cursor, Kimi) and explicit Codex full-access sandbox selection |
 | `agentura.remoteControl`          | `false`  | Remote Control for every Claude tab              |
 | `agentura.remoteControlNamePrefix`| empty    | Session name prefix on claude.ai; empty means the machine name |

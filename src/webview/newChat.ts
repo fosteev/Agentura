@@ -23,7 +23,11 @@ export function parseNewCommand(args: string, fallback: AgentProvider): { provid
             ? 'cursor'
             : word === 'kimi'
               ? 'kimi'
-              : undefined;
+              : word === 'gemini'
+                ? 'gemini'
+                : word === 'zcode'
+                  ? 'zcode'
+                  : undefined;
   if (!engine) return { provider: fallback, prompt: text };
   return { provider: engine, prompt: (m?.[2] ?? '').trim() };
 }

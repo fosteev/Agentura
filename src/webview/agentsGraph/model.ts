@@ -5,7 +5,7 @@
  */
 import type { AgentGraphView } from '../../shared/agentsGraph';
 import { GRAPH_SEGS } from '../../shared/agentsGraph';
-import { agentActions, elapsed, isSubagent } from '../agentsView';
+import { agentActions, elapsed, isManagedAgent, isSubagent } from '../agentsView';
 import {
   agentOpen,
   agentTurns,
@@ -107,7 +107,7 @@ function agentNode(line: TurnGroup['agents'][number], a: AgentNode): GraphNodeVi
     status: st,
     cls: st,
     mark: st === 'ok' ? '✓' : st === 'err' ? '✕' : st === 'stop' ? '■' : '◐',
-    head: [line.type, a.model ? shortModel(a.model) : '', a.reasoningEffort ?? '']
+    head: [line.type, a.model || a.requestedModel ? shortModel(a.model || a.requestedModel!) : '', a.reasoningEffort ?? '']
       .filter(Boolean)
       .join(' · '),
     ...(a.tokens !== undefined ? { tokens: compactTokens(a.tokens) } : {}),
@@ -184,12 +184,15 @@ export function graphModel(
       time: formatDuration((g.live ? o.now : (g.endedAt ?? o.now)) - g.startedAt),
     },
     main,
-    nodes: nodes.map((node) => agentActions(node, v.actions)),
+    nodes: nodes.map((node) => {
+      const a = byId.get(node.id);
+      return agentActions(node, v.actions, !!a && isManagedAgent(a));
+    }),
     layout: {
       agents: g.agents.map((a) => ({ id: a.agentId, depth: a.depth, ...(a.parentId ? { parentId: a.parentId } : {}) })),
       tasks: g.taskNodes.map((t) => ({ id: t.agentId })),
     },
     ...(selectedId ? { selectedId } : {}),
-    ...(sel && isSubagent(sel) ? { detail: agentActions(agentOpen(sel, o.now, cwd, o.hasSession, GRAPH_SEGS), v.actions) } : {}),
+    ...(sel && isSubagent(sel) ? { detail: agentActions(agentOpen(sel, o.now, cwd, o.hasSession, GRAPH_SEGS), v.actions, isManagedAgent(sel)) } : {}),
   };
 }

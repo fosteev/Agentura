@@ -42,7 +42,7 @@ import { activeCard, pendingPlan } from '../chatState';
 import { limitBanner } from '../limitView';
 import { changesView } from '../changesView';
 import { cacheLive } from '../hudView';
-import { agentBadge, agentMapView, liveSubagents, waitingAgents } from '../agentsView';
+import { agentBadge, agentMapView, isSubagent, liveSubagents, waitingAgents } from '../agentsView';
 import { ui } from '../strings';
 import { readPanel, savePanel, send, type PanelState, type TaskViewName } from '../vscode';
 import { codeCount } from '../taskCodeView';
@@ -292,8 +292,8 @@ export function Chat() {
     s.title ||
     (loading?.sessionId ? recent.value.find((r) => r.id === loading.sessionId)?.title : undefined);
   // в пустой сессии вкладки «изменения»/«агенты» отключены — после «new» возвращаемся в чат
-  // вкладка «агенты» есть не у каждого движка (`features.subagents`): сохранённая или открытая — уступает «изменениям»
-  const subagents = features.value.subagents;
+  // вкладка «агенты» есть не у каждого движка (`features.subagents`) или когда есть дочерние агенты дерева
+  const subagents = features.value.subagents || h.agents.some(isSubagent);
   // вкладка «mcp» (roadmap 21): движок отдал статус, настройка включена и серверы есть; иначе сохранённая — «изменения»
   const mcpServers = s.mcp?.servers;
   const mcpOn = mcpSurfaceShown(features.value.mcp, mcpPanelTab.value, mcpServers);

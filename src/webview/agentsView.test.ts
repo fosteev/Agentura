@@ -13,10 +13,13 @@ import { applyEvent, initialState, seedHistory, type ChatState, type FeedRow } f
 import { applyHud, initialHud, type HudState } from './hudState';
 import {
   agentBadge,
+  agentDetail,
   agentGroupView,
   agentMapView,
   feedItems,
   firstLine,
+  isManagedAgent,
+  isSubagent,
   liveSubagents,
   waitingAgents,
 } from './agentsView';
@@ -241,5 +244,65 @@ describe('мелочи вида', () => {
       note: 'boom',
     });
     expect(agentBadge(hud)).toBeUndefined();
+  });
+
+  it('managed_agent: сохраняет Stop/Transcript при agentStop/agentTranscript=false и показывает provider + requested -> model', () => {
+    const { hud, now } = play([
+      { type: 'turn.start', prompt: 'run tree', at: 1000 },
+      {
+        type: 'agent.start',
+        agentId: 'ch_1',
+        taskId: 'ch_1',
+        description: 'Kimi parent',
+        taskType: 'managed_agent',
+        subagentType: 'kimi',
+        provider: 'kimi',
+        requestedModel: 'k3.1',
+        model: 'kimi-code/k3.1-pro',
+        background: true,
+        prompt: 'Spawn grandchild',
+        at: 1010,
+      },
+      {
+        type: 'agent.start',
+        agentId: 'ch_2',
+        taskId: 'ch_2',
+        description: 'Codex child',
+        taskType: 'managed_agent',
+        subagentType: 'codex',
+        provider: 'codex',
+        requestedModel: 'gpt-6-astra',
+        background: true,
+        parentAgentId: 'ch_1',
+        prompt: 'Reply GRANDCHILD_OK',
+        at: 1020,
+      },
+    ]);
+
+    expect(hud.agents).toHaveLength(2);
+    expect(isSubagent(hud.agents[0]!)).toBe(true);
+    expect(isManagedAgent(hud.agents[0]!)).toBe(true);
+    expect(agentBadge(hud)).toEqual({ text: '2 / 2', live: true });
+
+    const map = agentMapView(hud, {
+      working: true,
+      waiting: false,
+      now,
+      hasSession: true,
+      selected: 'ch_1',
+      actions: { agentStop: false, agentTranscript: false },
+    });
+
+    // Основной + 2 дочерних (дерево: depth 1 и depth 2)
+    expect(map.rows).toHaveLength(3);
+    expect(map.rows[1]).toMatchObject({ agentId: 'ch_1', depth: 1, stopTaskId: 'ch_1' });
+    expect(map.rows[2]).toMatchObject({ agentId: 'ch_2', depth: 2, stopTaskId: 'ch_2' });
+    expect(map.detail).toMatchObject({ stopTaskId: 'ch_1', transcript: true });
+    expect(map.detail?.meta).toContainEqual({ label: 'provider', value: 'kimi' });
+    expect(map.detail?.meta).toContainEqual({ value: 'k3.1 → kimi-code/k3.1-pro' });
+
+    const grandDetail = agentDetail(hud.agents[1]!, now, undefined, true);
+    expect(grandDetail.meta).toContainEqual({ label: 'provider', value: 'codex' });
+    expect(grandDetail.meta).toContainEqual({ label: 'requested', value: 'gpt-6-astra' });
   });
 });
